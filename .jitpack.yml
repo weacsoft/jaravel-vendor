@@ -1,0 +1,8 @@
+jdk:
+  - openjdk17
+
+before_install:
+  - echo "Using JDK 17 for JitPack build"
+
+install:
+  - mvn clean install -DskipTests
