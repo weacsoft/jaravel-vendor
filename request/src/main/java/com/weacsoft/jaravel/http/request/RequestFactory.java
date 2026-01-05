@@ -165,22 +165,24 @@ public class RequestFactory {
     }
 
     private static void generateUrlencode(Request request) throws IOException {
-        BufferedReader reader = request.getRequest().getReader();
-        if (reader != null) {
-            String body = reader
-                    .lines()
-                    .collect(Collectors.joining());
-            if (body.isEmpty()) {
-                return;
+        HttpServletRequest httpServletRequest = request.getRequest();
+        if (httpServletRequest != null) {
+            BufferedReader reader = httpServletRequest.getReader();
+            if (reader != null) {
+                String body = reader
+                        .lines()
+                        .collect(Collectors.joining());
+                if (body.isEmpty()) {
+                    return;
+                }
+                Map<String, List<String>> result = new LinkedHashMap<>();
+                String[] pairs = body.split("&");
+                generateParam(result, pairs);
+                result.forEach((name, values) -> {
+                    values.forEach(v -> request.addInput(name, v));
+                });
             }
-            Map<String, List<String>> result = new LinkedHashMap<>();
-            String[] pairs = body.split("&");
-            generateParam(result, pairs);
-            result.forEach((name, values) -> {
-                values.forEach(v -> request.addInput(name, v));
-            });
         }
-
     }
 
     private static void generateParam(Map<String, List<String>> result, String[] pairs) {
