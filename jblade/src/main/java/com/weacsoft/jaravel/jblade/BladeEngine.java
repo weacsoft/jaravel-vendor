@@ -2,11 +2,8 @@ package com.weacsoft.jaravel.jblade;
 
 import com.weacsoft.jaravel.utils.memory.MemoryClassLoader;
 
-import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
-import java.net.URL;
-import java.net.URLClassLoader;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -71,8 +68,8 @@ public class BladeEngine {
 
         Class<?> templateClass = templateCache.get(className);
         if (templateClass == null) {
-            URLClassLoader classLoader = new URLClassLoader(new URL[]{new File(outputDir).toURI().toURL()});
-            templateClass = classLoader.loadClass("jblade.generated." + className);
+            //用内存加载器加载
+            templateClass = getMemoryClassLoader().loadClass(className);
             templateCache.put(className, templateClass);
         }
 

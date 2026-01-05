@@ -14,21 +14,25 @@ public class MemoryClassLoader extends ClassLoader {
 
     /**
      * 获得所有记录了类的字节码
-     *
      */
     public Map<String, byte[]> getCompiledClasses() {
         return compiledClasses;
     }
 
+    public void removeAll() {
+        compiledClasses.clear();
+    }
+
     /**
      * 获得所有记录了类的类名
-     *
      */
     public List<String> getCompiledClassesName() {
         return new ArrayList<>(compiledClasses.keySet());
     }
 
-    //搜索类
+    /**
+     * 加载类
+     */
     @Override
     protected Class<?> findClass(String name) throws ClassNotFoundException {
         byte[] classData = getCompiledClasses().get(name);
