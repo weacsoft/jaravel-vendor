@@ -6,6 +6,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -32,7 +33,7 @@ public class Router {
     private final List<Middleware> middlewares = new CopyOnWriteArrayList<>();
 
     public Router middleware(Middleware... middleware) {
-        middlewares.addAll(List.of(middleware));
+        middlewares.addAll(Arrays.asList(middleware));
         return this;
     }
 
@@ -77,15 +78,15 @@ public class Router {
         return groupRouter;
     }
 
-    public Router group(Map<String, String> params, Consumer<Router> router) {
+    public Router group(Map<Route.Group, String> params, Consumer<Router> router) {
         Router groupRouter = new Router();
         groupRouter.setParentRouter(this);
         params.forEach((key, value) -> {
-            if (key.equals("namespace")) {
+            if (key.equals(Route.Group.NAMESPACE)) {
                 groupRouter.setNamespace(value);
-            } else if (key.equals("prefix")) {
+            } else if (key.equals(Route.Group.PREFIX)) {
                 groupRouter.setPrefix(value);
-            } else if (key.equals("name")) {
+            } else if (key.equals(Route.Group.NAME)) {
                 groupRouter.setName(value);
             }
         });

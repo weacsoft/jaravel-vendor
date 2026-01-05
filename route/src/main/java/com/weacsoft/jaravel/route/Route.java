@@ -93,4 +93,10 @@ public class Route {
         middlewares.addAll(this.middlewares);
         return middlewares;
     }
+
+    public enum Group{
+        NAMESPACE,
+        PREFIX,
+        NAME
+    }
 }
