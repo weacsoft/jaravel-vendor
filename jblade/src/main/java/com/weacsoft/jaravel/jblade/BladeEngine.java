@@ -8,14 +8,17 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class BladeEngine {
-    //模板目录
-    private String templateDir;
     //编译器
     private final BladeCompiler compiler;
     //模板缓存
     private final Map<String, Class<?>> templateCache;
     //内存类加载器
     private MemoryClassLoader memoryClassLoader;
+
+    public BladeEngine(String templateDir) {
+        this.compiler = new BladeCompiler(templateDir, getMemoryClassLoader());
+        this.templateCache = new HashMap<>();
+    }
 
     public MemoryClassLoader getMemoryClassLoader() {
         if (memoryClassLoader == null) {
@@ -26,12 +29,6 @@ public class BladeEngine {
 
     public void removeMemoryClassLoader() {
         memoryClassLoader = null;
-    }
-
-    public BladeEngine(String templateDir) {
-        this.templateDir = templateDir;
-        this.compiler = new BladeCompiler(templateDir, getMemoryClassLoader());
-        this.templateCache = new HashMap<>();
     }
 
     public String render(String templateName, Map<String, Object> variables) throws Exception {

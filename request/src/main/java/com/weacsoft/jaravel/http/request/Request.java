@@ -12,14 +12,14 @@ import java.util.*;
 
 public class Request {
 
-    @Getter
-    private HttpServletRequest request;
     private final Map<String, Object> query = new LinkedHashMap<>();
     private final Map<String, Object> input = new LinkedHashMap<>();
     private final Map<String, Object> file = new LinkedHashMap<>();
     private final Map<String, Object> header = new LinkedHashMap<>();
     private final Map<String, Object> cookie = new LinkedHashMap<>();
     private final Map<String, Object> session = new LinkedHashMap<>();
+    @Getter
+    private HttpServletRequest request;
 
 
     public Request() {
@@ -528,6 +528,7 @@ public class Request {
     public static class FluxMultipartFile implements MultipartFile {
         private final Part filePart;
         private final String name;
+        private byte[] cachedBytes;
 
         public FluxMultipartFile(String name, Part filePart) {
             this.name = name;
@@ -567,8 +568,6 @@ public class Request {
             }
         }
 
-        private byte[] cachedBytes;
-
         @Override
         public byte[] getBytes() throws IOException {
             if (cachedBytes != null) {
@@ -586,7 +585,7 @@ public class Request {
                 }
                 // 刷新输出流，确保所有数据都被写入
                 outputStream.flush();
-                return cachedBytes=outputStream.toByteArray();
+                return cachedBytes = outputStream.toByteArray();
             }
         }
 

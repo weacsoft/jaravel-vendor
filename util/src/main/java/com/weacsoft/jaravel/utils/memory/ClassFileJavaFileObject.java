@@ -4,6 +4,7 @@ import javax.tools.SimpleJavaFileObject;
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
 import java.net.URI;
+
 /**
  * 内存中的class文件对象（存储编译后的字节码）
  */

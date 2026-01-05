@@ -1,6 +1,5 @@
 package com.weacsoft.jaravel.springboot;
 
-import com.weacsoft.jaravel.controller.Controller;
 import com.weacsoft.jaravel.http.request.Request;
 import com.weacsoft.jaravel.http.request.RequestFactory;
 import com.weacsoft.jaravel.http.response.Response;

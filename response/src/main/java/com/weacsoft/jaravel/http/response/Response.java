@@ -5,6 +5,8 @@ import java.util.Map;
 
 public interface Response {
     int getStatus();
+
     Map<String, List<String>> getHeaders();
+
     String getContent();
 }

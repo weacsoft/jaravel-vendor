@@ -15,6 +15,9 @@ import java.util.function.Consumer;
 import static com.weacsoft.jaravel.route.RouteService.*;
 
 public class Router {
+    private final List<Route> routes = new CopyOnWriteArrayList<>();
+    private final List<Router> routers = new CopyOnWriteArrayList<>();
+    private final List<Middleware> middlewares = new CopyOnWriteArrayList<>();
     @Setter
     @Getter
     private String name = "";
@@ -24,13 +27,8 @@ public class Router {
     @Setter
     @Getter
     private String prefix = "";
-
     @Setter
     private Router parentRouter;
-
-    private final List<Route> routes = new CopyOnWriteArrayList<>();
-    private final List<Router> routers = new CopyOnWriteArrayList<>();
-    private final List<Middleware> middlewares = new CopyOnWriteArrayList<>();
 
     public Router middleware(Middleware... middleware) {
         middlewares.addAll(Arrays.asList(middleware));

@@ -4,29 +4,38 @@ import java.util.*;
 
 /**
  * 从其他地方偷来的过期hashmap
- *
+ * <p>
  * ExpiryMap 可以设置过期时间的Map
  * ExpiryMap继承至HashMap 重写了所有对外的方法，对每个key值都设置了有效期
  */
 public class ExpiryMap<K, V> extends HashMap<K, V> {
 
     private static final long serialVersionUID = 1L;
-
+    /**
+     * 缓存实例对象
+     */
+    private volatile static ExpiryMap<String, String> SameUrlMap;
+    private final HashMap<K, Long> expiryMap = new HashMap<>();
     /**
      * default expiry time 2s
      */
     private long EXPIRY = 1000 * 2;
 
-    private final HashMap<K, Long> expiryMap = new HashMap<>();
+    public ExpiryMap() {
+        super();
+    }
 
-    /**
-     * 缓存实例对象
-     */
-    private volatile static ExpiryMap<String, String> SameUrlMap;
+    public ExpiryMap(long defaultExpiryTime) {
+        this(1 << 4, defaultExpiryTime);
+    }
+
+    public ExpiryMap(int initialCapacity, long defaultExpiryTime) {
+        super(initialCapacity);
+        this.EXPIRY = defaultExpiryTime;
+    }
 
     /**
      * 采用单例模式获取实例
-     *
      */
     public static ExpiryMap<String, String> getInstance() {
         //第一次判空,提高效率
@@ -42,19 +51,6 @@ public class ExpiryMap<K, V> extends HashMap<K, V> {
         return SameUrlMap;
     }
 
-    public ExpiryMap() {
-        super();
-    }
-
-    public ExpiryMap(long defaultExpiryTime) {
-        this(1 << 4, defaultExpiryTime);
-    }
-
-    public ExpiryMap(int initialCapacity, long defaultExpiryTime) {
-        super(initialCapacity);
-        this.EXPIRY = defaultExpiryTime;
-    }
-
     @Override
     public V put(K key, V value) {
         expiryMap.put(key, System.currentTimeMillis() + EXPIRY);
@@ -67,8 +63,8 @@ public class ExpiryMap<K, V> extends HashMap<K, V> {
     }
 
     /**
-     * @param key 键
-     * @param value 值
+     * @param key        键
+     * @param value      值
      * @param expiryTime 键值对有效期 毫秒
      */
     public V put(K key, V value, long expiryTime) {
@@ -171,7 +167,7 @@ public class ExpiryMap<K, V> extends HashMap<K, V> {
     }
 
     /**
-     * @param key 键
+     * @param key           键
      * @param isRemoveSuper 是否强制删除
      * @Description: 是否过期
      */

@@ -7,10 +7,10 @@ import java.util.Stack;
 import java.util.function.Consumer;
 
 public class BladeContext {
-    private Map<String, Object> variables;
-    private Map<String, String> sections;
-    private Map<String, Consumer<Writer>> sectionRenderers;
-    private Stack<String> sectionStack;
+    private final Map<String, Object> variables;
+    private final Map<String, String> sections;
+    private final Map<String, Consumer<Writer>> sectionRenderers;
+    private final Stack<String> sectionStack;
     private StringBuilder currentSectionContent;
     private String parentTemplate;
     private boolean inSection;

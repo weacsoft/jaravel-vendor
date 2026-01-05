@@ -20,11 +20,11 @@ public class RouteService {
         if (namespace == null || namespace.trim().isEmpty()) {
             return "";
         }
-        namespace=namespace
+        namespace = namespace
                 .replaceAll("\\s+", "")
                 .replaceAll("\\.+", ".")
                 .replaceAll("^(?!\\.)", ".");
-        namespace=namespace.trim().replaceAll("^\\.|\\.$", "");
+        namespace = namespace.trim().replaceAll("^\\.|\\.$", "");
         return namespace;
     }
 

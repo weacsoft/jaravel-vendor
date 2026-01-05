@@ -5,7 +5,6 @@ import com.weacsoft.jaravel.middleware.Middleware;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -13,6 +12,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import static com.weacsoft.jaravel.route.RouteService.*;
 
 public class Route {
+    private final List<Middleware> middlewares = new CopyOnWriteArrayList<>();
     @Setter
     @Getter
     private String name = "";
@@ -29,7 +29,8 @@ public class Route {
     private Controller.Runner action;
     @Setter
     private Router router;
-    private final List<Middleware> middlewares = new CopyOnWriteArrayList<>();
+    @Getter
+    private String uri;
 
     public Route(String method, String uri, Controller.Runner action) {
         setMethod(method);
@@ -44,9 +45,6 @@ public class Route {
     public void setUri(String uri) {
         this.uri = uri;
     }
-
-    @Getter
-    private String uri;
 
     public Route middleware(Middleware... middleware) {
         middlewares.addAll(Arrays.asList(middleware));
@@ -94,7 +92,7 @@ public class Route {
         return middlewares;
     }
 
-    public enum Group{
+    public enum Group {
         NAMESPACE,
         PREFIX,
         NAME

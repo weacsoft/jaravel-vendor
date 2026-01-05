@@ -29,6 +29,7 @@ public class StringUtils {
 
         return camelCaseBuilder.toString();
     }
+
     /**
      * 小驼峰转下划线 (如: userName -> user_name)
      */
@@ -50,6 +51,7 @@ public class StringUtils {
 
         return underlineBuilder.toString();
     }
+
     /**
      * 下划线转大驼峰 (如: user_name -> UserName)
      */
@@ -66,6 +68,7 @@ public class StringUtils {
 
         return Character.toUpperCase(camelCase.charAt(0)) + camelCase.substring(1);
     }
+
     /**
      * 大驼峰转下划线 (如: UserName -> user_name)
      */
@@ -78,6 +81,7 @@ public class StringUtils {
         String camelCase = pascalCaseToCamelCase(pascalCaseStr);
         return camelCaseToUnderline(camelCase);
     }
+
     /**
      * 小驼峰转大驼峰 (如: userName -> UserName)
      */
@@ -88,6 +92,7 @@ public class StringUtils {
 
         return Character.toUpperCase(camelCaseStr.charAt(0)) + camelCaseStr.substring(1);
     }
+
     /**
      * 大驼峰转小驼峰 (如: UserName -> userName)
      */
