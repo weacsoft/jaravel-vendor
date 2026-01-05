@@ -14,12 +14,12 @@ public class Request {
 
     @Getter
     private HttpServletRequest request;
-    private Map<String, Object> query = new LinkedHashMap<>();
-    private Map<String, Object> input = new LinkedHashMap<>();
-    private Map<String, Object> file = new LinkedHashMap<>();
-    private Map<String, Object> header = new LinkedHashMap<>();
-    private Map<String, Object> cookie = new LinkedHashMap<>();
-    private Map<String, Object> session = new LinkedHashMap<>();
+    private final Map<String, Object> query = new LinkedHashMap<>();
+    private final Map<String, Object> input = new LinkedHashMap<>();
+    private final Map<String, Object> file = new LinkedHashMap<>();
+    private final Map<String, Object> header = new LinkedHashMap<>();
+    private final Map<String, Object> cookie = new LinkedHashMap<>();
+    private final Map<String, Object> session = new LinkedHashMap<>();
 
 
     public Request() {
@@ -97,6 +97,54 @@ public class Request {
         session.put(key, value);
     }
 
+    public void replaceInput(String key, Object newValue) {
+        input.put(key, newValue);
+    }
+
+    public void replaceQuery(String key, Object newValue) {
+        query.put(key, newValue);
+    }
+
+    public void replaceHeader(String key, Object newValue) {
+        header.put(key, newValue);
+    }
+
+    public void replaceFile(String key, Object newValue) {
+        file.put(key, newValue);
+    }
+
+    public void replaceCookie(String key, Object newValue) {
+        cookie.put(key, newValue);
+    }
+
+    public void replaceSession(String key, Object newValue) {
+        session.put(key, newValue);
+    }
+
+    public void removeInput(String key) {
+        input.remove(key);
+    }
+
+    public void removeQuery(String key) {
+        query.remove(key);
+    }
+
+    public void removeHeader(String key) {
+        header.remove(key);
+    }
+
+    public void removeFile(String key) {
+        file.remove(key);
+    }
+
+    public void removeCookie(String key) {
+        cookie.remove(key);
+    }
+
+    public void removeSession(String key) {
+        session.remove(key);
+    }
+
     public Set<String> getNames() {
         Set<String> names = new HashSet<>();
         names.addAll(inputNames());
@@ -162,7 +210,7 @@ public class Request {
         if (value instanceof List) {
             return ((List<Object>) value);
         }
-        return Arrays.asList(value);
+        return Collections.singletonList(value);
     }
 
     public Map<String, Object> all() {
@@ -216,7 +264,7 @@ public class Request {
         if (value instanceof List) {
             return ((List<Object>) value);
         }
-        return Arrays.asList(value);
+        return Collections.singletonList(value);
     }
 
     public Set<String> inputNames() {
@@ -228,7 +276,7 @@ public class Request {
     }
 
     public String input(String key) {
-        return input(key,"");
+        return input(key, "");
     }
 
     public String input(String key, String defaultValue) {
@@ -299,7 +347,7 @@ public class Request {
     }
 
     public String header(String key) {
-        return header(key,"");
+        return header(key, "");
     }
 
     public String header(String key, String defaultValue) {
@@ -334,7 +382,7 @@ public class Request {
         if (value instanceof List) {
             return ((List<Object>) value);
         }
-        return Arrays.asList(value);
+        return Collections.singletonList(value);
     }
 
     public Set<String> cookieNames() {
@@ -346,7 +394,7 @@ public class Request {
     }
 
     public String cookie(String key) {
-        return cookie(key,"");
+        return cookie(key, "");
     }
 
     public String cookie(String key, String defaultValue) {
@@ -381,7 +429,7 @@ public class Request {
         if (value instanceof List) {
             return ((List<Object>) value);
         }
-        return Arrays.asList(value);
+        return Collections.singletonList(value);
     }
 
     public Set<String> sessionNames() {
@@ -393,7 +441,7 @@ public class Request {
     }
 
     public String session(String key) {
-        return session(key,"");
+        return session(key, "");
     }
 
     public String session(String key, String defaultValue) {
@@ -428,7 +476,7 @@ public class Request {
         if (value instanceof List) {
             return ((List<Object>) value);
         }
-        return Arrays.asList(value);
+        return Collections.singletonList(value);
     }
 
     public boolean has(String key) {
@@ -526,9 +574,20 @@ public class Request {
             if (cachedBytes != null) {
                 return cachedBytes;
             }
-            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-            filePart.getInputStream().transferTo(outputStream);
-            return cachedBytes = outputStream.toByteArray();
+            try (InputStream inputStream = filePart.getInputStream();
+                 ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+                // 调用自定义的copy方法替代transferTo
+                byte[] buffer = new byte[4096];
+                int bytesRead;
+                // 循环读取字节到缓冲区，直到读取完毕（返回-1）
+                while ((bytesRead = inputStream.read(buffer)) != -1) {
+                    // 将缓冲区中的字节写入输出流（注意只写实际读取到的字节数）
+                    outputStream.write(buffer, 0, bytesRead);
+                }
+                // 刷新输出流，确保所有数据都被写入
+                outputStream.flush();
+                return cachedBytes=outputStream.toByteArray();
+            }
         }
 
         @Override
@@ -537,7 +596,7 @@ public class Request {
         }
 
         @Override
-        public void transferTo(File dest) throws IOException, IllegalStateException {
+        public void transferTo(File dest) throws IllegalStateException {
         }
     }
 }
