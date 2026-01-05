@@ -11,7 +11,10 @@ import org.springframework.web.multipart.support.StandardMultipartHttpServletReq
 import org.springframework.web.servlet.function.ServerRequest;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.net.URLDecoder;
@@ -25,8 +28,10 @@ public class RequestFactory {
         Request request = new Request();
         if (baseRequest != null) {
             Map<String, List<String>> result = new LinkedHashMap<>();
-            String[] pairs = baseRequest.getQueryString().split("&");
-            generateParam(result, pairs);
+            String pairs = baseRequest.getQueryString();
+            if (pairs != null) {
+                generateParam(result, pairs.split("&"));
+            }
             result.forEach((name, values) -> {
                 values.forEach(v -> {
                     request.addQuery(name, v);
@@ -118,18 +123,31 @@ public class RequestFactory {
     private static void handleMultipartRequest(ServerRequest base, Request request) {
         try {
             base.multipartData().forEach((name, parts) -> parts.forEach(part -> {
-                try {
-                    if (part.getContentType() == null ||
-                            !part.getContentType().startsWith("application/") &&
-                                    !part.getContentType().startsWith("image/") &&
-                                    !part.getContentType().startsWith("file/")) {
-                        request.addInput(part.getName(), new String(part.getInputStream().readAllBytes()));
-                    } else {
-                        MultipartFile multipartFile = new Request.FluxMultipartFile(part.getName(), part);
-                        request.addFile(part.getName(), multipartFile);
+                if (part.getContentType() == null ||
+                        !part.getContentType().startsWith("application/") &&
+                                !part.getContentType().startsWith("image/") &&
+                                !part.getContentType().startsWith("file/")) {
+                    // try-with-resources 自动关闭流，避免资源泄漏
+                    byte[] buffer = new byte[4096];
+                    int bytesRead;
+                    try (InputStream inputStream = part.getInputStream();
+                         ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+
+                        // 循环读取字节到缓冲区，直到流末尾（-1）
+                        while ((bytesRead = inputStream.read(buffer)) != -1) {
+                            outputStream.write(buffer, 0, bytesRead);
+                        }
+
+                        // 转为字节数组（等价于 readAllBytes()）
+                        byte[] allBytes = outputStream.toByteArray();
+                        request.addInput(part.getName(), new String(allBytes));
+                        // 后续业务逻辑...
+                    } catch (IOException e) {
+                        throw new RuntimeException("读取输入流失败", e);
                     }
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
+                } else {
+                    MultipartFile multipartFile = new Request.FluxMultipartFile(part.getName(), part);
+                    request.addFile(part.getName(), multipartFile);
                 }
             }));
         } catch (Exception e) {
@@ -146,18 +164,22 @@ public class RequestFactory {
     }
 
     private static void generateUrlencode(Request request) throws IOException {
-        String body = request.getRequest().getReader()
-                .lines()
-                .collect(Collectors.joining());
-        if(body==null || body.isEmpty()){
-            return;
+        BufferedReader reader = request.getRequest().getReader();
+        if (reader != null) {
+            String body = reader
+                    .lines()
+                    .collect(Collectors.joining());
+            if (body.isEmpty()) {
+                return;
+            }
+            Map<String, List<String>> result = new LinkedHashMap<>();
+            String[] pairs = body.split("&");
+            generateParam(result, pairs);
+            result.forEach((name, values) -> {
+                values.forEach(v -> request.addInput(name, v));
+            });
         }
-        Map<String, List<String>> result = new LinkedHashMap<>();
-        String[] pairs = body.split("&");
-        generateParam(result, pairs);
-        result.forEach((name, values) -> {
-            values.forEach(v -> request.addInput(name, v));
-        });
+
     }
 
     private static void generateParam(Map<String, List<String>> result, String[] pairs) {
@@ -171,7 +193,7 @@ public class RequestFactory {
 
     private static String decode(String encoded) {
         try {
-            return URLDecoder.decode(encoded, StandardCharsets.UTF_8);
+            return URLDecoder.decode(encoded, StandardCharsets.UTF_8.name());
         } catch (Exception e) {
             return encoded;
         }

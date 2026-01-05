@@ -8,6 +8,7 @@ import com.weacsoft.jaravel.middleware.Middleware;
 import com.weacsoft.jaravel.route.Route;
 import com.weacsoft.jaravel.route.Router;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.HttpMethod;
 import org.springframework.web.servlet.function.*;
@@ -16,6 +17,13 @@ import java.util.List;
 
 @AutoConfiguration
 public class SpringBootRouteAutoConfiguration {
+
+    @Bean
+    @ConditionalOnMissingBean
+    public Router baseRouter() {
+        Router router = new Router();
+        return router;
+    }
 
     @Bean
     public RouterFunction<ServerResponse> jaravelRouterFunction(Router router) {
