@@ -5,6 +5,8 @@ import com.weacsoft.jaravel.middleware.Middleware;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -47,7 +49,7 @@ public class Route {
     private String uri;
 
     public Route middleware(Middleware... middleware) {
-        middlewares.addAll(List.of(middleware));
+        middlewares.addAll(Arrays.asList(middleware));
         return this;
     }
 
@@ -65,6 +67,10 @@ public class Route {
         return normalizeUri(router.generateFullUri() + "/" + prefix + "/" + uri);
     }
 
+    public String getFullUri() {
+        return generateFullUri();
+    }
+
     public String generateFullNamespace() {
         return normalizeNamesapce(router.generateFullNamespace() + "." + namespace);
     }
@@ -73,8 +79,16 @@ public class Route {
         return normalizeName(router.generateFullName() + "." + name);
     }
 
+    public String getFullName() {
+        return generateFullName();
+    }
+
+    public String getFullNamespace() {
+        return generateFullNamespace();
+    }
+
     public List<Middleware> getMiddlewares() {
-        List<Middleware> middlewares=new CopyOnWriteArrayList<>();
+        List<Middleware> middlewares = new CopyOnWriteArrayList<>();
         middlewares.addAll(router.getAllMiddlewares());
         middlewares.addAll(this.middlewares);
         return middlewares;
