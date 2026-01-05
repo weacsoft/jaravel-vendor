@@ -27,6 +27,7 @@ public class RequestFactory {
     public static Request buildFromHttpServletRequest(HttpServletRequest baseRequest) {
         Request request = new Request();
         if (baseRequest != null) {
+            request.setRequest(baseRequest);
             Map<String, List<String>> result = new LinkedHashMap<>();
             String pairs = baseRequest.getQueryString();
             if (pairs != null) {
