@@ -12,6 +12,7 @@
         <module>response</module>
         <module>route</module>
         <module>springboot-starter</module>
+        <module>util</module>
     </modules>
     <properties>
         <java.version>1.8</java.version>
