@@ -1,0 +1,32 @@
+<ul class="list">
+    @if ($items && count($items) > 0)
+        @foreach ($items as $item)
+            <li>{{ $item }}</li>
+        @endforeach
+    @else
+        @if ($empty)
+            <li class="empty">{{ $empty }}</li>
+        @else
+            <li class="empty">没有数据</li>
+        @endif
+    @endif
+</ul>
+
+<style>
+    .list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+    .list li {
+        padding: 10px 15px;
+        border-bottom: 1px solid #eee;
+    }
+    .list li:last-child {
+        border-bottom: none;
+    }
+    .list li.empty {
+        color: #999;
+        font-style: italic;
+    }
+</style>

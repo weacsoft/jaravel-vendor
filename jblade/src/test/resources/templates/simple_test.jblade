@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>简单组件测试</title>
+    <style>
+        .alert {
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 1px solid transparent;
+            border-radius: 4px;
+        }
+        .alert-success {
+            color: #3c763d;
+            background-color: #dff0d8;
+            border-color: #d6e9c6;
+        }
+        .alert-warning {
+            color: #8a6d3b;
+            background-color: #fcf8e3;
+            border-color: #faebcc;
+        }
+    </style>
+</head>
+<body>
+    <h1>简单组件测试</h1>
+    
+    <h2>测试1: 基本组件</h2>
+    @component('alert', ['type' => 'success'])
+        这是一个成功提示！
+    @endcomponent
+    
+    <h2>测试2: 带标题的组件</h2>
+    @component('alert', ['type' => 'warning', 'title' => '警告'])
+        这是一个警告信息
+    @endcomponent
+    
+</body>
+</html>

@@ -1,0 +1,9 @@
+<div class="alert alert-{{ $type }}">
+    @if ($title)
+        <h4>{{ $title }}</h4>
+    @endif
+    
+    @if ($slot)
+        <p>{{ $slot }}</p>
+    @endif
+</div>

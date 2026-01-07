@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>组件测试</title>
+    <style>
+        .alert {
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 1px solid transparent;
+            border-radius: 4px;
+        }
+        .alert-success {
+            color: #3c763d;
+            background-color: #dff0d8;
+            border-color: #d6e9c6;
+        }
+        .alert-warning {
+            color: #8a6d3b;
+            background-color: #fcf8e3;
+            border-color: #faebcc;
+        }
+        .alert-danger {
+            color: #a94442;
+            background-color: #f2dede;
+            border-color: #ebccd1;
+        }
+    </style>
+</head>
+<body>
+    <h1>JBlade 组件测试</h1>
+    
+    <h2>测试1: 基本组件使用</h2>
+    @component('alert', ['type' => 'success'])
+        这是一个成功提示！
+    @endcomponent
+    
+    <h2>测试2: 带标题的组件</h2>
+    @component('alert', ['type' => 'warning', 'title' => '警告'])
+        这是一个警告信息
+    @endcomponent
+    
+    <h2>测试3: 使用插槽</h2>
+    @component('alert', ['type' => 'danger', 'title' => '错误'])
+        <strong>严重错误：</strong> 系统无法连接到数据库
+    @endcomponent
+    
+    <h2>测试4: 自定义卡片组件</h2>
+    @component('card', ['title' => '我的卡片'])
+        @slot('header')
+            <span>卡片头部内容</span>
+        @endslot
+        
+        <p>这是卡片的主要内容区域。</p>
+        <p>可以放置任何HTML内容。</p>
+        
+        @slot('footer')
+            <button>确定</button>
+            <button>取消</button>
+        @endslot
+    @endcomponent
+    
+    <h2>测试5: 嵌套组件</h2>
+    @component('card', ['title' => '包含警告的卡片'])
+        @slot('header')
+            <h3>重要通知</h3>
+        @endslot
+        
+        <p>以下是警告信息：</p>
+        
+        @component('alert', ['type' => 'warning', 'title' => '注意'])
+            这是嵌套在卡片中的警告组件
+        @endcomponent
+        
+        @slot('footer')
+            <small>最后更新: 2026-01-07</small>
+        @endslot
+    @endcomponent
+    
+    <h2>测试6: 列表组件</h2>
+    @component('list', ['items' => ['苹果', '香蕉', '橙子']])
+        @slot('empty')
+            没有数据
+        @endslot
+    @endcomponent
+    
+</body>
+</html>

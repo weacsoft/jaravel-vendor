@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>基础测试</title>
+</head>
+<body>
+    <h1>基础测试</h1>
+    
+    <p>测试变量输出: {{ $name }}</p>
+    <p>测试数字: {{ $count }}</p>
+    
+    @if ($show)
+        <p>显示内容</p>
+    @endif
+    
+</body>
+</html>
