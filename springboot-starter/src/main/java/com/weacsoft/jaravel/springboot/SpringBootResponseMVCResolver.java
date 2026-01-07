@@ -23,9 +23,9 @@ public class SpringBootResponseMVCResolver implements ResponseBodyAdvice<Object>
     public Object beforeBodyWrite(Object body, MethodParameter returnType, MediaType selectedContentType, Class<? extends HttpMessageConverter<?>> selectedConverterType, ServerHttpRequest request, ServerHttpResponse response) {
         if (body instanceof Response) {
             Response jaravelResponse = (Response) body;
-            
+
             jaravelResponse.getHeaders().forEach((key, value) -> response.getHeaders().addAll(key, value));
-            
+
             if (response instanceof ServletServerHttpResponse) {
                 ServletServerHttpResponse servletResponse = (ServletServerHttpResponse) response;
                 Cookie[] cookies = jaravelResponse.getCookies();
@@ -35,24 +35,24 @@ public class SpringBootResponseMVCResolver implements ResponseBodyAdvice<Object>
                     }
                 }
             }
-            
+
             response.setStatusCode(HttpStatus.valueOf(jaravelResponse.getStatus()));
             return jaravelResponse.getContent();
         }
-        
+
         if (body == null) {
             response.setStatusCode(HttpStatus.OK);
             return "";
         }
-        
+
         if (response.getHeaders().getContentType() == null) {
             response.getHeaders().setContentType(MediaType.TEXT_HTML);
         }
-        
+
         response.getHeaders().add("X-Content-Type-Options", "nosniff");
         response.getHeaders().add("X-Frame-Options", "SAMEORIGIN");
         response.getHeaders().add("X-XSS-Protection", "1; mode=block");
-        
+
         return body;
     }
 }

@@ -86,6 +86,7 @@ System.out.println(result);
 ### 模板继承
 
 **父模板 (layouts/app.jblade):**
+
 ```jblade
 <!DOCTYPE html>
 <html>
@@ -109,6 +110,7 @@ System.out.println(result);
 ```
 
 **子模板:**
+
 ```jblade
 @extends('layouts.app')
 
@@ -127,6 +129,7 @@ JBlade 提供了强大的组件系统，类似于 Laravel Blade 的组件功能�
 ### 基本组件
 
 **定义组件 (components/alert.jblade):**
+
 ```jblade
 <div class="alert alert-{{ $type }}">
     @if ($title)
@@ -140,6 +143,7 @@ JBlade 提供了强大的组件系统，类似于 Laravel Blade 的组件功能�
 ```
 
 **使用组件:**
+
 ```jblade
 @component('alert', ['type' => 'success'])
     操作成功！
@@ -153,6 +157,7 @@ JBlade 提供了强大的组件系统，类似于 Laravel Blade 的组件功能�
 ### 使用插槽
 
 **定义带插槽的组件 (components/card.jblade):**
+
 ```jblade
 <div class="card">
     @if ($title)
@@ -182,6 +187,7 @@ JBlade 提供了强大的组件系统，类似于 Laravel Blade 的组件功能�
 ```
 
 **使用带插槽的组件:**
+
 ```jblade
 @component('card', ['title' => '我的卡片'])
     @slot('header')
@@ -231,6 +237,7 @@ JBlade 提供了强大的组件系统，类似于 Laravel Blade 的组件功能�
 ### 列表组件
 
 **定义列表组件 (components/list.jblade):**
+
 ```jblade
 <ul class="list">
     @if ($items && count($items) > 0)
@@ -248,6 +255,7 @@ JBlade 提供了强大的组件系统，类似于 Laravel Blade 的组件功能�
 ```
 
 **使用列表组件:**
+
 ```jblade
 @component('list', ['items' => ['苹果', '香蕉', '橙子']])
     @slot('empty')

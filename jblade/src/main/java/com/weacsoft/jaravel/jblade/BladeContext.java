@@ -11,13 +11,12 @@ public class BladeContext {
     private final Map<String, String> sections;
     private final Map<String, Consumer<Writer>> sectionRenderers;
     private final Stack<String> sectionStack;
+    private final Map<String, Object> componentData;
+    private final Map<String, String> componentSlots;
     private StringBuilder currentSectionContent;
     private String parentTemplate;
     private boolean inSection;
-    
     private String currentComponent;
-    private final Map<String, Object> componentData;
-    private final Map<String, String> componentSlots;
     private String currentSlot;
     private StringBuilder currentSlotContent;
     private boolean inSlot;
@@ -105,7 +104,7 @@ public class BladeContext {
     public void setCurrentSectionContent(String content) {
         currentSectionContent = new StringBuilder(content);
     }
-    
+
     public void startComponent(String componentName) {
         this.currentComponent = componentName;
         this.componentSlots.clear();
@@ -113,37 +112,37 @@ public class BladeContext {
         this.currentSlotContent = new StringBuilder();
         this.inSlot = false;
     }
-    
+
     public void endComponent() {
         this.currentComponent = null;
     }
-    
+
     public String getCurrentComponent() {
         return currentComponent;
     }
-    
+
     public void setComponentData(String key, Object value) {
         componentData.put(key, value);
     }
-    
+
     public Object getComponentData(String key) {
         return componentData.get(key);
     }
-    
+
     public Map<String, Object> getComponentData() {
         return componentData;
     }
-    
+
     public void clearComponentData() {
         componentData.clear();
     }
-    
+
     public void startSlot(String slotName) {
         this.currentSlot = slotName;
         this.currentSlotContent = new StringBuilder();
         this.inSlot = true;
     }
-    
+
     public void endSlot() {
         if (currentSlot != null && inSlot) {
             componentSlots.put(currentSlot, currentSlotContent.toString());
@@ -152,25 +151,25 @@ public class BladeContext {
             inSlot = false;
         }
     }
-    
+
     public void appendSlotContent(String content) {
         if (inSlot) {
             currentSlotContent.append(content);
         }
     }
-    
+
     public String getSlot(String slotName) {
         return componentSlots.get(slotName);
     }
-    
+
     public Map<String, String> getComponentSlots() {
         return componentSlots;
     }
-    
+
     public boolean isInSlot() {
         return inSlot;
     }
-    
+
     public String getCurrentSlot() {
         return currentSlot;
     }

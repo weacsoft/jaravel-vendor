@@ -2,8 +2,8 @@ package com.weacsoft.jaravel.middleware;
 
 import com.weacsoft.jaravel.http.request.Request;
 import com.weacsoft.jaravel.http.response.Response;
-import com.weacsoft.jaravel.middleware.Middleware;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -52,9 +52,12 @@ public class TrimStrings implements Middleware {
             return ((String) value).trim();
         } else if (value instanceof List) {
             List<?> list = (List<?>) value;
-            return list.stream()
-                    .map(item -> item instanceof String ? ((String) item).trim() : item)
-                    .toList();
+            List<Object> result = new ArrayList<>();
+            for (Object item : list) {
+                Object o = item instanceof String ? ((String) item).trim() : item;
+                result.add(o);
+            }
+            return result;
         } else if (value instanceof String[]) {
             String[] array = (String[]) value;
             return Arrays.stream(array)

@@ -2,8 +2,6 @@ package com.weacsoft.jaravel.middleware;
 
 import com.weacsoft.jaravel.http.request.Request;
 import com.weacsoft.jaravel.http.response.Response;
-import com.weacsoft.jaravel.middleware.Middleware;
-import jakarta.servlet.http.Cookie;
 
 import java.security.SecureRandom;
 import java.util.Arrays;

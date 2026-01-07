@@ -11,48 +11,16 @@ import java.util.Map;
 
 public class ResponseBuilder {
     private static BladeEngine bladeEngine;
-    private static String templateDir = "templates";
-
-    public static void setTemplateDir(String dir) {
-        templateDir = dir;
-        bladeEngine = null;
-    }
 
     private static BladeEngine getBladeEngine() {
         if (bladeEngine == null) {
-            bladeEngine = new BladeEngine(templateDir);
+            throw new RuntimeException("bladeEngine is null");
         }
         return bladeEngine;
     }
 
-    private static abstract class AbstractResponse implements Response {
-        protected final Map<String, List<String>> headers = new HashMap<>();
-        protected final List<Cookie> cookies = new ArrayList<>();
-
-        @Override
-        public Map<String, List<String>> getHeaders() {
-            return new HashMap<>(headers);
-        }
-
-        @Override
-        public void addHeader(String name, String value) {
-            headers.computeIfAbsent(name, k -> new ArrayList<>()).add(value);
-        }
-
-        @Override
-        public Cookie[] getCookies() {
-            return cookies.toArray(new Cookie[0]);
-        }
-
-        @Override
-        public void addCookie(Cookie cookie) {
-            cookies.add(cookie);
-        }
-
-        @Override
-        public void addCookie(String name, String value) {
-            cookies.add(new Cookie(name, value));
-        }
+    public static void setBladeEngine(BladeEngine engine) {
+        bladeEngine = engine;
     }
 
     public static Response ok() {
@@ -149,5 +117,35 @@ public class ResponseBuilder {
                 return data;
             }
         };
+    }
+
+    private static abstract class AbstractResponse implements Response {
+        protected final Map<String, List<String>> headers = new HashMap<>();
+        protected final List<Cookie> cookies = new ArrayList<>();
+
+        @Override
+        public Map<String, List<String>> getHeaders() {
+            return new HashMap<>(headers);
+        }
+
+        @Override
+        public void addHeader(String name, String value) {
+            headers.computeIfAbsent(name, k -> new ArrayList<>()).add(value);
+        }
+
+        @Override
+        public Cookie[] getCookies() {
+            return cookies.toArray(new Cookie[0]);
+        }
+
+        @Override
+        public void addCookie(Cookie cookie) {
+            cookies.add(cookie);
+        }
+
+        @Override
+        public void addCookie(String name, String value) {
+            cookies.add(new Cookie(name, value));
+        }
     }
 }

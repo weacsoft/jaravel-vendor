@@ -6,7 +6,6 @@ import com.weacsoft.jaravel.http.response.Response;
 import com.weacsoft.jaravel.middleware.Middleware;
 import com.weacsoft.jaravel.route.Route;
 import com.weacsoft.jaravel.route.Router;
-import jakarta.servlet.http.Cookie;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
@@ -61,7 +60,7 @@ public class SpringBootRouteAutoConfiguration {
         response.getHeaders().forEach((key, value) -> {
             builder.header(key, value.toArray(new String[0]));
         });
-        
+
         return builder.body(response.getContent());
     }
 }
