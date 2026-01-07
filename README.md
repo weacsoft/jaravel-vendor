@@ -62,7 +62,7 @@ Jaravel 是一个轻量级的 Java Web 开发框架，提供了类似 Laravel �
 <dependency>
     <groupId>com.weacsoft</groupId>
     <artifactId>springboot-starter</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>0.0.5</version>
 </dependency>
 ```
 
