@@ -4,15 +4,14 @@ import com.weacsoft.jaravel.utils.memory.MemoryClassLoader;
 import com.weacsoft.jaravel.utils.memory.MemoryFileManager;
 import com.weacsoft.jaravel.utils.memory.SourceCodeJavaFileObject;
 
+import org.springframework.core.io.ClassPathResource;
 import javax.tools.*;
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 public class BladeCompiler {
     //注释
@@ -40,7 +39,14 @@ public class BladeCompiler {
     public String compile(String templateName) throws IOException {
         // 读取模板文件内容
         String templatePath = templateDir + File.separator + templateName.replace(".", File.separator) + ".jblade";
-        String content = new String(Files.readAllBytes(Paths.get(templatePath)), StandardCharsets.UTF_8);
+        InputStream resource = new ClassPathResource(templatePath).getInputStream();
+        String employees = null;
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(resource))) {
+            employees = reader
+                    .lines()
+                    .collect(Collectors.joining());
+        }
+        String content = new String(employees.getBytes(), StandardCharsets.UTF_8);
         String className = generateClassName(templateName);
         //生成java源代码
         String sourceCode = generateJavaCode(className, content, templateName);
