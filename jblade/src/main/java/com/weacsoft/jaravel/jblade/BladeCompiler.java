@@ -132,6 +132,9 @@ public class BladeCompiler {
 
         String renderCode = processRenderDirectives(content, sections.keySet());
         javaCode.append(renderCode);
+        
+        String componentCode = processComponents(content);
+        javaCode.append(componentCode);
 
         javaCode.append("    }\n");
         javaCode.append("}\n");
@@ -328,7 +331,6 @@ public class BladeCompiler {
     private String processRenderDirectives(String content, Set<String> sectionNames) {
         StringBuilder code = new StringBuilder();
         String[] lines = content.split("\n");
-        boolean skipRender = false;
         Set<String> localVars = new HashSet<>();
 
         for (String line : lines) {
@@ -343,7 +345,6 @@ public class BladeCompiler {
                     case "extends":
                     case "section":
                     case "endsection":
-                        skipRender = true;
                         break;
                     case "yield":
                         String yieldName = args.replace("'", "").replace("\"", "");
@@ -357,17 +358,129 @@ public class BladeCompiler {
                         code.append("            }\n");
                         code.append("        }\n");
                         break;
+                    case "component":
+                    case "endcomponent":
+                    case "slot":
+                    case "endslot":
+                        break;
                 }
-            } else if (!skipRender) {
+            } else {
                 processLineWithEcho(code, line, localVars);
             }
         }
 
         return code.toString();
     }
+    
+    private String processComponents(String content) {
+        StringBuilder code = new StringBuilder();
+        String[] lines = content.split("\n");
+        int i = 0;
+        
+        while (i < lines.length) {
+            String line = lines[i];
+            String trimmedLine = line.trim();
+            Matcher directiveMatcher = DIRECTIVE_PATTERN.matcher(trimmedLine);
+            
+            if (directiveMatcher.find()) {
+                String directive = directiveMatcher.group(1);
+                String args = directiveMatcher.group(2) != null ? directiveMatcher.group(2) : "";
+                
+                if (directive.equals("component")) {
+                    args = args.trim();
+                    String componentTemplate;
+                    String componentParams = "";
+                    
+                    if (args.startsWith("'") || args.startsWith("\"")) {
+                        int endQuote = args.indexOf(args.charAt(0), 1);
+                        if (endQuote > 0) {
+                            componentTemplate = args.substring(1, endQuote);
+                            if (endQuote + 1 < args.length()) {
+                                componentParams = args.substring(endQuote + 1).trim();
+                            }
+                        } else {
+                            componentTemplate = args.substring(1);
+                        }
+                    } else {
+                        componentTemplate = args.split("\\s+")[0];
+                    }
+                    
+                    code.append("        {\n");
+                    code.append("            Map<String, Object> componentData = new java.util.HashMap<>();\n");
+                    code.append("            Map<String, String> componentSlots = new java.util.HashMap<>();\n");
+                    code.append("            StringBuilder slotContent = new StringBuilder();\n");
+                    code.append("            String currentSlot = null;\n");
+                    code.append("            boolean inSlot = false;\n");
+                    
+                    code.append(parseComponentParams(componentParams));
+                    
+                    i++;
+                    int componentDepth = 1;
+                    
+                    while (i < lines.length && componentDepth > 0) {
+                        String componentLine = lines[i];
+                        String componentTrimmed = componentLine.trim();
+                        Matcher componentDirectiveMatcher = DIRECTIVE_PATTERN.matcher(componentTrimmed);
+                        
+                        if (componentDirectiveMatcher.find()) {
+                            String componentDirective = componentDirectiveMatcher.group(1);
+                            
+                            if (componentDirective.equals("component")) {
+                                componentDepth++;
+                            } else if (componentDirective.equals("endcomponent")) {
+                                componentDepth--;
+                                if (componentDepth == 0) {
+                                    i++;
+                                    break;
+                                }
+                            } else if (componentDirective.equals("slot")) {
+                                String slotName = componentDirectiveMatcher.group(2) != null ? 
+                                    componentDirectiveMatcher.group(2).replace("'", "").replace("\"", "").split("\\s+")[0] : "default";
+                                code.append("            if (currentSlot != null && inSlot) {\n");
+                                code.append("                componentSlots.put(currentSlot, slotContent.toString());\n");
+                                code.append("            }\n");
+                                code.append("            currentSlot = \"").append(slotName).append("\";\n");
+                                code.append("            slotContent = new StringBuilder();\n");
+                                code.append("            inSlot = true;\n");
+                                i++;
+                                continue;
+                            } else if (componentDirective.equals("endslot")) {
+                                code.append("            if (currentSlot != null && inSlot) {\n");
+                                code.append("                componentSlots.put(currentSlot, slotContent.toString());\n");
+                                code.append("            }\n");
+                                code.append("            currentSlot = null;\n");
+                                code.append("            inSlot = false;\n");
+                                i++;
+                                continue;
+                            }
+                        }
+                        
+                        code.append("            slotContent.append(\"").append(escapeJava(componentLine)).append("\\n\");\n");
+                        i++;
+                    }
+                    
+                    code.append("            if (currentSlot != null && inSlot) {\n");
+                    code.append("                componentSlots.put(currentSlot, slotContent.toString());\n");
+                    code.append("            }\n");
+                    
+                    code.append("            if (!componentSlots.containsKey(\"default\")) {\n");
+                    code.append("                componentSlots.put(\"default\", slotContent.toString());\n");
+                    code.append("            }\n");
+                    code.append("            renderComponent(writer, \"").append(componentTemplate).append("\", componentData, componentSlots);\n");
+                    code.append("        }\n");
+                } else {
+                    i++;
+                }
+            } else {
+                i++;
+            }
+        }
+        
+        return code.toString();
+    }
 
     private void processLineWithEcho(StringBuilder code, String line, Set<String> localVars) {
-        if (line.isEmpty()) {
+        if (line == null || line.trim().isEmpty()) {
             return;
         }
 
@@ -449,7 +562,40 @@ public class BladeCompiler {
                 .replace("\r", "\\r")
                 .replace("\t", "\\t");
     }
-
+    
+    private String parseComponentParams(String params) {
+        if (params == null || params.trim().isEmpty()) {
+            return "";
+        }
+        
+        StringBuilder code = new StringBuilder();
+        params = params.trim();
+        
+        if (params.startsWith("[") && params.endsWith("]")) {
+            String inner = params.substring(1, params.length() - 1).trim();
+            String[] pairs = inner.split(",");
+            
+            for (String pair : pairs) {
+                pair = pair.trim();
+                if (pair.contains("=>")) {
+                    String[] kv = pair.split("=>", 2);
+                    if (kv.length == 2) {
+                        String key = kv[0].trim().replace("'", "").replace("\"", "");
+                        String value = kv[1].trim();
+                        
+                        if (value.startsWith("'") || value.startsWith("\"")) {
+                            value = value.substring(1, value.length() - 1);
+                            code.append("            componentData.put(\"").append(key).append("\", \"").append(escapeJava(value)).append("\");\n");
+                        } else {
+                            code.append("            componentData.put(\"").append(key).append("\", ").append(value).append(");\n");
+                        }
+                    }
+                }
+            }
+        }
+        
+        return code.toString();
+    }
 
     /**
      * 从处理后的源代码中提取包名（已移除注释和字符串）

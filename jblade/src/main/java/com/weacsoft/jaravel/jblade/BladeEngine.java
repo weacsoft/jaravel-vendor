@@ -33,6 +33,7 @@ public class BladeEngine {
 
     public String render(String templateName, Map<String, Object> variables) throws Exception {
         BladeTemplate template = loadTemplate(templateName);
+        template.setEngine(this);
         BladeContext context = template.getContext();
 
         if (variables != null) {
@@ -46,6 +47,7 @@ public class BladeEngine {
         String parentTemplate = context.getParentTemplate();
         if (parentTemplate != null && !parentTemplate.isEmpty()) {
             BladeTemplate parent = loadTemplate(parentTemplate);
+            parent.setEngine(this);
             parent.setContext(context);
             parent.init();
             return parent.render();
@@ -58,7 +60,7 @@ public class BladeEngine {
         return render(templateName, null);
     }
 
-    private BladeTemplate loadTemplate(String templateName) throws IOException, ClassNotFoundException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException {
+    public BladeTemplate loadTemplate(String templateName) throws IOException, ClassNotFoundException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException {
         templateName = templateName.replace("'", "").replace("\"", "");
 
         String className = compiler.compile(templateName);
@@ -70,7 +72,9 @@ public class BladeEngine {
             templateCache.put(className, templateClass);
         }
 
-        return (BladeTemplate) templateClass.getDeclaredConstructor().newInstance();
+        BladeTemplate template = (BladeTemplate) templateClass.getDeclaredConstructor().newInstance();
+        template.setEngine(this);
+        return template;
     }
 
     public void clearCache() {

@@ -42,6 +42,16 @@ Jaravel 是一个受 Laravel 启发的 Java Web 框架，为 Spring Boot 应用�
 ### springboot-starter
 Spring Boot 自动配置模块，一键集成所有功能。
 
+### jblade
+JBlade 模板引擎，受 Laravel Blade 启发的 Java 模板引擎，支持：
+- 模板继承（@extends, @section, @yield）
+- 条件判断（@if, @elseif, @else, @endif）
+- 循环（@for, @foreach）
+- 组件系统（@component, @endcomponent, @slot, @endslot）
+- 变量输出（{{ $var }}）
+- 注释（{{-- 注释 --}}）
+- 动态编译和内存缓存
+
 ## 快速开始
 
 ### 1. 添加依赖
@@ -155,6 +165,211 @@ router.group(groupParams, apiRouter -> {
 ```
 
 ## API 文档
+
+### JBlade 模板引擎
+
+#### 基础用法
+
+```java
+import com.weacsoft.jaravel.jblade.BladeEngine;
+import java.util.HashMap;
+import java.util.Map;
+
+// 创建引擎
+BladeEngine engine = new BladeEngine("templates");
+
+// 准备数据
+Map<String, Object> data = new HashMap<>();
+data.put("name", "World");
+data.put("items", Arrays.asList("Apple", "Banana", "Orange"));
+
+// 渲染模板
+String result = engine.render("welcome", data);
+System.out.println(result);
+```
+
+#### 变量输出
+
+```jblade
+<h1>Hello, {{ $name }}!</h1>
+<p>Count: {{ $items.size() }}</p>
+```
+
+#### 条件判断
+
+```jblade
+@if ($user)
+    <p>Welcome, {{ $user.name }}!</p>
+@else
+    <p>Please login.</p>
+@endif
+```
+
+#### 循环
+
+```jblade
+<ul>
+    @foreach ($items as $item)
+        <li>{{ $item }}</li>
+    @endforeach
+</ul>
+```
+
+#### 模板继承
+
+**父模板 (layouts/app.jblade):**
+```jblade
+<!DOCTYPE html>
+<html>
+<head>
+    <title>@yield('title', 'Default Title')</title>
+</head>
+<body>
+    @yield('content')
+</body>
+</html>
+```
+
+**子模板:**
+```jblade
+@extends('layouts.app')
+
+@section('title', 'My Page')
+
+@section('content')
+    <h1>Welcome</h1>
+    <p>This is the content.</p>
+@endsection
+```
+
+#### 组件系统
+
+**定义组件 (components/alert.jblade):**
+```jblade
+<div class="alert alert-{{ $type }}">
+    @if ($title)
+        <h4>{{ $title }}</h4>
+    @endif
+    
+    @if ($slot)
+        <p>{{ $slot }}</p>
+    @endif
+</div>
+```
+
+**使用组件:**
+```jblade
+<!-- 基本使用 -->
+@component('alert', ['type' => 'success'])
+    操作成功！
+@endcomponent
+
+<!-- 带标题 -->
+@component('alert', ['type' => 'warning', 'title' => '警告'])
+    请注意此操作
+@endcomponent
+
+<!-- 使用插槽 -->
+@component('card', ['title' => '我的卡片'])
+    @slot('header')
+        <span>卡片头部</span>
+    @endslot
+    
+    <p>卡片内容</p>
+    
+    @slot('footer')
+        <button>确定</button>
+    @endslot
+@endcomponent
+```
+
+**组件变量说明:**
+- `$slot` - 默认插槽内容
+- `$header`, `$footer` 等 - 命名插槽内容
+- `$type`, `$title` 等 - 组件参数
+
+**嵌套组件:**
+```jblade
+@component('card', ['title' => '嵌套示例'])
+    @slot('header')
+        <h3>重要通知</h3>
+    @endslot
+    
+    <p>以下是警告信息：</p>
+    
+    @component('alert', ['type' => 'danger'])
+        这是嵌套在卡片中的警告
+    @endcomponent
+@endcomponent
+```
+
+#### 注释
+
+```jblade
+{{-- 这是一个注释，不会输出到HTML --}}
+```
+
+#### 完整示例
+
+**模板文件 (templates/welcome.jblade):**
+```jblade
+<!DOCTYPE html>
+<html>
+<head>
+    <title>JBlade Demo</title>
+</head>
+<body>
+    <h1>Hello, {{ $name }}!</h1>
+    
+    @if ($items)
+        <ul>
+            @foreach ($items as $item)
+                <li>{{ $item }}</li>
+            @endforeach
+        </ul>
+    @endif
+    
+    @component('alert', ['type' => 'info'])
+        Welcome to JBlade!
+    @endcomponent
+</body>
+</html>
+```
+
+**Java 代码:**
+```java
+BladeEngine engine = new BladeEngine("templates");
+Map<String, Object> data = new HashMap<>();
+data.put("name", "Jaravel");
+data.put("items", Arrays.asList("Feature 1", "Feature 2", "Feature 3"));
+String html = engine.render("welcome", data);
+```
+
+#### 运行测试
+
+JBlade 提供了完整的组件功能测试示例：
+
+```bash
+# 编译项目
+mvn clean compile
+
+# 运行组件测试
+java -cp "target/classes;..." ComponentTest
+```
+
+测试模板位于 `jblade/templates/` 目录：
+- `component_test.jblade` - 组件功能测试主模板
+- `alert.jblade` - 警告组件
+- `card.jblade` - 卡片组件
+- `list.jblade` - 列表组件
+
+测试内容包括：
+1. 基本组件使用
+2. 带标题的组件
+3. 使用插槽
+4. 自定义卡片组件
+5. 嵌套组件
+6. 列表组件
 
 ### Request API
 
