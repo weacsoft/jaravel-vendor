@@ -19,5 +19,14 @@
             <groupId>cn.hutool</groupId>
             <artifactId>hutool-json</artifactId>
         </dependency>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>jblade</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.servlet</groupId>
+            <artifactId>jakarta.servlet-api</artifactId>
+        </dependency>
     </dependencies>
 </project>

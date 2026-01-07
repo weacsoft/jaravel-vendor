@@ -16,7 +16,8 @@ public class Request {
     private final Map<String, Object> input = new LinkedHashMap<>();
     private final Map<String, Object> file = new LinkedHashMap<>();
     private final Map<String, Object> header = new LinkedHashMap<>();
-    private final Map<String, Object> cookie = new LinkedHashMap<>();
+    private final List<Cookie> cookies = new ArrayList<>();
+    private final List<Cookie> newCookies = new ArrayList<>();
     private final Map<String, Object> session = new LinkedHashMap<>();
     @Getter
     private HttpServletRequest request;
@@ -74,15 +75,14 @@ public class Request {
     }
 
     public void addCookie(String key, Object newValue) {
-        Object value = cookie.getOrDefault(key, null);
-        if (value == null) {
-            value = newValue;
-        } else if (value instanceof List) {
-            ((List<Object>) value).add(newValue);
-        } else {
-            value = Arrays.asList(value, newValue);
-        }
-        cookie.put(key, value);
+        Cookie newCookie = new Cookie(key, newValue.toString());
+        cookies.add(newCookie);
+        newCookies.add(newCookie);
+    }
+
+    public void addCookie(Cookie cookie) {
+        cookies.add(cookie);
+        newCookies.add(cookie);
     }
 
     public void addSession(String key, Object newValue) {
@@ -114,7 +114,18 @@ public class Request {
     }
 
     public void replaceCookie(String key, Object newValue) {
-        cookie.put(key, newValue);
+        Cookie newCookie = new Cookie(key, newValue.toString());
+        for (int i = 0; i < cookies.size(); i++) {
+            if (cookies.get(i).getName().equals(key)) {
+                cookies.set(i, newCookie);
+                return;
+            }
+        }
+        cookies.add(newCookie);
+    }
+
+    public void replaceCookie(Cookie cookie) {
+        replaceCookie(cookie.getName(), cookie.getValue());
     }
 
     public void replaceSession(String key, Object newValue) {
@@ -138,7 +149,7 @@ public class Request {
     }
 
     public void removeCookie(String key) {
-        cookie.remove(key);
+        cookies.removeIf(cookie -> cookie.getName().equals(key));
     }
 
     public void removeSession(String key) {
@@ -386,11 +397,32 @@ public class Request {
     }
 
     public Set<String> cookieNames() {
-        return cookie.keySet();
+        Set<String> names = new HashSet<>();
+        for (Cookie cookie : cookies) {
+            names.add(cookie.getName());
+        }
+        return names;
     }
 
     public Map<String, Object> cookie() {
-        return new LinkedHashMap<>(cookie);
+        Map<String, Object> cookieMap = new LinkedHashMap<>();
+        for (Cookie cookie : cookies) {
+            String name = cookie.getName();
+            if (cookieMap.containsKey(name)) {
+                Object existing = cookieMap.get(name);
+                if (existing instanceof List) {
+                    ((List<Object>) existing).add(cookie.getValue());
+                } else {
+                    List<Object> values = new ArrayList<>();
+                    values.add(existing);
+                    values.add(cookie.getValue());
+                    cookieMap.put(name, values);
+                }
+            } else {
+                cookieMap.put(name, cookie.getValue());
+            }
+        }
+        return cookieMap;
     }
 
     public String cookie(String key) {
@@ -398,13 +430,12 @@ public class Request {
     }
 
     public String cookie(String key, String defaultValue) {
-        String value = cookie(key, defaultValue.getClass());
-        if (value == null) {
-            if (cookie.containsKey(key)) {
-                value = cookie.get(key).toString();
+        for (Cookie cookie : cookies) {
+            if (cookie.getName().equals(key)) {
+                return cookie.getValue();
             }
         }
-        return value != null ? value : defaultValue;
+        return defaultValue;
     }
 
     public <T> T cookie(String key, T defaultValue) {
@@ -413,23 +444,32 @@ public class Request {
     }
 
     public <T> T cookie(String key, Class<T> clazz) {
-        if (cookie.containsKey(key)) {
-            Object value = cookie.get(key);
-            if (value instanceof List) {
-                return (T) ((List<Object>) value).get(0);
-            } else if (clazz.isInstance(value)) {
-                return (T) value;
+        for (Cookie cookie : cookies) {
+            if (cookie.getName().equals(key)) {
+                if (clazz == String.class) {
+                    return (T) cookie.getValue();
+                }
             }
         }
         return null;
     }
 
-    public List<Object> cookies(String key) {
-        Object value = cookie.get(key);
-        if (value instanceof List) {
-            return ((List<Object>) value);
+    public List<String> cookies(String key) {
+        List<String> values = new ArrayList<>();
+        for (Cookie cookie : cookies) {
+            if (cookie.getName().equals(key)) {
+                values.add(cookie.getValue());
+            }
         }
-        return Collections.singletonList(value);
+        return values;
+    }
+
+    public Cookie[] getCookieObjects() {
+        return cookies.toArray(new Cookie[0]);
+    }
+
+    public Cookie[] getNewCookies() {
+        return newCookies.toArray(new Cookie[0]);
     }
 
     public Set<String> sessionNames() {
@@ -492,7 +532,12 @@ public class Request {
     }
 
     public boolean hasCookie(String key) {
-        return cookie.containsKey(key);
+        for (Cookie cookie : cookies) {
+            if (cookie.getName().equals(key)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public boolean hasSession(String key) {
@@ -509,10 +554,10 @@ public class Request {
                 this.addHeader(headerName, headerValue.nextElement());
             }
         }
-        Cookie[] cookies = request.getCookies();
-        if (cookies != null) {
-            for (Cookie cookie : cookies) {
-                this.addCookie(cookie.getName(), cookie.getValue());
+        Cookie[] requestCookies = request.getCookies();
+        if (requestCookies != null) {
+            for (Cookie cookie : requestCookies) {
+                this.cookies.add(cookie);
             }
         }
         HttpSession session = request.getSession(false);
