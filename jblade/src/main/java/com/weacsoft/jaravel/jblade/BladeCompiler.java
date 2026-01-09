@@ -370,6 +370,31 @@ public class BladeCompiler {
                         code.append("            }\n");
                         code.append("        }\n");
                         break;
+                    case "foreach":
+                        String[] foreachParts = args.split(" as ");
+                        if (foreachParts.length == 2) {
+                            String collectionExpr = foreachParts[0].trim();
+                            String collection;
+                            if (collectionExpr.startsWith("$")) {
+                                String varName = collectionExpr.substring(1);
+                                if (localVars.contains(varName)) {
+                                    collection = varName;
+                                } else {
+                                    collection = "ctx.getVariable(\"" + varName + "\")";
+                                }
+                            } else {
+                                collection = convertExpression(collectionExpr, localVars);
+                            }
+                            String var = foreachParts[1].trim().replace("$", "");
+                            code.append("        Object[] ").append(var).append("Array = ").append(collection).append(" instanceof Object[] ? (Object[]) ").append(collection).append(" : new Object[]{").append(collection).append("};\n");
+                            code.append("        for (int ").append(var).append("Index = 0; ").append(var).append("Index < ").append(var).append("Array.length; ").append(var).append("Index++) {\n");
+                            code.append("            Object ").append(var).append(" = ").append(var).append("Array[").append(var).append("Index];\n");
+                            localVars.add(var);
+                        }
+                        break;
+                    case "endforeach":
+                        code.append("        }\n");
+                        break;
                     case "component":
                     case "endcomponent":
                     case "slot":
