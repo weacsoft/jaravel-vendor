@@ -1,6 +1,6 @@
 package com.weacsoft.jaravel.route;
 
-import com.weacsoft.jaravel.controller.Controller;
+import com.weacsoft.jaravel.controller.Controllers;
 import com.weacsoft.jaravel.middleware.Middleware;
 import lombok.Getter;
 import lombok.Setter;
@@ -35,38 +35,38 @@ public class Router {
         return this;
     }
 
-    public Route get(String uri, Controller.Runner action) {
+    public Route get(String uri, Controllers.Runner action) {
         return addRoute("GET", uri, action);
     }
 
-    public Route post(String uri, Controller.Runner action) {
+    public Route post(String uri, Controllers.Runner action) {
         return addRoute("POST", uri, action);
     }
 
-    public Route put(String uri, Controller.Runner action) {
+    public Route put(String uri, Controllers.Runner action) {
         return addRoute("PUT", uri, action);
     }
 
-    public Route delete(String uri, Controller.Runner action) {
+    public Route delete(String uri, Controllers.Runner action) {
         return addRoute("DELETE", uri, action);
     }
 
-    public Route patch(String uri, Controller.Runner action) {
+    public Route patch(String uri, Controllers.Runner action) {
         return addRoute("PATCH", uri, action);
     }
 
-    public Router all(String uri, Controller.Runner action) {
+    public Router all(String uri, Controllers.Runner action) {
         return addMultiRoute(new String[]{"GET", "POST", "PUT", "DELETE", "PATCH"}, uri, action);
     }
 
-    public Route addRoute(String method, String uri, Controller.Runner action) {
+    public Route addRoute(String method, String uri, Controllers.Runner action) {
         Route route = new Route(method, uri, action);
         route.setRouter(this);
         routes.add(route);
         return route;
     }
 
-    public Router addMultiRoute(String[] method, String uri, Controller.Runner action) {
+    public Router addMultiRoute(String[] method, String uri, Controllers.Runner action) {
         Router groupRouter = new Router();
         groupRouter.setParentRouter(this);
         for (String m : method) {
