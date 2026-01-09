@@ -7,7 +7,6 @@ import org.springframework.core.io.ClassPathResource;
 
 import javax.tools.*;
 import java.io.*;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;

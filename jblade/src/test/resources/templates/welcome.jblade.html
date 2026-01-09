@@ -2,8 +2,8 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="{{ $description }}">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <meta content="{{ $description }}" name="description">
     <title>{{ $title }}</title>
     <style>
         * {
@@ -203,35 +203,36 @@
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="welcome-card">
-            <div class="logo">J</div>
-            <h1>{{ $title }}</h1>
-            <div class="version">v{{ $version }}</div>
-            <p class="description">{{ $description }}</p>
+<div class="container">
+    <div class="welcome-card">
+        <div class="logo">J</div>
+        <h1>{{ $title }}</h1>
+        <div class="version">v{{ $version }}</div>
+        <p class="description">{{ $description }}</p>
 
-            <div class="features">
-                @foreach($features as $feature)
-                    <div class="feature-item">
-                        <div class="feature-icon">✨</div>
-                        <div class="feature-title">{{ $feature }}</div>
-                    </div>
-                @endforeach
+        <div class="features">
+            @foreach($features as $feature)
+            <div class="feature-item">
+                <div class="feature-icon">✨</div>
+                <div class="feature-title">{{ $feature }}</div>
             </div>
+            @endforeach
+        </div>
 
-            <div class="links">
-                <a href="{{ $documentation }}" class="link-btn primary" target="_blank">
-                    📚 文档
-                </a>
-                <a href="{{ $community }}" class="link-btn secondary" target="_blank">
-                    💬 社区
-                </a>
-            </div>
+        <div class="links">
+            <a class="link-btn primary" href="{{ $documentation }}" target="_blank">
+                📚 文档
+            </a>
+            <a class="link-btn secondary" href="{{ $community }}" target="_blank">
+                💬 社区
+            </a>
+        </div>
 
-            <div class="footer">
-                <p>© 2025 Jaravel. All rights reserved. | <a href="https://github.com/weacsoft/jaravel" target="_blank">GitHub</a></p>
-            </div>
+        <div class="footer">
+            <p>© 2025 Jaravel. All rights reserved. | <a href="https://github.com/weacsoft/jaravel" target="_blank">GitHub</a>
+            </p>
         </div>
     </div>
+</div>
 </body>
 </html>

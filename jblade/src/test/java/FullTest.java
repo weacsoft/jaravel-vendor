@@ -7,7 +7,7 @@ public class FullTest {
     public static void main(String[] args) {
         try {
             String templateDir = "templates";
-            BladeEngine engine = new BladeEngine(templateDir,".jblade.html");
+            BladeEngine engine = new BladeEngine(templateDir, ".jblade.html");
 
             System.out.println("=== JBlade 实际测试 ===\n");
 
