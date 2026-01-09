@@ -44,18 +44,16 @@ public class BladeCompiler {
      * @param templateName 模板文件名
      */
     public String compile(String templateName) throws IOException {
-        // 读取模板文件内容
         String templatePath = templateDir + File.separator + templateName.replace(".", File.separator) + suffix;
         InputStream resource = new ClassPathResource(templatePath).getInputStream();
         String employees = null;
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(resource))) {
             employees = reader
                     .lines()
-                    .collect(Collectors.joining());
+                    .collect(Collectors.joining("\n"));
         }
-        String content = new String(employees.getBytes(), StandardCharsets.UTF_8);
+        String content = employees;
         String className = generateClassName(templateName);
-        //生成java源代码
         String sourceCode = generateJavaCode(className, content);
         if (sourceCode.isEmpty()) {
             throw new IOException("源代码不能为空");
@@ -346,7 +344,8 @@ public class BladeCompiler {
         String[] lines = content.split("\n");
         Set<String> localVars = new HashSet<>();
 
-        for (String line : lines) {
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i];
             String trimmedLine = line.trim();
             Matcher directiveMatcher = DIRECTIVE_PATTERN.matcher(trimmedLine);
 
