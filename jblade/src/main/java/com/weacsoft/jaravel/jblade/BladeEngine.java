@@ -16,7 +16,20 @@ public class BladeEngine {
     private MemoryClassLoader memoryClassLoader;
 
     public BladeEngine(String templateDir) {
-        this.compiler = new BladeCompiler(templateDir, getMemoryClassLoader());
+        this(templateDir, new MemoryClassLoader());
+    }
+
+    public BladeEngine(String templateDir, MemoryClassLoader memoryClassLoader) {
+        this.compiler = new BladeCompiler(templateDir, memoryClassLoader);
+        this.templateCache = new HashMap<>();
+    }
+
+    public BladeEngine(String templateDir, String suffix) {
+        this(templateDir, suffix, new MemoryClassLoader());
+    }
+
+    public BladeEngine(String templateDir, String suffix, MemoryClassLoader memoryClassLoader) {
+        this.compiler = new BladeCompiler(templateDir, memoryClassLoader, suffix);
         this.templateCache = new HashMap<>();
     }
 

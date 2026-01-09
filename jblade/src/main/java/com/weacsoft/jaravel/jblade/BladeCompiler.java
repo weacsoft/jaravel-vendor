@@ -3,8 +3,8 @@ package com.weacsoft.jaravel.jblade;
 import com.weacsoft.jaravel.utils.memory.MemoryClassLoader;
 import com.weacsoft.jaravel.utils.memory.MemoryFileManager;
 import com.weacsoft.jaravel.utils.memory.SourceCodeJavaFileObject;
-
 import org.springframework.core.io.ClassPathResource;
+
 import javax.tools.*;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -26,9 +26,16 @@ public class BladeCompiler {
     private final String templateDir;
     private final MemoryClassLoader classLoader;
 
+    private final String suffix;
+
     public BladeCompiler(String templateDir, MemoryClassLoader classLoader) {
+        this(templateDir, classLoader, ".jblade");
+    }
+
+    public BladeCompiler(String templateDir, MemoryClassLoader classLoader, String suffix) {
         this.templateDir = templateDir;
         this.classLoader = classLoader;
+        this.suffix = suffix;
     }
 
     /**
@@ -38,7 +45,7 @@ public class BladeCompiler {
      */
     public String compile(String templateName) throws IOException {
         // 读取模板文件内容
-        String templatePath = templateDir + File.separator + templateName.replace(".", File.separator) + ".jblade";
+        String templatePath = templateDir + File.separator + templateName.replace(".", File.separator) + suffix;
         InputStream resource = new ClassPathResource(templatePath).getInputStream();
         String employees = null;
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(resource))) {
@@ -49,7 +56,7 @@ public class BladeCompiler {
         String content = new String(employees.getBytes(), StandardCharsets.UTF_8);
         String className = generateClassName(templateName);
         //生成java源代码
-        String sourceCode = generateJavaCode(className, content, templateName);
+        String sourceCode = generateJavaCode(className, content);
         if (sourceCode.isEmpty()) {
             throw new IOException("源代码不能为空");
         }
@@ -90,7 +97,7 @@ public class BladeCompiler {
         return "Blade_" + templateName.replace(File.separator, "_").replace("/", "_").replace("\\", "_").replace(".", "_");
     }
 
-    private String generateJavaCode(String className, String content, String templateName) {
+    private String generateJavaCode(String className, String content) {
         StringBuilder javaCode = new StringBuilder();
         javaCode.append("import com.weacsoft.jaravel.jblade.*;\n");
         javaCode.append("import java.io.*;\n");
