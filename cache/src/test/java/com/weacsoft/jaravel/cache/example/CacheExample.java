@@ -24,13 +24,13 @@ public class CacheExample {
         manager.addStore("file", fileCache);
 
 
-        Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/test", "root", "password");
-        DatabaseCache databaseCache = new DatabaseCache(connection, "cache", 3600);
-        manager.addStore("database", databaseCache);
-
-
-        RedisCache redisCache = new RedisCache("localhost", 6379, 3600);
-        manager.addStore("redis", redisCache);
+//        Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/test", "root", "password");
+//        DatabaseCache databaseCache = new DatabaseCache(connection, "cache", 3600);
+//        manager.addStore("database", databaseCache);
+//
+//
+//        RedisCache redisCache = new RedisCache("localhost", 6379, 3600);
+//        manager.addStore("redis", redisCache);
 
 
         manager.setDefaultStore("array");
@@ -61,7 +61,7 @@ public class CacheExample {
         System.out.println("Get age: " + CacheFacade.get("age"));
 
 
-        CacheFacade.put("config", Map.of("key1", "value1", "key2", "value2"), 2, TimeUnit.HOURS);
+        CacheFacade.put("config", Arrays.asList("key1", "value1", "key2", "value2"), 2, TimeUnit.HOURS);
         System.out.println("Get config: " + CacheFacade.get("config"));
 
 
@@ -79,12 +79,12 @@ public class CacheExample {
 
         CacheFacade.store("array").put("array_key", "array_value");
         CacheFacade.store("file").put("file_key", "file_value");
-        CacheFacade.store("redis").put("redis_key", "redis_value");
+//        CacheFacade.store("redis").put("redis_key", "redis_value");
 
 
         System.out.println("Array store: " + CacheFacade.store("array").get("array_key"));
         System.out.println("File store: " + CacheFacade.store("file").get("file_key"));
-        System.out.println("Redis store: " + CacheFacade.store("redis").get("redis_key"));
+//        System.out.println("Redis store: " + CacheFacade.store("redis").get("redis_key"));
 
 
         CacheFacade.setDefaultStore("file");
