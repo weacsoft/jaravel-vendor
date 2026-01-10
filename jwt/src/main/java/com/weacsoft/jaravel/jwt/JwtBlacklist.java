@@ -1,28 +1,33 @@
 package com.weacsoft.jaravel.jwt;
 
-import com.weacsoft.jaravel.utils.ExpiryMap;
+import com.weacsoft.jaravel.cache.Cache;
 
 import java.util.Date;
 import java.util.UUID;
 
 public class JwtBlacklist {
 
-    private final ExpiryMap<String, Long> blacklist;
+    private final Cache cache;
 
     private final JwtConfig config;
 
     public JwtBlacklist(JwtConfig config) {
         this.config = config;
-        this.blacklist = new ExpiryMap<>();
+        this.cache = new com.weacsoft.jaravel.cache.ArrayCache(3600);
+    }
+
+    public JwtBlacklist(JwtConfig config, Cache cache) {
+        this.config = config;
+        this.cache = cache;
     }
 
     public void add(String token, Date expiresAt) {
         if (!config.isBlacklistEnabled()) {
             return;
         }
-        long ttl = expiresAt.getTime() - System.currentTimeMillis();
+        long ttl = (expiresAt.getTime() - System.currentTimeMillis()) / 1000;
         if (ttl > 0) {
-            blacklist.put(token, ttl);
+            cache.put(token, expiresAt.getTime(), ttl);
         }
     }
 
@@ -30,29 +35,33 @@ public class JwtBlacklist {
         if (!config.isBlacklistEnabled()) {
             return;
         }
-        blacklist.put(token, ttl);
+        cache.put(token, System.currentTimeMillis() + ttl * 1000, ttl);
     }
 
     public boolean isBlacklisted(String token) {
         if (!config.isBlacklistEnabled()) {
             return false;
         }
-        return blacklist.containsKey(token);
+        return cache.has(token);
     }
 
     public void remove(String token) {
-        blacklist.remove(token);
+        cache.forget(token);
     }
 
     public void clear() {
-        blacklist.clear();
+        cache.flush();
     }
 
     public int size() {
-        return blacklist.size();
+        return 0;
     }
 
     public String generateBlacklistId() {
         return UUID.randomUUID().toString();
+    }
+
+    public Cache getCache() {
+        return cache;
     }
 }

@@ -42,6 +42,10 @@ public class BladeContext {
         return variables.get(name);
     }
 
+    public Map<String, Object> getVariables() {
+        return variables;
+    }
+
     public void setSection(String name, String content) {
         sections.put(name, content);
     }
@@ -50,12 +54,36 @@ public class BladeContext {
         return sections.get(name);
     }
 
+    public Map<String, String> getSections() {
+        return sections;
+    }
+
     public void setSectionRenderer(String name, Consumer<Writer> renderer) {
         sectionRenderers.put(name, renderer);
     }
 
     public Consumer<Writer> getSectionRenderer(String name) {
         return sectionRenderers.get(name);
+    }
+
+    public Map<String, Consumer<Writer>> getSectionRenderers() {
+        return sectionRenderers;
+    }
+
+    public void reset() {
+        variables.clear();
+        sections.clear();
+        sectionRenderers.clear();
+        sectionStack.clear();
+        componentData.clear();
+        componentSlots.clear();
+        currentSectionContent = new StringBuilder();
+        parentTemplate = null;
+        inSection = false;
+        currentComponent = null;
+        currentSlot = null;
+        currentSlotContent = new StringBuilder();
+        inSlot = false;
     }
 
     public void startSection(String name) {

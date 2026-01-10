@@ -3,10 +3,12 @@ package com.weacsoft.jaravel.jblade;
 import java.io.StringWriter;
 import java.io.Writer;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public abstract class BladeTemplate {
     protected BladeContext context;
     private BladeEngine engine;
+    private volatile boolean initialized = false;
 
     public BladeTemplate() {
         this.context = new BladeContext();
@@ -60,13 +62,31 @@ public abstract class BladeTemplate {
         this.engine = engine;
     }
 
+    public boolean isInitialized() {
+        return initialized;
+    }
+
+    public void setInitialized(boolean initialized) {
+        this.initialized = initialized;
+    }
+
+    public void resetContext() {
+        this.context = new BladeContext();
+        this.initialized = false;
+    }
+
+    public void resetContext(BladeContext newContext) {
+        this.context = newContext;
+        this.initialized = false;
+    }
+
     protected void renderComponent(Writer writer, String componentName, Map<String, Object> data, Map<String, String> slots) throws Exception {
         if (engine == null) {
             throw new IllegalStateException("BladeEngine not set for template");
         }
 
         String prevComponent = context.getCurrentComponent();
-        Map<String, String> prevSlots = context.getComponentSlots();
+        Map<String, String> prevSlots = new ConcurrentHashMap<>(context.getComponentSlots());
 
         context.startComponent(componentName);
 
