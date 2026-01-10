@@ -119,6 +119,42 @@ public class ResponseBuilder {
         };
     }
 
+    public static Response unauthorized(String message) {
+        return new AbstractResponse() {
+            {
+                addHeader("Content-Type", "application/json; charset=utf-8");
+            }
+
+            @Override
+            public int getStatus() {
+                return 401;
+            }
+
+            @Override
+            public String getContent() {
+                return JSONUtil.toJsonStr(Map.of("message", message));
+            }
+        };
+    }
+
+    public static Response redirect(String url) {
+        return new AbstractResponse() {
+            {
+                addHeader("Location", url);
+            }
+
+            @Override
+            public int getStatus() {
+                return 302;
+            }
+
+            @Override
+            public String getContent() {
+                return "";
+            }
+        };
+    }
+
     private static abstract class AbstractResponse implements Response {
         protected final Map<String, List<String>> headers = new HashMap<>();
         protected final List<Cookie> cookies = new ArrayList<>();

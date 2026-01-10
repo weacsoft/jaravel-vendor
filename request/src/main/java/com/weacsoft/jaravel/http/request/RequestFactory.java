@@ -24,6 +24,20 @@ import java.util.stream.Collectors;
 
 public class RequestFactory {
 
+    private static final ThreadLocal<Request> currentRequest = new ThreadLocal<>();
+
+    public static Request getCurrentRequest() {
+        return currentRequest.get();
+    }
+
+    public static void setCurrentRequest(Request request) {
+        currentRequest.set(request);
+    }
+
+    public static void clearCurrentRequest() {
+        currentRequest.remove();
+    }
+
     public static Request buildFromHttpServletRequest(HttpServletRequest baseRequest) {
         Request request = new Request();
         if (baseRequest != null) {
@@ -100,6 +114,7 @@ public class RequestFactory {
         MediaType contentType = baseRequest.headers().contentType().orElse(null);
         Request request = new Request();
         request.setRequest(baseRequest.servletRequest());
+        setCurrentRequest(request);
         UriComponentsBuilder.fromUri(baseRequest.uri())
                 .build()
                 .getQueryParams().forEach((name, values) -> {
