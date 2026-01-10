@@ -111,8 +111,9 @@ public class JwtService {
         }
 
         try {
-            Claims claims = Jwts.parser()
+            Claims claims = Jwts.parserBuilder()
                     .setSigningKey(signingKey)
+                    .build()
                     .parseClaimsJws(token)
                     .getBody();
 
@@ -271,8 +272,9 @@ public class JwtService {
         }
 
         try {
-            Claims claims = Jwts.parser()
+            Claims claims = Jwts.parserBuilder()
                     .setSigningKey(signingKey)
+                    .build()
                     .parseClaimsJws(token)
                     .getBody();
 
