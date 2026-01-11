@@ -125,27 +125,28 @@ public class ResponseBuilder {
     }
 
     public static Response unauthorized(String message) {
-        return new AbstractResponse() {
-            {
-                addHeader("Content-Type", "application/json; charset=utf-8");
-            }
-
-            @Override
-            public int getStatus() {
-                return 401;
-            }
-
-            @Override
-            public String getContent() {
-                try {
-                    Map<String, String> map = new HashMap<>();
-                    map.put("message", message);
-                    return objectMapper.writeValueAsString(map);
-                } catch (Exception e) {
-                    throw new RuntimeException("JSON 序列化失败", e);
-                }
-            }
-        };
+        throw new RuntimeException("401: Unauthorized "+message);
+//        return new AbstractResponse() {
+//            {
+//                addHeader("Content-Type", "application/json; charset=utf-8");
+//            }
+//
+//            @Override
+//            public int getStatus() {
+//                return 401;
+//            }
+//
+//            @Override
+//            public String getContent() {
+//                try {
+//                    Map<String, String> map = new HashMap<>();
+//                    map.put("message", message);
+//                    return objectMapper.writeValueAsString(map);
+//                } catch (Exception e) {
+//                    throw new RuntimeException("JSON 序列化失败", e);
+//                }
+//            }
+//        };
     }
 
     public static Response redirect(String url) {

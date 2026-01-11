@@ -42,6 +42,7 @@ public class RequestFactory {
         Request request = new Request();
         if (baseRequest != null) {
             request.setRequest(baseRequest);
+            setCurrentRequest(request);
             Map<String, List<String>> result = new LinkedHashMap<>();
             String pairs = baseRequest.getQueryString();
             if (pairs != null) {
