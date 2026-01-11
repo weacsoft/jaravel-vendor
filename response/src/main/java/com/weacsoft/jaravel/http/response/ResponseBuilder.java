@@ -1,6 +1,6 @@
 package com.weacsoft.jaravel.http.response;
 
-import cn.hutool.json.JSONUtil;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.weacsoft.jaravel.jblade.BladeEngine;
 import jakarta.servlet.http.Cookie;
 
@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 
 public class ResponseBuilder {
+    private static final ObjectMapper objectMapper = new ObjectMapper();
     private static BladeEngine bladeEngine;
 
     private static BladeEngine getBladeEngine() {
@@ -72,7 +73,11 @@ public class ResponseBuilder {
 
             @Override
             public String getContent() {
-                return JSONUtil.toJsonStr(data);
+                try {
+                    return objectMapper.writeValueAsString(data);
+                } catch (Exception e) {
+                    throw new RuntimeException("JSON 序列化失败", e);
+                }
             }
         };
     }
@@ -132,7 +137,13 @@ public class ResponseBuilder {
 
             @Override
             public String getContent() {
-                return JSONUtil.toJsonStr(Map.of("message", message));
+                try {
+                    Map<String, String> map = new HashMap<>();
+                    map.put("message", message);
+                    return objectMapper.writeValueAsString(map);
+                } catch (Exception e) {
+                    throw new RuntimeException("JSON 序列化失败", e);
+                }
             }
         };
     }

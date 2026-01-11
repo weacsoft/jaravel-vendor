@@ -1,7 +1,6 @@
 package com.weacsoft.jaravel.http.request;
 
-import cn.hutool.json.JSONObject;
-import cn.hutool.json.JSONUtil;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.MediaType;
@@ -24,6 +23,7 @@ import java.util.stream.Collectors;
 
 public class RequestFactory {
 
+    private static final ObjectMapper objectMapper = new ObjectMapper();
     private static final ThreadLocal<Request> currentRequest = new ThreadLocal<>();
 
     public static Request getCurrentRequest() {
@@ -101,7 +101,7 @@ public class RequestFactory {
             String body = baseRequest.getReader()
                     .lines()
                     .collect(Collectors.joining());
-            JSONObject obj = JSONUtil.parseObj(body);
+            Map<String, Object> obj = objectMapper.readValue(body, Map.class);
             obj.forEach((key, value) -> {
                 request.addInput(key, value);
             });
@@ -221,7 +221,7 @@ public class RequestFactory {
         String body = null;
         try {
             body = base.body(String.class);
-            JSONObject obj = JSONUtil.parseObj(body);
+            Map<String, Object> obj = objectMapper.readValue(body, Map.class);
             obj.forEach((key, value) -> {
                 request.addInput(key, value);
             });
