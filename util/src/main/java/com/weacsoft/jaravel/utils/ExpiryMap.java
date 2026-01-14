@@ -57,6 +57,11 @@ public class ExpiryMap<K, V> extends HashMap<K, V> {
         return super.put(key, value);
     }
 
+    public V putForever(K key, V value) {
+        expiryMap.put(key, -1L);
+        return super.put(key, value);
+    }
+
     @Override
     public boolean containsKey(Object key) {
         return !checkExpiry(key, true) && super.containsKey(key);
@@ -68,7 +73,11 @@ public class ExpiryMap<K, V> extends HashMap<K, V> {
      * @param expiryTime 键值对有效期 毫秒
      */
     public V put(K key, V value, long expiryTime) {
-        expiryMap.put(key, System.currentTimeMillis() + expiryTime);
+        if (expiryTime < 0) {
+            expiryMap.put(key, -1L);
+        } else {
+            expiryMap.put(key, System.currentTimeMillis() + expiryTime);
+        }
         return super.put(key, value);
     }
 
@@ -178,6 +187,11 @@ public class ExpiryMap<K, V> extends HashMap<K, V> {
         }
         long expiryTime = expiryMap.get(key);
 
+        //永不过期
+        if (expiryTime == -1L) {
+            return Boolean.FALSE;
+        }
+
         boolean flag = System.currentTimeMillis() > expiryTime;
 
         if (flag) {
@@ -187,5 +201,11 @@ public class ExpiryMap<K, V> extends HashMap<K, V> {
             expiryMap.remove(key);
         }
         return flag;
+    }
+
+    @Override
+    public void clear() {
+        super.clear();
+        expiryMap.clear();
     }
 }

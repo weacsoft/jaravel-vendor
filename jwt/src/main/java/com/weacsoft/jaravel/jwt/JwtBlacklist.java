@@ -1,22 +1,23 @@
 package com.weacsoft.jaravel.jwt;
 
-import com.weacsoft.jaravel.cache.Cache;
+import com.weacsoft.jaravel.cache.CacheStore;
+import com.weacsoft.jaravel.cache.array.ArrayCache;
 
 import java.util.Date;
 import java.util.UUID;
 
 public class JwtBlacklist {
 
-    private final Cache cache;
+    private final CacheStore cache;
 
     private final JwtConfig config;
 
     public JwtBlacklist(JwtConfig config) {
         this.config = config;
-        this.cache = new com.weacsoft.jaravel.cache.ArrayCache(3600);
+        this.cache = new ArrayCache(3600);
     }
 
-    public JwtBlacklist(JwtConfig config, Cache cache) {
+    public JwtBlacklist(JwtConfig config, CacheStore cache) {
         this.config = config;
         this.cache = cache;
     }
@@ -61,7 +62,7 @@ public class JwtBlacklist {
         return UUID.randomUUID().toString();
     }
 
-    public Cache getCache() {
+    public CacheStore getCache() {
         return cache;
     }
 }

@@ -1,8 +1,10 @@
 package com.weacsoft.jaravel.cache;
 
+import java.util.Collection;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-public interface CacheRepository {
+public interface CacheStore {
 
     boolean put(String key, Object value);
 
@@ -10,7 +12,11 @@ public interface CacheRepository {
 
     boolean put(String key, Object value, long ttl, TimeUnit timeUnit);
 
-    Object get(String key);
+    default Object get(String key){
+        return get(key,Object.class);
+    }
+
+    <T> T get(String key, Class<T> type);
 
     boolean has(String key);
 
@@ -20,9 +26,19 @@ public interface CacheRepository {
 
     boolean putMany(java.util.Map<String, Object> values);
 
-    java.util.Map<String, Object> getMany(java.util.Collection<String> keys);
+    Map<String, Object> getMany(Collection<String> keys);
 
     boolean forgetMany(java.util.Collection<String> keys);
+
+    boolean remember(String key, long ttl, java.util.function.Supplier<Object> callback);
+
+    boolean remember(String key, long ttl, TimeUnit timeUnit, java.util.function.Supplier<Object> callback);
+
+    boolean rememberForever(String key, java.util.function.Supplier<Object> callback);
+
+    Object pull(String key);
+
+    <T> T pull(String key, Class<T> type);
 
     boolean add(String key, Object value);
 
@@ -37,4 +53,8 @@ public interface CacheRepository {
     long decrement(String key);
 
     long decrement(String key, long value);
+
+    String getPrefix();
+
+    void setPrefix(String prefix);
 }

@@ -1,6 +1,4 @@
-package com.weacsoft.jaravel.auth.guard;
-
-import com.weacsoft.jaravel.auth.Authenticatable;
+package com.weacsoft.jaravel.auth;
 
 public class Guard {
 

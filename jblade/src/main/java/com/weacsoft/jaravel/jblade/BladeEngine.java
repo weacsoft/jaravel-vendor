@@ -1,6 +1,6 @@
 package com.weacsoft.jaravel.jblade;
 
-import com.weacsoft.jaravel.cache.Cache;
+import com.weacsoft.jaravel.cache.CacheStore;
 import com.weacsoft.jaravel.utils.memory.MemoryClassLoader;
 
 import java.io.IOException;
@@ -12,7 +12,7 @@ public class BladeEngine {
     private final BladeCompiler compiler;
     private final Map<String, Class<?>> templateClassCache;
     private final Map<String, BladeTemplate> templateInstanceCache;
-    private final Cache cache;
+    private final CacheStore cache;
     private final MemoryClassLoader memoryClassLoader;
     private final boolean useCache;
 
@@ -32,19 +32,19 @@ public class BladeEngine {
         this(templateDir, suffix, null, memoryClassLoader);
     }
 
-    public BladeEngine(String templateDir, Cache cache) {
+    public BladeEngine(String templateDir, CacheStore cache) {
         this(templateDir, null, cache, null);
     }
 
-    public BladeEngine(String templateDir, Cache cache, MemoryClassLoader memoryClassLoader) {
+    public BladeEngine(String templateDir, CacheStore cache, MemoryClassLoader memoryClassLoader) {
         this(templateDir, null, cache, memoryClassLoader);
     }
 
-    public BladeEngine(String templateDir, String suffix, Cache cache) {
+    public BladeEngine(String templateDir, String suffix, CacheStore cache) {
         this(templateDir, suffix, cache, null);
     }
 
-    public BladeEngine(String templateDir, String suffix, Cache cache, MemoryClassLoader memoryClassLoader) {
+    public BladeEngine(String templateDir, String suffix, CacheStore cache, MemoryClassLoader memoryClassLoader) {
         this.memoryClassLoader = memoryClassLoader != null ? memoryClassLoader : new MemoryClassLoader();
         this.compiler = new BladeCompiler(templateDir, this.memoryClassLoader, suffix);
         this.cache = cache;
@@ -177,7 +177,7 @@ public class BladeEngine {
         templateInstanceCache.clear();
     }
 
-    public Cache getCache() {
+    public CacheStore getCache() {
         return cache;
     }
 

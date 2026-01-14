@@ -1,4 +1,4 @@
-package com.weacsoft.jaravel.auth.driver;
+package com.weacsoft.jaravel.auth;
 
 public interface AuthDriver {
     void setId(String id);

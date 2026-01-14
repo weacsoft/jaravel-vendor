@@ -1,75 +1,68 @@
 package com.weacsoft.jaravel.cache;
 
-import com.weacsoft.jaravel.utils.ExpiryMap;
-
 import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
-public class ArrayCacheRepository implements CacheRepository {
+public class DefaultCacheStore implements CacheStore {
+    private final CacheDriver cacheDriver;
+    private String prefix;
 
-    private final ExpiryMap<String, Object> store;
-
-    private final long defaultTtl;
-
-    public ArrayCacheRepository() {
-        this(3600);
+    public DefaultCacheStore(String prefix, CacheDriver cacheDriver) {
+        this.prefix = prefix;
+        this.cacheDriver = cacheDriver;
     }
 
-    public ArrayCacheRepository(long defaultTtl) {
-        this.defaultTtl = defaultTtl * 1000;
-        this.store = new ExpiryMap<>();
+    public DefaultCacheStore(String prefix) {
+        this(prefix, new ArrayCacheDriver());
     }
 
-    public ArrayCacheRepository(long defaultTtl, int initialCapacity) {
-        this.defaultTtl = defaultTtl * 1000;
-        this.store = new ExpiryMap<>(initialCapacity, defaultTtl * 1000);
+    public DefaultCacheStore(CacheDriver cacheDriver) {
+        this("", cacheDriver);
     }
 
     @Override
     public boolean put(String key, Object value) {
-        store.put(key, value);
-        return true;
+        return cacheDriver.put(key, value);
     }
 
     @Override
     public boolean put(String key, Object value, long ttl) {
-        store.put(key, value, ttl);
-        return true;
+        return put(key, value, ttl, TimeUnit.MILLISECONDS);
     }
 
     @Override
     public boolean put(String key, Object value, long ttl, TimeUnit timeUnit) {
-        store.put(key, value, timeUnit.toMillis(ttl));
-        return true;
+        return cacheDriver.put(key, value, timeUnit.toMillis(ttl));
     }
 
+
     @Override
-    public Object get(String key) {
-        return store.get(key);
+    public <T> T get(String key, Class<T> type) {
+        return cacheDriver.get(key, type);
     }
 
     @Override
     public boolean has(String key) {
-        return store.containsKey(key);
+        return cacheDriver.exist(key);
     }
 
     @Override
     public boolean forget(String key) {
-        store.remove(key);
-        return true;
+        return cacheDriver.remove(key);
     }
 
     @Override
     public boolean flush() {
-        store.clear();
+        cacheDriver.removeAll();
         return true;
     }
 
     @Override
     public boolean putMany(Map<String, Object> values) {
         for (Map.Entry<String, Object> entry : values.entrySet()) {
-            store.put(entry.getKey(), entry.getValue(), defaultTtl);
+            this.put(entry.getKey(), entry.getValue());
         }
         return true;
     }
@@ -78,7 +71,7 @@ public class ArrayCacheRepository implements CacheRepository {
     public Map<String, Object> getMany(Collection<String> keys) {
         Map<String, Object> result = new java.util.HashMap<>();
         for (String key : keys) {
-            Object value = store.get(key);
+            Object value = this.get(key);
             if (value != null) {
                 result.put(key, value);
             }
@@ -89,9 +82,42 @@ public class ArrayCacheRepository implements CacheRepository {
     @Override
     public boolean forgetMany(Collection<String> keys) {
         for (String key : keys) {
-            store.remove(key);
+            this.forget(key);
         }
         return true;
+    }
+
+    @Override
+    public boolean remember(String key, long ttl, Supplier<Object> callback) {
+        return remember(key, ttl, TimeUnit.MILLISECONDS, callback);
+    }
+
+    @Override
+    public boolean remember(String key, long ttl, TimeUnit timeUnit, Supplier<Object> callback) {
+        if (has(key)) {
+            return true;
+        }
+        return put(key, callback.get(), ttl, timeUnit);
+    }
+
+    @Override
+    public boolean rememberForever(String key, Supplier<Object> callback) {
+        if (has(key)) {
+            return true;
+        }
+        return put(key, callback.get());
+    }
+
+    @Override
+    public Object pull(String key) {
+        return pull(key, Object.class);
+    }
+
+    @Override
+    public <T> T pull(String key, Class<T> type) {
+        T value = this.get(key, type);
+        forget(key);
+        return value;
     }
 
     @Override
@@ -104,10 +130,7 @@ public class ArrayCacheRepository implements CacheRepository {
 
     @Override
     public boolean add(String key, Object value, long ttl) {
-        if (has(key)) {
-            return false;
-        }
-        return put(key, value, ttl);
+        return add(key, value, ttl, TimeUnit.MILLISECONDS);
     }
 
     @Override
@@ -125,7 +148,7 @@ public class ArrayCacheRepository implements CacheRepository {
 
     @Override
     public long increment(String key, long value) {
-        Object current = store.get(key);
+        Object current = get(key);
         long newValue;
         if (current == null) {
             newValue = value;
@@ -134,17 +157,27 @@ public class ArrayCacheRepository implements CacheRepository {
         } else {
             throw new IllegalArgumentException("Cannot increment non-numeric value");
         }
-        store.put(key, newValue, defaultTtl);
+        put(key, newValue);
         return newValue;
     }
 
     @Override
     public long decrement(String key) {
-        return decrement(key, 1);
+        return increment(key, 1);
     }
 
     @Override
     public long decrement(String key, long value) {
         return increment(key, -value);
+    }
+
+    @Override
+    public String getPrefix() {
+        return prefix;
+    }
+
+    @Override
+    public void setPrefix(String prefix) {
+        this.prefix = prefix;
     }
 }

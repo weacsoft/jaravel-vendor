@@ -1,7 +1,5 @@
 package com.weacsoft.jaravel.auth;
 
-import com.weacsoft.jaravel.auth.guard.Guard;
-
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
