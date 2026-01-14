@@ -163,7 +163,7 @@ public class DefaultCacheStore implements CacheStore {
 
     @Override
     public long decrement(String key) {
-        return increment(key, 1);
+        return decrement(key, 1);
     }
 
     @Override

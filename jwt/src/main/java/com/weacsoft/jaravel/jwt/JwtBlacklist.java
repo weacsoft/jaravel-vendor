@@ -1,7 +1,7 @@
 package com.weacsoft.jaravel.jwt;
 
+import com.weacsoft.jaravel.cache.Cache;
 import com.weacsoft.jaravel.cache.CacheStore;
-import com.weacsoft.jaravel.cache.array.ArrayCache;
 
 import java.util.Date;
 import java.util.UUID;
@@ -14,7 +14,7 @@ public class JwtBlacklist {
 
     public JwtBlacklist(JwtConfig config) {
         this.config = config;
-        this.cache = new ArrayCache(3600);
+        this.cache = Cache.store();
     }
 
     public JwtBlacklist(JwtConfig config, CacheStore cache) {

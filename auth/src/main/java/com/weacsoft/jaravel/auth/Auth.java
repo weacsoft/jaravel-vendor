@@ -42,11 +42,11 @@ public class Auth {
     }
 
     //通过一个可认证的用户进行登录
-    public static Authenticatable login(Authenticatable user) {
+    public static boolean login(Authenticatable user) {
         return login(user, defaultGuard);
     }
 
-    public static Authenticatable login(Authenticatable user, String guard) {
+    public static boolean login(Authenticatable user, String guard) {
         return guard(guard).login(user);
     }
 
@@ -60,20 +60,20 @@ public class Auth {
     }
 
     //通过认证内容（例如账号密码）进行登录
-    public static boolean attempt(Object[] credentials) {
+    public static boolean attempt(Map<String,String> credentials) {
         return attempt(credentials, defaultGuard);
     }
 
-    public static boolean attempt(Object[] credentials, String guard) {
+    public static boolean attempt(Map<String,String> credentials, String guard) {
         return guard(guard).attempt(credentials);
     }
 
     //同attemp，获得一次性的登录信息
-    public static boolean once(Object[] credentials) {
+    public static boolean once(Map<String,String> credentials) {
         return once(credentials, defaultGuard);
     }
 
-    public static boolean once(Object[] credentials, String guard) {
+    public static boolean once(Map<String,String> credentials, String guard) {
         return guard(guard).once(credentials);
     }
 

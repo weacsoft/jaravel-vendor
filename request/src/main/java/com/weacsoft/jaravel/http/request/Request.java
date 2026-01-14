@@ -130,6 +130,7 @@ public class Request {
 
     public Request removeSession(String key) {
         session.remove(key);
+        request.getSession(true).removeAttribute(key);
         return this;
     }
 
