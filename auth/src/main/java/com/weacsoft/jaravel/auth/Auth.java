@@ -1,106 +1,90 @@
 package com.weacsoft.jaravel.auth;
 
+import com.weacsoft.jaravel.auth.guard.Guard;
+
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 public class Auth {
 
-    private static AuthManager manager;
+    public static String defaultGuard = "web";
 
-    public static void setManager(AuthManager manager) {
-        Auth.manager = manager;
+    private static Map<String, Guard> guards = new ConcurrentHashMap<>();
+
+    //添加门面
+    public static void addGuard(String name, Guard guard) {
+        guards.put(name, guard);
     }
 
-    public static AuthManager manager() {
-        return manager;
-    }
-
+    //获得登录用户
     public static Authenticatable user() {
-        return manager().guard().user();
+        return user(defaultGuard);
     }
 
     public static Authenticatable user(String guard) {
-        return manager().guard(guard).user();
+        return guard(guard).user();
     }
 
+    //检查是否登录
     public static boolean check() {
-        return manager().guard().check();
+        return check(defaultGuard);
     }
 
     public static boolean check(String guard) {
-        return manager().guard(guard).check();
+        return user(guard) != null;
     }
 
+    //检查是否是游客
     public static boolean guest() {
-        return manager().guard().guest();
+        return guest(defaultGuard);
     }
 
     public static boolean guest(String guard) {
-        return manager().guard(guard).guest();
+        return !check(guard);
     }
 
+    //通过一个可认证的用户进行登录
     public static Authenticatable login(Authenticatable user) {
-        return manager().guard().login(user);
+        return login(user, defaultGuard);
     }
 
     public static Authenticatable login(Authenticatable user, String guard) {
-        return manager().guard(guard).login(user);
+        return guard(guard).login(user);
     }
 
+    //登出
     public static void logout() {
-        manager().guard().logout();
+        logout(defaultGuard);
     }
 
     public static void logout(String guard) {
-        manager().guard(guard).logout();
+        guard(guard).logout();
     }
 
+    //通过认证内容（例如账号密码）进行登录
     public static boolean attempt(Object[] credentials) {
-        return manager().guard().attempt(credentials);
+        return attempt(credentials, defaultGuard);
     }
 
     public static boolean attempt(Object[] credentials, String guard) {
-        return manager().guard(guard).attempt(credentials);
+        return guard(guard).attempt(credentials);
     }
 
+    //同attemp，获得一次性的登录信息
     public static boolean once(Object[] credentials) {
-        return manager().guard().once(credentials);
+        return once(credentials, defaultGuard);
     }
 
     public static boolean once(Object[] credentials, String guard) {
-        return manager().guard(guard).once(credentials);
-    }
-
-    public static boolean validate(Authenticatable user) {
-        return manager().guard().validate(user);
-    }
-
-    public static boolean validate(Authenticatable user, String guard) {
-        return manager().guard(guard).validate(user);
-    }
-
-    public static Guard guard(String name) {
-        return manager().guard(name);
+        return guard(guard).once(credentials);
     }
 
     public static Guard guard() {
-        return manager().guard();
+        return guard(defaultGuard);
     }
 
-    public static void extend(String name, java.util.function.Function<String, Guard> callback) {
-        manager().extend(name, callback);
+    public static Guard guard(String name) {
+        return guards.get(name);
     }
 
-    public static void setUserProvider(UserProvider provider) {
-        manager().setUserProvider(provider);
-    }
-
-    public static UserProvider getUserProvider() {
-        return manager().getUserProvider();
-    }
-
-    public static void setDefaultGuard(String guard) {
-        manager().setDefaultGuard(guard);
-    }
-
-    public static String getDefaultGuard() {
-        return manager().getDefaultGuard();
-    }
 }

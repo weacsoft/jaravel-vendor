@@ -111,23 +111,38 @@ Auth.login(user, "api");
 ### 4. 使用中间件
 
 ```java
-import com.weacsoft.jaravel.auth.middleware.Authenticate;
-import com.weacsoft.jaravel.auth.middleware.Guest;
+
 
 // 需要认证的路由
-router.get("/dashboard", request -> {
-    return ResponseBuilder.json(Auth.user());
-}).middleware(new Authenticate());
+router.get("/dashboard",request ->{
+        return ResponseBuilder.
+
+json(Auth.user());
+        }).
+
+middleware(new Authenticate());
 
 // 需要访客的路由
-router.get("/login", request -> {
-    return ResponseBuilder.view("login", Map.of());
-}).middleware(new Guest());
+        router.
+
+get("/login",request ->{
+        return ResponseBuilder.
+
+view("login",Map.of());
+        }).
+
+middleware(new Guest());
 
 // 使用特定的Guard
-router.get("/api/profile", request -> {
-    return ResponseBuilder.json(Auth.user("api"));
-}).middleware(new Authenticate("api"));
+        router.
+
+get("/api/profile",request ->{
+        return ResponseBuilder.
+
+json(Auth.user("api"));
+        }).
+
+middleware(new Authenticate("api"));
 ```
 
 ## API文档

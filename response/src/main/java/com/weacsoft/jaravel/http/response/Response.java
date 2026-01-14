@@ -8,19 +8,31 @@ import java.util.Map;
 public interface Response {
     int getStatus();
 
-    Map<String, List<String>> getHeaders();
+    Map<String, String> getHeaders();
 
-    void addHeader(String name, String value);
+    Response replaceHeader(String key, String newValue);
 
-    Cookie[] getCookies();
+    Response addHeader(String name, String value);
 
-    void addCookie(Cookie cookie);
+    List<Cookie> getCookies();
 
-    void addCookie(String name, String value);
+    Response addCookie(Cookie cookie);
+
+    default Response addCookie(String name, String value) {
+        return addCookie(new Cookie(name, value));
+    }
+
+    Response replaceCookie(String key, String newValue);
 
     String getContent();
 
     default byte[] getBytes() {
         return null;
     }
+
+
+    default Response replaceCookie(Cookie cookie) {
+        return replaceCookie(cookie.getName(), cookie.getValue());
+    }
+    Response replaceCookieAll(List<Cookie> cookie);
 }

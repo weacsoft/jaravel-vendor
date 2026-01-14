@@ -5,6 +5,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import jakarta.servlet.http.Part;
 import lombok.Getter;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.*;
@@ -12,13 +14,12 @@ import java.util.*;
 
 public class Request {
 
-    private final Map<String, Object> query = new LinkedHashMap<>();
-    private final Map<String, Object> input = new LinkedHashMap<>();
-    private final Map<String, Object> file = new LinkedHashMap<>();
-    private final Map<String, Object> header = new LinkedHashMap<>();
+    private final LinkedMultiValueMap<String, String> query = new LinkedMultiValueMap<>();
+    private final LinkedMultiValueMap<String, String> input = new LinkedMultiValueMap<>();
+    private final LinkedMultiValueMap<String, MultipartFile> file = new LinkedMultiValueMap<>();
+    private final LinkedMultiValueMap<String, String> header = new LinkedMultiValueMap<>();
     private final List<Cookie> cookies = new ArrayList<>();
-    private final List<Cookie> newCookies = new ArrayList<>();
-    private final Map<String, Object> session = new LinkedHashMap<>();
+    private final LinkedMultiValueMap<String, Object> session = new LinkedMultiValueMap<>();
     @Getter
     private HttpServletRequest request;
 
@@ -26,206 +27,145 @@ public class Request {
     public Request() {
     }
 
-    public void addInput(String key, Object newValue) {
-        Object value = input.getOrDefault(key, null);
-        if (value == null) {
-            value = newValue;
-        } else if (value instanceof List) {
-            ((List<Object>) value).add(newValue);
-        } else {
-            value = Arrays.asList(value, newValue);
-        }
-        input.put(key, value);
+    public Request addInput(String key, Object value) {
+        input.add(key, value.toString());
+        return this;
     }
 
-    public void addQuery(String key, Object newValue) {
-        Object value = query.getOrDefault(key, null);
-        if (value == null) {
-            value = newValue;
-        } else if (value instanceof List) {
-            ((List<Object>) value).add(newValue);
-        } else {
-            value = Arrays.asList(value, newValue);
-        }
-        query.put(key, value);
+    public Request addQuery(String key, String value) {
+        query.add(key, value);
+        return this;
     }
 
-    public void addHeader(String key, Object newValue) {
-        Object value = header.getOrDefault(key, null);
-        if (value == null) {
-            value = newValue;
-        } else if (value instanceof List) {
-            ((List<Object>) value).add(newValue);
-        } else {
-            value = Arrays.asList(value, newValue);
-        }
-        header.put(key, value);
+    public Request addHeader(String key, String value) {
+        header.add(key, value);
+        return this;
     }
 
-    public void addFile(String key, MultipartFile newValue) {
-        Object value = file.getOrDefault(key, null);
-        if (value == null) {
-            value = newValue;
-        } else if (value instanceof List) {
-            ((List<MultipartFile>) value).add(newValue);
-        } else {
-            value = Arrays.asList(value, newValue);
-        }
-        file.put(key, value);
+    public Request addFile(String key, MultipartFile value) {
+        file.add(key, value);
+        return this;
     }
 
-    public void addCookie(String key, Object newValue) {
-        Cookie newCookie = new Cookie(key, newValue.toString());
-        cookies.add(newCookie);
-        newCookies.add(newCookie);
+    public Request addCookie(String key, String newValue) {
+        return addCookie(new Cookie(key, newValue));
     }
 
-    public void addCookie(Cookie cookie) {
+    public Request addCookie(Cookie cookie) {
         cookies.add(cookie);
-        newCookies.add(cookie);
+        return this;
     }
 
-    public void addSession(String key, Object newValue) {
-        Object value = session.getOrDefault(key, null);
-        if (value == null) {
-            value = newValue;
-        } else if (value instanceof List) {
-            ((List<Object>) value).add(newValue);
-        } else {
-            value = Arrays.asList(value, newValue);
-        }
-        session.put(key, value);
+    public Request addSession(String key, Object value) {
+        session.add(key, value);
+        request.getSession(true).setAttribute(key, value);
+        return this;
     }
 
-    public void replaceInput(String key, Object newValue) {
-        input.put(key, newValue);
+    public Request replaceInput(String key, Object newValue) {
+        input.set(key, newValue.toString());
+        return this;
     }
 
-    public void replaceQuery(String key, Object newValue) {
-        query.put(key, newValue);
+    public Request replaceQuery(String key, String newValue) {
+        query.set(key, newValue);
+        return this;
     }
 
-    public void replaceHeader(String key, Object newValue) {
-        header.put(key, newValue);
+    public Request replaceHeader(String key, String newValue) {
+        header.set(key, newValue);
+        return this;
     }
 
-    public void replaceFile(String key, Object newValue) {
-        file.put(key, newValue);
+    public Request replaceFile(String key, MultipartFile newValue) {
+        file.set(key, newValue);
+        return this;
     }
 
-    public void replaceCookie(String key, Object newValue) {
-        Cookie newCookie = new Cookie(key, newValue.toString());
+    public Request replaceCookie(String key, String newValue) {
         for (int i = 0; i < cookies.size(); i++) {
             if (cookies.get(i).getName().equals(key)) {
-                cookies.set(i, newCookie);
-                return;
+                cookies.get(i).setValue(newValue);
+                return this;
             }
         }
-        cookies.add(newCookie);
+        return addCookie(key, newValue);
     }
 
-    public void replaceCookie(Cookie cookie) {
+    public Request replaceCookie(Cookie cookie) {
         replaceCookie(cookie.getName(), cookie.getValue());
+        return this;
     }
 
-    public void replaceSession(String key, Object newValue) {
-        session.put(key, newValue);
+    public Request replaceSession(String key, Object newValue) {
+        session.set(key, newValue);
+        request.getSession(true).setAttribute(key, newValue);
+        return this;
     }
 
-    public void removeInput(String key) {
+    public Request removeInput(String key) {
         input.remove(key);
+        return this;
     }
 
-    public void removeQuery(String key) {
+    public Request removeQuery(String key) {
         query.remove(key);
+        return this;
     }
 
-    public void removeHeader(String key) {
+    public Request removeHeader(String key) {
         header.remove(key);
+        return this;
     }
 
-    public void removeFile(String key) {
+    public Request removeFile(String key) {
         file.remove(key);
+        return this;
     }
 
-    public void removeCookie(String key) {
+    public Request removeCookie(String key) {
         cookies.removeIf(cookie -> cookie.getName().equals(key));
+        return this;
     }
 
-    public void removeSession(String key) {
+    public Request removeSession(String key) {
         session.remove(key);
+        return this;
     }
 
-    public Set<String> getNames() {
+    public Set<String> getKeys() {
         Set<String> names = new HashSet<>();
         names.addAll(inputNames());
         names.addAll(queryNames());
         return names;
     }
 
-    public Map<String, Object> get() {
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.putAll(query);
-        result.putAll(input);
-        return result;
-    }
-
     public String get(String key) {
-        return get(key, (String) null);
+        return get(key, "");
     }
 
     public String get(String key, String defaultValue) {
-        String value = get(key, defaultValue.getClass());
-        if (value == null) {
-            if (input.containsKey(key)) {
-                value = input.get(key).toString();
-            }
-            if (query.containsKey(key)) {
-                value = query.get(key).toString();
-            }
-        }
-        return value != null ? value : defaultValue;
-    }
-
-    public <T> T get(String key, T defaultValue) {
-        T value = get(key, (Class<T>) defaultValue.getClass());
-        return value != null ? value : defaultValue;
-    }
-
-    public <T> T get(String key, Class<T> clazz) {
+        String result = defaultValue;
         if (input.containsKey(key)) {
-            Object value = input.get(key);
-            if (value instanceof List) {
-                return (T) ((List<Object>) value).get(0);
-            } else if (clazz.isInstance(value)) {
-                return (T) value;
-            }
+            result = input.getFirst(key);
+        } else if (query.containsKey(key)) {
+            result = query.getFirst(key);
         }
-        if (query.containsKey(key)) {
-            Object value = query.get(key);
-            if (value instanceof List) {
-                return (T) ((List<Object>) value).get(0);
-            } else if (clazz.isInstance(value)) {
-                return (T) value;
-            }
-        }
-        return null;
+        return result;
     }
 
-    public List<Object> gets(String key) {
-        Object value = input.get(key);
-        if (value instanceof List) {
-            return ((List<Object>) value);
+    public List<String> gets(String key) {
+        List<String> result = new ArrayList<>(1);
+        if (input.containsKey(key)) {
+            result = input.get(key);
+        } else if (query.containsKey(key)) {
+            result = query.get(key);
         }
-        value = query.get(key);
-        if (value instanceof List) {
-            return ((List<Object>) value);
-        }
-        return Collections.singletonList(value);
+        return result;
     }
 
-    public Map<String, Object> all() {
-        Map<String, Object> map = new HashMap<>();
+    public MultiValueMap<String, String> all() {
+        MultiValueMap<String, String> map = new LinkedMultiValueMap<>();
         map.putAll(query());
         map.putAll(input());
         return map;
@@ -235,8 +175,8 @@ public class Request {
         return query.keySet();
     }
 
-    public Map<String, Object> query() {
-        return new LinkedHashMap<>(query);
+    public MultiValueMap<String, String> query() {
+        return query.deepCopy();
     }
 
     public String query(String key) {
@@ -244,46 +184,23 @@ public class Request {
     }
 
     public String query(String key, String defaultValue) {
-        String value = query(key, defaultValue.getClass());
-        if (value == null) {
-            if (query.containsKey(key)) {
-                value = query.get(key).toString();
-            }
-        }
-        return value != null ? value : defaultValue;
-    }
-
-    public <T> T query(String key, T defaultValue) {
-        T value = query(key, (Class<T>) defaultValue.getClass());
-        return value != null ? value : defaultValue;
-    }
-
-    public <T> T query(String key, Class<T> clazz) {
+        String result = defaultValue;
         if (query.containsKey(key)) {
-            Object value = query.get(key);
-            if (value instanceof List) {
-                return (T) ((List<Object>) value).get(0);
-            } else if (clazz.isInstance(value)) {
-                return (T) value;
-            }
+            result = query.getFirst(key);
         }
-        return null;
+        return result;
     }
 
-    public List<Object> queries(String key) {
-        Object value = query.get(key);
-        if (value instanceof List) {
-            return ((List<Object>) value);
-        }
-        return Collections.singletonList(value);
+    public List<String> queries(String key) {
+        return query.get(key);
     }
 
     public Set<String> inputNames() {
         return input.keySet();
     }
 
-    public Map<String, Object> input() {
-        return new LinkedHashMap<>(input);
+    public MultiValueMap<String, String> input() {
+        return input.deepCopy();
     }
 
     public String input(String key) {
@@ -291,70 +208,39 @@ public class Request {
     }
 
     public String input(String key, String defaultValue) {
-        String value = input(key, defaultValue.getClass());
-        if (value == null) {
-            if (input.containsKey(key)) {
-                value = input.get(key).toString();
-            }
-        }
-        return value != null ? value : defaultValue;
-    }
-
-    public <T> T input(String key, T defaultValue) {
-        T value = input(key, (Class<T>) defaultValue.getClass());
-        return value != null ? value : defaultValue;
-    }
-
-    public <T> T input(String key, Class<T> clazz) {
+        String result = defaultValue;
         if (input.containsKey(key)) {
-            Object value = input.get(key);
-            if (value instanceof List) {
-                return (T) ((List<Object>) value).get(0);
-            } else if (clazz.isInstance(value)) {
-                return (T) value;
-            }
+            result = input.getFirst(key);
         }
-        return null;
+        return result;
     }
 
-    public List<Object> inputs(String key) {
-        Object value = input.get(key);
-        if (value instanceof List) {
-            return ((List<Object>) value);
-        }
-        return Arrays.asList(value);
+    public List<String> inputs(String key) {
+        return input.get(key);
     }
 
     public Set<String> fileNames() {
         return file.keySet();
     }
 
-    public Map<String, Object> file() {
-        return new LinkedHashMap<>(file);
+    public MultiValueMap<String, MultipartFile> file() {
+        return file.deepCopy();
     }
 
     public MultipartFile file(String key) {
-        Object value = files(key);
-        if (value instanceof List) {
-            return ((List<MultipartFile>) value).get(0);
-        }
-        return (MultipartFile) value;
+        return file.getFirst(key);
     }
 
     public List<MultipartFile> files(String key) {
-        Object value = file.get(key);
-        if (value instanceof List) {
-            return (List<MultipartFile>) value;
-        }
-        return Arrays.asList((MultipartFile) value);
+        return file.get(key);
     }
 
     public Set<String> headerNames() {
         return header.keySet();
     }
 
-    public Map<String, Object> header() {
-        return new LinkedHashMap<>(header);
+    public MultiValueMap<String, String> header() {
+        return header.deepCopy();
     }
 
     public String header(String key) {
@@ -362,38 +248,15 @@ public class Request {
     }
 
     public String header(String key, String defaultValue) {
-        String value = header(key, defaultValue.getClass());
-        if (value == null) {
-            if (header.containsKey(key)) {
-                value = header.get(key).toString();
-            }
-        }
-        return value != null ? value : defaultValue;
-    }
-
-    public <T> T header(String key, T defaultValue) {
-        T value = header(key, (Class<T>) defaultValue.getClass());
-        return value != null ? value : defaultValue;
-    }
-
-    public <T> T header(String key, Class<T> clazz) {
+        String result = defaultValue;
         if (header.containsKey(key)) {
-            Object value = header.get(key);
-            if (value instanceof List) {
-                return (T) ((List<Object>) value).get(0);
-            } else if (clazz.isInstance(value)) {
-                return (T) value;
-            }
+            result = header.getFirst(key);
         }
-        return null;
+        return result;
     }
 
-    public List<Object> headers(String key) {
-        Object value = header.get(key);
-        if (value instanceof List) {
-            return ((List<Object>) value);
-        }
-        return Collections.singletonList(value);
+    public List<String> headers(String key) {
+        return header.get(key);
     }
 
     public Set<String> cookieNames() {
@@ -404,23 +267,10 @@ public class Request {
         return names;
     }
 
-    public Map<String, Object> cookie() {
-        Map<String, Object> cookieMap = new LinkedHashMap<>();
+    public MultiValueMap<String, String> cookie() {
+        MultiValueMap<String, String> cookieMap = new LinkedMultiValueMap<>();
         for (Cookie cookie : cookies) {
-            String name = cookie.getName();
-            if (cookieMap.containsKey(name)) {
-                Object existing = cookieMap.get(name);
-                if (existing instanceof List) {
-                    ((List<Object>) existing).add(cookie.getValue());
-                } else {
-                    List<Object> values = new ArrayList<>();
-                    values.add(existing);
-                    values.add(cookie.getValue());
-                    cookieMap.put(name, values);
-                }
-            } else {
-                cookieMap.put(name, cookie.getValue());
-            }
+            cookieMap.add(cookie.getName(), cookie.getValue());
         }
         return cookieMap;
     }
@@ -438,22 +288,6 @@ public class Request {
         return defaultValue;
     }
 
-    public <T> T cookie(String key, T defaultValue) {
-        T value = cookie(key, (Class<T>) defaultValue.getClass());
-        return value != null ? value : defaultValue;
-    }
-
-    public <T> T cookie(String key, Class<T> clazz) {
-        for (Cookie cookie : cookies) {
-            if (cookie.getName().equals(key)) {
-                if (clazz == String.class) {
-                    return (T) cookie.getValue();
-                }
-            }
-        }
-        return null;
-    }
-
     public List<String> cookies(String key) {
         List<String> values = new ArrayList<>();
         for (Cookie cookie : cookies) {
@@ -464,59 +298,37 @@ public class Request {
         return values;
     }
 
-    public Cookie[] getCookieObjects() {
-        return cookies.toArray(new Cookie[0]);
-    }
-
-    public Cookie[] getNewCookies() {
-        return newCookies.toArray(new Cookie[0]);
-    }
-
     public Set<String> sessionNames() {
         return session.keySet();
     }
 
-    public Map<String, Object> session() {
-        return new LinkedHashMap<>(session);
+    public MultiValueMap<String, Object> session() {
+        return session.deepCopy();
     }
 
     public String session(String key) {
         return session(key, "");
     }
 
+    public Object objectSession(String key) {
+        return session(key, (Object) null);
+    }
+
     public String session(String key, String defaultValue) {
-        String value = session(key, defaultValue.getClass());
-        if (value == null) {
-            if (session.containsKey(key)) {
-                value = session.get(key).toString();
-            }
-        }
-        return value != null ? value : defaultValue;
+        return session(key, (Object) defaultValue).toString();
     }
 
-    public <T> T session(String key, T defaultValue) {
-        T value = session(key, (Class<T>) defaultValue.getClass());
-        return value != null ? value : defaultValue;
-    }
-
-    public <T> T session(String key, Class<T> clazz) {
+    public Object session(String key, Object defaultValue) {
+        Object value = defaultValue;
         if (session.containsKey(key)) {
-            Object value = session.get(key);
-            if (value instanceof List) {
-                return (T) ((List<Object>) value).get(0);
-            } else if (clazz.isInstance(value)) {
-                return (T) value;
-            }
+            value = session.getFirst(key);
         }
-        return null;
+        return value;
     }
+
 
     public List<Object> sessions(String key) {
-        Object value = session.get(key);
-        if (value instanceof List) {
-            return ((List<Object>) value);
-        }
-        return Collections.singletonList(value);
+        return session.get(key);
     }
 
     public boolean has(String key) {

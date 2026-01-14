@@ -1,6 +1,8 @@
-package com.weacsoft.jaravel.auth;
+package com.weacsoft.jaravel.auth.provider;
 
-public interface UserProvider {
+import com.weacsoft.jaravel.auth.Authenticatable;
+
+public interface AuthenticatableProvider {
 
     Authenticatable retrieveById(Object identifier);
 

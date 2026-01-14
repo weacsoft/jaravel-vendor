@@ -58,8 +58,9 @@ public class SpringBootRouteAutoConfiguration {
     private ServerResponse createResponse(Response response, Request request) {
         ServerResponse.BodyBuilder builder = ServerResponse.status(response.getStatus());
         response.getHeaders().forEach((key, value) -> {
-            builder.header(key, value.toArray(new String[0]));
+            builder.header(key, value);
         });
+        response.getCookies();
 
         return builder.body(response.getContent());
     }

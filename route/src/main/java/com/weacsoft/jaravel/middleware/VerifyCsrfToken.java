@@ -2,6 +2,7 @@ package com.weacsoft.jaravel.middleware;
 
 import com.weacsoft.jaravel.http.request.Request;
 import com.weacsoft.jaravel.http.response.Response;
+import jakarta.servlet.http.Cookie;
 
 import java.security.SecureRandom;
 import java.util.Arrays;
@@ -15,7 +16,7 @@ public class VerifyCsrfToken implements Middleware {
     protected static final String CSRF_TOKEN_INPUT_NAME = "_token";
     protected static final String CSRF_SESSION_KEY = "csrf_token";
 
-    protected static final List<String> SAFE_METHODS = Arrays.asList("GET", "HEAD", "OPTIONS", "TRACE");
+    public static final List<String> SAFE_METHODS = Arrays.asList("GET", "HEAD", "OPTIONS", "TRACE");
 
     protected String[] except = new String[0];
 
@@ -45,7 +46,7 @@ public class VerifyCsrfToken implements Middleware {
         return SAFE_METHODS.contains(method);
     }
 
-    protected boolean isExcluded(Request request) {
+    public boolean isExcluded(Request request) {
         String uri = request.getRequest().getRequestURI();
         return Arrays.asList(except).contains(uri);
     }
@@ -65,16 +66,16 @@ public class VerifyCsrfToken implements Middleware {
     }
 
     protected String getSessionToken(Request request) {
-        Object token = request.getRequest().getSession().getAttribute(CSRF_SESSION_KEY);
+        String token = request.session(CSRF_SESSION_KEY);
         if (token == null) {
             token = generateToken();
-            request.getRequest().getSession().setAttribute(CSRF_SESSION_KEY, token);
+            request.replaceSession(CSRF_SESSION_KEY, token);
         }
-        return (String) token;
+        return token;
     }
 
     protected String getRequestToken(Request request) {
-        String token = request.getRequest().getHeader(CSRF_TOKEN_HEADER_NAME);
+        String token = request.header(CSRF_TOKEN_HEADER_NAME);
         if (token != null && !token.isEmpty()) {
             return token;
         }
@@ -84,22 +85,17 @@ public class VerifyCsrfToken implements Middleware {
             return token;
         }
 
-        jakarta.servlet.http.Cookie[] cookies = request.getCookieObjects();
-        if (cookies != null) {
-            for (jakarta.servlet.http.Cookie cookie : cookies) {
-                if (CSRF_TOKEN_COOKIE_NAME.equals(cookie.getName())) {
-                    return cookie.getValue();
-                }
-            }
+        token = request.cookie(CSRF_TOKEN_COOKIE_NAME);
+        if(token != null && !token.isEmpty()) {
+            return token;
         }
-
         return null;
     }
 
     protected void addCsrfTokenCookie(Request request, Response response) {
         String token = getSessionToken(request);
 
-        jakarta.servlet.http.Cookie cookie = new jakarta.servlet.http.Cookie(CSRF_TOKEN_COOKIE_NAME, token);
+        Cookie cookie = new Cookie(CSRF_TOKEN_COOKIE_NAME, token);
         cookie.setHttpOnly(false);
         cookie.setPath("/");
         cookie.setSecure(request.getRequest().isSecure());

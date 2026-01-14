@@ -9,6 +9,8 @@ import org.springframework.web.context.request.NativeWebRequest;
 import org.springframework.web.method.support.HandlerMethodReturnValueHandler;
 import org.springframework.web.method.support.ModelAndViewContainer;
 
+import java.util.List;
+
 public class ResponseReturnValueHandler implements HandlerMethodReturnValueHandler {
     @Override
     public boolean supportsReturnType(MethodParameter returnType) {
@@ -29,14 +31,10 @@ public class ResponseReturnValueHandler implements HandlerMethodReturnValueHandl
         if (response != null) {
             response.setStatus(jaravelResponse.getStatus());
 
-            jaravelResponse.getHeaders().forEach((key, values) -> {
-                for (String value : values) {
-                    response.addHeader(key, value);
-                }
-            });
+            jaravelResponse.getHeaders().forEach(response::setHeader);
 
-            Cookie[] cookies = jaravelResponse.getCookies();
-            if (cookies != null && cookies.length > 0) {
+            List<Cookie> cookies = jaravelResponse.getCookies();
+            if (cookies != null && !cookies.isEmpty()) {
                 for (Cookie cookie : cookies) {
                     jakarta.servlet.http.Cookie servletCookie = new jakarta.servlet.http.Cookie(cookie.getName(), cookie.getValue());
                     servletCookie.setPath(cookie.getPath());

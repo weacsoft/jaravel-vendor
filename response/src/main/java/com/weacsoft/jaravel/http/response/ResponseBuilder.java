@@ -125,7 +125,7 @@ public class ResponseBuilder {
     }
 
     public static Response unauthorized(String message) {
-        throw new RuntimeException("401: Unauthorized "+message);
+        throw new RuntimeException("401: Unauthorized " + message);
 //        return new AbstractResponse() {
 //            {
 //                addHeader("Content-Type", "application/json; charset=utf-8");
@@ -168,32 +168,53 @@ public class ResponseBuilder {
     }
 
     private static abstract class AbstractResponse implements Response {
-        protected final Map<String, List<String>> headers = new HashMap<>();
+        protected final Map<String, String> headers = new HashMap<>();
         protected final List<Cookie> cookies = new ArrayList<>();
 
         @Override
-        public Map<String, List<String>> getHeaders() {
+        public Map<String, String> getHeaders() {
             return new HashMap<>(headers);
         }
 
         @Override
-        public void addHeader(String name, String value) {
-            headers.computeIfAbsent(name, k -> new ArrayList<>()).add(value);
+        public AbstractResponse addHeader(String name, String value) {
+            headers.put(name, value);
+            return this;
         }
 
         @Override
-        public Cookie[] getCookies() {
-            return cookies.toArray(new Cookie[0]);
+        public AbstractResponse replaceHeader(String name, String value) {
+            headers.put(name, value);
+            return this;
         }
 
         @Override
-        public void addCookie(Cookie cookie) {
+        public List<Cookie> getCookies() {
+            return new ArrayList<>(cookies);
+        }
+
+        @Override
+        public AbstractResponse addCookie(Cookie cookie) {
             cookies.add(cookie);
+            return this;
         }
 
         @Override
-        public void addCookie(String name, String value) {
-            cookies.add(new Cookie(name, value));
+        public AbstractResponse replaceCookie(String name, String value) {
+            for (int i = 0; i < cookies.size(); i++) {
+                if (cookies.get(i).getName().equals(name)) {
+                    cookies.get(i).setValue(value);
+                    return this;
+                }
+            }
+            return (AbstractResponse) this.addCookie(name, value);
+        }
+
+        @Override
+        public Response replaceCookieAll(List<Cookie> cookie) {
+            cookies.clear();
+            cookie.addAll(cookies);
+            return this;
         }
     }
 }

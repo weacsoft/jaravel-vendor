@@ -2,6 +2,7 @@ package com.weacsoft.jaravel.middleware;
 
 import com.weacsoft.jaravel.http.request.Request;
 import com.weacsoft.jaravel.http.response.Response;
+import jakarta.servlet.http.Cookie;
 
 import javax.crypto.Cipher;
 import javax.crypto.spec.IvParameterSpec;
@@ -9,6 +10,7 @@ import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.List;
 
 public class EncryptCookies implements Middleware {
 
@@ -35,81 +37,68 @@ public class EncryptCookies implements Middleware {
     }
 
     protected void decryptCookies(Request request) {
-        jakarta.servlet.http.Cookie[] cookies = request.getCookieObjects();
-        if (cookies == null) {
-            return;
-        }
-
-        for (jakarta.servlet.http.Cookie cookie : cookies) {
-            if (!isExcluded(cookie.getName())) {
-                try {
-                    String decryptedValue = decrypt(cookie.getValue());
-                    request.replaceCookie(cookie.getName(), decryptedValue);
-                } catch (Exception e) {
-                    // If decryption fails, keep the original value
-                }
+        request.cookieNames().forEach(cookieName -> {
+            if (!isExcluded(cookieName)) {
+                request.cookies(cookieName).replaceAll(this::decrypt);
             }
-        }
+        });
     }
 
     protected void encryptCookies(Response response) {
-        jakarta.servlet.http.Cookie[] cookies = response.getCookies();
-        if (cookies == null) {
+        List<Cookie> cookies = response.getCookies();
+        if (cookies == null || cookies.isEmpty()) {
             return;
         }
-
-        for (jakarta.servlet.http.Cookie cookie : cookies) {
+        for (Cookie cookie : cookies) {
             if (!isExcluded(cookie.getName())) {
-                try {
-                    String encryptedValue = encrypt(cookie.getValue());
-                    jakarta.servlet.http.Cookie newCookie = new jakarta.servlet.http.Cookie(cookie.getName(), encryptedValue);
-                    newCookie.setPath(cookie.getPath());
-                    newCookie.setDomain(cookie.getDomain());
-                    newCookie.setMaxAge(cookie.getMaxAge());
-                    newCookie.setSecure(cookie.getSecure());
-                    newCookie.setHttpOnly(cookie.isHttpOnly());
-                    response.addCookie(newCookie);
-                } catch (Exception e) {
-                    // If encryption fails, keep the original value
-                }
+                cookie.setValue(encrypt(cookie.getValue()));
             }
+        }
+        response.replaceCookieAll(cookies);
+    }
+
+    protected String encrypt(String value) {
+        try {
+            SecretKeySpec keySpec = generateKey();
+            IvParameterSpec ivSpec = generateIv();
+
+            Cipher cipher = Cipher.getInstance(ALGORITHM);
+            cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec);
+
+            byte[] encrypted = cipher.doFinal(value.getBytes(StandardCharsets.UTF_8));
+            byte[] iv = ivSpec.getIV();
+
+            byte[] combined = new byte[iv.length + encrypted.length];
+            System.arraycopy(iv, 0, combined, 0, iv.length);
+            System.arraycopy(encrypted, 0, combined, iv.length, encrypted.length);
+
+            return Base64.getEncoder().encodeToString(combined);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 
-    protected String encrypt(String value) throws Exception {
-        SecretKeySpec keySpec = generateKey();
-        IvParameterSpec ivSpec = generateIv();
+    protected String decrypt(String encryptedValue) {
+        try {
+            byte[] combined = Base64.getDecoder().decode(encryptedValue);
 
-        Cipher cipher = Cipher.getInstance(ALGORITHM);
-        cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec);
+            byte[] iv = new byte[16];
+            byte[] encrypted = new byte[combined.length - 16];
 
-        byte[] encrypted = cipher.doFinal(value.getBytes(StandardCharsets.UTF_8));
-        byte[] iv = ivSpec.getIV();
+            System.arraycopy(combined, 0, iv, 0, iv.length);
+            System.arraycopy(combined, iv.length, encrypted, 0, encrypted.length);
 
-        byte[] combined = new byte[iv.length + encrypted.length];
-        System.arraycopy(iv, 0, combined, 0, iv.length);
-        System.arraycopy(encrypted, 0, combined, iv.length, encrypted.length);
+            SecretKeySpec keySpec = generateKey();
+            IvParameterSpec ivSpec = new IvParameterSpec(iv);
 
-        return Base64.getEncoder().encodeToString(combined);
-    }
+            Cipher cipher = Cipher.getInstance(ALGORITHM);
+            cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
 
-    protected String decrypt(String encryptedValue) throws Exception {
-        byte[] combined = Base64.getDecoder().decode(encryptedValue);
-
-        byte[] iv = new byte[16];
-        byte[] encrypted = new byte[combined.length - 16];
-
-        System.arraycopy(combined, 0, iv, 0, iv.length);
-        System.arraycopy(combined, iv.length, encrypted, 0, encrypted.length);
-
-        SecretKeySpec keySpec = generateKey();
-        IvParameterSpec ivSpec = new IvParameterSpec(iv);
-
-        Cipher cipher = Cipher.getInstance(ALGORITHM);
-        cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
-
-        byte[] decrypted = cipher.doFinal(encrypted);
-        return new String(decrypted, StandardCharsets.UTF_8);
+            byte[] decrypted = cipher.doFinal(encrypted);
+            return new String(decrypted, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     protected SecretKeySpec generateKey() {

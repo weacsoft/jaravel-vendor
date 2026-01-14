@@ -12,6 +12,8 @@ import org.springframework.http.server.ServletServerHttpResponse;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
 
+import java.util.List;
+
 @ControllerAdvice
 public class SpringBootResponseMVCResolver implements ResponseBodyAdvice<Object> {
     @Override
@@ -23,13 +25,13 @@ public class SpringBootResponseMVCResolver implements ResponseBodyAdvice<Object>
     public Object beforeBodyWrite(Object body, MethodParameter returnType, MediaType selectedContentType, Class<? extends HttpMessageConverter<?>> selectedConverterType, ServerHttpRequest request, ServerHttpResponse response) {
         if (body instanceof Response) {
             Response jaravelResponse = (Response) body;
-
-            jaravelResponse.getHeaders().forEach((key, value) -> response.getHeaders().addAll(key, value));
+            ;
+            jaravelResponse.getHeaders().forEach((key, value) -> response.getHeaders().add(key, value));
 
             if (response instanceof ServletServerHttpResponse) {
                 ServletServerHttpResponse servletResponse = (ServletServerHttpResponse) response;
-                Cookie[] cookies = jaravelResponse.getCookies();
-                if (cookies != null && cookies.length > 0) {
+                List<Cookie> cookies = jaravelResponse.getCookies();
+                if (cookies != null && !cookies.isEmpty()) {
                     for (Cookie cookie : cookies) {
                         servletResponse.getServletResponse().addCookie(cookie);
                     }
