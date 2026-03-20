@@ -3,6 +3,10 @@
   <component name="Encoding">
     <file url="file://$PROJECT_DIR$/artisan/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/artisan/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/auth-driver-session/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/auth-driver-session/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/auth-provider-database/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/auth-provider-database/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/auth/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/auth/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/cache/src/main/java" charset="UTF-8" />
