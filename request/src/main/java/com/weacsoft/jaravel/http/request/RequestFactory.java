@@ -1,6 +1,7 @@
 package com.weacsoft.jaravel.http.request;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.weacsoft.jaravel.contract.http.Request;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.MediaType;
@@ -24,13 +25,13 @@ import java.util.stream.Collectors;
 public class RequestFactory {
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
-    private static final ThreadLocal<Request> currentRequest = new ThreadLocal<>();
+    private static final ThreadLocal<HttpRequest> currentRequest = new ThreadLocal<>();
 
-    public static Request getCurrentRequest() {
+    public static HttpRequest getCurrentRequest() {
         return currentRequest.get();
     }
 
-    public static void setCurrentRequest(Request request) {
+    public static void setCurrentRequest(HttpRequest request) {
         currentRequest.set(request);
     }
 
@@ -38,8 +39,8 @@ public class RequestFactory {
         currentRequest.remove();
     }
 
-    public static Request buildFromHttpServletRequest(HttpServletRequest baseRequest) {
-        Request request = new Request();
+    public static HttpRequest buildFromHttpServletRequest(HttpServletRequest baseRequest) {
+        HttpRequest request = new HttpRequest();
         if (baseRequest != null) {
             request.setRequest(baseRequest);
             setCurrentRequest(request);
@@ -68,7 +69,7 @@ public class RequestFactory {
         return request;
     }
 
-    private static void handleMultipartRequest(HttpServletRequest baseRequest, Request request) {
+    private static void handleMultipartRequest(HttpServletRequest baseRequest, HttpRequest request) {
         try {
             MultipartHttpServletRequest multipartRequest;
             if (baseRequest instanceof StandardMultipartHttpServletRequest) {
@@ -97,7 +98,7 @@ public class RequestFactory {
         }
     }
 
-    private static void handleJsonRequest(HttpServletRequest baseRequest, Request request) {
+    private static void handleJsonRequest(HttpServletRequest baseRequest, HttpRequest request) {
         try {
             String body = baseRequest.getReader()
                     .lines()
@@ -111,9 +112,9 @@ public class RequestFactory {
         }
     }
 
-    public static Request buildFromServerRequest(ServerRequest baseRequest) {
+    public static HttpRequest buildFromServerRequest(ServerRequest baseRequest) {
         MediaType contentType = baseRequest.headers().contentType().orElse(null);
-        Request request = new Request();
+        HttpRequest request = new HttpRequest();
         request.setRequest(baseRequest.servletRequest());
         setCurrentRequest(request);
         UriComponentsBuilder.fromUri(baseRequest.uri())
@@ -137,33 +138,27 @@ public class RequestFactory {
         return request;
     }
 
-    private static void handleMultipartRequest(ServerRequest base, Request request) {
+    private static void handleMultipartRequest(ServerRequest base, HttpRequest request) {
         try {
             base.multipartData().forEach((name, parts) -> parts.forEach(part -> {
                 if (part.getContentType() == null ||
                         !part.getContentType().startsWith("application/") &&
                                 !part.getContentType().startsWith("image/") &&
                                 !part.getContentType().startsWith("file/")) {
-                    // try-with-resources 自动关闭流，避免资源泄漏
                     byte[] buffer = new byte[4096];
                     int bytesRead;
                     try (InputStream inputStream = part.getInputStream();
                          ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
-
-                        // 循环读取字节到缓冲区，直到流末尾（-1）
                         while ((bytesRead = inputStream.read(buffer)) != -1) {
                             outputStream.write(buffer, 0, bytesRead);
                         }
-
-                        // 转为字节数组（等价于 readAllBytes()）
                         byte[] allBytes = outputStream.toByteArray();
                         request.addInput(part.getName(), new String(allBytes));
-                        // 后续业务逻辑...
                     } catch (IOException e) {
                         throw new RuntimeException("读取输入流失败", e);
                     }
                 } else {
-                    MultipartFile multipartFile = new Request.FluxMultipartFile(part.getName(), part);
+                    MultipartFile multipartFile = new HttpRequest.FluxMultipartFile(part.getName(), part);
                     request.addFile(part.getName(), multipartFile);
                 }
             }));
@@ -172,7 +167,7 @@ public class RequestFactory {
         }
     }
 
-    private static void handleFormUrlEncodedRequest(Request request) {
+    private static void handleFormUrlEncodedRequest(HttpRequest request) {
         try {
             generateUrlencode(request);
         } catch (IOException e) {
@@ -180,7 +175,7 @@ public class RequestFactory {
         }
     }
 
-    private static void generateUrlencode(Request request) throws IOException {
+    private static void generateUrlencode(HttpRequest request) throws IOException {
         HttpServletRequest httpServletRequest = request.getRequest();
         if (httpServletRequest != null) {
             BufferedReader reader = httpServletRequest.getReader();
@@ -218,7 +213,7 @@ public class RequestFactory {
         }
     }
 
-    private static void handleJsonRequest(ServerRequest base, Request request) {
+    private static void handleJsonRequest(ServerRequest base, HttpRequest request) {
         String body = null;
         try {
             body = base.body(String.class);

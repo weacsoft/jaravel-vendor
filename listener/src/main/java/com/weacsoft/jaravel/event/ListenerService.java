@@ -1,5 +1,9 @@
 package com.weacsoft.jaravel.event;
 
+import com.weacsoft.jaravel.contract.event.Dispatcher;
+import com.weacsoft.jaravel.contract.event.Event;
+import com.weacsoft.jaravel.contract.event.Listener;
+
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -7,7 +11,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-public class ListenerService {
+public class ListenerService implements Dispatcher {
     private static ListenerService instance;
 
     private final Map<Class<? extends Event>, List<Listener<? extends Event>>> listeners;
@@ -31,6 +35,7 @@ public class ListenerService {
         return instance;
     }
 
+    @Override
     public <T extends Event> void listen(Class<T> eventClass, Listener<T> listener) {
         listeners.computeIfAbsent(eventClass, k -> new CopyOnWriteArrayList<>()).add(listener);
     }
@@ -40,6 +45,7 @@ public class ListenerService {
         eventListeners.add(priority, listener);
     }
 
+    @Override
     public void dispatch(Event event) {
         if (event == null) {
             return;
@@ -105,10 +111,12 @@ public class ListenerService {
         }
     }
 
+    @Override
     public void clearListeners(Class<? extends Event> eventClass) {
         listeners.remove(eventClass);
     }
 
+    @Override
     public void clearAllListeners() {
         listeners.clear();
     }

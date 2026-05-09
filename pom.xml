@@ -19,6 +19,7 @@
         <module>artisan</module>
         <module>jwt</module>
         <module>cache</module>
+        <module>interface</module>
     </modules>
     <properties>
         <java.version>1.8</java.version>

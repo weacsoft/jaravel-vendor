@@ -1,5 +1,7 @@
 package com.weacsoft.jaravel.jwt;
 
+import com.weacsoft.jaravel.contract.auth.TokenDriver;
+
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jwts;
@@ -11,9 +13,10 @@ import io.jsonwebtoken.security.SignatureException;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Map;
 
-public class JwtService {
+public class JwtService implements TokenDriver {
 
     private final JwtConfig config;
 
@@ -37,12 +40,35 @@ public class JwtService {
         this.signingKey = Keys.hmacShaKeyFor(config.getSecret().getBytes(StandardCharsets.UTF_8));
     }
 
-    public String generateToken(String subject) {
+    @Override
+    public String generate(String subject) {
         return generateToken(subject, config.getAccessTokenTtl(), "access");
     }
 
-    public String generateToken(String subject, long ttl) {
+    @Override
+    public String generate(String subject, long ttl) {
         return generateToken(subject, ttl, "access");
+    }
+
+    @Override
+    public String generate(String subject, Map<String, Object> claims, long ttl) {
+        Date now = new Date();
+        Date expiryDate = new Date(now.getTime() + ttl);
+
+        JwtPayload payload = new JwtPayload(subject);
+        payload.setType("access");
+        payload.setIssuedAt(now);
+        payload.setExpiresAt(expiryDate);
+        payload.setIssuer(config.getIssuer());
+        payload.setAudience(config.getAudience());
+
+        if (claims != null) {
+            for (Map.Entry<String, Object> entry : claims.entrySet()) {
+                payload.addClaim(entry.getKey(), entry.getValue());
+            }
+        }
+
+        return generateTokenFromPayload(payload);
     }
 
     public String generateToken(String subject, long ttl, String type) {
@@ -127,7 +153,8 @@ public class JwtService {
         }
     }
 
-    public boolean validateToken(String token) {
+    @Override
+    public boolean validate(String token) {
         try {
             parseToken(token);
             return true;
@@ -136,21 +163,23 @@ public class JwtService {
         }
     }
 
-    public String refreshToken(String refreshToken) {
+    @Override
+    public String refresh(String refreshToken) {
         JwtPayload payload = parseToken(refreshToken);
         if (!"refresh".equals(payload.getType())) {
             throw new JwtInvalidException("Invalid refresh token");
         }
 
         String subject = payload.getSubject();
-        return generateToken(subject);
+        return generate(subject);
     }
 
     public String refreshAccessToken(String refreshToken) {
-        return refreshToken(refreshToken);
+        return refresh(refreshToken);
     }
 
-    public void invalidateToken(String token) {
+    @Override
+    public void invalidate(String token) {
         if (!config.isBlacklistEnabled()) {
             throw new JwtException("Blacklist is disabled");
         }
@@ -175,9 +204,26 @@ public class JwtService {
         throw new JwtException("invalidateAllTokens not implemented - requires token storage");
     }
 
-    public String extractSubject(String token) {
+    @Override
+    public String getSubject(String token) {
         JwtPayload payload = parseToken(token);
         return payload.getSubject();
+    }
+
+    @Override
+    public Map<String, Object> getClaims(String token) {
+        try {
+            JwtPayload payload = parseToken(token);
+            Map<String, Object> result = new HashMap<>();
+            if (payload.getClaims() != null) {
+                result.putAll(payload.getClaims());
+            }
+            result.put("sub", payload.getSubject());
+            result.put("type", payload.getType());
+            return result;
+        } catch (JwtException e) {
+            return new HashMap<>();
+        }
     }
 
     public Date extractExpiration(String token) {
@@ -185,7 +231,8 @@ public class JwtService {
         return payload.getExpiresAt();
     }
 
-    public boolean isTokenExpired(String token) {
+    @Override
+    public boolean isExpired(String token) {
         try {
             Date expiration = extractExpiration(token);
             return expiration.before(new Date());
@@ -249,7 +296,7 @@ public class JwtService {
                     .expired(true);
 
             if (generateNewToken && "access".equals(payload.getType())) {
-                String newToken = generateToken(payload.getSubject());
+                String newToken = generate(payload.getSubject());
                 builder.newToken(newToken);
 
                 if (config.isBlacklistEnabled()) {

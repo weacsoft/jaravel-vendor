@@ -1,6 +1,7 @@
 package com.weacsoft.jaravel.springboot;
 
-import com.weacsoft.jaravel.http.request.Request;
+import com.weacsoft.jaravel.contract.http.Request;
+import com.weacsoft.jaravel.http.request.HttpRequest;
 import com.weacsoft.jaravel.http.request.RequestFactory;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.core.MethodParameter;
@@ -14,7 +15,7 @@ import org.springframework.web.method.support.ModelAndViewContainer;
 public class SpringBootRequestMVCResolver implements HandlerMethodArgumentResolver {
     @Override
     public boolean supportsParameter(MethodParameter parameter) {
-        return parameter.getParameterType().equals(Request.class);
+        return Request.class.isAssignableFrom(parameter.getParameterType());
     }
 
     @Override
@@ -22,7 +23,7 @@ public class SpringBootRequestMVCResolver implements HandlerMethodArgumentResolv
                                   ModelAndViewContainer mavContainer,
                                   NativeWebRequest webRequest,
                                   WebDataBinderFactory binderFactory) {
-        Request request = RequestFactory.buildFromHttpServletRequest((HttpServletRequest) webRequest.getNativeRequest());
+        HttpRequest request = RequestFactory.buildFromHttpServletRequest((HttpServletRequest) webRequest.getNativeRequest());
         return request;
     }
 }

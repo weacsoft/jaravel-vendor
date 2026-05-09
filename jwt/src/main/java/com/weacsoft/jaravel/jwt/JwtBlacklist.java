@@ -1,7 +1,7 @@
 package com.weacsoft.jaravel.jwt;
 
 import com.weacsoft.jaravel.cache.Cache;
-import com.weacsoft.jaravel.cache.CacheStore;
+import com.weacsoft.jaravel.contract.cache.CacheStore;
 
 import java.util.Date;
 import java.util.UUID;

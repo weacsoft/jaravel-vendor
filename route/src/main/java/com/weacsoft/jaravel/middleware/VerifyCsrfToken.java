@@ -1,8 +1,11 @@
 package com.weacsoft.jaravel.middleware;
 
-import com.weacsoft.jaravel.http.request.Request;
-import com.weacsoft.jaravel.http.response.Response;
-import jakarta.servlet.http.Cookie;
+import com.weacsoft.jaravel.contract.http.Cookie;
+import com.weacsoft.jaravel.contract.http.Middleware;
+import com.weacsoft.jaravel.contract.http.Request;
+import com.weacsoft.jaravel.contract.http.Response;
+import com.weacsoft.jaravel.contract.http.SimpleCookie;
+import com.weacsoft.jaravel.http.request.HttpRequest;
 
 import java.security.SecureRandom;
 import java.util.Arrays;
@@ -25,7 +28,7 @@ public class VerifyCsrfToken implements Middleware {
 
     @Override
     public Response handle(Request request, NextFunction next) {
-        String method = request.getRequest().getMethod();
+        String method = getHttpMethod(request);
 
         if (isSafeMethod(method) || isExcluded(request)) {
             Response response = next.apply(request);
@@ -42,13 +45,23 @@ public class VerifyCsrfToken implements Middleware {
         return response;
     }
 
+    protected String getHttpMethod(Request request) {
+        if (request instanceof HttpRequest) {
+            return ((HttpRequest) request).getRequest().getMethod();
+        }
+        return "GET";
+    }
+
     protected boolean isSafeMethod(String method) {
         return SAFE_METHODS.contains(method);
     }
 
     public boolean isExcluded(Request request) {
-        String uri = request.getRequest().getRequestURI();
-        return Arrays.asList(except).contains(uri);
+        if (request instanceof HttpRequest) {
+            String uri = ((HttpRequest) request).getRequest().getRequestURI();
+            return Arrays.asList(except).contains(uri);
+        }
+        return false;
     }
 
     protected boolean verifyCsrfToken(Request request) {
@@ -66,10 +79,12 @@ public class VerifyCsrfToken implements Middleware {
     }
 
     protected String getSessionToken(Request request) {
-        String token = request.session(CSRF_SESSION_KEY);
+        String token = (String) request.session(CSRF_SESSION_KEY);
         if (token == null) {
             token = generateToken();
-            request.replaceSession(CSRF_SESSION_KEY, token);
+            if (request instanceof HttpRequest) {
+                ((HttpRequest) request).replaceSession(CSRF_SESSION_KEY, token);
+            }
         }
         return token;
     }
@@ -86,7 +101,7 @@ public class VerifyCsrfToken implements Middleware {
         }
 
         token = request.cookie(CSRF_TOKEN_COOKIE_NAME);
-        if(token != null && !token.isEmpty()) {
+        if (token != null && !token.isEmpty()) {
             return token;
         }
         return null;
@@ -95,13 +110,20 @@ public class VerifyCsrfToken implements Middleware {
     protected void addCsrfTokenCookie(Request request, Response response) {
         String token = getSessionToken(request);
 
-        Cookie cookie = new Cookie(CSRF_TOKEN_COOKIE_NAME, token);
+        SimpleCookie cookie = new SimpleCookie(CSRF_TOKEN_COOKIE_NAME, token);
         cookie.setHttpOnly(false);
         cookie.setPath("/");
-        cookie.setSecure(request.getRequest().isSecure());
+        cookie.setSecure(isSecureRequest(request));
         cookie.setMaxAge(7200);
 
         response.addCookie(cookie);
+    }
+
+    protected boolean isSecureRequest(Request request) {
+        if (request instanceof HttpRequest) {
+            return ((HttpRequest) request).getRequest().isSecure();
+        }
+        return false;
     }
 
     protected String generateToken() {

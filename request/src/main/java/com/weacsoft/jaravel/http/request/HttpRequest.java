@@ -1,6 +1,6 @@
 package com.weacsoft.jaravel.http.request;
 
-import jakarta.servlet.http.Cookie;
+import com.weacsoft.jaravel.contract.http.Request;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import jakarta.servlet.http.Part;
@@ -12,123 +12,122 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.*;
 import java.util.*;
 
-public class Request {
+public class HttpRequest implements Request {
 
     private final LinkedMultiValueMap<String, String> query = new LinkedMultiValueMap<>();
     private final LinkedMultiValueMap<String, String> input = new LinkedMultiValueMap<>();
     private final LinkedMultiValueMap<String, MultipartFile> file = new LinkedMultiValueMap<>();
     private final LinkedMultiValueMap<String, String> header = new LinkedMultiValueMap<>();
-    private final List<Cookie> cookies = new ArrayList<>();
+    private final List<jakarta.servlet.http.Cookie> servletCookies = new ArrayList<>();
     private final LinkedMultiValueMap<String, Object> session = new LinkedMultiValueMap<>();
     @Getter
     private HttpServletRequest request;
 
-
-    public Request() {
+    public HttpRequest() {
     }
 
-    public Request addInput(String key, Object value) {
+    public HttpRequest addInput(String key, Object value) {
         input.add(key, value.toString());
         return this;
     }
 
-    public Request addQuery(String key, String value) {
+    public HttpRequest addQuery(String key, String value) {
         query.add(key, value);
         return this;
     }
 
-    public Request addHeader(String key, String value) {
+    public HttpRequest addHeader(String key, String value) {
         header.add(key, value);
         return this;
     }
 
-    public Request addFile(String key, MultipartFile value) {
+    public HttpRequest addFile(String key, MultipartFile value) {
         file.add(key, value);
         return this;
     }
 
-    public Request addCookie(String key, String newValue) {
-        return addCookie(new Cookie(key, newValue));
+    public HttpRequest addCookie(String key, String newValue) {
+        return addCookie(new jakarta.servlet.http.Cookie(key, newValue));
     }
 
-    public Request addCookie(Cookie cookie) {
-        cookies.add(cookie);
+    public HttpRequest addCookie(jakarta.servlet.http.Cookie cookie) {
+        servletCookies.add(cookie);
         return this;
     }
 
-    public Request addSession(String key, Object value) {
+    public HttpRequest addSession(String key, Object value) {
         session.add(key, value);
         request.getSession(true).setAttribute(key, value);
         return this;
     }
 
-    public Request replaceInput(String key, Object newValue) {
+    public HttpRequest replaceInput(String key, Object newValue) {
         input.set(key, newValue.toString());
         return this;
     }
 
-    public Request replaceQuery(String key, String newValue) {
+    public HttpRequest replaceQuery(String key, String newValue) {
         query.set(key, newValue);
         return this;
     }
 
-    public Request replaceHeader(String key, String newValue) {
+    public HttpRequest replaceHeader(String key, String newValue) {
         header.set(key, newValue);
         return this;
     }
 
-    public Request replaceFile(String key, MultipartFile newValue) {
+    public HttpRequest replaceFile(String key, MultipartFile newValue) {
         file.set(key, newValue);
         return this;
     }
 
-    public Request replaceCookie(String key, String newValue) {
-        for (int i = 0; i < cookies.size(); i++) {
-            if (cookies.get(i).getName().equals(key)) {
-                cookies.get(i).setValue(newValue);
+    public HttpRequest replaceCookie(String key, String newValue) {
+        for (int i = 0; i < servletCookies.size(); i++) {
+            if (servletCookies.get(i).getName().equals(key)) {
+                servletCookies.get(i).setValue(newValue);
                 return this;
             }
         }
         return addCookie(key, newValue);
     }
 
-    public Request replaceCookie(Cookie cookie) {
+    public HttpRequest replaceCookie(jakarta.servlet.http.Cookie cookie) {
         replaceCookie(cookie.getName(), cookie.getValue());
         return this;
     }
 
-    public Request replaceSession(String key, Object newValue) {
+    public HttpRequest replaceSession(String key, Object newValue) {
         session.set(key, newValue);
         request.getSession(true).setAttribute(key, newValue);
         return this;
     }
 
-    public Request removeInput(String key) {
+    public HttpRequest removeInput(String key) {
         input.remove(key);
         return this;
     }
 
-    public Request removeQuery(String key) {
+    public HttpRequest removeQuery(String key) {
         query.remove(key);
         return this;
     }
 
-    public Request removeHeader(String key) {
+    public HttpRequest removeHeader(String key) {
         header.remove(key);
         return this;
     }
 
-    public Request removeFile(String key) {
+    public HttpRequest removeFile(String key) {
         file.remove(key);
         return this;
     }
 
-    public Request removeCookie(String key) {
-        cookies.removeIf(cookie -> cookie.getName().equals(key));
+    public HttpRequest removeCookie(String key) {
+        servletCookies.removeIf(cookie -> cookie.getName().equals(key));
         return this;
     }
 
-    public Request removeSession(String key) {
+    public HttpRequest removeSession(String key) {
         session.remove(key);
         request.getSession(true).removeAttribute(key);
         return this;
@@ -141,10 +140,12 @@ public class Request {
         return names;
     }
 
+    @Override
     public String get(String key) {
         return get(key, "");
     }
 
+    @Override
     public String get(String key, String defaultValue) {
         String result = defaultValue;
         if (input.containsKey(key)) {
@@ -172,6 +173,7 @@ public class Request {
         return map;
     }
 
+    @Override
     public Set<String> queryNames() {
         return query.keySet();
     }
@@ -180,10 +182,12 @@ public class Request {
         return query.deepCopy();
     }
 
+    @Override
     public String query(String key) {
         return query(key, "");
     }
 
+    @Override
     public String query(String key, String defaultValue) {
         String result = defaultValue;
         if (query.containsKey(key)) {
@@ -192,10 +196,12 @@ public class Request {
         return result;
     }
 
+    @Override
     public List<String> queries(String key) {
         return query.get(key);
     }
 
+    @Override
     public Set<String> inputNames() {
         return input.keySet();
     }
@@ -204,10 +210,12 @@ public class Request {
         return input.deepCopy();
     }
 
+    @Override
     public String input(String key) {
         return input(key, "");
     }
 
+    @Override
     public String input(String key, String defaultValue) {
         String result = defaultValue;
         if (input.containsKey(key)) {
@@ -216,6 +224,7 @@ public class Request {
         return result;
     }
 
+    @Override
     public List<String> inputs(String key) {
         return input.get(key);
     }
@@ -236,6 +245,7 @@ public class Request {
         return file.get(key);
     }
 
+    @Override
     public Set<String> headerNames() {
         return header.keySet();
     }
@@ -244,10 +254,12 @@ public class Request {
         return header.deepCopy();
     }
 
+    @Override
     public String header(String key) {
         return header(key, "");
     }
 
+    @Override
     public String header(String key, String defaultValue) {
         String result = defaultValue;
         if (header.containsKey(key)) {
@@ -260,9 +272,10 @@ public class Request {
         return header.get(key);
     }
 
+    @Override
     public Set<String> cookieNames() {
         Set<String> names = new HashSet<>();
-        for (Cookie cookie : cookies) {
+        for (jakarta.servlet.http.Cookie cookie : servletCookies) {
             names.add(cookie.getName());
         }
         return names;
@@ -270,18 +283,20 @@ public class Request {
 
     public MultiValueMap<String, String> cookie() {
         MultiValueMap<String, String> cookieMap = new LinkedMultiValueMap<>();
-        for (Cookie cookie : cookies) {
+        for (jakarta.servlet.http.Cookie cookie : servletCookies) {
             cookieMap.add(cookie.getName(), cookie.getValue());
         }
         return cookieMap;
     }
 
+    @Override
     public String cookie(String key) {
         return cookie(key, "");
     }
 
+    @Override
     public String cookie(String key, String defaultValue) {
-        for (Cookie cookie : cookies) {
+        for (jakarta.servlet.http.Cookie cookie : servletCookies) {
             if (cookie.getName().equals(key)) {
                 return cookie.getValue();
             }
@@ -291,7 +306,7 @@ public class Request {
 
     public List<String> cookies(String key) {
         List<String> values = new ArrayList<>();
-        for (Cookie cookie : cookies) {
+        for (jakarta.servlet.http.Cookie cookie : servletCookies) {
             if (cookie.getName().equals(key)) {
                 values.add(cookie.getValue());
             }
@@ -299,6 +314,7 @@ public class Request {
         return values;
     }
 
+    @Override
     public Set<String> sessionNames() {
         return session.keySet();
     }
@@ -307,18 +323,12 @@ public class Request {
         return session.deepCopy();
     }
 
-    public String session(String key) {
-        return session(key, "");
-    }
-
-    public Object objectSession(String key) {
+    @Override
+    public Object session(String key) {
         return session(key, (Object) null);
     }
 
-    public String session(String key, String defaultValue) {
-        return session(key, (Object) defaultValue).toString();
-    }
-
+    @Override
     public Object session(String key, Object defaultValue) {
         Object value = defaultValue;
         if (session.containsKey(key)) {
@@ -327,25 +337,32 @@ public class Request {
         return value;
     }
 
+    public String session(String key, String defaultValue) {
+        return session(key, (Object) defaultValue).toString();
+    }
 
     public List<Object> sessions(String key) {
         return session.get(key);
     }
 
+    @Override
     public boolean has(String key) {
         return query.containsKey(key) || input.containsKey(key);
     }
 
+    @Override
     public boolean hasFile(String key) {
         return file.containsKey(key);
     }
 
+    @Override
     public boolean hasHeader(String key) {
         return header.containsKey(key);
     }
 
+    @Override
     public boolean hasCookie(String key) {
-        for (Cookie cookie : cookies) {
+        for (jakarta.servlet.http.Cookie cookie : servletCookies) {
             if (cookie.getName().equals(key)) {
                 return true;
             }
@@ -353,6 +370,7 @@ public class Request {
         return false;
     }
 
+    @Override
     public boolean hasSession(String key) {
         return session.containsKey(key);
     }
@@ -367,18 +385,18 @@ public class Request {
                 this.addHeader(headerName, headerValue.nextElement());
             }
         }
-        Cookie[] requestCookies = request.getCookies();
+        jakarta.servlet.http.Cookie[] requestCookies = request.getCookies();
         if (requestCookies != null) {
-            for (Cookie cookie : requestCookies) {
-                this.cookies.add(cookie);
+            for (jakarta.servlet.http.Cookie cookie : requestCookies) {
+                this.servletCookies.add(cookie);
             }
         }
-        HttpSession session = request.getSession(false);
-        if (session != null) {
-            Enumeration<String> sessionNames = session.getAttributeNames();
+        HttpSession httpSession = request.getSession(false);
+        if (httpSession != null) {
+            Enumeration<String> sessionNames = httpSession.getAttributeNames();
             while (sessionNames.hasMoreElements()) {
                 String sessionName = sessionNames.nextElement();
-                this.addSession(sessionName, session.getAttribute(sessionName));
+                this.addSession(sessionName, httpSession.getAttribute(sessionName));
             }
         }
     }
@@ -433,15 +451,11 @@ public class Request {
             }
             try (InputStream inputStream = filePart.getInputStream();
                  ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
-                // 调用自定义的copy方法替代transferTo
                 byte[] buffer = new byte[4096];
                 int bytesRead;
-                // 循环读取字节到缓冲区，直到读取完毕（返回-1）
                 while ((bytesRead = inputStream.read(buffer)) != -1) {
-                    // 将缓冲区中的字节写入输出流（注意只写实际读取到的字节数）
                     outputStream.write(buffer, 0, bytesRead);
                 }
-                // 刷新输出流，确保所有数据都被写入
                 outputStream.flush();
                 return cachedBytes = outputStream.toByteArray();
             }

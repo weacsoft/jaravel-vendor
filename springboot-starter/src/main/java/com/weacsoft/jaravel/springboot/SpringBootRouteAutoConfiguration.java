@@ -1,9 +1,10 @@
 package com.weacsoft.jaravel.springboot;
 
-import com.weacsoft.jaravel.http.request.Request;
+import com.weacsoft.jaravel.contract.http.Middleware;
+import com.weacsoft.jaravel.contract.http.Request;
+import com.weacsoft.jaravel.contract.http.Response;
+import com.weacsoft.jaravel.http.request.HttpRequest;
 import com.weacsoft.jaravel.http.request.RequestFactory;
-import com.weacsoft.jaravel.http.response.Response;
-import com.weacsoft.jaravel.middleware.Middleware;
 import com.weacsoft.jaravel.route.Route;
 import com.weacsoft.jaravel.route.Router;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -41,7 +42,7 @@ public class SpringBootRouteAutoConfiguration {
 
     private HandlerFunction<ServerResponse> createRouteFunction(Route route) {
         return springRequest -> {
-            Request customRequest = RequestFactory.buildFromServerRequest(springRequest);
+            HttpRequest customRequest = RequestFactory.buildFromServerRequest(springRequest);
             Middleware.NextFunction finalHandler = route.getAction()::handle;
 
             for (int i = route.getMiddlewares().size() - 1; i >= 0; i--) {

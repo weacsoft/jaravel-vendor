@@ -1,7 +1,7 @@
 package com.weacsoft.jaravel.springboot;
 
-import com.weacsoft.jaravel.http.response.Response;
-import jakarta.servlet.http.Cookie;
+import com.weacsoft.jaravel.contract.http.Cookie;
+import com.weacsoft.jaravel.contract.http.Response;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.core.MethodParameter;
@@ -37,12 +37,19 @@ public class ResponseReturnValueHandler implements HandlerMethodReturnValueHandl
             if (cookies != null && !cookies.isEmpty()) {
                 for (Cookie cookie : cookies) {
                     jakarta.servlet.http.Cookie servletCookie = new jakarta.servlet.http.Cookie(cookie.getName(), cookie.getValue());
-                    servletCookie.setPath(cookie.getPath());
-                    servletCookie.setDomain(cookie.getDomain());
+                    if (cookie.getPath() != null) {
+                        servletCookie.setPath(cookie.getPath());
+                    }
+                    if (cookie.getDomain() != null) {
+                        servletCookie.setDomain(cookie.getDomain());
+                    }
                     servletCookie.setMaxAge(cookie.getMaxAge());
-                    servletCookie.setSecure(cookie.getSecure());
+                    servletCookie.setSecure(cookie.isSecure());
                     servletCookie.setHttpOnly(cookie.isHttpOnly());
-                    servletCookie.setAttribute("SameSite", cookie.getAttribute("SameSite"));
+                    String sameSite = cookie.getAttribute("SameSite");
+                    if (sameSite != null) {
+                        servletCookie.setAttribute("SameSite", sameSite);
+                    }
                     response.addCookie(servletCookie);
                 }
             }

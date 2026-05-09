@@ -1,7 +1,7 @@
 package com.weacsoft.jaravel.route;
 
-import com.weacsoft.jaravel.controller.Controllers;
-import com.weacsoft.jaravel.middleware.Middleware;
+import com.weacsoft.jaravel.contract.http.Middleware;
+import com.weacsoft.jaravel.contract.http.RouteAction;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -26,13 +26,13 @@ public class Route {
     private String method;
     @Getter
     @Setter
-    private Controllers.Runner action;
+    private RouteAction action;
     @Setter
     private Router router;
     @Getter
     private String uri;
 
-    public Route(String method, String uri, Controllers.Runner action) {
+    public Route(String method, String uri, RouteAction action) {
         setMethod(method);
         setUri(uri);
         setAction(action);

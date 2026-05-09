@@ -1,6 +1,6 @@
 package com.weacsoft.jaravel.jblade;
 
-import com.weacsoft.jaravel.cache.CacheStore;
+import com.weacsoft.jaravel.contract.cache.CacheStore;
 import com.weacsoft.jaravel.utils.memory.MemoryClassLoader;
 
 import java.io.IOException;

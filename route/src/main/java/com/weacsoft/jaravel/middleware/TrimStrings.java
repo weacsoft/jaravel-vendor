@@ -1,12 +1,11 @@
 package com.weacsoft.jaravel.middleware;
 
-import com.weacsoft.jaravel.http.request.Request;
-import com.weacsoft.jaravel.http.response.Response;
+import com.weacsoft.jaravel.contract.http.Middleware;
+import com.weacsoft.jaravel.contract.http.Request;
+import com.weacsoft.jaravel.contract.http.Response;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 
 public class TrimStrings implements Middleware {
 
@@ -21,16 +20,22 @@ public class TrimStrings implements Middleware {
 
     protected void trimQueryParameters(Request request) {
         request.queryNames().forEach(queryName -> {
-            if(!isExcluded(queryName)){
-                request.queries(queryName).replaceAll(String::trim);
+            if (!isExcluded(queryName) && request instanceof Request) {
+                List<String> values = request.queries(queryName);
+                if (values != null) {
+                    values.replaceAll(String::trim);
+                }
             }
         });
     }
 
     protected void trimInputParameters(Request request) {
-        request.inputNames().forEach(queryName -> {
-            if(!isExcluded(queryName)){
-                request.inputs(queryName).replaceAll(String::trim);
+        request.inputNames().forEach(inputName -> {
+            if (!isExcluded(inputName) && request instanceof Request) {
+                List<String> values = request.inputs(inputName);
+                if (values != null) {
+                    values.replaceAll(String::trim);
+                }
             }
         });
     }
@@ -38,7 +43,6 @@ public class TrimStrings implements Middleware {
     protected boolean isExcluded(String key) {
         return Arrays.asList(except).contains(key);
     }
-
 
     public void setExcept(String[] except) {
         this.except = except;

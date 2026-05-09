@@ -1,7 +1,7 @@
 package com.weacsoft.jaravel.route;
 
-import com.weacsoft.jaravel.controller.Controllers;
-import com.weacsoft.jaravel.middleware.Middleware;
+import com.weacsoft.jaravel.contract.http.Middleware;
+import com.weacsoft.jaravel.contract.http.RouteAction;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -35,38 +35,38 @@ public class Router {
         return this;
     }
 
-    public Route get(String uri, Controllers.Runner action) {
+    public Route get(String uri, RouteAction action) {
         return addRoute("GET", uri, action);
     }
 
-    public Route post(String uri, Controllers.Runner action) {
+    public Route post(String uri, RouteAction action) {
         return addRoute("POST", uri, action);
     }
 
-    public Route put(String uri, Controllers.Runner action) {
+    public Route put(String uri, RouteAction action) {
         return addRoute("PUT", uri, action);
     }
 
-    public Route delete(String uri, Controllers.Runner action) {
+    public Route delete(String uri, RouteAction action) {
         return addRoute("DELETE", uri, action);
     }
 
-    public Route patch(String uri, Controllers.Runner action) {
+    public Route patch(String uri, RouteAction action) {
         return addRoute("PATCH", uri, action);
     }
 
-    public Router all(String uri, Controllers.Runner action) {
+    public Router all(String uri, RouteAction action) {
         return addMultiRoute(new String[]{"GET", "POST", "PUT", "DELETE", "PATCH"}, uri, action);
     }
 
-    public Route addRoute(String method, String uri, Controllers.Runner action) {
+    public Route addRoute(String method, String uri, RouteAction action) {
         Route route = new Route(method, uri, action);
         route.setRouter(this);
         routes.add(route);
         return route;
     }
 
-    public Router addMultiRoute(String[] method, String uri, Controllers.Runner action) {
+    public Router addMultiRoute(String[] method, String uri, RouteAction action) {
         Router groupRouter = new Router();
         groupRouter.setParentRouter(this);
         for (String m : method) {

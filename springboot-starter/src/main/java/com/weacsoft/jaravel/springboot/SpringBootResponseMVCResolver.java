@@ -1,7 +1,7 @@
 package com.weacsoft.jaravel.springboot;
 
-import com.weacsoft.jaravel.http.response.Response;
-import jakarta.servlet.http.Cookie;
+import com.weacsoft.jaravel.contract.http.Cookie;
+import com.weacsoft.jaravel.contract.http.Response;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -25,7 +25,6 @@ public class SpringBootResponseMVCResolver implements ResponseBodyAdvice<Object>
     public Object beforeBodyWrite(Object body, MethodParameter returnType, MediaType selectedContentType, Class<? extends HttpMessageConverter<?>> selectedConverterType, ServerHttpRequest request, ServerHttpResponse response) {
         if (body instanceof Response) {
             Response jaravelResponse = (Response) body;
-            ;
             jaravelResponse.getHeaders().forEach((key, value) -> response.getHeaders().add(key, value));
 
             if (response instanceof ServletServerHttpResponse) {
@@ -33,7 +32,17 @@ public class SpringBootResponseMVCResolver implements ResponseBodyAdvice<Object>
                 List<Cookie> cookies = jaravelResponse.getCookies();
                 if (cookies != null && !cookies.isEmpty()) {
                     for (Cookie cookie : cookies) {
-                        servletResponse.getServletResponse().addCookie(cookie);
+                        jakarta.servlet.http.Cookie servletCookie = new jakarta.servlet.http.Cookie(cookie.getName(), cookie.getValue());
+                        if (cookie.getPath() != null) {
+                            servletCookie.setPath(cookie.getPath());
+                        }
+                        if (cookie.getDomain() != null) {
+                            servletCookie.setDomain(cookie.getDomain());
+                        }
+                        servletCookie.setMaxAge(cookie.getMaxAge());
+                        servletCookie.setSecure(cookie.isSecure());
+                        servletCookie.setHttpOnly(cookie.isHttpOnly());
+                        servletResponse.getServletResponse().addCookie(servletCookie);
                     }
                 }
             }

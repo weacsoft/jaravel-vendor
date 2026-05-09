@@ -1,5 +1,7 @@
 package com.weacsoft.jaravel.cache;
 
+import com.weacsoft.jaravel.contract.cache.CacheStore;
+
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;

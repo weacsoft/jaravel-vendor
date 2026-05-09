@@ -1,11 +1,6 @@
 package com.weacsoft.jaravel.controller;
 
-import com.weacsoft.jaravel.http.request.Request;
-import com.weacsoft.jaravel.http.response.Response;
+import com.weacsoft.jaravel.contract.http.RouteAction;
 
 public interface Controllers {
-    @FunctionalInterface
-    interface Runner {
-        Response handle(Request request);
-    }
 }

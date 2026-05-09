@@ -1,5 +1,6 @@
 package com.weacsoft.jaravel.cache;
 
+import com.weacsoft.jaravel.contract.cache.CacheDriver;
 import com.weacsoft.jaravel.utils.ExpiryMap;
 
 public class ArrayCacheDriver implements CacheDriver {

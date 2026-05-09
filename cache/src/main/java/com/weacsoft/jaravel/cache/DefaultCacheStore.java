@@ -1,6 +1,10 @@
 package com.weacsoft.jaravel.cache;
 
+import com.weacsoft.jaravel.contract.cache.CacheDriver;
+import com.weacsoft.jaravel.contract.cache.CacheStore;
+
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;

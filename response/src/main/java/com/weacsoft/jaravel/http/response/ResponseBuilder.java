@@ -1,8 +1,10 @@
 package com.weacsoft.jaravel.http.response;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.weacsoft.jaravel.contract.http.Cookie;
+import com.weacsoft.jaravel.contract.http.Response;
+import com.weacsoft.jaravel.contract.http.SimpleCookie;
 import com.weacsoft.jaravel.jblade.BladeEngine;
-import jakarta.servlet.http.Cookie;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -124,31 +126,6 @@ public class ResponseBuilder {
         };
     }
 
-    public static Response unauthorized(String message) {
-        throw new RuntimeException("401: Unauthorized " + message);
-//        return new AbstractResponse() {
-//            {
-//                addHeader("Content-Type", "application/json; charset=utf-8");
-//            }
-//
-//            @Override
-//            public int getStatus() {
-//                return 401;
-//            }
-//
-//            @Override
-//            public String getContent() {
-//                try {
-//                    Map<String, String> map = new HashMap<>();
-//                    map.put("message", message);
-//                    return objectMapper.writeValueAsString(map);
-//                } catch (Exception e) {
-//                    throw new RuntimeException("JSON 序列化失败", e);
-//                }
-//            }
-//        };
-    }
-
     public static Response redirect(String url) {
         return new AbstractResponse() {
             {
@@ -165,56 +142,5 @@ public class ResponseBuilder {
                 return "";
             }
         };
-    }
-
-    private static abstract class AbstractResponse implements Response {
-        protected final Map<String, String> headers = new HashMap<>();
-        protected final List<Cookie> cookies = new ArrayList<>();
-
-        @Override
-        public Map<String, String> getHeaders() {
-            return new HashMap<>(headers);
-        }
-
-        @Override
-        public AbstractResponse addHeader(String name, String value) {
-            headers.put(name, value);
-            return this;
-        }
-
-        @Override
-        public AbstractResponse replaceHeader(String name, String value) {
-            headers.put(name, value);
-            return this;
-        }
-
-        @Override
-        public List<Cookie> getCookies() {
-            return new ArrayList<>(cookies);
-        }
-
-        @Override
-        public AbstractResponse addCookie(Cookie cookie) {
-            cookies.add(cookie);
-            return this;
-        }
-
-        @Override
-        public AbstractResponse replaceCookie(String name, String value) {
-            for (int i = 0; i < cookies.size(); i++) {
-                if (cookies.get(i).getName().equals(name)) {
-                    cookies.get(i).setValue(value);
-                    return this;
-                }
-            }
-            return (AbstractResponse) this.addCookie(name, value);
-        }
-
-        @Override
-        public Response replaceCookieAll(List<Cookie> cookie) {
-            cookies.clear();
-            cookie.addAll(cookies);
-            return this;
-        }
     }
 }

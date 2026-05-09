@@ -1,8 +1,11 @@
 package com.weacsoft.jaravel.middleware;
 
-import com.weacsoft.jaravel.http.request.Request;
-import com.weacsoft.jaravel.http.response.Response;
-import jakarta.servlet.http.Cookie;
+import com.weacsoft.jaravel.contract.http.Cookie;
+import com.weacsoft.jaravel.contract.http.Middleware;
+import com.weacsoft.jaravel.contract.http.Request;
+import com.weacsoft.jaravel.contract.http.Response;
+import com.weacsoft.jaravel.contract.http.SimpleCookie;
+import com.weacsoft.jaravel.http.request.HttpRequest;
 
 import javax.crypto.Cipher;
 import javax.crypto.spec.IvParameterSpec;
@@ -39,7 +42,12 @@ public class EncryptCookies implements Middleware {
     protected void decryptCookies(Request request) {
         request.cookieNames().forEach(cookieName -> {
             if (!isExcluded(cookieName)) {
-                request.cookies(cookieName).replaceAll(this::decrypt);
+                if (request instanceof HttpRequest) {
+                    List<String> values = ((HttpRequest) request).cookies(cookieName);
+                    if (values != null) {
+                        values.replaceAll(this::decrypt);
+                    }
+                }
             }
         });
     }
