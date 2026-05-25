@@ -18,6 +18,10 @@ public class MemoryDriver implements AuthDriver {
     //给每个内存驱动设置一个名字
     private final String name;
 
+    public MemoryDriver() {
+        this("id");
+    }
+
     public MemoryDriver(String name) {
         this.name = name;
     }

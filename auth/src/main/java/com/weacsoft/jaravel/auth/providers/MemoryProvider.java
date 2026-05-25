@@ -1,7 +1,7 @@
 package com.weacsoft.jaravel.auth.providers;
 
-import com.weacsoft.jaravel.contract.auth.Authenticatable;
 import com.weacsoft.jaravel.contract.auth.AuthProvider;
+import com.weacsoft.jaravel.contract.auth.Authenticatable;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -16,6 +16,14 @@ public class MemoryProvider<T extends Authenticatable> implements AuthProvider<T
 
     private final Map<String, T> users = new ConcurrentHashMap<>();
 
+
+    public void add(T user) {
+        users.put(user.getAuthIdentifier(), user);
+    }
+
+    public void remove(T user) {
+        users.remove(user.getAuthIdentifier());
+    }
 
     @Override
     public T authById(String identifier) {
