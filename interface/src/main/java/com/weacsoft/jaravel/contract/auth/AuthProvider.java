@@ -1,7 +1,5 @@
 package com.weacsoft.jaravel.contract.auth;
 
-import java.util.Map;
-
 /**
  * 可认证实体提供者接口，定义用户实体的检索与验证契约。
  *
@@ -18,7 +16,23 @@ import java.util.Map;
  * @see Authenticatable
  * @see AuthDriver
  */
-public interface AuthenticatableProvider<T extends Authenticatable> {
+public interface AuthProvider<T extends Authenticatable, V> {
+
+    /**
+     * 请求开始前初始化驱动状态。
+     *
+     */
+    default void init() {
+
+    }
+
+    /**
+     * 请求结束后销毁驱动状态。
+     *
+     */
+    default void destroy() {
+
+    }
 
     /**
      * 通过唯一标识检索用户。
@@ -31,8 +45,21 @@ public interface AuthenticatableProvider<T extends Authenticatable> {
     /**
      * 验证凭据是否与用户匹配。
      *
-     * @param credentials 待验证的凭据
      * @return 凭据匹配时返回 {@code true}
      */
-    T authByCredentials(Map<String, String> credentials);
+    default T authByFunction(V data) {
+        return getAuthFunction().auth(data);
+    }
+
+    AuthFunction<T, V> getAuthFunction();
+
+    @FunctionalInterface
+    interface AuthFunction<K extends Authenticatable, V> {
+        /**
+         * 调用下一个处理器。
+         *
+         * @return 用户
+         */
+        K auth(V data);
+    }
 }

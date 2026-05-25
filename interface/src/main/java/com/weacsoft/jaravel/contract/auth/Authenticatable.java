@@ -15,8 +15,8 @@ import java.io.Serializable;
  *   <li>实现类应正确覆写 {@code equals()} 和 {@code hashCode()}</li>
  * </ul>
  *
- * @see AuthenticatableProvider
- * @see Guard
+ * @see AuthProvider
+ * @see AuthGuard
  */
 public interface Authenticatable extends Serializable {
 

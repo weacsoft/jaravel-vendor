@@ -1,23 +1,21 @@
 package com.weacsoft.jaravel.auth.providers;
 
 import com.weacsoft.jaravel.contract.auth.Authenticatable;
-import com.weacsoft.jaravel.contract.auth.AuthenticatableProvider;
+import com.weacsoft.jaravel.contract.auth.AuthProvider;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class MemoryProvider<T extends Authenticatable> implements AuthenticatableProvider<T> {
+/**
+ * 内存用户提供者实现。
+ *
+ * <p>将用户数据存储在内存中，应用重启后数据丢失。
+ * 支持通过标识或凭据检索用户。</p>
+ */
+public class MemoryProvider<T extends Authenticatable> implements AuthProvider<T, String> {
 
-    private Map<String, T> users = new ConcurrentHashMap<>();
+    private final Map<String, T> users = new ConcurrentHashMap<>();
 
-
-    public void addUser(String identifier, T user) {
-        users.put(identifier, user);
-    }
-
-    public void removeUser(String identifier) {
-        users.remove(identifier);
-    }
 
     @Override
     public T authById(String identifier) {
@@ -25,7 +23,8 @@ public class MemoryProvider<T extends Authenticatable> implements Authenticatabl
     }
 
     @Override
-    public T authByCredentials(Map<String, String> credentials) {
-        throw new UnsupportedOperationException("Not supported yet.");
+    public AuthFunction<T, String> getAuthFunction() {
+        return this::authById;
     }
+
 }

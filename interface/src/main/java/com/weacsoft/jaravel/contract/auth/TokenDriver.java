@@ -24,7 +24,7 @@ import java.util.Map;
  * </ul>
  *
  * @see AuthDriver
- * @see Guard
+ * @see AuthGuard
  */
 public interface TokenDriver {
 
