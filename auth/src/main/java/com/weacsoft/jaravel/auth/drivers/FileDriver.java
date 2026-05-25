@@ -13,11 +13,6 @@ public class FileDriver extends MemoryDriver {
     private final String fileName;
 
     /**
-     * 内存缓存，避免频繁读取文件。
-     */
-    private final Map<String, String> cache = new ConcurrentHashMap<>();
-
-    /**
      * 创建文件用户提供者。
      *
      * @param fileName 存储用户数据的目录路径

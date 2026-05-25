@@ -85,7 +85,6 @@ public class Auth {
         return login(user, defaultGuard);
     }
 
-    @SuppressWarnings("unchecked")
     public static <T extends Authenticatable> boolean login(T user, String guard) {
         return guard(guard).login(user);
     }

@@ -8,13 +8,13 @@ import com.weacsoft.jaravel.contract.auth.Authenticatable;
 /**
  * 认证守卫实现类。
  *
- * <p>Guard 为单例，通过 {@link #initialize} 将请求上下文存入 ThreadLocal，
+ * <p>Guard 为单例，通过 {@link #init} 将请求上下文存入 ThreadLocal，
  * 后续所有方法调用自动使用该上下文，无需显式传递。
  * {@link #destroy} 清理 ThreadLocal 中的上下文和用户缓存。</p>
  *
  * <h3>生命周期</h3>
  * <ol>
- *   <li>{@link #initialize()} - 请求开始前调用，初始化驱动，恢复用户</li>
+ *   <li>{@link #init()} - 请求开始前调用，初始化驱动，恢复用户</li>
  *   <li>{@link #user()} / {@link #login} / {@link #logout} - 请求处理中调用，自动使用 ThreadLocal context</li>
  *   <li>{@link #destroy()} - 请求结束后调用，清理 ThreadLocal</li>
  * </ol>

@@ -10,10 +10,10 @@ import java.util.Map;
  *
  * <h3>设计约束</h3>
  * <ul>
- *   <li>实现类为单例，通过 {@link #initialize(Map)} / {@link #destroy(Map)} 管理请求级状态</li>
+ *   <li>实现类为单例，通过 {@link #init()} / {@link #destroy()}} 管理请求级状态</li>
  *   <li>{@code id} 的存储介质由实现决定（内存、文件、Session、Redis 等）</li>
  *   <li>当未设置 id 时，{@link #getId()} 应返回 {@code null}</li>
- *   <li>调用 setId/getId/removeId 前必须先调用 initialize</li>
+ *   <li>调用 setId/getId/removeId 前必须先调用 init</li>
  * </ul>
  *
  * @see Authenticatable

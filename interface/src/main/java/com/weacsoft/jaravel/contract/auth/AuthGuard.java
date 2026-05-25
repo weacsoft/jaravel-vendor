@@ -8,7 +8,7 @@ package com.weacsoft.jaravel.contract.auth;
  *
  * <h3>设计约束</h3>
  * <ul>
- *   <li>实现类为单例，通过 {@link #initialize()} / {@link #destroy()} 管理请求级状态</li>
+ *   <li>实现类为单例，通过 {@link #init()} / {@link #destroy()} 管理请求级状态</li>
  *   <li>{@link #user()} 在未认证时应返回 {@code null}</li>
  *   <li>{@link #check()} 和 {@link #guest()} 互为反义</li>
  * </ul>
