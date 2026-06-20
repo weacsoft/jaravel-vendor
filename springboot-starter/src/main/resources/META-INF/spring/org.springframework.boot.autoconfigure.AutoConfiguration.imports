@@ -1,4 +1,0 @@
-com.weacsoft.jaravel.springboot.SpringBootRouteAutoConfiguration
-com.weacsoft.jaravel.springboot.ListenerAutoConfiguration
-com.weacsoft.jaravel.springboot.ResponseAutoConfiguration
-com.weacsoft.jaravel.springboot.AuthAutoConfiguration

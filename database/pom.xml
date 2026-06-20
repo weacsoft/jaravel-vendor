@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.weacsoft</groupId>
+        <artifactId>jaravel-vendor</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>database</artifactId>
+    <name>database</name>
+    <description>数据库：gaarason/database-core 集成、BaseModel、EloquentUserProvider（手动 @Bean 创建 GaarasonDataSource）</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.weacsoft</groupId>
+            <artifactId>core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.weacsoft</groupId>
+            <artifactId>auth</artifactId>
+        </dependency>
+
+        <!-- Laravel 风格 ORM 核心（不含 SpringBoot 自动配置，需手动 @Bean 创建 GaarasonDataSource） -->
+        <!-- database-query 依赖 database-core，提供 QueryBuilder；database-core 依赖 druid -->
+        <dependency>
+            <groupId>io.github.gaarason</groupId>
+            <artifactId>database-query</artifactId>
+        </dependency>
+
+        <!-- Druid 数据源，用于手动创建 GaarasonDataSource -->
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>druid</artifactId>
+        </dependency>
+
+        <!-- SpringBoot jdbc / aop，供 gaarason 核心使用 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+    </dependencies>
+</project>

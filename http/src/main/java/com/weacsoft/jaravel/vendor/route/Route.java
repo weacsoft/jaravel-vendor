@@ -1,0 +1,100 @@
+package com.weacsoft.jaravel.vendor.route;
+
+import com.weacsoft.jaravel.vendor.controller.Controllers;
+import com.weacsoft.jaravel.vendor.middleware.Middleware;
+import lombok.Getter;
+import lombok.Setter;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+import static com.weacsoft.jaravel.vendor.route.RouteService.*;
+
+public class Route {
+    private final List<Middleware> middlewares = new CopyOnWriteArrayList<>();
+    @Setter
+    @Getter
+    private String name = "";
+    @Setter
+    @Getter
+    private String namespace = "";
+    @Setter
+    @Getter
+    private String prefix = "";
+    @Getter
+    private String method;
+    @Getter
+    @Setter
+    private Controllers.Runner action;
+    @Setter
+    private Router router;
+    @Getter
+    private String uri;
+
+    public Route(String method, String uri, Controllers.Runner action) {
+        setMethod(method);
+        setUri(uri);
+        setAction(action);
+    }
+
+    public void setMethod(String method) {
+        this.method = method;
+    }
+
+    public void setUri(String uri) {
+        this.uri = uri;
+    }
+
+    public Route middleware(Middleware... middleware) {
+        middlewares.addAll(Arrays.asList(middleware));
+        return this;
+    }
+
+    public Route name(String name) {
+        setName(name);
+        return this;
+    }
+
+    public Route prefix(String prefix) {
+        this.prefix = prefix;
+        return this;
+    }
+
+    public String generateFullUri() {
+        return normalizeUri(router.generateFullUri() + "/" + prefix + "/" + uri);
+    }
+
+    public String getFullUri() {
+        return generateFullUri();
+    }
+
+    public String generateFullNamespace() {
+        return normalizeNamesapce(router.generateFullNamespace() + "." + namespace);
+    }
+
+    protected String generateFullName() {
+        return normalizeName(router.generateFullName() + "." + name);
+    }
+
+    public String getFullName() {
+        return generateFullName();
+    }
+
+    public String getFullNamespace() {
+        return generateFullNamespace();
+    }
+
+    public List<Middleware> getMiddlewares() {
+        List<Middleware> middlewares = new CopyOnWriteArrayList<>();
+        middlewares.addAll(router.getAllMiddlewares());
+        middlewares.addAll(this.middlewares);
+        return middlewares;
+    }
+
+    public enum Group {
+        NAMESPACE,
+        PREFIX,
+        NAME
+    }
+}

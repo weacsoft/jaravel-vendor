@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.weacsoft</groupId>
+        <artifactId>jaravel-vendor</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>starter</artifactId>
+    <name>starter</name>
+    <description>SpringBoot 自动装配：一键引入全部 Laravel 风格组件（jwt 为可选模块，按需引入）</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.weacsoft</groupId>
+            <artifactId>core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.weacsoft</groupId>
+            <artifactId>http</artifactId>
+        </dependency>
+        <!-- SpringBoot 集成：RouterFunction 路由桥接、Request 注入、Response 处理 -->
+        <dependency>
+            <groupId>com.weacsoft</groupId>
+            <artifactId>springboot</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.weacsoft</groupId>
+            <artifactId>auth</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.weacsoft</groupId>
+            <artifactId>database</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.weacsoft</groupId>
+            <artifactId>migration</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.weacsoft</groupId>
+            <artifactId>cache</artifactId>
+        </dependency>
+        <!-- JBlade 模板引擎（依赖 cache） -->
+        <dependency>
+            <groupId>com.weacsoft</groupId>
+            <artifactId>jblade</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.weacsoft</groupId>
+            <artifactId>event</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- 注：jwt 为可选模块，用户按需引入，故不在 starter 中聚合 -->
+    </dependencies>
+</project>

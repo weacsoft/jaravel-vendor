@@ -3,25 +3,39 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
+
     <parent>
         <groupId>com.weacsoft</groupId>
-        <artifactId>Jaravel</artifactId>
-        <version>0.0.1-SNAPSHOT</version>
+        <artifactId>jaravel-vendor</artifactId>
+        <version>1.0.0</version>
     </parent>
 
     <artifactId>auth</artifactId>
-
-    <properties>
-        <maven.compiler.source>8</maven.compiler.source>
-        <maven.compiler.target>8</maven.compiler.target>
-    </properties>
+    <name>auth</name>
+    <description>认证：Guard(Session)、Auth 门面、UserProvider 契约、认证中间件、生命周期 Filter、GuardFactory 插件机制</description>
 
     <dependencies>
         <dependency>
             <groupId>com.weacsoft</groupId>
-            <artifactId>interface</artifactId>
-            <version>${project.version}</version>
+            <artifactId>core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.weacsoft</groupId>
+            <artifactId>http</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.servlet</groupId>
+            <artifactId>jakarta.servlet-api</artifactId>
+            <scope>provided</scope>
         </dependency>
     </dependencies>
-
 </project>

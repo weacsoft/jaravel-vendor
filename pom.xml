@@ -1,109 +1,174 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xmlns="http://maven.apache.org/POM/4.0.0"
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
+
+    <!-- Jaravel-Vendor : Laravel 风格的 SpringBoot 3 多模块框架（适配器包，类比 PHP vendor 目录） -->
     <groupId>com.weacsoft</groupId>
-    <artifactId>Jaravel</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <artifactId>jaravel-vendor</artifactId>
+    <version>1.0.0</version>
     <packaging>pom</packaging>
+    <name>jaravel-vendor</name>
+    <description>Laravel 风格的 SpringBoot 3 高性能多模块框架：配置 / 路由 / 中间件 / Auth / Eloquent ORM / 迁移 / 缓存 / 事件 / 校验</description>
+
     <modules>
-        <module>request</module>
-        <module>response</module>
-        <module>route</module>
-        <module>springboot-starter</module>
-        <module>util</module>
+        <module>core</module>
+        <module>http</module>
         <module>jblade</module>
-        <module>listener</module>
         <module>auth</module>
-        <module>artisan</module>
         <module>jwt</module>
+        <module>database</module>
+        <module>migration</module>
         <module>cache</module>
-        <module>interface</module>
+        <module>event</module>
+        <module>springboot</module>
+        <module>starter</module>
     </modules>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.2.5</version>
+        <relativePath/>
+    </parent>
+
     <properties>
-        <java.version>1.8</java.version>
+        <java.version>17</java.version>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <gaarason.database.version>7.0.15</gaarason.database.version>
+        <jjwt.version>0.11.5</jjwt.version>
     </properties>
+
     <repositories>
         <repository>
             <id>jitpack.io</id>
             <url>https://jitpack.io</url>
         </repository>
     </repositories>
+
     <dependencyManagement>
         <dependencies>
+            <!-- 内部模块 -->
             <dependency>
-                <groupId>org.projectlombok</groupId>
-                <artifactId>lombok</artifactId>
-                <version>1.18.36</version>
-                <scope>provided</scope>
+                <groupId>com.weacsoft</groupId>
+                <artifactId>core</artifactId>
+                <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>jakarta.servlet</groupId>
-                <artifactId>jakarta.servlet-api</artifactId>
-                <version>[6.0.0,6.1.0]</version>
-                <scope>provided</scope>
+                <groupId>com.weacsoft</groupId>
+                <artifactId>http</artifactId>
+                <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>org.springframework</groupId>
-                <artifactId>spring-webmvc</artifactId>
-                <version>[6.0.0,7.0.0)</version>
-                <scope>provided</scope>
+                <groupId>com.weacsoft</groupId>
+                <artifactId>jblade</artifactId>
+                <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>org.springframework</groupId>
-                <artifactId>spring-core</artifactId>
-                <version>[6.0.0,7.0.0)</version>
-                <scope>provided</scope>
+                <groupId>com.weacsoft</groupId>
+                <artifactId>auth</artifactId>
+                <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>org.springframework</groupId>
-                <artifactId>spring-context</artifactId>
-                <version>[6.0.0,7.0.0)</version>
-                <scope>provided</scope>
+                <groupId>com.weacsoft</groupId>
+                <artifactId>jwt</artifactId>
+                <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.fasterxml.jackson.core</groupId>
-                <artifactId>jackson-databind</artifactId>
-                <version>2.15.2</version>
+                <groupId>com.weacsoft</groupId>
+                <artifactId>database</artifactId>
+                <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-autoconfigure</artifactId>
-                <version>[3.0.0,4.0.0)</version>
-                <scope>provided</scope>
+                <groupId>com.weacsoft</groupId>
+                <artifactId>migration</artifactId>
+                <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>com.weacsoft</groupId>
+                <artifactId>cache</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.weacsoft</groupId>
+                <artifactId>event</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.weacsoft</groupId>
+                <artifactId>springboot</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.weacsoft</groupId>
+                <artifactId>starter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- Laravel 风格 ORM : gaarason/database-core（替代 database-spring-boot-starter，手动 @Bean 创建数据源） -->
+            <dependency>
+                <groupId>io.github.gaarason</groupId>
+                <artifactId>database-core</artifactId>
+                <version>${gaarason.database.version}</version>
+            </dependency>
+            <!-- database-query 依赖 database-core，提供 QueryBuilder；database 模块直接引用 -->
+            <dependency>
+                <groupId>io.github.gaarason</groupId>
+                <artifactId>database-query</artifactId>
+                <version>${gaarason.database.version}</version>
+            </dependency>
+
+            <!-- Druid 数据源，用于 database 模块手动创建 GaarasonDataSource -->
+            <dependency>
+                <groupId>com.alibaba</groupId>
+                <artifactId>druid</artifactId>
+                <version>1.2.22</version>
+            </dependency>
+
+            <!-- JWT -->
             <dependency>
                 <groupId>io.jsonwebtoken</groupId>
                 <artifactId>jjwt-api</artifactId>
-                <version>0.11.5</version>
+                <version>${jjwt.version}</version>
             </dependency>
             <dependency>
                 <groupId>io.jsonwebtoken</groupId>
                 <artifactId>jjwt-impl</artifactId>
-                <version>0.11.5</version>
+                <version>${jjwt.version}</version>
             </dependency>
             <dependency>
                 <groupId>io.jsonwebtoken</groupId>
                 <artifactId>jjwt-jackson</artifactId>
-                <version>0.11.5</version>
+                <version>${jjwt.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
+
+    <dependencies>
+        <!-- 全局 provided : Lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+    </dependencies>
+
     <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.1</version>
-                <configuration>
-                    <source>1.8</source>
-                    <target>1.8</target>
-                    <encoding>UTF-8</encoding>
-                </configuration>
-            </plugin>
-        </plugins>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <configuration>
+                        <source>${java.version}</source>
+                        <target>${java.version}</target>
+                        <parameters>true</parameters>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
     </build>
 </project>

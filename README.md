@@ -1,172 +1,186 @@
-# Jaravel
+# Jaravel-Vendor
 
-Jaravel 是一个轻量级的 Java Web 开发框架，提供了类似 Laravel 的开发体验，包含路由、中间件、请求处理、响应构建、事件监听等核心功能。
+Java 版 Laravel 框架核心库，在 Spring Boot 3.2.5 基础上近乎 100% 模拟 Laravel 的开发体验。
 
-## 核心模块
+所有 vendor 模块的包名统一为 `com.weacsoft.jaravel.vendor.*`，与业务项目的 `com.weacsoft.jaravel.*` 分离。
 
-### 1. request - HTTP 请求处理
+## 设计理念
 
-- **Request** - 请求对象包装，提供参数获取、Cookie 操作等功能
-- **RequestFactory** - 请求对象工厂，用于创建 Request 实例
+- **保留 Spring Boot 底层能力**：`@Controller`、`@Service` 等 Spring 注解全部可用
+- **Laravel 风格 API**：门面（Facade）、配置（Config）、迁移（Migration）、认证（Auth）、中间件（Middleware）、事件（Event）、缓存（Cache）等概念与 Laravel 一一对应
+- **无状态中间件**：所有中间件为 Spring 管理的不可变单例，线程安全
+- **多 Guard / 多 Provider**：Auth 支持 JWT 和 Session 两种 Guard 驱动，可注册多个 Provider
+- **多数据库**：`@DataSource` 注解指定 Model 的数据源，迁移支持 MySQL/SQLite/SQL Server
+- **高级队列**：Event 系统支持 per-listener 队列、独立线程池、重试机制
+- **JWT 续期与登出**：Token 自动续期（可选）、登出黑名单（基于 Cache）
 
-### 2. response - HTTP 响应构建
+## 模块结构
 
-- **Response** - 响应接口，定义响应基本操作
-- **ResponseBuilder** - 响应构建器，提供多种响应类型创建
-- **JSONResponseResolver** - JSON 响应解析器
+| 模块 | artifactId | 说明 | 详细文档 |
+|------|-----------|------|---------|
+| core | `core` | Facade/Config/ServiceProvider/SpringContext/Validation/Str·Arr | [README](core/README.md) |
+| http | `http` | Middleware管道/Request·Response/路由系统 | [README](http/README.md) |
+| auth | `auth` | AuthManager/Guard(JWT·Session)/UserProvider/Auth门面 | [README](auth/README.md) |
+| jwt | `jwt` | JWT认证插件（续期/登出黑名单/Cache集成） | [README](jwt/README.md) |
+| database | `database` | BaseModel(Eloquent合并模式)/@DataSource多数据源 | [README](database/README.md) |
+| migration | `migration` | Blueprint/Schema/Migrator（MySQL/SQLite/SQL Server） | [README](migration/README.md) |
+| cache | `cache` | CacheManager/Array·File驱动/Cache门面 | [README](cache/README.md) |
+| event | `event` | Dispatcher/Listener/QueueManager（多队列+重试） | [README](event/README.md) |
+| jblade | `jblade` | Blade模板引擎（@if/@foreach/@extends等指令） | [README](jblade/README.md) |
+| springboot | `springboot` | RouterFunction桥接/全局中间件注入/MVC解析 | [README](springboot/README.md) |
+| starter | `starter` | 聚合Starter（引入即自动装配全部模块，jwt可选） | [README](starter/README.md) |
 
-### 3. route - 路由和中间件
-
-- **Route** - 路由定义和处理
-- **Router** - 路由器，管理路由注册和匹配
-- **RouteService** - 路由服务，处理路由分发
-- **Controller** - 控制器基类
-- **Middleware** - 中间件接口及实现
-    - **EncryptCookies** - Cookie 加密中间件
-    - **TrimStrings** - 字符串修剪中间件
-    - **TrustProxies** - 代理信任中间件
-    - **VerifyCsrfToken** - CSRF 令牌验证中间件
-
-### 4. listener - 事件监听系统
-
-- **Event** - 事件标记接口
-- **Listener** - 监听器接口
-- **ListenerService** - 事件监听服务，支持同步和异步执行
-
-### 5. jblade - 模板引擎
-
-- **BladeEngine** - Blade 模板引擎
-- **BladeCompiler** - 模板编译器
-- **BladeTemplate** - 模板对象
-- **BladeContext** - 模板上下文
-
-### 6. util - 工具类
-
-- **StringUtils** - 字符串工具类
-- **ExpiryMap** - 带过期时间的 Map 实现
-- **memory** - 内存编译相关工具类
-
-### 7. springboot-starter - Spring Boot 集成
-
-- **SpringBootRouteAutoConfiguration** - 路由自动配置
-- **SpringBootRequestMVCResolver** - 请求解析器
-- **SpringBootResponseMVCResolver** - 响应解析器
-- **ListenerAutoConfiguration** - 事件监听自动配置
-- **ListenerProperties** - 事件监听配置属性
-
-## 快速开始
+## 快速集成
 
 ### 1. 添加依赖
 
 ```xml
 <dependency>
     <groupId>com.weacsoft</groupId>
-    <artifactId>springboot-starter</artifactId>
-    <version>0.0.5</version>
+    <artifactId>starter</artifactId>
+    <version>1.0.0</version>
 </dependency>
 ```
 
-### 2. 配置路由
+JWT 为可选模块，按需引入：
+
+```xml
+<dependency>
+    <groupId>com.weacsoft</groupId>
+    <artifactId>jwt</artifactId>
+    <version>1.0.0</version>
+</dependency>
+```
+
+### 2. 简单示例
+
+#### 路由 + 中间件
 
 ```java
-@Configuration
-public class RouteConfig {
-    
-    @Autowired
-    private RouteService routeService;
-    
-    @PostConstruct
-    public void registerRoutes() {
-        routeService.get("/", (request, response) -> {
-            return response.ok("Hello, Jaravel!");
-        });
-        
-        routeService.post("/user", (request, response) -> {
-            String name = request.get("name");
-            return response.json(Map.of("name", name, "message", "User created"));
+@Component
+public class Api {
+    public void register(Router router, ApplicationContext ctx) {
+        router.group(Map.of(Route.Group.PREFIX, "api"), api -> {
+            // 公开路由
+            api.get("/hello", controller::hello);
+
+            // 认证路由（默认 guard）
+            api.get("/me", controller::me).middleware(new Authenticate());
+
+            // 指定 guard（对齐 Laravel auth:api）
+            api.get("/profile", controller::profile).middleware(new Authenticate("api"));
+
+            // 中间件链（洋葱模型）
+            api.get("/test", handler)
+               .middleware(new MyMiddleware("A"))
+               .middleware(new MyMiddleware("B"));
         });
     }
 }
 ```
 
-### 3. 使用事件系统
+#### Eloquent Model（合并模式）
 
 ```java
-// 定义事件
-public class UserRegisteredEvent implements Event {
-    private String username;
-    
-    public UserRegisteredEvent(String username) {
-        this.username = username;
-    }
-    
-    public String getUsername() {
-        return username;
-    }
+@Data @Repository @Table(name = "users")
+public class User extends BaseModel<User, Long> implements Authenticatable {
+    @Primary @Column(name = "id") private Long id;
+    @Column(name = "name")  private String name;
+
+    public static User find(Long id) { return BaseModel.find(User.class, id); }
+    public static List<User> all()   { return BaseModel.all(User.class); }
 }
 
-// 定义监听器
-public class SendWelcomeEmailListener implements Listener<UserRegisteredEvent> {
-    @Override
-    public void handle(UserRegisteredEvent event) {
-        System.out.println("Sending welcome email to: " + event.getUsername());
-    }
-}
-
-// 注册监听器
-@Autowired
-private ListenerService listenerService;
-
-@PostConstruct
-public void registerListeners() {
-    listenerService.listen(UserRegisteredEvent.class, new SendWelcomeEmailListener());
-}
-
-// 触发事件
-listenerService.dispatch(new UserRegisteredEvent("john"));
+// 多数据库
+@DataSource("secondaryGaarasonDataSource")
+public class Product extends BaseModel<Product, Long> { ... }
 ```
 
-### 4. 配置属性
+#### 认证（主键比对，不涉及密码）
 
-在 `application.yml` 中配置：
+```java
+// 应用层查询 + 校验密码
+User user = UserService.login(number, password);
+// Auth 以主键登入
+Auth.login(user);
+String token = Auth.token();  // JWT token
+```
+
+#### 事件 + 队列
+
+```java
+// 异步监听器（实现 ShouldQueue）
+public class SendEmailListener implements Listener<UserEvent>, ShouldQueue {
+    public String queue() { return "email"; }  // 独立队列
+    public void handle(UserEvent e) { sendEmail(e); }
+}
+
+// 分发
+EventFacade.dispatch(new UserEvent(user));
+```
+
+#### 缓存
+
+```java
+Cache.put("key", value, 60);           // 60秒TTL
+String v = Cache.get("key", String.class);
+long n = Cache.increment("hits");
+Object r = Cache.remember("cfg", 300, () -> loadCfg());
+```
+
+#### 迁移（新命名规范）
+
+```java
+// 类名: Migration_2024_01_01_CreateUsersTable
+public class Migration_2024_01_01_CreateUsersTable implements Migration {
+    public void up(Schema schema) {
+        schema.create("users", t -> {
+            t.id();
+            t.string("name", 50);
+            t.timestamps();
+        });
+        // 一次 up 可处理多张表
+        schema.create("profiles", t -> { ... });
+    }
+    public void down(Schema schema) {
+        schema.dropIfExists("profiles");
+        schema.dropIfExists("users");
+    }
+}
+```
+
+## 配置参考
 
 ```yaml
 jaravel:
-  listener:
-    queue-enabled: true  # 启用异步事件处理
+  auth:
+    default-guard: api
+  jwt:
+    secret: your-secret-key
+    ttl: 3600
+    refresh-enabled: true        # JWT自动续期（默认启用）
+    blacklist-store: array       # 登出黑名单缓存（默认array，可选file）
+  event:
+    queue:
+      default:
+        pool-size: 16            # 默认队列线程池大小
+    retry:
+      max-attempts: 3            # 最大重试次数
+      delay-ms: 1000             # 重试间隔
+  cache:
+    default-store: array         # 默认缓存驱动
+  migration:
+    auto-run: true               # 启动时自动迁移
 ```
 
-## 技术特点
+## 技术栈
 
-- **轻量级** - 核心功能模块化，按需引入
-- **Spring Boot 集成** - 提供自动配置，开箱即用
-- **类似 Laravel 的 API** - 熟悉的开发体验
-- **事件系统** - 支持同步和异步事件处理
-- **模板引擎** - 内置 Blade 模板引擎
-- **中间件支持** - 灵活的中间件机制
-- **线程安全** - 核心组件线程安全设计
-
-## 项目结构
-
-```
-├── request/           # HTTP 请求处理
-├── response/          # HTTP 响应构建
-├── route/             # 路由和中间件
-├── listener/          # 事件监听系统
-├── jblade/            # 模板引擎
-├── util/              # 工具类
-└── springboot-starter # Spring Boot 集成
-```
-
-## 构建和测试
-
-```bash
-# 编译项目
-mvn clean compile
-
-# 运行测试
-mvn test
-```
+- Java 17 / Spring Boot 3.2.5 / Jakarta EE
+- jjwt 0.11.5 (JWT)
+- Druid (数据库连接池)
+- gaarason/database-core (Eloquent ORM)
+- Jackson (JSON)
+- Maven (构建)
 
 ## 许可证
 

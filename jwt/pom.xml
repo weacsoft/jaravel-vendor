@@ -3,34 +3,26 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
+
     <parent>
         <groupId>com.weacsoft</groupId>
-        <artifactId>Jaravel</artifactId>
-        <version>0.0.1-SNAPSHOT</version>
+        <artifactId>jaravel-vendor</artifactId>
+        <version>1.0.0</version>
     </parent>
 
     <artifactId>jwt</artifactId>
-
-    <properties>
-        <maven.compiler.source>8</maven.compiler.source>
-        <maven.compiler.target>8</maven.compiler.target>
-    </properties>
+    <name>jwt</name>
+    <description>JWT 认证插件：JwtConfig、JwtService、JwtGuard，通过 GuardFactory 插件式注册到 AuthManager</description>
 
     <dependencies>
         <dependency>
-            <groupId>${project.groupId}</groupId>
-            <artifactId>interface</artifactId>
-            <version>${project.version}</version>
+            <groupId>com.weacsoft</groupId>
+            <artifactId>auth</artifactId>
         </dependency>
+        <!-- 缓存模块：用于 JWT 黑名单（登出踢 token）与 refresh 标记 -->
         <dependency>
-            <groupId>${project.groupId}</groupId>
-            <artifactId>util</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>${project.groupId}</groupId>
+            <groupId>com.weacsoft</groupId>
             <artifactId>cache</artifactId>
-            <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
@@ -46,6 +38,14 @@
             <artifactId>jjwt-jackson</artifactId>
             <scope>runtime</scope>
         </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
+        </dependency>
     </dependencies>
-
 </project>

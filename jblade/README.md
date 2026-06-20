@@ -1,442 +1,666 @@
-# JBlade 模板引擎
+# jblade 模块
 
-JBlade 是一个受 Laravel Blade 启发的 Java 模板引擎，提供优雅的模板语法和强大的组件系统。
+> Jaravel-Vendor 的模板引擎模块，提供 Laravel Blade 风格的模板编译与渲染。支持 `{{ }}` 输出、`@if/@foreach/@for/@while` 控制结构、`@extends/@section/@yield` 模板继承、`@component` 组件等特性，通过内存编译（`MemoryClassLoader`）将模板编译为 Java 类后执行。包名统一为 `com.weacsoft.jaravel.vendor.jblade`。
 
-## 特性
+---
 
-- **模板继承** - 支持 `@extends`, `@section`, `@yield` 实现模板继承
-- **条件判断** - 支持 `@if`, `@elseif`, `@else`, `@endif`
-- **循环控制** - 支持 `@for`, `@foreach`, `@endfor`, `@endforeach`
-- **组件系统** - 支持 `@component`, `@endcomponent`, `@slot`, `@endslot`
-- **变量输出** - 使用 `{{ $var }}` 输出变量
-- **注释** - 使用 `{{-- 注释 --}}` 添加注释
-- **动态编译** - 运行时动态编译模板
-- **内存缓存** - 编译后的模板缓存在内存中，提升性能
+## 目录
 
-## 快速开始
+- [1. 模块概述](#1-模块概述)
+- [2. 依赖信息](#2-依赖信息)
+- [3. 类总览](#3-类总览)
+- [4. BladeEngine —— 模板引擎](#4-bladeengine--模板引擎)
+- [5. BladeCompiler —— 模板编译器](#5-bladecompiler--模板编译器)
+- [6. BladeTemplate —— 模板基类](#6-bladetemplate--模板基类)
+- [7. BladeContext —— 执行上下文](#7-bladecontext--执行上下文)
+- [8. 内存编译机制](#8-内存编译机制)
+- [9. 工具类](#9-工具类)
+- [10. 支持的指令](#10-支持的指令)
+- [11. 使用示例](#11-使用示例)
+- [12. 线程安全说明](#12-线程安全说明)
 
-### 1. 创建 BladeEngine
+---
 
-```java
-import com.weacsoft.jaravel.jblade.BladeEngine;
+## 1. 模块概述
 
-// 创建引擎，指定模板目录
-BladeEngine engine = new BladeEngine("templates");
+`jblade` 模块对齐 Laravel 的 Blade 模板引擎，核心特性如下：
+
+| Laravel 特性 | jblade 对应实现 | 说明 |
+| --- | --- | --- |
+| Blade 模板引擎 | `BladeEngine` | 模板引擎入口，构造时指定模板目录与后缀 |
+| Blade 编译器 | `BladeCompiler` | 将 `@directives` 编译为 Java 源码并内存编译 |
+| 编译后的模板 | `BladeTemplate` | 抽象基类，编译生成的类继承此类 |
+| 模板变量上下文 | `BladeContext` | 变量、Section、组件等执行上下文 |
+| `view()` 辅助函数 | `ResponseBuilder.view()` | HTTP 模块中的视图响应 |
+
+### 工作原理
+
+```
+BladeEngine.render("users.list", variables)
+        │
+        ▼
+BladeCompiler.compile("users.list")
+        │
+        ├── 1. 读取模板文件（classpath: templateDir/users/list.jblade）
+        ├── 2. 将 Blade 指令编译为 Java 源码
+        ├── 3. 使用 javax.tools.JavaCompiler 内存编译
+        └── 4. 返回编译后的类全名
+        │
+        ▼
+MemoryClassLoader.loadClass(className)
+        │
+        ▼
+BladeTemplate 实例化 + 注入上下文变量
+        │
+        ▼
+template.render() -> 输出 HTML 字符串
 ```
 
-### 2. 准备数据
+---
 
-```java
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Arrays;
+## 2. 依赖信息
 
-Map<String, Object> data = new HashMap<>();
-data.put("name", "World");
-data.put("items", Arrays.asList("Apple", "Banana", "Orange"));
-data.put("user", new HashMap<String, String>() {{
-    put("name", "John");
-    put("email", "john@example.com");
-}});
+### Maven 坐标
+
+```xml
+<dependency>
+    <groupId>com.weacsoft</groupId>
+    <artifactId>jblade</artifactId>
+    <version>1.0.0</version>
+</dependency>
 ```
 
-### 3. 渲染模板
+### 传递依赖
 
-```java
-String result = engine.render("welcome", data);
-System.out.println(result);
+| 依赖 | 用途 |
+| --- | --- |
+| `com.weacsoft:cache` | 可选依赖，用于模板类缓存（`optional = true`） |
+| `org.springframework:spring-core` | `ClassPathResource` 读取 classpath 模板文件 |
+
+> 运行环境要求：JDK 17+（需使用 JDK 而非 JRE，因为依赖 `javax.tools.JavaCompiler`），Spring Boot 3.2.5（Spring 6.x）。
+
+---
+
+## 3. 类总览
+
+```
+com.weacsoft.jaravel.vendor
+├── jblade
+│   ├── BladeEngine              // 模板引擎（入口）
+│   ├── BladeCompiler            // 模板编译器（Blade -> Java 源码 -> 字节码）
+│   ├── BladeTemplate            // 编译后模板的抽象基类
+│   └── BladeContext             // 执行上下文（变量/Section/组件）
+└── utils
+    ├── ExpiryMap                // 带过期时间的 HashMap
+    ├── StringUtils              // 命名转换工具（驼峰/下划线/帕斯卡）
+    └── memory
+        ├── MemoryClassLoader    // 内存类加载器（从字节码加载类）
+        ├── MemoryFileManager    // 内存文件管理器（捕获编译输出）
+        ├── SourceCodeJavaFileObject  // 源代码文件对象（内存中的 .java）
+        └── ClassFileJavaFileObject   // 字节码文件对象（内存中的 .class）
 ```
 
-## 模板语法
+---
 
-### 变量输出
+## 4. BladeEngine —— 模板引擎
 
-```jblade
+`com.weacsoft.jaravel.vendor.jblade.BladeEngine`
+
+模板引擎入口，负责加载、缓存、渲染模板。支持模板继承（`@extends`）与组件（`@component`）。
+
+### 构造器
+
+提供多种重载，最终委托到全参构造器：
+
+| 构造器签名 | 说明 |
+| --- | --- |
+| `BladeEngine(String templateDir)` | 指定模板目录，默认后缀 `.jblade`，无缓存 |
+| `BladeEngine(String templateDir, String suffix)` | 指定模板目录与后缀 |
+| `BladeEngine(String templateDir, Cache cache)` | 指定模板目录与缓存 |
+| `BladeEngine(String templateDir, MemoryClassLoader classLoader)` | 指定模板目录与类加载器 |
+| `BladeEngine(String templateDir, String suffix, Cache cache)` | 指定模板目录、后缀与缓存 |
+| `BladeEngine(String templateDir, String suffix, Cache cache, MemoryClassLoader classLoader)` | 全参构造器 |
+
+### 方法文档
+
+| 方法签名 | 说明 |
+| --- | --- |
+| `String render(String templateName, Map<String, Object> variables)` | 渲染模板，注入变量，返回 HTML 字符串 |
+| `String render(String templateName)` | 渲染模板（无变量） |
+| `BladeTemplate loadTemplate(String templateName)` | 加载（编译 + 缓存）模板，返回 `BladeTemplate` 实例 |
+| `void clearCache()` | 清除模板类缓存与实例缓存 |
+| `void clearTemplateInstanceCache()` | 仅清除模板实例缓存 |
+| `MemoryClassLoader getMemoryClassLoader()` | 获取内存类加载器 |
+| `Cache getCache()` | 获取缓存（可能为 null） |
+| `boolean isUseCache()` | 是否启用缓存 |
+| `int getTemplateInstanceCacheSize()` | 获取模板实例缓存大小 |
+
+### 渲染流程
+
+```
+render(templateName, variables)
+        │
+        ▼
+loadTemplate(templateName)
+        │
+        ├── compiler.compile(templateName)  -- 编译模板，返回类全名
+        ├── 从缓存或 MemoryClassLoader 加载 Class
+        └── 从实例缓存或反射创建 BladeTemplate 实例
+        │
+        ▼
+template.resetContext()  -- 重置上下文
+        │
+        ▼
+注入 variables 到 BladeContext
+        │
+        ▼
+template.init()  -- 初始化（注册 Section 渲染器、解析 @extends）
+        │
+        ▼
+检查是否有父模板（@extends）？
+        ├── 是 -> 加载父模板，合并变量与 Section，调用父模板 render()
+        └── 否 -> 调用当前模板 render()
+        │
+        ▼
+返回 HTML 字符串
+```
+
+### 使用示例
+
+```java
+// 创建引擎（模板目录为 classpath 下的 templates，后缀 .jblade）
+BladeEngine engine = new BladeEngine("templates", ".jblade");
+
+// 渲染模板
+Map<String, Object> vars = new HashMap<>();
+vars.put("title", "用户列表");
+vars.put("users", List.of("Alice", "Bob", "Charlie"));
+
+String html = engine.render("users.list", vars);
+System.out.println(html);
+```
+
+带缓存的引擎：
+
+```java
+// 使用 Cache 模块缓存编译后的模板类
+Cache cache = Cache.store();  // 从容器获取
+BladeEngine engine = new BladeEngine("templates", ".jblade", cache);
+
+// 首次渲染会编译模板，后续渲染从缓存加载
+String html = engine.render("users.list", vars);
+
+// 清除缓存（开发模式热更新）
+engine.clearCache();
+```
+
+---
+
+## 5. BladeCompiler —— 模板编译器
+
+`com.weacsoft.jaravel.vendor.jblade.BladeCompiler`
+
+将 Blade 模板编译为 Java 源码，再通过 `javax.tools.JavaCompiler` 内存编译为字节码。
+
+### 构造器
+
+| 构造器签名 | 说明 |
+| --- | --- |
+| `BladeCompiler(String templateDir, MemoryClassLoader classLoader)` | 默认后缀 `.jblade` |
+| `BladeCompiler(String templateDir, MemoryClassLoader classLoader, String suffix)` | 指定后缀 |
+
+### 方法文档
+
+| 方法签名 | 说明 |
+| --- | --- |
+| `String compile(String templateName)` | 编译模板，返回编译后的类全名 |
+
+### 编译流程
+
+```
+compile(templateName)
+        │
+        ├── 1. 读取模板文件：classpath:templateDir/templateName(suffix)
+        ├── 2. generateClassName(templateName) -> "Blade_" + name（如 Blade_users_list）
+        ├── 3. generateJavaCode(className, content) -> 生成 Java 源码
+        ├── 4. 提取包名（从生成的源码中解析）
+        ├── 5. 获取系统 JavaCompiler
+        ├── 6. 创建 MemoryFileManager + SourceCodeJavaFileObject
+        ├── 7. 执行编译任务（task.call()）
+        ├── 8. 将编译后的字节码存入 MemoryClassLoader
+        └── 9. 返回类全名
+```
+
+### 生成的 Java 源码结构
+
+编译器为每个模板生成一个继承 `BladeTemplate` 的 Java 类，包含：
+
+```java
+import com.weacsoft.jaravel.vendor.jblade.*;
+import java.io.*;
+import java.util.*;
+import java.util.function.*;
+
+public class Blade_users_list extends BladeTemplate {
+
+    // 每个 @section 生成一个 renderSection_xxx 方法
+    private void renderSection_content(Writer writer) throws Exception {
+        BladeContext ctx = getContext();
+        // section 内容的编译代码
+    }
+
+    @Override
+    public void init() {
+        // 注册 Section 渲染器
+        // 解析 @extends、@section 等指令
+    }
+
+    @Override
+    public void render(Writer writer) throws Exception {
+        BladeContext ctx = getContext();
+        // 模板主体的编译代码
+        // @yield -> 调用 Section 渲染器
+        // {{ }} -> write(writer, expr)
+        // @foreach -> for 循环
+    }
+}
+```
+
+### 正则模式
+
+编译器使用以下正则表达式解析模板：
+
+| 模式 | 用途 | 正则 |
+| --- | --- | --- |
+| `COMMENT_PATTERN` | 注释 `{{-- ... --}}` | `\{\{--.*?--\}\}` |
+| `ECHO_PATTERN` | 输出 `{{ ... }}` | `\{\{\s*([^{}]+?)\s*\}\}` |
+| `DIRECTIVE_PATTERN` | 指令 `@xxx(...)` | `@(\w+)\s*(?:\((.*?)\))?` |
+| `VAR_PATTERN` | 变量 `$xxx` | `\$(\w+)` |
+
+---
+
+## 6. BladeTemplate —— 模板基类
+
+`com.weacsoft.jaravel.vendor.jblade.BladeTemplate`
+
+编译生成的模板类的抽象基类。提供渲染基础设施与组件渲染支持。
+
+### 方法文档
+
+| 方法签名 | 说明 |
+| --- | --- |
+| `abstract void init()` | 初始化模板（注册 Section 渲染器、解析指令），由编译器生成实现 |
+| `abstract void render(Writer writer)` | 渲染模板到 Writer，由编译器生成实现 |
+| `String render()` | 渲染模板，返回字符串（内部使用 `StringWriter`） |
+| `BladeContext getContext()` | 获取执行上下文 |
+| `void setContext(BladeContext)` | 设置执行上下文 |
+| `void setEngine(BladeEngine)` | 设置关联的引擎（用于组件渲染） |
+| `boolean isInitialized()` | 是否已初始化 |
+| `void setInitialized(boolean)` | 设置初始化状态 |
+| `void resetContext()` | 重置上下文（新建 `BladeContext`，标记未初始化） |
+| `void resetContext(BladeContext)` | 重置为指定上下文 |
+| `protected void write(Writer, String)` | 写入字符串 |
+| `protected void write(Writer, Object)` | 写入对象（调用 `toString()`） |
+| `protected boolean toBoolean(Object)` | 将值转为布尔（null=false, Number!=0, String 非空） |
+| `protected void renderComponent(Writer, String, Map, Map)` | 渲染组件 |
+
+### 组件渲染机制
+
+`renderComponent` 方法支持 `@component` 指令：
+
+1. 保存当前上下文的组件状态
+2. 设置组件数据与插槽（slot）
+3. 加载组件模板，注入 `$slot` 变量与组件数据
+4. 调用组件模板的 `render()`
+5. 恢复上下文状态
+
+---
+
+## 7. BladeContext —— 执行上下文
+
+`com.weacsoft.jaravel.vendor.jblade.BladeContext`
+
+模板执行时的上下文，维护变量、Section、组件等状态。
+
+### 方法文档
+
+#### 变量管理
+
+| 方法签名 | 说明 |
+| --- | --- |
+| `void setVariable(String name, Object value)` | 设置变量 |
+| `Object getVariable(String name)` | 获取变量 |
+| `Map<String, Object> getVariables()` | 获取所有变量 |
+
+#### Section 管理（模板继承）
+
+| 方法签名 | 说明 |
+| --- | --- |
+| `void setSection(String name, String content)` | 设置 Section 内容 |
+| `String getSection(String name)` | 获取 Section 内容 |
+| `void setSectionRenderer(String name, Consumer<Writer>)` | 设置 Section 渲染器 |
+| `Consumer<Writer> getSectionRenderer(String name)` | 获取 Section 渲染器 |
+| `void startSection(String name)` | 开始 Section |
+| `void appendSectionContent(String content)` | 追加 Section 内容 |
+| `void endSection()` | 结束 Section |
+| `String getParentTemplate()` | 获取父模板名（`@extends`） |
+| `void setParentTemplate(String)` | 设置父模板名 |
+
+#### 组件管理
+
+| 方法签名 | 说明 |
+| --- | --- |
+| `void startComponent(String name)` | 开始组件 |
+| `void endComponent()` | 结束组件 |
+| `void setComponentData(String key, Object value)` | 设置组件数据 |
+| `Object getComponentData(String key)` | 获取组件数据 |
+| `void startSlot(String name)` | 开始插槽 |
+| `void endSlot()` | 结束插槽 |
+| `String getSlot(String name)` | 获取插槽内容 |
+
+#### 重置
+
+| 方法签名 | 说明 |
+| --- | --- |
+| `void reset()` | 清空所有状态（变量、Section、组件等） |
+
+---
+
+## 8. 内存编译机制
+
+`com.weacsoft.jaravel.vendor.utils.memory` 包提供了将 Java 源码在内存中编译并加载的机制，无需写入磁盘文件。
+
+### 8.1 MemoryClassLoader —— 内存类加载器
+
+`com.weacsoft.jaravel.vendor.utils.memory.MemoryClassLoader`
+
+继承 `ClassLoader`，从内存中读取 class 字节码加载类。
+
+| 方法签名 | 说明 |
+| --- | --- |
+| `Map<String, byte[]> getCompiledClasses()` | 获取所有已编译类的字节码映射 |
+| `List<String> getCompiledClassesName()` | 获取所有已编译类名列表 |
+| `void removeAll()` | 清除所有已编译类 |
+| `Class<?> findClass(String name)` | 重写：从 `compiledClasses` 中查找字节码并 `defineClass` |
+
+### 8.2 MemoryFileManager —— 内存文件管理器
+
+`com.weacsoft.jaravel.vendor.utils.memory.MemoryFileManager`
+
+继承 `ForwardingJavaFileManager`，捕获编译器输出的类字节码到内存。
+
+| 方法签名 | 说明 |
+| --- | --- |
+| `JavaFileObject getJavaFileForOutput(...)` | 重写：将编译输出重定向到 `ClassFileJavaFileObject` |
+| `List<String> getGeneratedClassNames()` | 获取生成的类名列表 |
+| `byte[] getGeneratedClass(String className)` | 获取生成的类字节码 |
+
+### 8.3 SourceCodeJavaFileObject —— 源代码文件对象
+
+`com.weacsoft.jaravel.vendor.utils.memory.SourceCodeJavaFileObject`
+
+继承 `SimpleJavaFileObject`，将 Java 源码字符串包装为编译器可识别的文件对象。
+
+| 方法签名 | 说明 |
+| --- | --- |
+| `CharBuffer getCharContent(boolean)` | 返回源码内容的 `CharBuffer` |
+
+### 8.4 ClassFileJavaFileObject —— 字节码文件对象
+
+`com.weacsoft.jaravel.vendor.utils.memory.ClassFileJavaFileObject`
+
+继承 `SimpleJavaFileObject`，使用 `ByteArrayOutputStream` 捕获编译器输出的字节码。
+
+| 方法签名 | 说明 |
+| --- | --- |
+| `OutputStream openOutputStream()` | 返回内部 `ByteArrayOutputStream` |
+| `byte[] getBytes()` | 获取捕获的字节码 |
+
+### 编译流程图
+
+```
+BladeCompiler.compile()
+        │
+        ▼
+SourceCodeJavaFileObject(fullClassName, sourceCode)   -- 源码对象
+        │
+        ▼
+JavaCompiler.getTask(null, MemoryFileManager, diagnostics, ...)
+        │
+        ▼
+task.call()  -- 编译
+        │
+        ▼
+MemoryFileManager.getGeneratedClassNames()  -- 获取生成的类名
+        │
+        ▼
+MemoryFileManager.getGeneratedClass(name)   -- 获取字节码
+        │
+        ▼
+MemoryClassLoader.getCompiledClasses().put(name, bytes)  -- 存入类加载器
+        │
+        ▼
+返回类全名
+```
+
+---
+
+## 9. 工具类
+
+### 9.1 StringUtils —— 命名转换工具
+
+`com.weacsoft.jaravel.vendor.utils.StringUtils`
+
+| 方法签名 | 说明 | 示例 |
+| --- | --- | --- |
+| `static String underlineToCamelCase(String)` | 下划线转小驼峰 | `user_name` -> `userName` |
+| `static String camelCaseToUnderline(String)` | 小驼峰转下划线 | `userName` -> `user_name` |
+| `static String underlineToPascalCase(String)` | 下划线转大驼峰 | `user_name` -> `UserName` |
+| `static String pascalCaseToUnderline(String)` | 大驼峰转下划线 | `UserName` -> `user_name` |
+| `static String camelCaseToPascalCase(String)` | 小驼峰转大驼峰 | `userName` -> `UserName` |
+| `static String pascalCaseToCamelCase(String)` | 大驼峰转小驼峰 | `UserName` -> `userName` |
+
+### 9.2 ExpiryMap —— 带过期时间的 Map
+
+`com.weacsoft.jaravel.vendor.utils.ExpiryMap`
+
+继承 `HashMap`，对每个 key 值设置有效期。读取时惰性清理过期条目。
+
+| 方法签名 | 说明 |
+| --- | --- |
+| `V put(K key, V value, long expiryTime)` | 写入并指定过期时间（毫秒） |
+| `Object isInvalid(Object key)` | 检查 key 是否失效（null=不存在，-1=过期，value=有效） |
+| `static ExpiryMap<String, String> getInstance()` | 获取单例实例 |
+
+---
+
+## 10. 支持的指令
+
+### 输出指令
+
+| 指令 | 语法 | 说明 |
+| --- | --- | --- |
+| 输出变量 | `{{ $name }}` | 输出变量值（调用 `toString()`） |
+| 注释 | `{{-- 注释内容 --}}` | 注释，编译时移除 |
+
+### 控制结构指令
+
+| 指令 | 语法 | 说明 |
+| --- | --- | --- |
+| 条件 | `@if($condition)` ... `@elseif($cond2)` ... `@else` ... `@endif` | 条件判断 |
+| 循环 | `@foreach($items as $item)` ... `@endforeach` | 遍历集合 |
+| 循环 | `@for(init; cond; update)` ... `@endfor` | 标准 for 循环 |
+| 循环 | `@while($cond)` ... `@endwhile` | while 循环 |
+
+### 模板继承指令
+
+| 指令 | 语法 | 说明 |
+| --- | --- | --- |
+| 继承 | `@extends('layout')` | 指定父模板 |
+| 区块定义 | `@section('name')` ... `@endsection` | 定义区块内容 |
+| 区块简写 | `@section('name', 'value')` | 定义区块为简单字符串 |
+| 区块输出 | `@yield('name')` | 在父模板中输出子模板定义的区块 |
+
+### 组件指令
+
+| 指令 | 语法 | 说明 |
+| --- | --- | --- |
+| 组件 | `@component('alert', ['type' => 'danger'])` ... `@endcomponent` | 渲染组件 |
+| 插槽 | `@slot('header')` ... `@endslot` | 定义组件插槽 |
+
+---
+
+## 11. 使用示例
+
+### 11.1 基本模板
+
+模板文件 `templates/hello.jblade`：
+
+```blade
 <h1>Hello, {{ $name }}!</h1>
-<p>Email: {{ $user.email }}</p>
-<p>Count: {{ $items.size() }}</p>
+<p>You have {{ $count }} messages.</p>
 ```
 
-### 条件判断
+渲染：
 
-```jblade
-@if ($user)
-    <p>Welcome, {{ $user.name }}!</p>
-@elseif ($guest)
-    <p>Welcome, Guest!</p>
+```java
+BladeEngine engine = new BladeEngine("templates");
+
+Map<String, Object> vars = new HashMap<>();
+vars.put("name", "Alice");
+vars.put("count", 5);
+
+String html = engine.render("hello", vars);
+// <h1>Hello, Alice!</h1>
+// <p>You have 5 messages.</p>
+```
+
+### 11.2 条件与循环
+
+模板文件 `templates/users.jblade`：
+
+```blade
+<h1>User List</h1>
+@if($users.isEmpty())
+    <p>No users found.</p>
 @else
-    <p>Please login.</p>
+    <ul>
+    @foreach($users as $user)
+        <li>{{ $user }}</li>
+    @endforeach
+    </ul>
 @endif
 ```
 
-### 循环
+渲染：
 
-```jblade
-<ul>
-    @foreach ($items as $item)
-        <li>{{ $item }}</li>
-    @endforeach
-</ul>
+```java
+BladeEngine engine = new BladeEngine("templates");
 
-@for ($i = 0; $i < 10; $i++)
-    <p>Item {{ $i }}</p>
-@endfor
+Map<String, Object> vars = new HashMap<>();
+vars.put("users", List.of("Alice", "Bob", "Charlie"));
+
+String html = engine.render("users", vars);
 ```
 
-### 模板继承
+### 11.3 模板继承
 
-**父模板 (layouts/app.jblade):**
+父模板 `templates/layout.jblade`：
 
-```jblade
+```blade
 <!DOCTYPE html>
 <html>
 <head>
     <title>@yield('title', 'Default Title')</title>
 </head>
 <body>
-    <header>
-        <h1>My Website</h1>
-    </header>
-    
+    <nav>Navigation</nav>
     <main>
         @yield('content')
     </main>
-    
-    <footer>
-        &copy; 2026 My Website
-    </footer>
 </body>
 </html>
 ```
 
-**子模板:**
+子模板 `templates/page.jblade`：
 
-```jblade
-@extends('layouts.app')
+```blade
+@extends('layout')
 
-@section('title', 'Home Page')
+@section('title', 'My Page')
 
 @section('content')
-    <h2>Welcome to My Website</h2>
-    <p>This is the home page content.</p>
+    <h1>Welcome!</h1>
+    <p>This is the page content.</p>
 @endsection
 ```
 
-## 组件系统
-
-JBlade 提供了强大的组件系统，类似于 Laravel Blade 的组件功能。
-
-### 基本组件
-
-**定义组件 (components/alert.jblade):**
-
-```jblade
-<div class="alert alert-{{ $type }}">
-    @if ($title)
-        <h4>{{ $title }}</h4>
-    @endif
-    
-    @if ($slot)
-        <p>{{ $slot }}</p>
-    @endif
-</div>
-```
-
-**使用组件:**
-
-```jblade
-@component('alert', ['type' => 'success'])
-    操作成功！
-@endcomponent
-
-@component('alert', ['type' => 'warning', 'title' => '警告'])
-    请注意此操作
-@endcomponent
-```
-
-### 使用插槽
-
-**定义带插槽的组件 (components/card.jblade):**
-
-```jblade
-<div class="card">
-    @if ($title)
-        <div class="card-header">
-            <h3>{{ $title }}</h3>
-        </div>
-    @endif
-    
-    @if ($header)
-        <div class="card-header-custom">
-            {{ $header }}
-        </div>
-    @endif
-    
-    <div class="card-body">
-        @if ($slot)
-            {{ $slot }}
-        @endif
-    </div>
-    
-    @if ($footer)
-        <div class="card-footer">
-            {{ $footer }}
-        </div>
-    @endif
-</div>
-```
-
-**使用带插槽的组件:**
-
-```jblade
-@component('card', ['title' => '我的卡片'])
-    @slot('header')
-        <span>卡片头部内容</span>
-    @endslot
-    
-    <p>这是卡片的主要内容区域。</p>
-    <p>可以放置任何HTML内容。</p>
-    
-    @slot('footer')
-        <button>确定</button>
-        <button>取消</button>
-    @endslot
-@endcomponent
-```
-
-### 组件变量说明
-
-在组件模板中，可以访问以下变量：
-
-- `$slot` - 默认插槽内容（组件标签内的内容）
-- `$header`, `$footer` 等 - 命名插槽内容（通过 `@slot` 定义）
-- `$type`, `$title` 等 - 组件参数（通过组件属性传递）
-
-### 嵌套组件
-
-组件可以嵌套使用：
-
-```jblade
-@component('card', ['title' => '包含警告的卡片'])
-    @slot('header')
-        <h3>重要通知</h3>
-    @endslot
-    
-    <p>以下是警告信息：</p>
-    
-    @component('alert', ['type' => 'warning', 'title' => '注意'])
-        这是嵌套在卡片中的警告组件
-    @endcomponent
-    
-    @slot('footer')
-        <small>最后更新: 2026-01-07</small>
-    @endslot
-@endcomponent
-```
-
-### 列表组件
-
-**定义列表组件 (components/list.jblade):**
-
-```jblade
-<ul class="list">
-    @if ($items && count($items) > 0)
-        @foreach ($items as $item)
-            <li>{{ $item }}</li>
-        @endforeach
-    @else
-        @if ($empty)
-            <li class="empty">{{ $empty }}</li>
-        @else
-            <li class="empty">没有数据</li>
-        @endif
-    @endif
-</ul>
-```
-
-**使用列表组件:**
-
-```jblade
-@component('list', ['items' => ['苹果', '香蕉', '橙子']])
-    @slot('empty')
-        没有数据
-    @endslot
-@endcomponent
-```
-
-## 注释
-
-```jblade
-{{-- 这是一个注释，不会输出到HTML --}}
-
-<p>这是可见的内容</p>
-```
-
-## 完整示例
-
-### 模板文件 (templates/welcome.jblade)
-
-```jblade
-<!DOCTYPE html>
-<html>
-<head>
-    <title>JBlade Demo</title>
-    <style>
-        .alert {
-            padding: 15px;
-            margin-bottom: 20px;
-            border: 1px solid transparent;
-            border-radius: 4px;
-        }
-        .alert-success {
-            color: #3c763d;
-            background-color: #dff0d8;
-            border-color: #d6e9c6;
-        }
-        .alert-info {
-            color: #31708f;
-            background-color: #d9edf7;
-            border-color: #bce8f1;
-        }
-    </style>
-</head>
-<body>
-    <h1>Hello, {{ $name }}!</h1>
-    
-    @if ($items)
-        <h2>Items:</h2>
-        <ul>
-            @foreach ($items as $item)
-                <li>{{ $item }}</li>
-            @endforeach
-        </ul>
-    @endif
-    
-    <h2>Components:</h2>
-    
-    @component('alert', ['type' => 'success'])
-        Welcome to JBlade!
-    @endcomponent
-    
-    @component('alert', ['type' => 'info', 'title' => 'Information'])
-        This is a component with title
-    @endcomponent
-</body>
-</html>
-```
-
-### Java 代码
+渲染：
 
 ```java
-import com.weacsoft.jaravel.jblade.BladeEngine;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Arrays;
+BladeEngine engine = new BladeEngine("templates");
+String html = engine.render("page", null);
+// 输出完整的 HTML，title 为 "My Page"，content 为子模板定义的内容
+```
 
-public class Main {
-    public static void main(String[] args) throws Exception {
-        BladeEngine engine = new BladeEngine("templates");
-        
-        Map<String, Object> data = new HashMap<>();
-        data.put("name", "Jaravel");
-        data.put("items", Arrays.asList("Feature 1", "Feature 2", "Feature 3"));
-        
-        String html = engine.render("welcome", data);
-        System.out.println(html);
-    }
+### 11.4 组件
+
+组件模板 `templates/alert.jblade`：
+
+```blade
+<div class="alert alert-{{ $type }}">
+    {{ $slot }}
+</div>
+```
+
+使用组件的模板 `templates/message.jblade`：
+
+```blade
+@component('alert', ['type' => 'danger'])
+    @slot('default')
+        Something went wrong!
+    @endslot
+@endcomponent
+```
+
+渲染：
+
+```java
+BladeEngine engine = new BladeEngine("templates");
+String html = engine.render("message", null);
+// <div class="alert alert-danger">
+//     Something went wrong!
+// </div>
+```
+
+### 11.5 在 HTTP 控制器中使用
+
+通过 HTTP 模块的 `ResponseBuilder.view()` 返回视图响应：
+
+```java
+@GetMapping("/users")
+public Object listUsers() {
+    Map<String, Object> data = new HashMap<>();
+    data.put("users", userService.findAll());
+    return ResponseBuilder.view("users.list", data);
 }
 ```
 
-## 测试
+> `ResponseBuilder.view()` 内部使用 `BladeEngine` 渲染模板并包装为 HTTP 响应。
 
-JBlade 提供了完整的组件功能测试示例。
+---
 
-### 运行测试
+## 12. 线程安全说明
 
-```bash
-# 编译项目
-mvn clean compile
+| 类 | 线程安全性 | 说明 |
+| --- | --- | --- |
+| `BladeEngine` | 部分线程安全 | `templateClassCache` 与 `templateInstanceCache` 使用 `ConcurrentHashMap`。模板实例的 `init()` 使用 double-checked locking（`synchronized`）保证单次初始化。但 `render()` 方法会修改 `BladeContext` 状态，同一模板实例的并发渲染需要外部同步 |
+| `BladeCompiler` | 非线程安全 | 编译过程涉及 `MemoryFileManager` 与 `MemoryClassLoader` 的写入操作，应避免并发编译同一模板。建议在初始化阶段预编译或通过 `BladeEngine` 的缓存机制避免重复编译 |
+| `BladeTemplate` | 单线程使用 | `context` 字段为实例变量，`render()` 会修改上下文状态。同一实例不应并发渲染。`BladeEngine` 通过实例缓存复用模板，但 `render()` 前会 `resetContext()`，因此不同请求串行渲染是安全的 |
+| `BladeContext` | 非线程安全 | 使用 `HashMap`、`Stack` 等非线程安全容器，应在单线程内使用。每次 `render()` 前由 `BladeEngine` 重置 |
+| `MemoryClassLoader` | 线程安全 | `compiledClasses` 使用 `ConcurrentHashMap`，`findClass` 通过 `defineClass` 加载（JVM 保证类加载的线程安全） |
+| `MemoryFileManager` | 线程安全 | `generatedClasses` 使用 `ConcurrentHashMap` |
+| `StringUtils` | 线程安全 | 无状态静态方法 |
+| `ExpiryMap` | 非线程安全 | 继承 `HashMap`，非线程安全。如需并发使用应外部同步或使用 `Collections.synchronizedMap()` 包装 |
 
-# 运行组件测试
-java -cp "target/classes;..." ComponentTest
-```
-
-### 测试模板
-
-测试模板位于 `jblade/templates/` 目录：
-
-- `component_test.jblade` - 组件功能测试主模板
-- `alert.jblade` - 警告组件
-- `card.jblade` - 卡片组件
-- `list.jblade` - 列表组件
-
-### 测试内容
-
-1. **基本组件使用** - 测试最简单的组件调用
-2. **带标题的组件** - 测试带参数的组件
-3. **使用插槽** - 测试默认插槽功能
-4. **自定义卡片组件** - 测试多插槽组件
-5. **嵌套组件** - 测试组件嵌套功能
-6. **列表组件** - 测试带数据的组件
-
-## API 文档
-
-### BladeEngine
-
-```java
-// 创建引擎
-BladeEngine(String templateDir)
-
-// 渲染模板（带数据）
-String render(String templateName, Map<String, Object> variables)
-
-// 渲染模板（无数据）
-String render(String templateName)
-
-// 清除缓存
-void clearCache()
-```
-
-### BladeContext
-
-```java
-// 设置变量
-void setVariable(String name, Object value)
-
-// 获取变量
-Object getVariable(String name)
-
-// 设置父模板
-void setParentTemplate(String parentTemplate)
-
-// 获取父模板
-String getParentTemplate()
-
-// 设置区块
-void setSection(String name, String content)
-
-// 获取区块
-String getSection(String name)
-
-// 设置区块渲染器
-void setSectionRenderer(String name, Consumer<Writer> renderer)
-
-// 获取区块渲染器
-Consumer<Writer> getSectionRenderer(String name)
-```
-
-## 注意事项
-
-1. **模板目录** - 模板文件必须放在指定的模板目录中
-2. **文件扩展名** - 模板文件必须使用 `.jblade` 扩展名
-3. **JDK要求** - 需要使用 JDK 而非 JRE，因为需要动态编译
-4. **性能优化** - 模板编译后会缓存在内存中，避免重复编译
-5. **变量作用域** - 组件内的变量是独立的，不会影响外部变量
-
-## 许可证
-
-本项目采用开源许可证，具体请参考项目文件。
-
-## 贡献
-
-欢迎提交 Issue 和 Pull Request！
+> **重要提示**：`BladeEngine.render()` 方法在渲染前会调用 `template.resetContext()` 重置上下文，因此多个请求**串行**调用 `render()` 是安全的。但**并发**调用同一 `BladeEngine` 实例的 `render()` 方法可能导致上下文状态混乱，建议在高并发场景下为每个请求创建独立的 `BladeEngine` 实例，或使用外部同步机制。

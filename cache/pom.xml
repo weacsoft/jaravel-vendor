@@ -3,30 +3,38 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
+
     <parent>
         <groupId>com.weacsoft</groupId>
-        <artifactId>Jaravel</artifactId>
-        <version>0.0.1-SNAPSHOT</version>
+        <artifactId>jaravel-vendor</artifactId>
+        <version>1.0.0</version>
     </parent>
 
     <artifactId>cache</artifactId>
-
-    <properties>
-        <maven.compiler.source>8</maven.compiler.source>
-        <maven.compiler.target>8</maven.compiler.target>
-    </properties>
+    <name>cache</name>
+    <description>缓存：Cache 门面 / CacheStore 仓库 / Array·File 驱动 / CacheManager 多仓库管理，对齐 Laravel Cache</description>
 
     <dependencies>
         <dependency>
             <groupId>com.weacsoft</groupId>
-            <artifactId>util</artifactId>
-            <version>${project.version}</version>
+            <artifactId>core</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.weacsoft</groupId>
-            <artifactId>interface</artifactId>
-            <version>${project.version}</version>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
         </dependency>
     </dependencies>
-
 </project>
