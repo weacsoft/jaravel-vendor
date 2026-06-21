@@ -22,6 +22,16 @@
         <module>migration</module>
         <module>cache</module>
         <module>event</module>
+        <!-- Redis 连接管理（多机 session/缓存同步基础） -->
+        <module>redis-config</module>
+        <module>redis-cache</module>
+        <module>session-redis</module>
+        <!-- Artisan CLI 命令框架 -->
+        <module>artisan</module>
+        <!-- 定时任务调度器 -->
+        <module>schedule</module>
+        <!-- 数据库队列驱动 -->
+        <module>queue-database</module>
         <module>springboot</module>
         <module>starter</module>
         <!-- 插件系统模块（可选，按需引入） -->
@@ -99,6 +109,36 @@
             <dependency>
                 <groupId>com.weacsoft</groupId>
                 <artifactId>event</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.weacsoft</groupId>
+                <artifactId>redis-config</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.weacsoft</groupId>
+                <artifactId>redis-cache</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.weacsoft</groupId>
+                <artifactId>session-redis</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.weacsoft</groupId>
+                <artifactId>artisan</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.weacsoft</groupId>
+                <artifactId>schedule</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.weacsoft</groupId>
+                <artifactId>queue-database</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

@@ -39,16 +39,24 @@ public class EventAutoConfiguration {
 
     /**
      * 注册事件调度器，注入 QueueManager 并按配置初始化异步分发开关。
+     * <p>
+     * 当容器中存在 {@link QueueDispatcher} 时，自动注入以启用持久化队列分发。
      *
-     * @param queueManager 队列管理器
-     * @param properties   事件配置属性
+     * @param queueManager       队列管理器
+     * @param properties         事件配置属性
+     * @param queueDispatcherOpt 持久化队列分发器（可选）
      * @return 事件调度器实例
      */
     @Bean
     @ConditionalOnMissingBean(Dispatcher.class)
-    public EventDispatcher eventDispatcher(QueueManager queueManager, EventProperties properties) {
+    public EventDispatcher eventDispatcher(QueueManager queueManager, EventProperties properties,
+                                           org.springframework.beans.factory.ObjectProvider<QueueDispatcher> queueDispatcherOpt) {
         EventDispatcher dispatcher = new EventDispatcher(queueManager);
         dispatcher.setQueueEnabled(properties.isQueueEnabled());
+        QueueDispatcher qd = queueDispatcherOpt.getIfAvailable();
+        if (qd != null) {
+            dispatcher.setQueueDispatcher(qd);
+        }
         return dispatcher;
     }
 

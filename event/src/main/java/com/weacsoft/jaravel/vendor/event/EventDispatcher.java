@@ -42,6 +42,9 @@ public class EventDispatcher implements Dispatcher {
     /** 队列管理器，管理命名队列的线程池与重试配置 */
     private final QueueManager queueManager;
 
+    /** 持久化队列分发器（可选，存在时优先使用数据库队列等持久化后端） */
+    private QueueDispatcher queueDispatcher;
+
     /**
      * 构造事件调度器。
      *
@@ -49,6 +52,16 @@ public class EventDispatcher implements Dispatcher {
      */
     public EventDispatcher(QueueManager queueManager) {
         this.queueManager = queueManager;
+    }
+
+    /**
+     * 设置持久化队列分发器（由 Spring 自动注入，可选）。
+     *
+     * @param queueDispatcher 队列分发器
+     */
+    public void setQueueDispatcher(QueueDispatcher queueDispatcher) {
+        this.queueDispatcher = queueDispatcher;
+        logger.info("[event] 启用持久化队列分发器: {}", queueDispatcher.getClass().getName());
     }
 
     @Override
@@ -84,6 +97,9 @@ public class EventDispatcher implements Dispatcher {
 
     /**
      * 将监听器异步分发到指定队列。
+     * <p>
+     * 当 {@link QueueDispatcher} 可用时，优先使用持久化队列（数据库/Redis），
+     * 实现多实例消费和任务持久化；不可用时降级为内存队列（{@link QueueManager}）。
      *
      * @param queueName    队列名
      * @param listener     监听器
@@ -93,6 +109,12 @@ public class EventDispatcher implements Dispatcher {
      */
     private void dispatchToQueue(String queueName, Listener<Event> listener, Event event,
                                  String listenerName, long delayMs) {
+        // 优先使用持久化队列分发器
+        if (queueDispatcher != null && queueDispatcher.isAvailable()) {
+            queueDispatcher.dispatch(queueName, listener, event, delayMs);
+            return;
+        }
+        // 降级为内存队列
         if (delayMs > 0) {
             queueManager.schedule(queueName,
                 () -> invokeWithRetry(listener, event, listenerName, queueName), delayMs);
