@@ -24,6 +24,10 @@
         <module>event</module>
         <module>springboot</module>
         <module>starter</module>
+        <!-- 插件系统模块（可选，按需引入） -->
+        <module>plugin-jar-core</module>
+        <module>plugin-jar-database</module>
+        <module>plugin-java-core</module>
     </modules>
 
     <parent>
@@ -105,6 +109,22 @@
             <dependency>
                 <groupId>com.weacsoft</groupId>
                 <artifactId>starter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <!-- 插件系统模块 -->
+            <dependency>
+                <groupId>com.weacsoft</groupId>
+                <artifactId>plugin-jar-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.weacsoft</groupId>
+                <artifactId>plugin-jar-database</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.weacsoft</groupId>
+                <artifactId>plugin-java-core</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
