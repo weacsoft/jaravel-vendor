@@ -5,12 +5,14 @@
     <modelVersion>4.0.0</modelVersion>
 
     <!-- Jaravel-Vendor : Laravel 风格的 SpringBoot 3 多模块框架（适配器包，类比 PHP vendor 目录） -->
-    <groupId>com.weacsoft</groupId>
+    <groupId>io.github.lijialong1313</groupId>
     <artifactId>jaravel-vendor</artifactId>
     <version>0.1.0</version>
     <packaging>pom</packaging>
     <name>jaravel-vendor</name>
-    <description>Laravel 风格的 SpringBoot 3 高性能多模块框架：配置 / 路由 / 中间件 / Auth / Eloquent ORM / 迁移 / 缓存 / 事件 / 校验</description>
+    <description>Laravel 风格的 SpringBoot 3 高性能多模块框架：配置 / 路由 / 中间件 / Auth / Eloquent ORM / 迁移 / 缓存 /
+        事件 / 校验
+    </description>
     <url>https://github.com/weacsoft/jaravel-vendor</url>
 
     <licenses>
@@ -23,17 +25,19 @@
 
     <developers>
         <developer>
-            <id>weacsoft</id>
-            <name>Weacsoft</name>
-            <email>contact@weacsoft.com</email>
-            <organization>Weacsoft</organization>
-            <organizationUrl>https://github.com/weacsoft</organizationUrl>
+            <id>lijialong1313</id>
+            <name>lijialong</name>
+            <email>834337589@qq.com</email>
+            <roles>
+                <role>Project Manager</role>
+                <role>Developer</role>
+            </roles>
         </developer>
     </developers>
 
     <scm>
-        <connection>scm:git:git://github.com/weacsoft/jaravel-vendor.git</connection>
-        <developerConnection>scm:git:ssh://github.com/weacsoft/jaravel-vendor.git</developerConnection>
+        <connection>scm:git:https://github.com/weacsoft/jaravel-vendor.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/weacsoft/jaravel-vendor.git</developerConnection>
         <url>https://github.com/weacsoft/jaravel-vendor</url>
     </scm>
 
@@ -101,129 +105,129 @@
         <dependencies>
             <!-- 内部模块 -->
             <dependency>
-                <groupId>com.weacsoft</groupId>
+                <groupId>io.github.lijialong1313</groupId>
                 <artifactId>core</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.weacsoft</groupId>
+                <groupId>io.github.lijialong1313</groupId>
                 <artifactId>utils</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.weacsoft</groupId>
+                <groupId>io.github.lijialong1313</groupId>
                 <artifactId>http</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.weacsoft</groupId>
+                <groupId>io.github.lijialong1313</groupId>
                 <artifactId>jblade</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.weacsoft</groupId>
+                <groupId>io.github.lijialong1313</groupId>
                 <artifactId>auth</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.weacsoft</groupId>
+                <groupId>io.github.lijialong1313</groupId>
                 <artifactId>jwt</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.weacsoft</groupId>
+                <groupId>io.github.lijialong1313</groupId>
                 <artifactId>database</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.weacsoft</groupId>
+                <groupId>io.github.lijialong1313</groupId>
                 <artifactId>migration</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.weacsoft</groupId>
+                <groupId>io.github.lijialong1313</groupId>
                 <artifactId>cache</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.weacsoft</groupId>
+                <groupId>io.github.lijialong1313</groupId>
                 <artifactId>event</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.weacsoft</groupId>
+                <groupId>io.github.lijialong1313</groupId>
                 <artifactId>redis-config</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.weacsoft</groupId>
+                <groupId>io.github.lijialong1313</groupId>
                 <artifactId>redis-cache</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.weacsoft</groupId>
+                <groupId>io.github.lijialong1313</groupId>
                 <artifactId>session-redis</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.weacsoft</groupId>
+                <groupId>io.github.lijialong1313</groupId>
                 <artifactId>artisan</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.weacsoft</groupId>
+                <groupId>io.github.lijialong1313</groupId>
                 <artifactId>schedule</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.weacsoft</groupId>
+                <groupId>io.github.lijialong1313</groupId>
                 <artifactId>queue-database</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.weacsoft</groupId>
+                <groupId>io.github.lijialong1313</groupId>
                 <artifactId>springboot</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.weacsoft</groupId>
+                <groupId>io.github.lijialong1313</groupId>
                 <artifactId>starter</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <!-- 插件系统模块 -->
             <dependency>
-                <groupId>com.weacsoft</groupId>
+                <groupId>io.github.lijialong1313</groupId>
                 <artifactId>plugin-jar-core</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.weacsoft</groupId>
+                <groupId>io.github.lijialong1313</groupId>
                 <artifactId>plugin-jar-database</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.weacsoft</groupId>
+                <groupId>io.github.lijialong1313</groupId>
                 <artifactId>plugin-java-core</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.weacsoft</groupId>
+                <groupId>io.github.lijialong1313</groupId>
                 <artifactId>plugin-jar-multi-tenant</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.weacsoft</groupId>
+                <groupId>io.github.lijialong1313</groupId>
                 <artifactId>plugin-jar-remote-server</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.weacsoft</groupId>
+                <groupId>io.github.lijialong1313</groupId>
                 <artifactId>plugin-jar-remote-client</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <!-- 微信 SDK -->
             <dependency>
-                <groupId>com.weacsoft</groupId>
+                <groupId>io.github.lijialong1313</groupId>
                 <artifactId>wechat-sdk</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -276,40 +280,48 @@
         </dependency>
     </dependencies>
 
-    <distributionManagement>
-        <snapshotRepository>
-            <id>central</id>
-            <url>https://central.sonatype.com/repository/maven-snapshots/</url>
-        </snapshotRepository>
-        <repository>
-            <id>central</id>
-            <url>https://central.sonatype.com/repository/maven-central/</url>
-        </repository>
-    </distributionManagement>
-
     <build>
-        <pluginManagement>
-            <plugins>
-                <plugin>
-                    <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-compiler-plugin</artifactId>
-                    <configuration>
-                        <source>${java.version}</source>
-                        <target>${java.version}</target>
-                        <parameters>true</parameters>
-                    </configuration>
-                </plugin>
-            </plugins>
-        </pluginManagement>
+        <plugins>
+            <!-- JDK编译必备 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>${java.version}</source>
+                    <target>${java.version}</target>
+                    <parameters>true</parameters>
+                </configuration>
+            </plugin>
+
+            <!-- 禁用原生deploy -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-deploy-plugin</artifactId>
+                <version>3.1.1</version>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+        </plugins>
     </build>
 
     <profiles>
-        <!-- Release profile: 生成 source jar、javadoc jar、GPG 签名，用于 Maven Central 发布 -->
         <profile>
-            <id>release</id>
+            <id>release-central</id>
             <build>
                 <plugins>
-                    <!-- Source jar -->
+                    <!-- 中央库发布插件 -->
+                    <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <version>0.9.0</version>
+                        <extensions>true</extensions>
+                        <configuration>
+                            <publishingServerId>ossrh</publishingServerId>
+                        </configuration>
+                    </plugin>
+
+                    <!-- 源码包（发布必填） -->
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-source-plugin</artifactId>
@@ -323,17 +335,17 @@
                             </execution>
                         </executions>
                     </plugin>
-                    <!-- Javadoc jar -->
+
+                    <!-- 文档包（发布必填） -->
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-javadoc-plugin</artifactId>
-                        <version>3.8.0</version>
+                        <version>3.1.1</version>
                         <configuration>
-                            <doclint>none</doclint>
-                            <failOnError>false</failOnError>
                             <charset>UTF-8</charset>
                             <encoding>UTF-8</encoding>
                             <docencoding>UTF-8</docencoding>
+                            <additionalJOption>-Xdoclint:none</additionalJOption>
                         </configuration>
                         <executions>
                             <execution>
@@ -344,17 +356,12 @@
                             </execution>
                         </executions>
                     </plugin>
-                    <!-- GPG 签名 -->
+
+                    <!-- GPG签名（发布必填） -->
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-gpg-plugin</artifactId>
-                        <version>3.2.7</version>
-                        <configuration>
-                            <gpgArguments>
-                                <arg>--pinentry-mode</arg>
-                                <arg>loopback</arg>
-                            </gpgArguments>
-                        </configuration>
+                        <version>3.1.0</version>
                         <executions>
                             <execution>
                                 <id>sign-artifacts</id>
@@ -364,18 +371,6 @@
                                 </goals>
                             </execution>
                         </executions>
-                    </plugin>
-                    <!-- Maven Central 部署 -->
-                    <plugin>
-                        <groupId>org.sonatype.central</groupId>
-                        <artifactId>central-publishing-maven-plugin</artifactId>
-                        <version>0.7.0</version>
-                        <extensions>true</extensions>
-                        <configuration>
-                            <publishingServerId>central</publishingServerId>
-                            <autoPublish>true</autoPublish>
-                            <waitUntil>published</waitUntil>
-                        </configuration>
                     </plugin>
                 </plugins>
             </build>

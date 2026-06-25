@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>com.weacsoft</groupId>
+        <groupId>io.github.lijialong1313</groupId>
         <artifactId>jaravel-vendor</artifactId>
         <version>0.1.0</version>
     </parent>
@@ -17,12 +17,12 @@
     <dependencies>
         <!-- 内部模块：缓存（AccessToken 缓存基础） -->
         <dependency>
-            <groupId>com.weacsoft</groupId>
+            <groupId>io.github.lijialong1313</groupId>
             <artifactId>cache</artifactId>
         </dependency>
         <!-- 内部模块：Redis 连接管理（AccessToken 分布式缓存） -->
         <dependency>
-            <groupId>com.weacsoft</groupId>
+            <groupId>io.github.lijialong1313</groupId>
             <artifactId>redis-config</artifactId>
         </dependency>
         <!-- Spring Boot 自动装配 -->

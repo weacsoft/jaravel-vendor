@@ -53,7 +53,7 @@ Java 版 Laravel 框架核心库，在 Spring Boot 3.2.5 基础上近乎 100% �
 
 ```xml
 <dependency>
-    <groupId>com.weacsoft</groupId>
+    <groupId>io.github.lijialong1313</groupId>
     <artifactId>starter</artifactId>
     <version>0.1.0</version>
 </dependency>
@@ -63,7 +63,7 @@ JWT 为可选模块，按需引入：
 
 ```xml
 <dependency>
-    <groupId>com.weacsoft</groupId>
+    <groupId>io.github.lijialong1313</groupId>
     <artifactId>jwt</artifactId>
     <version>0.1.0</version>
 </dependency>
@@ -74,19 +74,19 @@ JWT 为可选模块，按需引入：
 ```xml
 <!-- JAR 插件系统核心（动态加载/卸载 JAR 插件） -->
 <dependency>
-    <groupId>com.weacsoft</groupId>
+    <groupId>io.github.lijialong1313</groupId>
     <artifactId>plugin-jar-core</artifactId>
     <version>0.1.0</version>
 </dependency>
 <!-- JAR 插件数据库持久化（可选，引入后自动从 JSON 文件切换为数据库持久化） -->
 <dependency>
-    <groupId>com.weacsoft</groupId>
+    <groupId>io.github.lijialong1313</groupId>
     <artifactId>plugin-jar-database</artifactId>
     <version>0.1.0</version>
 </dependency>
 <!-- Java 文件插件系统（可选，动态编译 .java 文件，轻量替代 JAR） -->
 <dependency>
-    <groupId>com.weacsoft</groupId>
+    <groupId>io.github.lijialong1313</groupId>
     <artifactId>plugin-java-core</artifactId>
     <version>0.1.0</version>
 </dependency>

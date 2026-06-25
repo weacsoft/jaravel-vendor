@@ -70,7 +70,7 @@ public class User extends BaseModel<User, Long> {
 
 ```xml
 <dependency>
-    <groupId>com.weacsoft</groupId>
+    <groupId>io.github.lijialong1313</groupId>
     <artifactId>database</artifactId>
     <version>0.1.0</version>
 </dependency>

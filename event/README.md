@@ -58,7 +58,7 @@
 
 ```xml
 <dependency>
-    <groupId>com.weacsoft</groupId>
+    <groupId>io.github.lijialong1313</groupId>
     <artifactId>event</artifactId>
     <version>0.1.0</version>
 </dependency>

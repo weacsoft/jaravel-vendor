@@ -40,12 +40,12 @@
 
 ```xml
 <dependency>
-    <groupId>com.weacsoft</groupId>
+    <groupId>io.github.lijialong1313</groupId>
     <artifactId>plugin-jar-core</artifactId>
     <version>0.1.0</version>
 </dependency>
 <dependency>
-    <groupId>com.weacsoft</groupId>
+    <groupId>io.github.lijialong1313</groupId>
     <artifactId>plugin-jar-database</artifactId>
     <version>0.1.0</version>
 </dependency>

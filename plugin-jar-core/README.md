@@ -58,7 +58,7 @@ JAR 插件系统核心库，提供动态加载/卸载 JAR 插件、三级 ClassL
 
 ```xml
 <dependency>
-    <groupId>com.weacsoft</groupId>
+    <groupId>io.github.lijialong1313</groupId>
     <artifactId>plugin-jar-core</artifactId>
     <version>0.1.0</version>
 </dependency>
@@ -366,7 +366,7 @@ PluginInfo info = hotPluginManager.getPlugin("my-plugin");
 ```xml
 <dependencies>
     <dependency>
-        <groupId>com.weacsoft</groupId>
+        <groupId>io.github.lijialong1313</groupId>
         <artifactId>plugin-jar-core</artifactId>
         <version>0.1.0</version>
         <scope>provided</scope>
@@ -521,7 +521,7 @@ public interface MetadataPersistence {
 
 ```xml
 <dependency>
-    <groupId>com.weacsoft</groupId>
+    <groupId>io.github.lijialong1313</groupId>
     <artifactId>plugin-jar-database</artifactId>
     <version>0.1.0</version>
 </dependency>

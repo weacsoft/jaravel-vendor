@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>com.weacsoft</groupId>
+        <groupId>io.github.lijialong1313</groupId>
         <artifactId>jaravel-vendor</artifactId>
         <version>0.1.0</version>
     </parent>
@@ -16,12 +16,12 @@
 
     <dependencies>
         <dependency>
-            <groupId>com.weacsoft</groupId>
+            <groupId>io.github.lijialong1313</groupId>
             <artifactId>auth</artifactId>
         </dependency>
         <!-- 缓存模块：用于 JWT 黑名单（登出踢 token）与 refresh 标记 -->
         <dependency>
-            <groupId>com.weacsoft</groupId>
+            <groupId>io.github.lijialong1313</groupId>
             <artifactId>cache</artifactId>
         </dependency>
         <dependency>

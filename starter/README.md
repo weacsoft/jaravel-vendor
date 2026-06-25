@@ -38,7 +38,7 @@
 
 ```xml
 <dependency>
-    <groupId>com.weacsoft</groupId>
+    <groupId>io.github.lijialong1313</groupId>
     <artifactId>starter</artifactId>
     <version>0.1.0</version>
 </dependency>
@@ -138,7 +138,7 @@ Spring Environment（application.yml）
 ```xml
 <dependencies>
     <dependency>
-        <groupId>com.weacsoft</groupId>
+        <groupId>io.github.lijialong1313</groupId>
         <artifactId>starter</artifactId>
         <version>0.1.0</version>
     </dependency>
@@ -283,7 +283,7 @@ router.post("/users", request -> {
 
 ```xml
 <dependency>
-    <groupId>com.weacsoft</groupId>
+    <groupId>io.github.lijialong1313</groupId>
     <artifactId>jwt</artifactId>
     <version>0.1.0</version>
 </dependency>

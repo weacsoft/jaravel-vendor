@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>com.weacsoft</groupId>
+        <groupId>io.github.lijialong1313</groupId>
         <artifactId>jaravel-vendor</artifactId>
         <version>0.1.0</version>
     </parent>
@@ -16,76 +16,76 @@
 
     <dependencies>
         <dependency>
-            <groupId>com.weacsoft</groupId>
+            <groupId>io.github.lijialong1313</groupId>
             <artifactId>core</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.weacsoft</groupId>
+            <groupId>io.github.lijialong1313</groupId>
             <artifactId>http</artifactId>
         </dependency>
         <!-- SpringBoot 集成：RouterFunction 路由桥接、Request 注入、Response 处理 -->
         <dependency>
-            <groupId>com.weacsoft</groupId>
+            <groupId>io.github.lijialong1313</groupId>
             <artifactId>springboot</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.weacsoft</groupId>
+            <groupId>io.github.lijialong1313</groupId>
             <artifactId>auth</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.weacsoft</groupId>
+            <groupId>io.github.lijialong1313</groupId>
             <artifactId>database</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.weacsoft</groupId>
+            <groupId>io.github.lijialong1313</groupId>
             <artifactId>migration</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.weacsoft</groupId>
+            <groupId>io.github.lijialong1313</groupId>
             <artifactId>cache</artifactId>
         </dependency>
         <!-- JBlade 模板引擎（依赖 cache） -->
         <dependency>
-            <groupId>com.weacsoft</groupId>
+            <groupId>io.github.lijialong1313</groupId>
             <artifactId>jblade</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.weacsoft</groupId>
+            <groupId>io.github.lijialong1313</groupId>
             <artifactId>event</artifactId>
         </dependency>
         <!-- Redis 连接管理（多机 session/缓存同步基础） -->
         <dependency>
-            <groupId>com.weacsoft</groupId>
+            <groupId>io.github.lijialong1313</groupId>
             <artifactId>redis-config</artifactId>
         </dependency>
         <!-- Redis 缓存驱动（多机缓存同步） -->
         <dependency>
-            <groupId>com.weacsoft</groupId>
+            <groupId>io.github.lijialong1313</groupId>
             <artifactId>redis-cache</artifactId>
         </dependency>
         <!-- Redis Session 守卫（多机 Session 同步） -->
         <dependency>
-            <groupId>com.weacsoft</groupId>
+            <groupId>io.github.lijialong1313</groupId>
             <artifactId>session-redis</artifactId>
         </dependency>
         <!-- Artisan CLI 命令框架 -->
         <dependency>
-            <groupId>com.weacsoft</groupId>
+            <groupId>io.github.lijialong1313</groupId>
             <artifactId>artisan</artifactId>
         </dependency>
         <!-- 定时任务调度器 -->
         <dependency>
-            <groupId>com.weacsoft</groupId>
+            <groupId>io.github.lijialong1313</groupId>
             <artifactId>schedule</artifactId>
         </dependency>
         <!-- 数据库队列驱动（持久化 + 多实例消费） -->
         <dependency>
-            <groupId>com.weacsoft</groupId>
+            <groupId>io.github.lijialong1313</groupId>
             <artifactId>queue-database</artifactId>
         </dependency>
         <!-- 微信 SDK（对齐 overtrue/laravel-wechat） -->
         <dependency>
-            <groupId>com.weacsoft</groupId>
+            <groupId>io.github.lijialong1313</groupId>
             <artifactId>wechat-sdk</artifactId>
         </dependency>
         <dependency>
