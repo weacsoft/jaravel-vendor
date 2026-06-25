@@ -1,6 +1,7 @@
 package com.weacsoft.jaravel.vendor.plugin.jar.manager;
 
 import com.weacsoft.jaravel.vendor.plugin.jar.annotation.Application;
+import com.weacsoft.jaravel.vendor.plugin.jar.annotation.HttpMethod;
 import com.weacsoft.jaravel.vendor.plugin.jar.classloader.PluginClassLoader;
 import com.weacsoft.jaravel.vendor.plugin.jar.classloader.SharedClassLoader;
 import com.weacsoft.jaravel.vendor.plugin.jar.integration.PluginIntegration;
@@ -209,7 +210,7 @@ public class HotPluginManager implements Application.HotPluginManagerRef {
                 targetJar = pluginDir.resolve(jarFile.getFileName());
                 Files.copy(jarFile, targetJar, StandardCopyOption.REPLACE_EXISTING);
             }
-            PluginInfo info = new PluginInfo(pluginId, "1.0.0", targetJar.toString());
+            PluginInfo info = new PluginInfo(pluginId, "0.1.0", targetJar.toString());
             info.setPersisted(persist);
             info.setState(PluginInfo.State.UPLOADED);
             plugins.put(pluginId, info);
@@ -242,7 +243,7 @@ public class HotPluginManager implements Application.HotPluginManagerRef {
             Path tempFile = Files.createTempFile("plugin-" + pluginId + "-", ".jar");
             Files.write(tempFile, jarBytes);
             tempFile.toFile().deleteOnExit();
-            PluginInfo info = new PluginInfo(pluginId, "1.0.0", tempFile.toString());
+            PluginInfo info = new PluginInfo(pluginId, "0.1.0", tempFile.toString());
             info.setPersisted(false);
             info.setState(PluginInfo.State.UPLOADED);
             plugins.put(pluginId, info);
@@ -501,6 +502,77 @@ public class HotPluginManager implements Application.HotPluginManagerRef {
                             && r.getMethod() != null && r.getMethod().name().equalsIgnoreCase(httpMethod));
             persistence.save(info);
             return true;
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
+    /**
+     * 为已注册的路由注册别名路径。
+     * <p>
+     * 查找已有路由（通过 existingPath + httpMethod），复制其 beanName/methodName，
+     * 以 aliasPath 创建新的路由并注册。实现"一方法多路由"的手动注册。
+     * <p>
+     * 使用示例：
+     * <pre>
+     * // 已注册: GET /blog/list -> blogController.list()
+     * manager.registerRouteAlias(pluginId, "/blog/list", "/a/list", "GET");
+     * // 结果: GET /a/list -> blogController.list()（别名路由）
+     * </pre>
+     *
+     * @param pluginId     插件 ID
+     * @param existingPath 已注册的路由路径
+     * @param aliasPath    别名路由路径
+     * @param httpMethod   HTTP 方法名（如 "GET"、"POST"）
+     * @return 注册成功返回 true，原路由不存在返回 false
+     */
+    public boolean registerRouteAlias(String pluginId, String existingPath,
+                                       String aliasPath, String httpMethod) {
+        lock.writeLock().lock();
+        try {
+            PluginInfo info = plugins.get(pluginId);
+            if (info == null || info.getState() != PluginInfo.State.ENABLED) {
+                return false;
+            }
+            boolean ok = routeRegistrar.registerRouteAlias(pluginId, existingPath, aliasPath, httpMethod);
+            if (ok) {
+                // 记录别名路由到 routeMappings
+                HttpMethod method;
+                try {
+                    method = HttpMethod.valueOf(httpMethod.toUpperCase());
+                } catch (IllegalArgumentException e) {
+                    method = HttpMethod.GET;
+                }
+                RouteInfo aliasRoute = new RouteInfo(aliasPath, method, null, null, null);
+                info.getRouteMappings().add(aliasRoute);
+                persistence.save(info);
+            }
+            return ok;
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
+    /**
+     * 为已注册的路由注册别名路径（自动检测原路由的 HTTP 方法）。
+     *
+     * @param pluginId     插件 ID
+     * @param existingPath 已注册的路由路径
+     * @param aliasPath    别名路由路径
+     * @return 注册成功返回 true
+     */
+    public boolean registerRouteAlias(String pluginId, String existingPath, String aliasPath) {
+        lock.writeLock().lock();
+        try {
+            PluginInfo info = plugins.get(pluginId);
+            if (info == null || info.getState() != PluginInfo.State.ENABLED) {
+                return false;
+            }
+            boolean ok = routeRegistrar.registerRouteAlias(pluginId, existingPath, aliasPath);
+            if (ok) {
+                persistence.save(info);
+            }
+            return ok;
         } finally {
             lock.writeLock().unlock();
         }

@@ -559,13 +559,13 @@ public class JavaFilePluginManager {
     private Set<RouteInfo> convertToRouteInfos(List<RouteScanInfo> routeScanInfos, ClassLoader classLoader) {
         Set<RouteInfo> routeInfos = new HashSet<>();
         for (RouteScanInfo scanInfo : routeScanInfos) {
-            String beanName = deriveBeanName(scanInfo.getClassName(), classLoader);
+            String beanName = deriveBeanName(scanInfo.className(), classLoader);
             routeInfos.add(new RouteInfo(
-                    scanInfo.getPath(),
-                    scanInfo.getHttpMethod(),
+                    scanInfo.path(),
+                    scanInfo.httpMethod(),
                     beanName,
-                    scanInfo.getMethodName(),
-                    scanInfo.getProduces()
+                    scanInfo.methodName(),
+                    scanInfo.produces()
             ));
         }
         return routeInfos;

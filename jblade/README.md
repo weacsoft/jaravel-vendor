@@ -11,7 +11,9 @@
 - [3. 类总览](#3-类总览)
 - [4. BladeEngine —— 模板引擎](#4-bladeengine--模板引擎)
 - [5. BladeCompiler —— 模板编译器](#5-bladecompiler--模板编译器)
+  - [5.1 表达式编译引擎](#51-表达式编译引擎)
 - [6. BladeTemplate —— 模板基类](#6-bladetemplate--模板基类)
+  - [6.1 PHP 辅助函数](#61-php-辅助函数)
 - [7. BladeContext —— 执行上下文](#7-bladecontext--执行上下文)
 - [8. 内存编译机制](#8-内存编译机制)
 - [9. 工具类](#9-工具类)
@@ -66,7 +68,7 @@ template.render() -> 输出 HTML 字符串
 <dependency>
     <groupId>com.weacsoft</groupId>
     <artifactId>jblade</artifactId>
-    <version>1.0.0</version>
+    <version>0.1.0</version>
 </dependency>
 ```
 
@@ -87,8 +89,8 @@ template.render() -> 输出 HTML 字符串
 com.weacsoft.jaravel.vendor
 ├── jblade
 │   ├── BladeEngine              // 模板引擎（入口）
-│   ├── BladeCompiler            // 模板编译器（Blade -> Java 源码 -> 字节码）
-│   ├── BladeTemplate            // 编译后模板的抽象基类
+│   ├── BladeCompiler            // 模板编译器（Blade -> Java 源码 -> 字节码，含表达式编译引擎）
+│   ├── BladeTemplate            // 编译后模板的抽象基类（含 PHP 辅助函数）
 │   └── BladeContext             // 执行上下文（变量/Section/组件）
 └── utils
     ├── ExpiryMap                // 带过期时间的 HashMap
@@ -214,6 +216,20 @@ engine.clearCache();
 | 方法签名 | 说明 |
 | --- | --- |
 | `String compile(String templateName)` | 编译模板，返回编译后的类全名 |
+| `String compileExpression(String expr, Set<String> localVars)` | 编译 Blade 表达式为 Java 表达式（核心入口，按步骤依次处理字符串字面量、静态方法、对象方法/属性、数组访问、拼接、运算符等） |
+| `String compileConditionExpression(String expr, Set<String> localVars)` | 编译条件表达式（`@if`/`@elseif`），布尔上下文，简单变量自动包装 `toBoolean()` |
+| `String compileOutputExpression(String expr, Set<String> localVars)` | 编译输出表达式（`{{ }}`），值上下文，不包装 `toBoolean()` |
+| `String compileStringLiterals(String expr)` | 将单引号字符串 `'text'` 编译为 Java 双引号 `"text"` |
+| `String compileMethodCalls(String expr, Set<String> localVars)` | 将 `$var->method(args)` 编译为 `invokeMethod(...)` |
+| `String compilePropertyAccess(String expr, Set<String> localVars)` | 将 `$var->prop` 编译为 `getProperty(...)` |
+| `String compileMethodChainProperty(String expr)` | 将 `method()->prop` 编译为 `getProperty(method(), "prop")`，Carbon 特殊处理 `carbonToday()->year` |
+| `String compileArrayAccess(String expr, Set<String> localVars)` | 将 `$var['key']` 编译为 `getMapValue(...)` |
+| `String compileArrayLiterals(String expr, Set<String> localVars)` | 将 `['key' => value]` 编译为 `Map.of("key", value)` |
+| `String compileStringConcatenation(String expr)` | 将 PHP 拼接运算符 `.` 编译为 Java `+` |
+| `String compileNullCoalescing(String expr, Set<String> localVars)` | 将 `??` 编译为 `nullCoalescing(a, b)` |
+| `String compileElvisOperator(String expr, Set<String> localVars)` | 将 `?:` 编译为 `elvis(a, b)` |
+| `String compileTernaryOperator(String expr, Set<String> localVars)` | 将三元 `? :` 编译为 `toBoolean(cond) ? a : b` |
+| `String compileVariables(String expr, Set<String> localVars)` | 将剩余 `$var` 编译为 `ctx.getVariable("var")` 或本地变量名 |
 
 ### 编译流程
 
@@ -277,6 +293,40 @@ public class Blade_users_list extends BladeTemplate {
 | `DIRECTIVE_PATTERN` | 指令 `@xxx(...)` | `@(\w+)\s*(?:\((.*?)\))?` |
 | `VAR_PATTERN` | 变量 `$xxx` | `\$(\w+)` |
 
+### 5.1 表达式编译引擎
+
+jblade 的 `BladeCompiler` 原生支持 Blade 模板表达式语法，将其编译为等价的 Java 代码。这是 jblade 编译器的核心能力，不是外部转换层。`compileExpression` 方法按固定步骤依次处理各类语法：字符串字面量 → 静态方法调用 → 辅助函数 → 对象方法/属性 → 方法链属性 → 数组访问 → 关联数组字面量 → 字符串拼接 → 空合并 → Elvis → 三元 → 变量引用。
+
+#### 支持的表达式语法
+
+| Blade 表达式 | 编译目标 | 示例 |
+| --- | --- | --- |
+| 单引号字符串 `'text'` | Java 双引号 `"text"` | `'hello'` → `"hello"` |
+| 静态方法调用 `URL::method()` | 方法调用 | `URL::asset('path')` → `asset("path")` |
+| `Carbon::method()` | carbon 前缀方法 | `Carbon::parse($date)` → `carbonParse($date)` |
+| 辅助函数 `csrf_field()` | 空字符串 | `csrf_field()` → `""` |
+| 对象方法调用 `$var->method(args)` | `invokeMethod(...)` | `$item->getId()` → `invokeMethod(ctx.getVariable("item"), "getId")` |
+| 对象属性访问 `$var->prop` | `getProperty(...)` | `$item->name` → `getProperty(ctx.getVariable("item"), "name")` |
+| 方法链属性 `method()->prop` | `getProperty(method(), "prop")` | `carbonToday()->year` → `carbonYear(carbonToday())` |
+| 数组访问 `$var['key']` | `getMapValue(...)` | `$item['image']` → `getMapValue(ctx.getVariable("item"), "image")` |
+| 关联数组 `['key' => value]` | `Map.of("key", value)` | `['id' => $item->id]` → `Map.of("id", getProperty(...))` |
+| 字符串拼接 `.` | Java `+` | `'a' . $b` → `"a" + ctx.getVariable("b")` |
+| 空合并 `??` | `nullCoalescing(a, b)` | `$a ?? $b` → `nullCoalescing(...)` |
+| Elvis `?:` | `elvis(a, b)` | `$a ?: $b` → `elvis(...)` |
+| 三元 `? :` | `toBoolean(cond) ? a : b` | `$a ? $b : $c` → `toBoolean(...) ? ... : ...` |
+| 变量引用 `$var` | `ctx.getVariable("var")` | `$item` → `ctx.getVariable("item")` |
+
+#### 编译上下文
+
+表达式编译器区分两种编译上下文：
+
+- **条件上下文**（`compileConditionExpression`）：用于 `@if`、`@elseif` 指令，布尔上下文。简单变量引用自动包装为 `toBoolean()`，如 `$flag` → `toBoolean(ctx.getVariable("flag"))`。
+- **输出上下文**（`compileOutputExpression`）：用于 `{{ }}` 输出，值上下文，不包装 `toBoolean()`，直接输出值。
+
+#### 本地变量
+
+在 `@foreach`、`@for` 循环中声明的循环变量（如 `@foreach($items as $item)` 中的 `$item`）会被记录为本地变量，编译时直接使用变量名而非 `ctx.getVariable()`，避免重复查询上下文。
+
 ---
 
 ## 6. BladeTemplate —— 模板基类
@@ -303,6 +353,32 @@ public class Blade_users_list extends BladeTemplate {
 | `protected void write(Writer, Object)` | 写入对象（调用 `toString()`） |
 | `protected boolean toBoolean(Object)` | 将值转为布尔（null=false, Number!=0, String 非空） |
 | `protected void renderComponent(Writer, String, Map, Map)` | 渲染组件 |
+| `protected String route(String name)` | 生成路由 URL，对齐 PHP `route('name')` |
+| `protected String route(String name, Map<String, Object> params)` | 生成带参数的路由 URL，对齐 PHP `route('name', ['key' => value])` |
+| `protected String asset(String path)` | 生成静态资源 URL，对齐 PHP `asset('path')` |
+| `protected String url(String path)` | 生成 URL，对齐 PHP `url('path')` |
+| `protected Object session(String key)` | 获取 session 值，对齐 PHP `session('key')` |
+| `protected String old(String key)` | 获取旧输入值，对齐 PHP `old('key')` |
+| `protected String csrf_field()` | CSRF 表单字段，对齐 PHP `csrf_field()` |
+| `protected String csrf_token()` | CSRF token，对齐 PHP `csrf_token()` |
+| `protected Object getProperty(Object obj, String name)` | 反射获取对象属性，对齐 PHP `$var->prop` |
+| `protected Object getMapValue(Object obj, String key)` | 获取 Map 值，对齐 PHP `$var['key']` |
+| `protected Object invokeMethod(Object obj, String method, Object... args)` | 反射调用对象方法，对齐 PHP `$var->method(args)` |
+| `protected Object elvis(Object a, Object b)` | Elvis 运算符，对齐 PHP `$a ?: $b` |
+| `protected Object nullCoalescing(Object a, Object b)` | 空合并运算符，对齐 PHP `$a ?? $b` |
+| `protected String concat(Object... parts)` | 字符串拼接，对齐 PHP `.` 运算符 |
+| `protected boolean empty(Object obj)` | 空值检查，对齐 PHP `empty($var)` |
+| `protected int intval(Object obj)` | 转整数，对齐 PHP `intval($var)` |
+| `protected String json_encode(Object obj)` | JSON 编码，对齐 PHP `json_encode($var)` |
+| `protected int count(Object obj)` | 计数，对齐 PHP `count($var)` |
+| `protected String sprintf(String format, Object... args)` | 格式化字符串，对齐 PHP `sprintf(...)` |
+| `protected String str_replace(String search, String replace, String subject)` | 字符串替换，对齐 PHP `str_replace(...)` |
+| `protected String implode(String glue, Object obj)` | 数组连接，对齐 PHP `implode(...)` |
+| `protected double ceil(double val)` | 向上取整，对齐 PHP `ceil($var)` |
+| `protected double floor(double val)` | 向下取整，对齐 PHP `floor($var)` |
+| `protected LocalDateTime carbonParse(Object date)` | Carbon 日期解析，对齐 PHP `Carbon::parse($date)` |
+| `protected LocalDate carbonToday()` | Carbon 当前日期，对齐 PHP `Carbon::today()` |
+| `protected int carbonYear(Object date)` | Carbon 年份，对齐 PHP `Carbon::today()->year` |
 
 ### 组件渲染机制
 
@@ -313,6 +389,61 @@ public class Blade_users_list extends BladeTemplate {
 3. 加载组件模板，注入 `$slot` 变量与组件数据
 4. 调用组件模板的 `render()`
 5. 恢复上下文状态
+
+### 6.1 PHP 辅助函数
+
+`BladeTemplate` 内置了一系列 PHP 辅助方法，对齐 Laravel Blade 模板中常用的 PHP 函数与 Laravel 辅助函数。这些方法由表达式编译引擎在编译时自动调用，使模板中可以直接使用 PHP 风格的语法。
+
+#### Laravel 辅助函数
+
+| 方法 | 对齐 PHP 函数 | 说明 |
+| --- | --- | --- |
+| `route(name)` | `route('name')` | 生成路由 URL |
+| `route(name, params)` | `route('name', ['key' => value])` | 生成带参数的路由 URL |
+| `asset(path)` | `asset('path')` | 生成静态资源 URL |
+| `url(path)` | `url('path')` | 生成 URL |
+| `session(key)` | `session('key')` | 获取 session 值 |
+| `old(key)` | `old('key')` | 获取旧输入值 |
+| `csrf_field()` | `csrf_field()` | CSRF 表单字段（当前返回空字符串占位） |
+| `csrf_token()` | `csrf_token()` | CSRF token（当前返回空字符串占位） |
+
+#### 对象与数组操作
+
+| 方法 | 对齐 PHP 语法 | 说明 |
+| --- | --- | --- |
+| `getProperty(obj, name)` | `$var->prop` | 反射获取对象属性（依次尝试 getter、isser、字段、Map.get） |
+| `getMapValue(obj, key)` | `$var['key']` | 获取 Map 值，非 Map 时回退到 `getProperty` |
+| `invokeMethod(obj, method, args)` | `$var->method(args)` | 反射调用对象方法（支持精确匹配与 Object 参数回退） |
+
+#### 运算符
+
+| 方法 | 对齐 PHP 语法 | 说明 |
+| --- | --- | --- |
+| `elvis(a, b)` | `$a ?: $b` | Elvis 运算符，a 为真返回 a，否则返回 b |
+| `nullCoalescing(a, b)` | `$a ?? $b` | 空合并运算符，a 不为 null 返回 a，否则返回 b |
+| `concat(parts...)` | `.` 运算符 | 字符串拼接 |
+
+#### PHP 内置函数
+
+| 方法 | 对齐 PHP 函数 | 说明 |
+| --- | --- | --- |
+| `empty(obj)` | `empty($var)` | 空值检查（null、空字符串、空集合、0 等为空） |
+| `intval(obj)` | `intval($var)` | 转整数（支持 Number、String、Boolean） |
+| `json_encode(obj)` | `json_encode($var)` | JSON 编码（支持 String、Map、Collection） |
+| `count(obj)` | `count($var)` | 计数（支持 Collection、Map、Object[]） |
+| `sprintf(format, args)` | `sprintf(...)` | 格式化字符串，委托 `String.format` |
+| `str_replace(search, replace, subject)` | `str_replace(...)` | 字符串替换 |
+| `implode(glue, obj)` | `implode(...)` | 数组/集合连接为字符串 |
+| `ceil(val)` | `ceil($var)` | 向上取整 |
+| `floor(val)` | `floor($var)` | 向下取整 |
+
+#### Carbon 日期函数
+
+| 方法 | 对齐 PHP 语法 | 说明 |
+| --- | --- | --- |
+| `carbonParse(date)` | `Carbon::parse($date)` | Carbon 日期解析，返回 `LocalDateTime` |
+| `carbonToday()` | `Carbon::today()` | Carbon 当前日期，返回 `LocalDate` |
+| `carbonYear(date)` | `Carbon::today()->year` | 获取年份，支持 `LocalDate` 与 `LocalDateTime` |
 
 ---
 
@@ -481,7 +612,30 @@ MemoryClassLoader.getCompiledClasses().put(name, bytes)  -- 存入类加载器
 | 指令 | 语法 | 说明 |
 | --- | --- | --- |
 | 输出变量 | `{{ $name }}` | 输出变量值（调用 `toString()`） |
+| 输出表达式 | `{{ $user->name }}` | 输出对象属性，由表达式编译引擎编译为 `getProperty(...)` |
+| 输出拼接 | `{{ 'Hello, ' . $name }}` | 字符串拼接，编译为 Java `+` |
+| 输出空合并 | `{{ $title ?? 'Default' }}` | 空合并运算符，编译为 `nullCoalescing(...)` |
+| 输出辅助函数 | `{{ asset('css/app.css') }}` | 调用 PHP 辅助函数 |
 | 注释 | `{{-- 注释内容 --}}` | 注释，编译时移除 |
+
+### 表达式语法
+
+`{{ }}` 输出指令与 `@if`、`@elseif` 条件指令中支持完整的 Blade 表达式语法，由表达式编译引擎（参见 [5.1 表达式编译引擎](#51-表达式编译引擎)）编译为 Java 代码：
+
+| 语法 | 示例 | 说明 |
+| --- | --- | --- |
+| 变量引用 | `$name` | 引用上下文变量 |
+| 对象属性 | `$user->name` | 反射获取属性 |
+| 对象方法 | `$user->getName()` | 反射调用方法 |
+| 数组访问 | `$item['key']` | 获取 Map 值 |
+| 关联数组 | `['key' => value]` | 编译为 `Map.of(...)` |
+| 字符串拼接 | `'a' . $b` | 编译为 Java `+` |
+| 空合并 | `$a ?? $b` | 编译为 `nullCoalescing(...)` |
+| Elvis | `$a ?: $b` | 编译为 `elvis(...)` |
+| 三元 | `$a ? $b : $c` | 编译为 `toBoolean(...) ? ... : ...` |
+| 静态方法 | `URL::asset('path')` | 编译为 `asset(...)` |
+| Carbon 方法 | `Carbon::parse($date)` | 编译为 `carbonParse(...)` |
+| 辅助函数 | `csrf_field()` | 编译为空字符串占位 |
 
 ### 控制结构指令
 

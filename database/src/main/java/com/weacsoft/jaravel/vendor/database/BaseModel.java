@@ -211,6 +211,6 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
     @SuppressWarnings("unchecked")
     public static <M extends BaseModel<T, K>, T, K> QueryBuilder<T, K> query(Class<M> modelClass) {
         M bean = SpringContext.bean(modelClass);
-        return (QueryBuilder<T, K>) bean.newQuery();
+        return bean.newQuery();
     }
 }

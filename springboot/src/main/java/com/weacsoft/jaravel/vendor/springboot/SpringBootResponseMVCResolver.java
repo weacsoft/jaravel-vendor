@@ -27,15 +27,13 @@ public class SpringBootResponseMVCResolver implements ResponseBodyAdvice<Object>
 
     @Override
     public Object beforeBodyWrite(Object body, MethodParameter returnType, MediaType selectedContentType, Class<? extends HttpMessageConverter<?>> selectedConverterType, ServerHttpRequest request, ServerHttpResponse response) {
-        if (body instanceof Response) {
-            Response jaravelResponse = (Response) body;
+        if (body instanceof Response jaravelResponse) {
 
             jaravelResponse.getHeaders().forEach((key, value) -> response.getHeaders().addAll(key, value));
 
-            if (response instanceof ServletServerHttpResponse) {
-                ServletServerHttpResponse servletResponse = (ServletServerHttpResponse) response;
+            if (response instanceof ServletServerHttpResponse servletResponse) {
                 Cookie[] cookies = jaravelResponse.getCookies();
-                if (cookies != null && cookies.length > 0) {
+                if (cookies != null) {
                     for (Cookie cookie : cookies) {
                         servletResponse.getServletResponse().addCookie(cookie);
                     }

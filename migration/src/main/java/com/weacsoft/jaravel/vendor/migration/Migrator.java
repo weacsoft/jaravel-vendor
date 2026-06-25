@@ -2,9 +2,7 @@ package com.weacsoft.jaravel.vendor.migration;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.ApplicationContext;
 
-import javax.sql.DataSource;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -13,8 +11,20 @@ import java.util.stream.Collectors;
 /**
  * 迁移引擎，对齐 Laravel 的 {@code Illuminate\Database\Migrations\Migrator}。
  * <p>
- * 收集容器中所有 {@link Migration} 实例，按名称排序，与 {@link MigrationRepository} 记录比对，
- * 执行待运行的迁移（{@link #run()}）或回滚（{@link #rollback(int)}）。
+ * <b>重要变更</b>：不再通过 Spring DI 注入 {@code List<Migration>}，
+ * 而是通过 {@link MigrationScanner} 在运行时编译迁移文件、反射实例化、执行后自动释放。
+ * <p>
+ * 核心流程：
+ * <ol>
+ *   <li>从 {@link MigrationScanner} 获取所有已编译的迁移类名</li>
+ *   <li>反射加载类、检查 {@link MigrationAnnotation} 标记</li>
+ *   <li>通过 {@code clazz.getDeclaredConstructor().newInstance()} 实例化</li>
+ *   <li>执行 {@link Migration#up(Schema)} 或 {@link Migration#down(Schema)}</li>
+ *   <li>所有操作完成后调用 {@link #finish()} 释放资源</li>
+ * </ol>
+ * <p>
+ * 对齐 <a href="https://github.com/weacsoft/database-all-support">weacsoft/database-all-support</a>
+ * 中的运行时内存编译模式。
  */
 public class Migrator {
 
@@ -22,15 +32,19 @@ public class Migrator {
 
     private final MigrationRepository repository;
     private final Schema schema;
-    private final List<Migration> migrations;
-    private final ApplicationContext applicationContext;
+    private final MigrationScanner scanner;
 
-    public Migrator(MigrationRepository repository, Schema schema, List<Migration> migrations,
-                    ApplicationContext applicationContext) {
+    /**
+     * 构造迁移引擎。
+     *
+     * @param repository 迁移记录仓库（跟踪已执行的迁移）
+     * @param schema    默认 Schema 实例（使用 Primary 数据源）
+     * @param scanner   迁移扫描器（已编译完成的迁移文件）
+     */
+    public Migrator(MigrationRepository repository, Schema schema, MigrationScanner scanner) {
         this.repository = repository;
         this.schema = schema;
-        this.migrations = migrations == null ? List.of() : migrations;
-        this.applicationContext = applicationContext;
+        this.scanner = scanner;
     }
 
     /** 执行所有待运行迁移，返回已执行的迁移名称列表 */
@@ -40,11 +54,12 @@ public class Migrator {
         int batch = repository.getNextBatchNumber();
         List<String> executed = new ArrayList<>();
         for (Migration migration : sortedMigrations()) {
-            if (!ran.contains(migration.getName())) {
-                log.info("[migration] Migrating: {}", migration.getName());
-                migration.up(resolveSchema(migration));
-                repository.log(migration.getName(), batch);
-                executed.add(migration.getName());
+            String name = migration.getName();
+            if (!ran.contains(name)) {
+                log.info("[migration] Migrating: {}", name);
+                migration.up(schema);
+                repository.log(name, batch);
+                executed.add(name);
             }
         }
         if (executed.isEmpty()) {
@@ -71,7 +86,7 @@ public class Migrator {
                 continue;
             }
             log.info("[migration] Rolling back: {}", name);
-            migration.down(resolveSchema(migration));
+            migration.down(schema);
             repository.delete(name);
             rolledBack.add(name);
             count++;
@@ -98,7 +113,7 @@ public class Migrator {
                 continue;
             }
             log.info("[migration] Resetting: {}", name);
-            migration.down(resolveSchema(migration));
+            migration.down(schema);
             repository.delete(name);
             reset.add(name);
         }
@@ -134,42 +149,78 @@ public class Migrator {
             .collect(Collectors.toList());
     }
 
+    /**
+     * 释放资源：调用 {@link MigrationScanner#finish()} 清除编译产物与类加载器。
+     * <p>
+     * 在所有迁移操作完成后调用，确保内存中的编译产物被回收。
+     */
+    public void finish() {
+        if (scanner != null) {
+            scanner.finish();
+        }
+    }
+
+    /**
+     * 获取所有已编译的迁移实例（按名称排序）。
+     * <p>
+     * 遍历 {@link MigrationScanner#getAllMigrationClassNames()}，
+     * 反射加载每个类，检查是否标注 {@link MigrationAnnotation}，
+     * 若是则通过 {@code clazz.getDeclaredConstructor().newInstance()} 实例化为 {@link Migration}。
+     *
+     * @return 排序后的迁移实例列表
+     */
     private List<Migration> sortedMigrations() {
-        List<Migration> list = new ArrayList<>(migrations);
+        List<Migration> list = new ArrayList<>();
+        for (String className : scanner.getAllMigrationClassNames()) {
+            try {
+                Class<?> clazz = scanner.getCompiledClass(className);
+                // 检查是否标注了 @MigrationAnnotation
+                if (!clazz.isAnnotationPresent(MigrationAnnotation.class)) {
+                    continue;
+                }
+                // 检查是否实现了 Migration 接口
+                if (!Migration.class.isAssignableFrom(clazz)) {
+                    continue;
+                }
+                // 反射实例化
+                Migration migration = (Migration) clazz.getDeclaredConstructor().newInstance();
+                // 若注解指定了名称，则使用注解名称
+                MigrationAnnotation annotation = clazz.getAnnotation(MigrationAnnotation.class);
+                if (annotation != null && !annotation.name().isEmpty()) {
+                    final String annotatedName = annotation.name();
+                    Migration wrapper = new Migration() {
+                        private final Migration delegate = migration;
+                        @Override
+                        public void up(Schema schema) { delegate.up(schema); }
+                        @Override
+                        public void down(Schema schema) { delegate.down(schema); }
+                        @Override
+                        public String getName() { return annotatedName; }
+                    };
+                    list.add(wrapper);
+                } else {
+                    list.add(migration);
+                }
+            } catch (Exception e) {
+                log.warn("[migration] 无法加载迁移类 {}: {}", className, e.getMessage());
+            }
+        }
         list.sort(Comparator.comparing(Migration::getName));
         return list;
     }
 
+    /**
+     * 按名称查找迁移实例。
+     *
+     * @param name 迁移名称
+     * @return 迁移实例，未找到时返回 null
+     */
     private Migration findMigration(String name) {
-        for (Migration m : migrations) {
+        for (Migration m : sortedMigrations()) {
             if (m.getName().equals(name)) {
                 return m;
             }
         }
         return null;
-    }
-
-    /**
-     * 解析迁移使用的 Schema。
-     * <p>
-     * 如果迁移通过 {@link Migration#getDataSourceName()} 指定了数据源 Bean 名称，
-     * 则从 Spring 容器中查找对应名称的 {@link DataSource}，创建独立的 {@link Schema}。
-     * 否则使用默认 Schema（Primary 数据源）。
-     *
-     * @param migration 迁移实例
-     * @return 对应的 Schema 实例
-     */
-    private Schema resolveSchema(Migration migration) {
-        String dsName = migration.getDataSourceName();
-        if (dsName != null && !dsName.isEmpty()) {
-            try {
-                DataSource dataSource = applicationContext.getBean(dsName, DataSource.class);
-                log.info("[migration] 使用数据源 '{}' 执行迁移: {}", dsName, migration.getName());
-                return new Schema(dataSource);
-            } catch (Exception e) {
-                log.warn("[migration] 未找到数据源 '{}'，回退到默认数据源: {}", dsName, e.getMessage());
-            }
-        }
-        return schema;
     }
 }

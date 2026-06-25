@@ -88,36 +88,38 @@ public final class MigrationGenerator {
      * @return Java 源码字符串
      */
     private static String buildClassSource(String packageName, String className, String description) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("package ").append(packageName).append(";\n\n");
-        sb.append("import com.weacsoft.jaravel.vendor.migration.Migration;\n");
-        sb.append("import com.weacsoft.jaravel.vendor.migration.Schema;\n");
-        sb.append("import org.springframework.stereotype.Component;\n\n");
-        sb.append("/**\n");
-        sb.append(" * 迁移：").append(description).append("。\n");
-        sb.append(" * <p>\n");
-        sb.append(" * 类名采用 {@code Migration_YYYY_MM_DD_PascalCaseDescription} 约定，\n");
-        sb.append(" * {@link Migration#getName()} 默认返回类名，{@code Migrator} 按类名字典序排序即可保证执行顺序。\n");
-        sb.append(" * 一次 {@code up()} 可处理多张表，{@code down()} 应对称回滚。\n");
-        sb.append(" */\n");
-        sb.append("@Component\n");
-        sb.append("public class ").append(className).append(" implements Migration {\n\n");
-        sb.append("    @Override\n");
-        sb.append("    public void up(Schema schema) {\n");
-        sb.append("        // TODO: 在此编写正向迁移逻辑，例如：\n");
-        sb.append("        // schema.create(\"table_name\", table -> {\n");
-        sb.append("        //     table.id();\n");
-        sb.append("        //     table.string(\"name\");\n");
-        sb.append("        //     table.timestamps();\n");
-        sb.append("        // });\n");
-        sb.append("    }\n\n");
-        sb.append("    @Override\n");
-        sb.append("    public void down(Schema schema) {\n");
-        sb.append("        // TODO: 在此编写回滚逻辑，例如：\n");
-        sb.append("        // schema.dropIfExists(\"table_name\");\n");
-        sb.append("    }\n");
-        sb.append("}\n");
-        return sb.toString();
+        String sb = "package " + packageName + ";\n\n" +
+                "import com.weacsoft.jaravel.vendor.migration.Migration;\n" +
+                "import com.weacsoft.jaravel.vendor.migration.Schema;\n" +
+                "import com.weacsoft.jaravel.vendor.migration.MigrationAnnotation;\n\n" +
+                "/**\n" +
+                " * 迁移：" + description + "。\n" +
+                " * <p>\n" +
+                " * 类名采用 {@code Migration_YYYY_MM_DD_PascalCaseDescription} 约定，\n" +
+                " * {@link Migration#getName()} 默认返回类名，{@code Migrator} 按类名字典序排序即可保证执行顺序。\n" +
+                " * 一次 {@code up()} 可处理多张表，{@code down()} 应对称回滚。\n" +
+                " * <p>\n" +
+                " * 使用 {@code @MigrationAnnotation} 标记（非 Spring {@code @Component}），\n" +
+                " * 迁移文件在运行时由 {@code MigrationScanner} 内存编译、反射实例化、执行后自动释放。\n" +
+                " */\n" +
+                "@MigrationAnnotation\n" +
+                "public class " + className + " implements Migration {\n\n" +
+                "    @Override\n" +
+                "    public void up(Schema schema) {\n" +
+                "        // TODO: 在此编写正向迁移逻辑，例如：\n" +
+                "        // schema.create(\"table_name\", table -> {\n" +
+                "        //     table.id();\n" +
+                "        //     table.string(\"name\");\n" +
+                "        //     table.timestamps();\n" +
+                "        // });\n" +
+                "    }\n\n" +
+                "    @Override\n" +
+                "    public void down(Schema schema) {\n" +
+                "        // TODO: 在此编写回滚逻辑，例如：\n" +
+                "        // schema.dropIfExists(\"table_name\");\n" +
+                "    }\n" +
+                "}\n";
+        return sb;
     }
 
     /**

@@ -625,6 +625,26 @@ public class Request {
         return routeParams.containsKey(key);
     }
 
+    /**
+     * 获取客户端 IP 地址，对齐 PHP Laravel 的 $request->ip()。
+     * <p>
+     * 优先从 X-Forwarded-For 请求头获取（经过反向代理时），
+     * 否则使用 HttpServletRequest.getRemoteAddr()。
+     *
+     * @return 客户端 IP 地址
+     */
+    public String ip() {
+        if (request == null) {
+            return "unknown";
+        }
+        String xff = header("X-Forwarded-For");
+        if (xff != null && !xff.isEmpty()) {
+            return xff.split(",")[0].trim();
+        }
+        String remoteAddr = request.getRemoteAddr();
+        return remoteAddr != null ? remoteAddr : "unknown";
+    }
+
     public void setRequest(HttpServletRequest request) {
         this.request = request;
         Enumeration<String> headerNames = request.getHeaderNames();

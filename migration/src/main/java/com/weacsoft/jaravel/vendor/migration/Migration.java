@@ -4,7 +4,11 @@ package com.weacsoft.jaravel.vendor.migration;
  * 迁移接口，对齐 Laravel 的 {@code Illuminate\Database\Migrations\Migration}。
  * <p>
  * 每个迁移类实现此接口，提供 {@link #up(Schema)} 与 {@link #down(Schema)} 两个方法，
- * 分别表示「正向执行」与「回滚」。迁移名称默认取类名，也可覆写 {@link #getName()} 自定义。
+ * 分别表示「正向执行」与「回滚」。
+ * <p>
+ * <b>重要变更</b>：迁移类不再是 Spring 组件（不使用 {@code @Component}），
+ * 而是使用 {@link MigrationAnnotation} 标记。迁移文件在运行时由
+ * {@link MigrationScanner} 扫描、内存编译、反射实例化、执行后自动释放。
  * <p>
  * <b>命名约定（推荐）</b>：类名采用 {@code Migration_YYYY_MM_DD_PascalCaseDescription} 形式，
  * 例如 {@code Migration_2024_01_01_CreateUsersTable}、{@code Migration_2024_01_02_AddEmailToUsersTable}。
@@ -13,8 +17,8 @@ package com.weacsoft.jaravel.vendor.migration;
  * <a href="https://github.com/weacsoft/database-all-support">weacsoft/database-all-support</a>
  * 框架保持一致。
  * <pre>
+ * &#64;MigrationAnnotation
  * public class Migration_2024_01_01_CreateUsersTable implements Migration {
- *     // getName() 默认返回类名 "Migration_2024_01_01_CreateUsersTable"，无需覆写
  *     public void up(Schema schema) {
  *         schema.create("users", table -> {
  *             table.id();
@@ -32,6 +36,9 @@ package com.weacsoft.jaravel.vendor.migration;
  * <b>多表支持</b>：单个 {@link #up(Schema)} 可连续调用多次 {@link Schema#create(String, java.util.function.Consumer)}
  * 或 {@link Schema#table(String, java.util.function.Consumer)} 处理多张表，
  * {@link #down(Schema)} 应对称地删除/回滚所有在 up() 中创建或修改的表。
+ *
+ * @see MigrationAnnotation
+ * @see MigrationScanner
  */
 public interface Migration {
 
@@ -60,21 +67,13 @@ public interface Migration {
      * （例如 {@code Migration_2024_01_01_CreateUsersTable}），这样 {@link Migrator}
      * 按名称字典序排序即可得到按日期递增的执行顺序，无需额外时间戳字段。
      * 如无特殊需求，无需覆写本方法。
+     * <p>
+     * 若迁移类上的 {@link MigrationAnnotation#name()} 指定了非空名称，
+     * {@link Migrator} 会优先使用注解中的名称。
+     *
+     * @return 迁移名称
      */
     default String getName() {
         return getClass().getSimpleName();
-    }
-
-    /**
-     * 指定此迁移使用的数据源 Bean 名称，对齐 Laravel 迁移的 {@code $connection} 属性。
-     * <p>
-     * 返回 null 或空字符串时使用默认（Primary）数据源。
-     * 返回非空字符串时，Migrator 会从 Spring 容器中查找对应名称的 {@link javax.sql.DataSource} Bean，
-     * 并为该迁移创建独立的 {@link Schema} 实例。
-     *
-     * @return 数据源 Bean 名称，或 null
-     */
-    default String getDataSourceName() {
-        return null;
     }
 }

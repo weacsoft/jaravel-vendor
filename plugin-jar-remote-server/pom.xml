@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.weacsoft</groupId>
+        <artifactId>jaravel-vendor</artifactId>
+        <version>0.1.0</version>
+    </parent>
+
+    <artifactId>plugin-jar-remote-server</artifactId>
+    <name>plugin-jar-remote-server</name>
+    <description>JAR 插件远程执行服务端：通过 TCP 接收远程方法调用请求并在本地执行插件方法（P2SP 子节点）</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.weacsoft</groupId>
+            <artifactId>plugin-jar-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+    </dependencies>
+</project>

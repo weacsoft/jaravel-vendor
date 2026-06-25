@@ -15,14 +15,15 @@
 - [7. Dispatcher —— 事件调度器契约](#7-dispatcher--事件调度器契约)
 - [8. EventDispatcher —— 事件调度器实现](#8-eventdispatcher--事件调度器实现)
 - [9. QueueManager —— 队列管理器](#9-queuemanager--队列管理器)
-- [10. ListensTo —— 监听器绑定注解](#10-listensto--监听器绑定注解)
-- [11. EventListenerRegistrar —— 自动注册器](#11-eventlistenerregistrar--自动注册器)
-- [12. EventServiceProvider —— 事件服务提供者基类](#12-eventserviceprovider--事件服务提供者基类)
-- [13. EventFacade —— 事件门面](#13-eventfacade--事件门面)
-- [14. 示例：用户注册事件](#14-示例用户注册事件)
-- [15. EventAutoConfiguration —— 自动装配](#15-eventautoconfiguration--自动装配)
-- [16. 配置选项](#16-配置选项)
-- [17. 线程安全说明](#17-线程安全说明)
+- [10. QueueDispatcher —— 队列分发器接口](#10-queuedispatcher--队列分发器接口)
+- [11. ListensTo —— 监听器绑定注解](#11-listensto--监听器绑定注解)
+- [12. EventListenerRegistrar —— 自动注册器](#12-eventlistenerregistrar--自动注册器)
+- [13. EventServiceProvider —— 事件服务提供者基类](#13-eventserviceprovider--事件服务提供者基类)
+- [14. EventFacade —— 事件门面](#14-eventfacade--事件门面)
+- [15. 示例：用户注册事件](#15-示例用户注册事件)
+- [16. EventAutoConfiguration —— 自动装配](#16-eventautoconfiguration--自动装配)
+- [17. 配置选项](#17-配置选项)
+- [18. 线程安全说明](#18-线程安全说明)
 
 ---
 
@@ -37,6 +38,7 @@
 | `ShouldQueue` | `ShouldQueue` 接口 | 标记监听器异步执行，支持 `queue()` 与 `delay()` |
 | `Illuminate\Events\Dispatcher` | `Dispatcher` / `EventDispatcher` | 事件调度器，同步/异步分发 |
 | 队列配置 | `QueueManager` | 每队列独立线程池，可配置大小与重试 |
+| 持久化队列 | `QueueDispatcher` | 持久化队列分发器接口，可用时优先于内存队列（如数据库队列） |
 | `EventServiceProvider::$listen` | `EventServiceProvider` / `@ListensTo` | 监听器注册（编程式或注解式） |
 | `Event::` 门面 | `EventFacade` | 静态 API |
 | `config/event.php` / `config/queue.php` | `EventProperties` | `jaravel.event.*` 配置 |
@@ -58,7 +60,7 @@
 <dependency>
     <groupId>com.weacsoft</groupId>
     <artifactId>event</artifactId>
-    <version>1.0.0</version>
+    <version>0.1.0</version>
 </dependency>
 ```
 
@@ -84,6 +86,7 @@ com.weacsoft.jaravel.vendor.event
 ├── Dispatcher                   // 事件调度器契约（接口）
 ├── EventDispatcher              // 事件调度器实现（同步/异步分发 + 重试）
 ├── QueueManager                 // 队列管理器（每队列独立线程池 + 重试配置）
+├── QueueDispatcher              // 队列分发器接口（持久化队列抽象，如数据库队列）
 ├── ListensTo                    // 监听器绑定注解（@ListensTo(EventClass.class)）
 ├── EventListenerRegistrar       // 监听器自动注册器（扫描 @ListensTo）
 ├── EventServiceProvider         // 事件服务提供者基类（编程式注册）
@@ -108,17 +111,7 @@ com.weacsoft.jaravel.vendor.event
 ### 使用示例
 
 ```java
-public class UserRegisteredEvent implements Event {
-    private final Long userId;
-    private final String name;
-
-    public UserRegisteredEvent(Long userId, String name) {
-        this.userId = userId;
-        this.name = name;
-    }
-
-    public Long getUserId() { return userId; }
-    public String getName() { return name; }
+public record UserRegisteredEvent(Long userId, String name) implements Event {
 }
 ```
 
@@ -253,6 +246,7 @@ invokeWithRetry(listener, event)
 | `void clearAllListeners()` | 清除全部监听器 |
 | `void setQueueEnabled(boolean)` | 设置全局异步开关 |
 | `boolean isQueueEnabled()` | 是否启用异步队列分发 |
+| `void setQueueDispatcher(QueueDispatcher)` | 注入持久化队列分发器，注入后优先于 `QueueManager` |
 | `QueueManager getQueueManager()` | 获取队列管理器 |
 
 ### 使用示例
@@ -341,7 +335,72 @@ queueManager.schedule("email", () -> sendEmail(), 5000);
 
 ---
 
-## 10. ListensTo —— 监听器绑定注解
+## 10. QueueDispatcher —— 队列分发器接口
+
+`com.weacsoft.jaravel.vendor.event.QueueDispatcher`
+
+对齐 Laravel `Illuminate\Contracts\Queue\Queue`。持久化队列分发器接口，抽象异步事件的队列分发后端。当可用时，`EventDispatcher` 优先使用 `QueueDispatcher` 将事件分发到持久化队列（如数据库队列），实现多实例消费和任务持久化；不可用时降级为内存队列（`QueueManager`）。
+
+### 设计动机
+
+`QueueManager` 提供的是**内存队列**——任务存在于 JVM 进程内，进程重启后丢失。`QueueDispatcher` 抽象了**持久化队列**后端，使事件任务可以被持久化到数据库、Redis 等外部存储，支持：
+
+- **多实例消费**：多个应用实例从同一队列抢占任务
+- **任务持久化**：进程重启后未处理的任务不丢失
+- **延迟执行**：任务可延迟到指定时间后执行
+
+### 方法文档
+
+| 方法签名 | 说明 |
+| --- | --- |
+| `void dispatch(String queueName, Object listener, Event event, long delayMs)` | 将事件分发到指定队列，`delayMs` 为 0 表示立即执行 |
+| `default boolean isAvailable()` | 队列分发器是否可用（已连接到后端），默认返回 `true` |
+
+### 分发决策流程
+
+```
+EventDispatcher.dispatch(event)
+    │
+    ├── 监听器实现 ShouldQueue？
+    │       ├── 是 -> 异步分发
+    │       │       ├── QueueDispatcher 可用？ -> queueDispatcher.dispatch(queue, listener, event, delay)
+    │       │       │                             （持久化到数据库/Redis，多实例消费）
+    │       │       └── 不可用 -> queueManager.submit/schedule(queue, task, delay)
+    │       │                     （内存队列，进程内执行）
+    │       └── 否 -> 同步执行（含重试）
+```
+
+### 实现方
+
+- `queue-database` 模块提供 `DatabaseQueueDriver` 实现（通过 `DatabaseQueueDispatcher` 适配）
+- 业务方也可自定义实现，通过 Spring bean 注入自动生效
+
+### 使用示例
+
+业务方通常无需直接调用 `QueueDispatcher`，`EventDispatcher` 会自动选择。若需自定义实现：
+
+```java
+@Component
+public class MyQueueDispatcher implements QueueDispatcher {
+    @Override
+    public void dispatch(String queueName, Object listener, Event event, long delayMs) {
+        // 将监听器与事件序列化后推送到自定义队列后端
+        String payload = serialize(listener, event);
+        myQueueBackend.push(queueName, payload, delayMs);
+    }
+
+    @Override
+    public boolean isAvailable() {
+        return myQueueBackend.isConnected();
+    }
+}
+```
+
+实现注册为 Spring bean 后，`EventDispatcher` 会通过 `setQueueDispatcher()` 自动注入并优先使用。
+
+---
+
+## 11. ListensTo —— 监听器绑定注解
 
 `com.weacsoft.jaravel.vendor.event.ListensTo`
 
@@ -368,7 +427,7 @@ public class SendWelcomeMail implements Listener<UserRegisteredEvent> {
 
 ---
 
-## 11. EventListenerRegistrar —— 自动注册器
+## 12. EventListenerRegistrar —— 自动注册器
 
 `com.weacsoft.jaravel.vendor.event.EventListenerRegistrar`
 
@@ -396,7 +455,7 @@ applicationContext.getBeansOfType(Listener.class)
 
 ---
 
-## 12. EventServiceProvider —— 事件服务提供者基类
+## 13. EventServiceProvider —— 事件服务提供者基类
 
 `com.weacsoft.jaravel.vendor.event.EventServiceProvider`
 
@@ -426,7 +485,7 @@ public class AppEventServiceProvider extends EventServiceProvider {
 
 ---
 
-## 13. EventFacade —— 事件门面
+## 14. EventFacade —— 事件门面
 
 `com.weacsoft.jaravel.vendor.event.facade.EventFacade`
 
@@ -459,11 +518,11 @@ EventFacade.clearAllListeners();
 
 ---
 
-## 14. 示例：用户注册事件
+## 15. 示例：用户注册事件
 
 模块内置了完整的示例代码，位于 `com.weacsoft.jaravel.vendor.event.example` 包。
 
-### 14.1 UserRegisteredEvent —— 示例事件
+### 15.1 UserRegisteredEvent —— 示例事件
 
 ```java
 public class UserRegisteredEvent implements Event {
@@ -476,7 +535,7 @@ public class UserRegisteredEvent implements Event {
 }
 ```
 
-### 14.2 LogRegistrationListener —— 同步监听器
+### 15.2 LogRegistrationListener —— 同步监听器
 
 未实现 `ShouldQueue`，因此会被**同步执行**，对齐 Laravel 中普通的同步监听器。
 
@@ -489,7 +548,7 @@ public class LogRegistrationListener implements Listener<UserRegisteredEvent> {
 }
 ```
 
-### 14.3 SendWelcomeEmailListener —— 异步监听器
+### 15.3 SendWelcomeEmailListener —— 异步监听器
 
 实现 `ShouldQueue`，因此会被**异步分发**到 `"email"` 队列执行，对齐 Laravel 中实现 `ShouldQueue` 的队列化监听器。
 
@@ -507,7 +566,7 @@ public class SendWelcomeEmailListener implements Listener<UserRegisteredEvent>, 
 }
 ```
 
-### 14.4 完整使用流程
+### 15.4 完整使用流程
 
 ```java
 // 1. 注册监听器（编程式或注解式）
@@ -524,7 +583,7 @@ EventFacade.dispatch(new UserRegisteredEvent(1L, "Alice"));
 
 ---
 
-## 15. EventAutoConfiguration —— 自动装配
+## 16. EventAutoConfiguration —— 自动装配
 
 `com.weacsoft.jaravel.vendor.event.EventAutoConfiguration`
 
@@ -533,14 +592,14 @@ Spring Boot 自动装配类，注册以下 Bean：
 | Bean | 类型 | 说明 |
 | --- | --- | --- |
 | `queueManager` | `QueueManager` | 队列管理器，按配置初始化线程池大小与重试参数 |
-| `eventDispatcher` | `EventDispatcher`（作为 `Dispatcher` 契约实现） | 事件调度器，注入 QueueManager 并初始化异步开关 |
+| `eventDispatcher` | `EventDispatcher`（作为 `Dispatcher` 契约实现） | 事件调度器，注入 QueueManager 并初始化异步开关。当容器中存在 `QueueDispatcher` bean 时自动注入，启用持久化队列分发 |
 | `eventListenerRegistrar` | `EventListenerRegistrar` | 监听器自动注册器，扫描 `@ListensTo` 注解 |
 
 所有 Bean 均带 `@ConditionalOnMissingBean`，允许业务方自定义替换。
 
 ---
 
-## 16. 配置选项
+## 17. 配置选项
 
 配置前缀为 `jaravel.event`，对应 `EventProperties` 类。
 
@@ -575,7 +634,7 @@ jaravel:
 
 ---
 
-## 17. 线程安全说明
+## 18. 线程安全说明
 
 | 类 | 线程安全性 | 说明 |
 | --- | --- | --- |

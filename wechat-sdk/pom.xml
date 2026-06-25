@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.weacsoft</groupId>
+        <artifactId>jaravel-vendor</artifactId>
+        <version>0.1.0</version>
+    </parent>
+
+    <artifactId>wechat-sdk</artifactId>
+    <name>wechat-sdk</name>
+    <description>微信 SDK：公众号 / 小程序 API 访问，对齐 PHP overtrue/laravel-wechat（EasyWeChat）</description>
+
+    <dependencies>
+        <!-- 内部模块：缓存（AccessToken 缓存基础） -->
+        <dependency>
+            <groupId>com.weacsoft</groupId>
+            <artifactId>cache</artifactId>
+        </dependency>
+        <!-- 内部模块：Redis 连接管理（AccessToken 分布式缓存） -->
+        <dependency>
+            <groupId>com.weacsoft</groupId>
+            <artifactId>redis-config</artifactId>
+        </dependency>
+        <!-- Spring Boot 自动装配 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure</artifactId>
+        </dependency>
+        <!-- OkHttp：所有微信 API HTTP 调用 -->
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp</artifactId>
+            <version>4.12.0</version>
+        </dependency>
+        <!-- Jackson：JSON 解析（Spring Boot 已管理版本） -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <!-- SLF4J 日志门面 -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <!-- 配置属性元数据生成（可选） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
+        </dependency>
+    </dependencies>
+</project>

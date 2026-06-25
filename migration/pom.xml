@@ -7,17 +7,21 @@
     <parent>
         <groupId>com.weacsoft</groupId>
         <artifactId>jaravel-vendor</artifactId>
-        <version>1.0.0</version>
+        <version>0.1.0</version>
     </parent>
 
     <artifactId>migration</artifactId>
     <name>migration</name>
-    <description>数据库迁移：Laravel 风格 Blueprint 流式建表、up/down 迁移引擎、migrate/rollback/refresh/status 命令</description>
+    <description>数据库迁移：Laravel 风格 Blueprint 流式建表、up/down 迁移引擎、migrate/rollback/refresh/status 命令，支持 DIRECTORY/JAR/CLASSPATH 三种迁移源模式</description>
 
     <dependencies>
         <dependency>
             <groupId>com.weacsoft</groupId>
             <artifactId>core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.weacsoft</groupId>
+            <artifactId>utils</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework</groupId>
@@ -37,4 +41,47 @@
             <optional>true</optional>
         </dependency>
     </dependencies>
+
+    <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <!-- 可选：将迁移目录打包进 jar（用于 CLASSPATH 模式） -->
+            <!-- 通过 -Dpackage-in-jar=true 激活 -->
+            <resource>
+                <directory>${project.basedir}/../../database/migration</directory>
+                <targetPath>migrations</targetPath>
+                <includes>
+                    <include>**/*.java</include>
+                </includes>
+                <filtering>false</filtering>
+            </resource>
+        </resources>
+    </build>
+
+    <profiles>
+        <!-- JDK 模式：完整 JDK，支持 DIRECTORY（内存编译）/ JAR / CLASSPATH 三种模式 -->
+        <profile>
+            <id>jdk-mode</id>
+            <activation>
+                <property>
+                    <name>!jre-only</name>
+                </property>
+            </activation>
+            <dependencies>
+                <!-- Full JDK mode: javax.tools.JavaCompiler 由 JDK 提供，无需额外依赖 -->
+            </dependencies>
+        </profile>
+        <!-- JRE 模式：仅 JRE，只支持 JAR / CLASSPATH 模式（不支持 DIRECTORY 内存编译） -->
+        <profile>
+            <id>jre-mode</id>
+            <activation>
+                <property>
+                    <name>jre-only</name>
+                </property>
+            </activation>
+            <!-- JRE mode excludes compiler, only supports JAR/CLASSPATH -->
+        </profile>
+    </profiles>
 </project>

@@ -77,15 +77,9 @@ public class ArrayCacheDriver implements CacheDriver {
 
     /**
      * 内存缓存条目。
+     *
+     * @param expiryAt 过期时间戳（毫秒），0 表示永不过期
      */
-    private static class CacheEntry {
-        final Object value;
-        /** 过期时间戳（毫秒），0 表示永不过期 */
-        final long expiryAt;
-
-        CacheEntry(Object value, long expiryAt) {
-            this.value = value;
-            this.expiryAt = expiryAt;
-        }
+        private record CacheEntry(Object value, long expiryAt) {
     }
 }

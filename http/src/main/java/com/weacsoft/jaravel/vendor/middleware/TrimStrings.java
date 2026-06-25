@@ -66,16 +66,14 @@ public class TrimStrings implements Middleware {
     protected Object trimValue(Object value) {
         if (value instanceof String) {
             return ((String) value).trim();
-        } else if (value instanceof List) {
-            List<?> list = (List<?>) value;
+        } else if (value instanceof List<?> list) {
             List<Object> result = new ArrayList<>();
             for (Object item : list) {
                 Object o = item instanceof String ? ((String) item).trim() : item;
                 result.add(o);
             }
             return result;
-        } else if (value instanceof String[]) {
-            String[] array = (String[]) value;
+        } else if (value instanceof String[] array) {
             return Arrays.stream(array)
                     .map(String::trim)
                     .toArray(String[]::new);

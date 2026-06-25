@@ -1,6 +1,6 @@
 # migration 模块
 
-> Jaravel-Vendor 的数据库迁移模块，提供 Laravel 风格的 Blueprint 流式建表、`up()` / `down()` 迁移引擎、`migrate` / `rollback` / `reset` / `refresh` / `status` 命令，以及 MySQL、SQLite、H2、SQL Server 多数据库方言自动适配。包名统一为 `com.weacsoft.jaravel.vendor.migration`。
+> Jaravel-Vendor 的数据库迁移模块，提供 Laravel 风格的 Blueprint 流式建表、`up()` / `down()` 迁移引擎、`migrate` / `rollback` / `reset` / `refresh` / `status` 命令，以及 MySQL、SQLite、H2、SQL Server 多数据库方言自动适配。支持 DIRECTORY / JAR / CLASSPATH 三种迁移源模式，适配开发与生产部署。包名统一为 `com.weacsoft.jaravel.vendor.migration`。
 
 ---
 
@@ -9,18 +9,22 @@
 - [1. 模块概述](#1-模块概述)
 - [2. 依赖信息](#2-依赖信息)
 - [3. 类总览](#3-类总览)
-- [4. Migration —— 迁移接口](#4-migration--迁移接口)
-- [5. MigrationGenerator —— 迁移类源码生成器](#5-migrationgenerator--迁移类源码生成器)
-- [6. Schema —— 表结构构建器](#6-schema--表结构构建器)
-- [7. Blueprint —— 表结构蓝图](#7-blueprint--表结构蓝图)
-- [8. ColumnDefinition —— 列定义](#8-columndefinition--列定义)
-- [9. ForeignKeyDefinition —— 外键定义](#9-foreignkeydefinition--外键定义)
-- [10. Migrator —— 迁移引擎](#10-migrator--迁移引擎)
-- [11. MigrationRepository —— 迁移记录仓库](#11-migrationrepository--迁移记录仓库)
-- [12. MigrationRunner —— 命令行运行器](#12-migrationrunner--命令行运行器)
-- [13. MigrationAutoConfiguration —— 自动装配](#13-migrationautoconfiguration--自动装配)
-- [14. 配置选项](#14-配置选项)
-- [15. 线程安全说明](#15-线程安全说明)
+- [4. 迁移源模式](#4-迁移源模式)
+- [5. JDK/JRE 构建配置](#5-jdkjre-构建配置)
+- [6. Migration —— 迁移接口](#6-migration--迁移接口)
+- [7. MigrationAnnotation —— 迁移标记注解](#7-migrationannotation--迁移标记注解)
+- [8. MigrationScanner —— 迁移源扫描器](#8-migrationscanner--迁移源扫描器)
+- [9. MigrationGenerator —— 迁移类源码生成器](#9-migrationgenerator--迁移类源码生成器)
+- [10. Schema —— 表结构构建器](#10-schema--表结构构建器)
+- [11. Blueprint —— 表结构蓝图](#11-blueprint--表结构蓝图)
+- [12. ColumnDefinition —— 列定义](#12-columndefinition--列定义)
+- [13. ForeignKeyDefinition —— 外键定义](#13-foreignkeydefinition--外键定义)
+- [14. Migrator —— 迁移引擎](#14-migrator--迁移引擎)
+- [15. MigrationRepository —— 迁移记录仓库](#15-migrationrepository--迁移记录仓库)
+- [16. MigrationRunner —— 命令行运行器](#16-migrationrunner--命令行运行器)
+- [17. MigrationAutoConfiguration —— 自动装配](#17-migrationautoconfiguration--自动装配)
+- [18. 配置选项](#18-配置选项)
+- [19. 线程安全说明](#19-线程安全说明)
 
 ---
 
@@ -62,6 +66,16 @@
 
 单次 `up()` 可连续调用多次 `Schema.create()` 或 `Schema.table()` 处理多张表，`down()` 应对称地删除/回滚所有在 `up()` 中创建或修改的表。
 
+### 三种迁移源模式
+
+模块支持三种迁移来源（`MigrationSource` 枚举），适配不同的部署环境：
+
+- **DIRECTORY**：从目录读取 `.java` 文件，运行时内存编译（需要 JDK）
+- **JAR**：从 `.jar` 文件加载预编译迁移类（只需要 JRE）
+- **CLASSPATH**：从 classpath 扫描内置迁移类（只需要 JRE）
+
+详见 [第 4 节：迁移源模式](#4-迁移源模式)。
+
 ---
 
 ## 2. 依赖信息
@@ -72,7 +86,7 @@
 <dependency>
     <groupId>com.weacsoft</groupId>
     <artifactId>migration</artifactId>
-    <version>1.0.0</version>
+    <version>0.1.0</version>
 </dependency>
 ```
 
@@ -81,11 +95,12 @@
 | 依赖 | 用途 |
 | --- | --- |
 | `com.weacsoft:core` | Facade 基础设施 |
+| `com.weacsoft:utils` | 内存编译基础设施（`MemoryClassLoader` / `MemoryFileManager` / `SourceCodeJavaFileObject`） |
 | `org.springframework:spring-jdbc` | `JdbcTemplate` 执行 SQL DDL |
 | `org.springframework.boot:spring-boot-autoconfigure` | 自动装配 |
 | `org.slf4j:slf4j-api` | 日志门面 |
 
-> 运行环境要求：JDK 17+，Spring Boot 3.2.5（Spring 6.x），容器中需存在 `javax.sql.DataSource` Bean。
+> 运行环境要求：JDK 17+（DIRECTORY 模式）或 JRE 17+（JAR / CLASSPATH 模式），Spring Boot 3.2.5（Spring 6.x），容器中需存在 `javax.sql.DataSource` Bean。
 
 ---
 
@@ -93,7 +108,10 @@
 
 ```
 com.weacsoft.jaravel.vendor.migration
-├── Migration                    // 迁移接口（up/down/getName/getDataSourceName）
+├── Migration                    // 迁移接口（up/down/getName）
+├── MigrationAnnotation          // 迁移类标记注解（替代 @Component）
+├── MigrationSource              // 迁移源类型枚举（DIRECTORY / JAR / CLASSPATH）
+├── MigrationScanner             // 迁移源扫描器与加载器（支持三种模式）
 ├── MigrationGenerator           // 迁移类源码生成器（make:migration）
 ├── Schema                       // 表结构构建器（create/table/drop/rename/hasTable/hasColumn）
 ├── Blueprint                    // 表结构蓝图（流式 API，CREATE 与 ALTER 模式）
@@ -106,13 +124,153 @@ com.weacsoft.jaravel.vendor.migration
 └── MigrationAutoConfiguration   // 自动装配
 ```
 
+### MigrationSource —— 迁移源类型枚举
+
+`com.weacsoft.jaravel.vendor.migration.MigrationSource`
+
+定义三种迁移来源，适配不同的部署场景：
+
+| 枚举值 | 说明 | 运行环境 | 加载方法 |
+| --- | --- | --- | --- |
+| `DIRECTORY` | 从目录读取 `.java` 文件，运行时内存编译 | JDK | `MigrationScanner.compileFromDirectory()` |
+| `JAR` | 从 `.jar` 文件加载预编译的迁移类 | JRE | `MigrationScanner.loadFromJar()` |
+| `CLASSPATH` | 从当前 classpath 扫描迁移类（内置迁移） | JRE | `MigrationScanner.loadFromClasspath()` |
+
+三种模式均通过 `@MigrationAnnotation` 注解自动识别迁移类，无需手动指定包名。
+
 ---
 
-## 4. Migration —— 迁移接口
+## 4. 迁移源模式
+
+`migration` 模块支持三种迁移来源模式，通过 `jaravel.migration.source` 配置项切换，适配不同的部署环境（开发 / 生产 / 内置迁移）。
+
+### 模式总览
+
+| 模式 | 说明 | 需要 | 配置 |
+| --- | --- | --- | --- |
+| `DIRECTORY` | 从目录读取 `.java` 文件，运行时内存编译 | JDK | `jaravel.migration.source=DIRECTORY` |
+| `JAR` | 从 `.jar` 文件加载预编译迁移类 | JRE | `jaravel.migration.source=JAR` |
+| `CLASSPATH` | 从 classpath 扫描内置迁移类 | JRE | `jaravel.migration.source=CLASSPATH` |
+
+三种模式均通过 `@MigrationAnnotation` 注解自动识别迁移类，无需手动指定包名。
+
+### DIRECTORY 模式（目录模式）
+
+从指定目录读取 `.java` 源文件，在运行时通过 `javax.tools.JavaCompiler` 进行内存编译。需要完整的 JDK 环境（JRE 中不包含编译器）。
+
+- 适用场景：开发阶段，迁移文件以源码形式存在，修改后即时生效
+- 配置项：`jaravel.migration.directory`（默认 `migrations`）
+- 加载方法：`MigrationScanner.compileFromDirectory()`
+- 编译产物存储于内存（`compiledClasses`），通过 `MemoryClassLoader` 加载，执行后自动释放
+
+```yaml
+jaravel:
+  migration:
+    source: DIRECTORY
+    directory: migrations
+```
+
+### JAR 模式
+
+从独立的 `.jar` 文件加载预编译的迁移类，通过 `URLClassLoader` 加载。只需要 JRE 环境，无需 JDK。
+
+- 适用场景：生产部署，迁移类已预编译打包为独立 jar
+- 配置项：`jaravel.migration.jar-path`
+- 加载方法：`MigrationScanner.loadFromJar()`
+- 扫描 JAR 中所有 `.class` 文件（跳过 `META-INF` 与内部类），通过 `@MigrationAnnotation` 识别迁移类
+
+```yaml
+jaravel:
+  migration:
+    source: JAR
+    jar-path: /path/to/migrations.jar
+```
+
+### CLASSPATH 模式
+
+从当前 classpath 扫描所有 `.class` 文件，通过 `@MigrationAnnotation` 识别迁移类。只需要 JRE 环境。迁移类与框架打包在同一 jar 中（内置迁移）。
+
+- 适用场景：内置迁移，迁移类随框架一起打包发布
+- 加载方法：`MigrationScanner.loadFromClasspath()`
+- classpath 条目可以是目录（递归扫描 `.class`）或 JAR 文件（扫描 jar 内条目）
+
+```yaml
+jaravel:
+  migration:
+    source: CLASSPATH
+```
+
+### 自动包名检测
+
+三种迁移源模式均支持**自动包名检测**：迁移文件可以使用任意包名，`MigrationScanner` 会自动识别并加载。无需手动配置包扫描路径。
+
+- DIRECTORY 模式：从 `.java` 源文件中解析 `package` 声明提取包名
+- JAR / CLASSPATH 模式：扫描所有 `.class` 文件，通过 `@MigrationAnnotation` 注解判断是否为迁移类，自动识别任意包名
+
+### 模式选择建议
+
+| 场景 | 推荐模式 | 运行环境 |
+| --- | --- | --- |
+| 本地开发 | `DIRECTORY` | JDK |
+| 生产部署（迁移类独立 jar） | `JAR` | JRE |
+| 框架内置迁移 | `CLASSPATH` | JRE |
+
+---
+
+## 5. JDK/JRE 构建配置
+
+`migration` 模块通过 Maven Profile 适配不同的运行环境。`pom.xml` 中定义了两个 profile：
+
+### Profile 说明
+
+| Profile | 激活方式 | 运行环境 | 支持的迁移源模式 |
+| --- | --- | --- | --- |
+| `jdk-mode` | 默认（未指定 `-Djre-only` 时激活） | 完整 JDK | DIRECTORY / JAR / CLASSPATH |
+| `jre-mode` | `-Djre-only` | 仅 JRE | JAR / CLASSPATH |
+
+### jdk-mode（默认）
+
+完整 JDK 环境，`javax.tools.JavaCompiler` 由 JDK 提供，支持全部三种迁移源模式（包括 DIRECTORY 内存编译）。
+
+```bash
+# 默认构建，使用 JDK
+mvn clean package
+```
+
+### jre-mode
+
+仅 JRE 环境，不包含编译器，因此不支持 DIRECTORY 内存编译模式，仅支持 JAR 与 CLASSPATH 模式。
+
+```bash
+# JRE 模式构建
+mvn clean package -Djre-only
+```
+
+> 注意：使用 `jre-mode` 构建时，若配置 `jaravel.migration.source=DIRECTORY`，运行时会因无法获取 `JavaCompiler` 而抛出 `IllegalStateException`。
+
+### 构建时打包迁移目录（CLASSPATH 模式）
+
+`pom.xml` 的 `<resources>` 中可选地将迁移目录打包进 jar，用于 CLASSPATH 模式。通过 `jaravel.migration.package-in-jar=true` 配合构建激活：
+
+```xml
+<resource>
+    <directory>${project.basedir}/../../database/migration</directory>
+    <targetPath>migrations</targetPath>
+    <includes>
+        <include>**/*.java</include>
+    </includes>
+</resource>
+```
+
+---
+
+## 6. Migration —— 迁移接口
 
 `com.weacsoft.jaravel.vendor.migration.Migration`
 
 每个迁移类实现此接口，提供 `up()` 与 `down()` 两个方法，分别表示正向执行与回滚。
+
+> **重要**：迁移类使用 `@MigrationAnnotation` 标记（非 Spring `@Component`），在运行时由 `MigrationScanner` 加载（DIRECTORY 内存编译 / JAR 加载 / CLASSPATH 扫描）、反射实例化、执行后自动释放。
 
 ### 方法文档
 
@@ -121,12 +279,11 @@ com.weacsoft.jaravel.vendor.migration
 | `void up(Schema schema)` | 正向迁移：建表、加字段、加索引等。一次可处理多张表 |
 | `void down(Schema schema)` | 回滚迁移：删表、删字段等，应与 `up()` 对称 |
 | `default String getName()` | 迁移名称，默认返回类名。用于排序与记录到 migrations 表 |
-| `default String getDataSourceName()` | 指定此迁移使用的数据源 Bean 名称，返回 null 时使用默认（Primary）数据源 |
 
 ### 使用示例
 
 ```java
-@Component
+@MigrationAnnotation
 public class Migration_2024_01_01_CreateUsersTable implements Migration {
 
     @Override
@@ -149,7 +306,7 @@ public class Migration_2024_01_01_CreateUsersTable implements Migration {
 多表迁移示例：
 
 ```java
-@Component
+@MigrationAnnotation
 public class Migration_2024_02_01_CreateBlogTables implements Migration {
 
     @Override
@@ -179,36 +336,143 @@ public class Migration_2024_02_01_CreateBlogTables implements Migration {
 }
 ```
 
-指定数据源示例：
+---
+
+## 7. MigrationAnnotation —— 迁移标记注解
+
+`com.weacsoft.jaravel.vendor.migration.MigrationAnnotation`
+
+迁移类标记注解，用于在运行时识别哪些类是迁移类。**替代 Spring `@Component`**：迁移文件不再作为 Spring Bean 注册到容器，而是通过 `MigrationScanner` 在运行时加载（DIRECTORY 编译 / JAR 加载 / CLASSPATH 扫描）、反射实例化、执行后自动释放。
+
+### 注解定义
 
 ```java
-@Component
-public class Migration_2024_03_01_CreateLogTable implements Migration {
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.TYPE)
+public @interface MigrationAnnotation {
+    String name() default "";
+}
+```
 
-    @Override
-    public String getDataSourceName() {
-        return "logDataSource";  // 使用名为 logDataSource 的 DataSource Bean
-    }
+### 属性
 
-    @Override
-    public void up(Schema schema) {
-        schema.create("access_logs", table -> {
-            table.id();
-            table.string("path");
-            table.timestamp("created_at").nullable();
-        });
-    }
+| 属性 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `name` | `String` | `""` | 迁移名称，用于排序与记录到 migrations 表。为空时使用类名 |
 
-    @Override
-    public void down(Schema schema) {
-        schema.dropIfExists("access_logs");
+### 使用示例
+
+```java
+@MigrationAnnotation
+public class Migration_2024_01_01_CreateUsersTable implements Migration {
+    // ...
+}
+
+// 指定迁移名称
+@MigrationAnnotation(name = "custom_migration_name")
+public class Migration_2024_01_02_CustomName implements Migration {
+    // ...
+}
+```
+
+> 三种迁移源模式均通过 `@MigrationAnnotation` 自动识别迁移类，迁移文件可使用任意包名，无需手动配置包扫描路径。
+
+---
+
+## 8. MigrationScanner —— 迁移源扫描器
+
+`com.weacsoft.jaravel.vendor.migration.MigrationScanner`
+
+迁移源扫描器与加载器，支持三种迁移来源模式（DIRECTORY / JAR / CLASSPATH）。三种模式均通过 `@MigrationAnnotation` 注解自动识别迁移类，无需手动指定包名。
+
+### 核心数据结构
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `compiledClasses` | `Map<String, byte[]>` | DIRECTORY 模式编译后的字节码（类名 -> 字节码） |
+| `loadedClasses` | `Map<String, Class<?>>` | JAR / CLASSPATH 模式加载的类（类名 -> Class） |
+| `memoryClassLoader` | `MemoryClassLoader` | 内存类加载器，懒加载（DIRECTORY 模式使用） |
+| `jarClassLoader` | `URLClassLoader` | JAR 模式的类加载器，用于资源释放 |
+
+### 方法文档
+
+| 方法签名 | 适用模式 | 说明 |
+| --- | --- | --- |
+| `void compileFromDirectory(String directory)` | DIRECTORY | 编译指定目录下所有 `.java` 文件（内存编译），扫描仅一级不递归 |
+| `void compileFromDirectory(File dir)` | DIRECTORY | 同上，接收 `File` 参数 |
+| `void loadFromJar(File jarFile)` | JAR | 从 JAR 文件加载预编译迁移类，使用 `URLClassLoader`，扫描所有 `.class`（跳过 `META-INF` 与内部类） |
+| `void loadFromClasspath()` | CLASSPATH | 从当前 classpath 扫描迁移类，支持目录（递归）与 JAR 文件 |
+| `Class<?> getCompiledClass(String className)` | 通用 | 获取已编译或已加载的类，优先从 `compiledClasses` 查找，其次 `loadedClasses` |
+| `List<String> getAllMigrationClassNames()` | 通用 | 获取所有迁移类全限定名列表（含 DIRECTORY 编译的与 JAR/CLASSPATH 加载的） |
+| `void finish()` | 通用 | 释放所有资源：清除类字节码、已加载类、关闭 `URLClassLoader`、释放 `MemoryClassLoader` |
+| `MemoryClassLoader getMemoryClassLoader()` | DIRECTORY | 获取内存类加载器（懒加载，每次返回同一实例） |
+| `void removeMemoryClassLoader()` | DIRECTORY | 释放内存类加载器，置为 null 使已加载类可被 GC 回收 |
+| `void removeAll()` | 通用 | 清除所有已编译与已加载的类 |
+
+### 各模式加载流程
+
+**DIRECTORY 模式（`compileFromDirectory`）**：
+
+```
+1. 扫描目录下所有 .java 文件（仅一级，不递归）
+2. 逐个文件：
+   a. 读取源码
+   b. 移除注释与字符串，提取 package 声明得到包名
+   c. 移除 @Component 注解与 import（兼容旧迁移文件）
+   d. 使用 JavaCompiler + MemoryFileManager 内存编译
+   e. 将字节码存入 compiledClasses
+```
+
+**JAR 模式（`loadFromJar`）**：
+
+```
+1. 创建 URLClassLoader 加载 jar
+2. 遍历 jar 中所有 .class 条目（跳过 META-INF 与内部类）
+3. 通过 URLClassLoader 加载类
+4. 检查 @MigrationAnnotation 注解与 Migration 接口
+5. 符合条件的类存入 loadedClasses
+```
+
+**CLASSPATH 模式（`loadFromClasspath`）**：
+
+```
+1. 读取 java.class.path，按路径分隔符拆分
+2. 对每个 classpath 条目：
+   a. 目录：递归扫描 .class 文件
+   b. JAR 文件：扫描 jar 内 .class 条目
+3. 加载类并检查 @MigrationAnnotation 注解与 Migration 接口
+4. 符合条件的类存入 loadedClasses
+```
+
+### 使用示例
+
+```java
+MigrationScanner scanner = new MigrationScanner();
+try {
+    // DIRECTORY 模式
+    scanner.compileFromDirectory("migrations");
+
+    // 或 JAR 模式
+    // scanner.loadFromJar(new File("migrations.jar"));
+
+    // 或 CLASSPATH 模式
+    // scanner.loadFromClasspath();
+
+    // 获取所有迁移类
+    List<String> classNames = scanner.getAllMigrationClassNames();
+    for (String name : classNames) {
+        Class<?> clazz = scanner.getCompiledClass(name);
+        Migration migration = (Migration) clazz.getDeclaredConstructor().newInstance();
+        // ...
     }
+} finally {
+    scanner.finish();  // 释放资源
 }
 ```
 
 ---
 
-## 5. MigrationGenerator —— 迁移类源码生成器
+## 9. MigrationGenerator —— 迁移类源码生成器
 
 `com.weacsoft.jaravel.vendor.migration.MigrationGenerator`
 
@@ -265,9 +529,9 @@ package com.weacsoft.jaravel.database.migration;
 
 import com.weacsoft.jaravel.vendor.migration.Migration;
 import com.weacsoft.jaravel.vendor.migration.Schema;
-import org.springframework.stereotype.Component;
+import com.weacsoft.jaravel.vendor.migration.MigrationAnnotation;
 
-@Component
+@MigrationAnnotation
 public class Migration_2024_06_20_CreateProductsTable implements Migration {
 
     @Override
@@ -284,7 +548,7 @@ public class Migration_2024_06_20_CreateProductsTable implements Migration {
 
 ---
 
-## 6. Schema —— 表结构构建器
+## 10. Schema —— 表结构构建器
 
 `com.weacsoft.jaravel.vendor.migration.Schema`
 
@@ -380,7 +644,7 @@ schema.dropIfExists("members");
 
 ---
 
-## 7. Blueprint —— 表结构蓝图
+## 11. Blueprint —— 表结构蓝图
 
 `com.weacsoft.jaravel.vendor.migration.Blueprint`
 
@@ -483,7 +747,7 @@ schema.create("orders", table -> {
 
 ---
 
-## 8. ColumnDefinition —— 列定义
+## 12. ColumnDefinition —— 列定义
 
 `com.weacsoft.jaravel.vendor.migration.ColumnDefinition`
 
@@ -557,7 +821,7 @@ schema.table("products", table -> {
 
 ---
 
-## 9. ForeignKeyDefinition —— 外键定义
+## 13. ForeignKeyDefinition —— 外键定义
 
 `com.weacsoft.jaravel.vendor.migration.ForeignKeyDefinition`
 
@@ -593,11 +857,11 @@ schema.create("posts", table -> {
 
 ---
 
-## 10. Migrator —— 迁移引擎
+## 14. Migrator —— 迁移引擎
 
 `com.weacsoft.jaravel.vendor.migration.Migrator`
 
-对齐 Laravel `Illuminate\Database\Migrations\Migrator`。收集容器中所有 `Migration` 实例，按名称排序，与 `MigrationRepository` 记录比对，执行待运行的迁移或回滚。
+对齐 Laravel `Illuminate\Database\Migrations\Migrator`。通过 `MigrationScanner` 在运行时加载迁移类（DIRECTORY 编译 / JAR 加载 / CLASSPATH 扫描）、反射实例化，按名称排序，与 `MigrationRepository` 记录比对，执行待运行的迁移或回滚。所有操作完成后调用 `finish()` 释放资源。
 
 ### 方法文档
 
@@ -609,6 +873,7 @@ schema.create("posts", table -> {
 | `List<String> refresh()` | 回滚所有并重新迁移（reset + run） |
 | `void status()` | 输出迁移状态（[Y]/[N] 标记是否已执行） |
 | `List<String> pending()` | 获取待运行迁移名称列表 |
+| `void finish()` | 释放资源：调用 `MigrationScanner.finish()` 清除编译产物与类加载器 |
 
 ### 执行流程
 
@@ -620,7 +885,7 @@ schema.create("posts", table -> {
 3. getNextBatchNumber()-- 获取下一批次号
 4. 遍历 sortedMigrations()（按名称字典序）：
    - 若该迁移不在 ran 列表中：
-     a. 调用 migration.up(resolveSchema(migration))
+     a. 调用 migration.up(schema)
      b. repository.log(name, batch)  -- 记录到 migrations 表
 5. 返回已执行列表
 ```
@@ -631,48 +896,39 @@ schema.create("posts", table -> {
 1. createRepository()
 2. getLast()  -- 获取最后一批执行的迁移（按 id 倒序）
 3. 遍历最后一批迁移（最多 steps 个）：
-   a. 调用 migration.down(resolveSchema(migration))
+   a. 调用 migration.down(schema)
    b. repository.delete(name)  -- 从 migrations 表删除
 4. 返回已回滚列表
 ```
 
-### 每迁移数据源
-
-`resolveSchema(Migration)` 方法根据 `Migration.getDataSourceName()` 决定使用哪个数据源：
-
-- 返回 null 或空字符串：使用默认 Schema（Primary 数据源）
-- 返回非空字符串：从 Spring 容器中查找对应名称的 `DataSource` Bean，创建独立的 `Schema` 实例
-
 ### 使用示例
 
 ```java
-@Autowired
-private Migrator migrator;
+// MigrationRunner 在运行时创建 MigrationScanner、Migrator，执行后自动释放
+// 也可手动使用：
+MigrationScanner scanner = new MigrationScanner();
+try {
+    scanner.compileFromDirectory("migrations");
+    Schema schema = new Schema(dataSource);
+    MigrationRepository repository = new MigrationRepository(dataSource, "migrations");
+    Migrator migrator = new Migrator(repository, schema, scanner);
 
-// 执行迁移
-List<String> executed = migrator.run();
+    // 执行迁移
+    List<String> executed = migrator.run();
 
-// 回滚最近 1 批
-List<String> rolledBack = migrator.rollback(1);
+    // 回滚最近 1 批
+    List<String> rolledBack = migrator.rollback(1);
 
-// 回滚全部
-migrator.reset();
-
-// 回滚全部并重新迁移
-migrator.refresh();
-
-// 查看状态
-migrator.status();
-// 输出示例：
-// [migration] Status:
-//   Ran?  Migration
-//   [Y]   Migration_2024_01_01_CreateUsersTable
-//   [N]   Migration_2024_02_01_CreateBlogTables
+    // 查看状态
+    migrator.status();
+} finally {
+    scanner.finish();  // 释放资源
+}
 ```
 
 ---
 
-## 11. MigrationRepository —— 迁移记录仓库
+## 15. MigrationRepository —— 迁移记录仓库
 
 `com.weacsoft.jaravel.vendor.migration.MigrationRepository`
 
@@ -711,11 +967,26 @@ migrator.status();
 
 ---
 
-## 12. MigrationRunner —— 命令行运行器
+## 16. MigrationRunner —— 命令行运行器
 
 `com.weacsoft.jaravel.vendor.migration.MigrationRunner`
 
 对齐 Laravel artisan 的 migrate 系列命令。实现 `CommandLineRunner`，通过启动参数触发迁移命令。
+
+> **重要变更**：不再通过 Spring DI 注入 `List<Migration>`，而是在运行时创建 `MigrationScanner`，根据 `jaravel.migration.source` 配置选择加载方式（DIRECTORY 编译 / JAR 加载 / CLASSPATH 扫描），通过 `Migrator` 执行迁移，完成后调用 `scanner.finish()` 释放资源。
+
+### 执行流程
+
+```
+1. 从 MigrationProperties 获取迁移源类型与相关配置
+2. 创建 MigrationScanner，根据 source 选择加载方式：
+   - DIRECTORY：编译目录下所有 .java 文件（需要 JDK）
+   - JAR：从 jar 文件加载预编译迁移类（只需要 JRE）
+   - CLASSPATH：从 classpath 扫描迁移类（只需要 JRE）
+3. 创建 Schema、MigrationRepository、Migrator
+4. 执行命令（migrate/rollback/reset/refresh/status）
+5. scanner.finish() 释放资源（finally 块）
+```
 
 ### 支持的命令参数
 
@@ -751,47 +1022,83 @@ java -jar app.jar --jaravel.migration-status
 
 ---
 
-## 13. MigrationAutoConfiguration —— 自动装配
+## 17. MigrationAutoConfiguration —— 自动装配
 
 `com.weacsoft.jaravel.vendor.migration.MigrationAutoConfiguration`
 
-Spring Boot 自动装配类。当容器中存在 `DataSource` 且 `jaravel.migration.enabled=true`（默认）时，注册以下 Bean：
+Spring Boot 自动装配类。当容器中存在 `DataSource` 且 `jaravel.migration.enabled=true`（默认）时，注册 `MigrationRunner` Bean。
+
+> **重要变更**：不再注入 `List<Migration>`，也不再注册 `Schema`、`MigrationRepository`、`Migrator` 为 Bean。迁移文件不再是 Spring 组件，而是通过 `MigrationScanner` 在运行时加载（DIRECTORY 编译 / JAR 加载 / CLASSPATH 扫描）、反射实例化、执行后自动释放。本类仅注册 `MigrationRunner` 一个 Bean，注入 `DataSource` 与 `MigrationProperties`。
 
 | Bean | 类型 | 说明 |
 | --- | --- | --- |
-| `jaravelSchema` | `Schema` | 表结构构建器，绑定 Primary 数据源 |
-| `jaravelMigrationRepository` | `MigrationRepository` | 迁移记录仓库 |
-| `jaravelMigrator` | `Migrator` | 迁移引擎，注入所有 `Migration` Bean |
-| `jaravelMigrationRunner` | `MigrationRunner` | 命令行运行器（`@Order(HIGHEST_PRECEDENCE)`） |
+| `jaravelMigrationRunner` | `MigrationRunner` | 命令行运行器（`@Order(HIGHEST_PRECEDENCE)`），运行时创建 `MigrationScanner` 等组件 |
 
-所有 Bean 均带 `@ConditionalOnMissingBean`，允许业务方自定义替换。通过 `@AutoConfigureAfter(DataSourceAutoConfiguration.class)` 确保数据源已就绪。
+Bean 带 `@ConditionalOnMissingBean`，允许业务方自定义替换。通过 `@AutoConfigureAfter(DataSourceAutoConfiguration.class)` 确保数据源已就绪。
 
 ---
 
-## 14. 配置选项
+## 18. 配置选项
 
 配置前缀为 `jaravel.migration`，对应 `MigrationProperties` 类。
 
 ```yaml
 jaravel:
   migration:
-    enabled: true          # 是否启用迁移模块（默认 true）
-    table: migrations      # 迁移记录表名（默认 migrations）
-    auto-run: false        # 启动时是否自动执行 migrate（默认 false）
+    source: DIRECTORY        # 迁移源类型（DIRECTORY / JAR / CLASSPATH）
+    directory: migrations   # 迁移 .java 文件所在目录（DIRECTORY 模式）
+    jar-path: ""            # JAR 文件路径（JAR 模式）
+    package-in-jar: false   # 构建时是否将迁移目录打包进 jar（CLASSPATH 模式）
+    enabled: true           # 是否启用迁移模块
+    table: migrations       # 迁移记录表名
+    auto-run: false         # 启动时是否自动执行 migrate
 ```
 
 | 属性 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
+| `jaravel.migration.source` | `MigrationSource` | `DIRECTORY` | 迁移源类型，可选 `DIRECTORY` / `JAR` / `CLASSPATH` |
+| `jaravel.migration.directory` | `String` | `migrations` | 迁移 `.java` 文件所在目录，DIRECTORY 模式下由 `MigrationScanner` 扫描并内存编译 |
+| `jaravel.migration.jar-path` | `String` | `""` | JAR 文件路径，JAR 模式下加载预编译迁移类的 jar |
+| `jaravel.migration.package-in-jar` | `boolean` | `false` | 构建时是否将迁移目录打包进 jar，用于 CLASSPATH 模式 |
 | `jaravel.migration.enabled` | `boolean` | `true` | 是否启用迁移模块 |
 | `jaravel.migration.table` | `String` | `migrations` | 迁移记录表名 |
 | `jaravel.migration.auto-run` | `boolean` | `false` | 启动时是否自动执行 migrate |
 
+### 各模式配置示例
+
+**DIRECTORY 模式**：
+
+```yaml
+jaravel:
+  migration:
+    source: DIRECTORY
+    directory: migrations
+```
+
+**JAR 模式**：
+
+```yaml
+jaravel:
+  migration:
+    source: JAR
+    jar-path: /path/to/migrations.jar
+```
+
+**CLASSPATH 模式**：
+
+```yaml
+jaravel:
+  migration:
+    source: CLASSPATH
+```
+
 ---
 
-## 15. 线程安全说明
+## 19. 线程安全说明
 
 | 类 | 线程安全性 | 说明 |
 | --- | --- | --- |
+| `MigrationSource` | 线程安全 | 枚举类型，天然不可变 |
 | `Schema` | 单线程使用 | 内部 `JdbcTemplate` 线程安全，但 `databaseProductName` 在构造时一次性确定。`Schema` 实例本身无共享可变状态，可在多线程中使用，但迁移操作通常串行执行 |
 | `Blueprint` | 非线程安全 | 使用 `ArrayList` 存储列与命令，应在单线程内构建并消费。每个 `create()` / `table()` 调用创建独立的 `Blueprint` 实例 |
 | `ColumnDefinition` | 非线程安全 | 链式调用修改内部字段，应在单线程内使用。由 `Blueprint` 在单线程内创建 |
@@ -799,4 +1106,5 @@ jaravel:
 | `Migrator` | 需外部同步 | `run()` / `rollback()` 等方法操作 `MigrationRepository`，并发调用可能导致批次号冲突。应在单线程或加锁环境下调用 |
 | `MigrationRepository` | 需外部同步 | 基于 `JdbcTemplate`，SQL 操作本身原子，但 `getNextBatchNumber()` 与 `log()` 之间存在竞态，并发迁移需外部同步 |
 | `MigrationRunner` | 单次执行 | `CommandLineRunner.run()` 在启动时单线程调用，无需考虑并发 |
+| `MigrationScanner` | 单次使用 | 内部 `MemoryClassLoader` 懒加载，`finish()` 后释放。设计为单次加载-执行-释放生命周期，非线程安全 |
 | `MigrationGenerator` | 线程安全 | 静态方法，无共享可变状态，可安全并发调用（但同一文件路径并发写入会失败） |

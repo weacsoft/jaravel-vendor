@@ -168,6 +168,19 @@ public class ArtisanApplication {
     }
 
     /**
+     * 调度命令执行（无参数便捷方法）。
+     * <p>
+     * 对齐 Laravel {@code Artisan::call('command')} 单参数调用风格，
+     * 等价于 {@link #call(String, String[])} 传入空参数数组。
+     *
+     * @param commandName 命令名
+     * @return 退出码，0 表示成功
+     */
+    public int call(String commandName) {
+        return call(commandName, new String[]{});
+    }
+
+    /**
      * 列出所有命令及其描述。
      */
     public void listCommands() {

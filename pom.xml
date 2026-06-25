@@ -7,13 +7,40 @@
     <!-- Jaravel-Vendor : Laravel 风格的 SpringBoot 3 多模块框架（适配器包，类比 PHP vendor 目录） -->
     <groupId>com.weacsoft</groupId>
     <artifactId>jaravel-vendor</artifactId>
-    <version>1.0.0</version>
+    <version>0.1.0</version>
     <packaging>pom</packaging>
     <name>jaravel-vendor</name>
     <description>Laravel 风格的 SpringBoot 3 高性能多模块框架：配置 / 路由 / 中间件 / Auth / Eloquent ORM / 迁移 / 缓存 / 事件 / 校验</description>
+    <url>https://github.com/weacsoft/jaravel-vendor</url>
+
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <id>weacsoft</id>
+            <name>Weacsoft</name>
+            <email>contact@weacsoft.com</email>
+            <organization>Weacsoft</organization>
+            <organizationUrl>https://github.com/weacsoft</organizationUrl>
+        </developer>
+    </developers>
+
+    <scm>
+        <connection>scm:git:git://github.com/weacsoft/jaravel-vendor.git</connection>
+        <developerConnection>scm:git:ssh://github.com/weacsoft/jaravel-vendor.git</developerConnection>
+        <url>https://github.com/weacsoft/jaravel-vendor</url>
+    </scm>
 
     <modules>
         <module>core</module>
+        <!-- 通用工具：内存编译（MemoryClassLoader 等） -->
+        <module>utils</module>
         <module>http</module>
         <module>jblade</module>
         <module>auth</module>
@@ -38,6 +65,13 @@
         <module>plugin-jar-core</module>
         <module>plugin-jar-database</module>
         <module>plugin-java-core</module>
+        <!-- 插件多租户支持（可选，引入后自动启用租户隔离） -->
+        <module>plugin-jar-multi-tenant</module>
+        <!-- 插件远程执行（P2SP 主从，可选，服务端+客户端各一个模块） -->
+        <module>plugin-jar-remote-server</module>
+        <module>plugin-jar-remote-client</module>
+        <!-- 微信 SDK（公众号 / 小程序 API，对齐 overtrue/laravel-wechat） -->
+        <module>wechat-sdk</module>
     </modules>
 
     <parent>
@@ -69,6 +103,11 @@
             <dependency>
                 <groupId>com.weacsoft</groupId>
                 <artifactId>core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.weacsoft</groupId>
+                <artifactId>utils</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -167,6 +206,27 @@
                 <artifactId>plugin-java-core</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>com.weacsoft</groupId>
+                <artifactId>plugin-jar-multi-tenant</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.weacsoft</groupId>
+                <artifactId>plugin-jar-remote-server</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.weacsoft</groupId>
+                <artifactId>plugin-jar-remote-client</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <!-- 微信 SDK -->
+            <dependency>
+                <groupId>com.weacsoft</groupId>
+                <artifactId>wechat-sdk</artifactId>
+                <version>${project.version}</version>
+            </dependency>
 
             <!-- Laravel 风格 ORM : gaarason/database-core（替代 database-spring-boot-starter，手动 @Bean 创建数据源） -->
             <dependency>
@@ -216,6 +276,17 @@
         </dependency>
     </dependencies>
 
+    <distributionManagement>
+        <snapshotRepository>
+            <id>central</id>
+            <url>https://central.sonatype.com/repository/maven-snapshots/</url>
+        </snapshotRepository>
+        <repository>
+            <id>central</id>
+            <url>https://central.sonatype.com/repository/maven-central/</url>
+        </repository>
+    </distributionManagement>
+
     <build>
         <pluginManagement>
             <plugins>
@@ -231,4 +302,83 @@
             </plugins>
         </pluginManagement>
     </build>
+
+    <profiles>
+        <!-- Release profile: 生成 source jar、javadoc jar、GPG 签名，用于 Maven Central 发布 -->
+        <profile>
+            <id>release</id>
+            <build>
+                <plugins>
+                    <!-- Source jar -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-source-plugin</artifactId>
+                        <version>3.3.1</version>
+                        <executions>
+                            <execution>
+                                <id>attach-sources</id>
+                                <goals>
+                                    <goal>jar-no-fork</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <!-- Javadoc jar -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-javadoc-plugin</artifactId>
+                        <version>3.8.0</version>
+                        <configuration>
+                            <doclint>none</doclint>
+                            <failOnError>false</failOnError>
+                            <charset>UTF-8</charset>
+                            <encoding>UTF-8</encoding>
+                            <docencoding>UTF-8</docencoding>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>attach-javadocs</id>
+                                <goals>
+                                    <goal>jar</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <!-- GPG 签名 -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                        <version>3.2.7</version>
+                        <configuration>
+                            <gpgArguments>
+                                <arg>--pinentry-mode</arg>
+                                <arg>loopback</arg>
+                            </gpgArguments>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>sign-artifacts</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>sign</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <!-- Maven Central 部署 -->
+                    <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <version>0.7.0</version>
+                        <extensions>true</extensions>
+                        <configuration>
+                            <publishingServerId>central</publishingServerId>
+                            <autoPublish>true</autoPublish>
+                            <waitUntil>published</waitUntil>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

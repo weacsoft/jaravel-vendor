@@ -60,7 +60,7 @@ JAR 插件系统核心库，提供动态加载/卸载 JAR 插件、三级 ClassL
 <dependency>
     <groupId>com.weacsoft</groupId>
     <artifactId>plugin-jar-core</artifactId>
-    <version>1.0.0</version>
+    <version>0.1.0</version>
 </dependency>
 ```
 
@@ -321,7 +321,7 @@ private HotPluginManager hotPluginManager;
 
 ```java
 // 1. 初始化共享 ClassLoader（通常在启动时由自动装配完成）
-hotPluginManager.initSharedClassLoader(Path.of("shared-api.jar"), "1.0.0");
+hotPluginManager.initSharedClassLoader(Path.of("shared-api.jar"), "0.1.0");
 
 // 2. 从文件注册插件（持久化）
 String pluginId = hotPluginManager.registerPluginFromPath(
@@ -368,7 +368,7 @@ PluginInfo info = hotPluginManager.getPlugin("my-plugin");
     <dependency>
         <groupId>com.weacsoft</groupId>
         <artifactId>plugin-jar-core</artifactId>
-        <version>1.0.0</version>
+        <version>0.1.0</version>
         <scope>provided</scope>
     </dependency>
 </dependencies>
@@ -523,7 +523,7 @@ public interface MetadataPersistence {
 <dependency>
     <groupId>com.weacsoft</groupId>
     <artifactId>plugin-jar-database</artifactId>
-    <version>1.0.0</version>
+    <version>0.1.0</version>
 </dependency>
 ```
 

@@ -206,11 +206,11 @@ public class BladeCompiler {
 
                 switch (directive) {
                     case "if":
-                        code.append("        if (").append(convertExpression(args, localVars)).append(") {\n");
+                        code.append("        if (").append(compileConditionExpression(args, localVars)).append(") {\n");
                         directiveStack.push(new DirectiveContext("if", 0));
                         break;
                     case "elseif":
-                        code.append("        } else if (").append(convertExpression(args, localVars)).append(") {\n");
+                        code.append("        } else if (").append(compileConditionExpression(args, localVars)).append(") {\n");
                         break;
                     case "else":
                         code.append("        } else {\n");
@@ -235,9 +235,9 @@ public class BladeCompiler {
                                     forVars.add(varName);
                                 }
                             }
-                            code.append("        for (").append(convertExpressionWithoutToBoolean(forParts[0], localVars)).append("; ")
-                                    .append(convertExpressionWithoutToBoolean(forParts[1], localVars)).append("; ")
-                                    .append(convertExpressionWithoutToBoolean(forParts[2], localVars)).append(") {\n");
+                            code.append("        for (").append(compileOutputExpression(forParts[0], localVars)).append("; ")
+                                    .append(compileOutputExpression(forParts[1], localVars)).append("; ")
+                                    .append(compileOutputExpression(forParts[2], localVars)).append(") {\n");
                             directiveStack.push(new DirectiveContext("for", forVars));
                         }
                         break;
@@ -263,7 +263,7 @@ public class BladeCompiler {
                                     collection = "ctx.getVariable(\"" + varName + "\")";
                                 }
                             } else {
-                                collection = convertExpression(collectionExpr, localVars);
+                                collection = compileConditionExpression(collectionExpr, localVars);
                             }
                             String var = foreachParts[1].trim().replace("$", "");
                             code.append("        for (Object ").append(var).append(" : (Iterable) ").append(collection).append(") {\n");
@@ -382,7 +382,7 @@ public class BladeCompiler {
                                     collection = "ctx.getVariable(\"" + varName + "\")";
                                 }
                             } else {
-                                collection = convertExpression(collectionExpr, localVars);
+                                collection = compileConditionExpression(collectionExpr, localVars);
                             }
                             String var = foreachParts[1].trim().replace("$", "");
                             code.append("        Object[] ").append(var).append("Array = ").append(collection).append(" instanceof Object[] ? (Object[]) ").append(collection).append(" : new Object[]{").append(collection).append("};\n");
@@ -541,7 +541,7 @@ public class BladeCompiler {
             }
             expression = COMMENT_PATTERN.matcher(expression).replaceAll("");
             if (!expression.isEmpty()) {
-                String converted = convertExpressionWithoutToBoolean(expression, localVars);
+                String converted = compileOutputExpression(expression, localVars);
                 code.append("        write(writer, (").append(converted).append("));\n");
             }
 
@@ -555,28 +555,451 @@ public class BladeCompiler {
         }
     }
 
-    private String convertExpression(String expr, Set<String> localVars) {
+    // ===== Blade 表达式编译引擎 =====
+    // jblade 编译器原生支持 Blade 模板表达式语法，将其编译为 Java 代码。
+    // 这是 jblade 编译器的核心能力，不是外部转换层。
+
+    /**
+     * 编译表达式用于条件判断（@if, @elseif），布尔上下文。
+     * 简单变量引用自动包装为 toBoolean()。
+     */
+    private String compileConditionExpression(String expr, Set<String> localVars) {
+        String compiled = compileExpression(expr, localVars);
+        // 如果是简单变量引用，包装为 toBoolean()
+        if (compiled.equals("ctx.getVariable(\"" + expr.trim().replace("$", "") + "\")")) {
+            return "toBoolean(" + compiled + ")";
+        }
+        return compiled;
+    }
+
+    /**
+     * 编译表达式用于输出（{{ }}），值上下文，不包装 toBoolean()。
+     */
+    private String compileOutputExpression(String expr, Set<String> localVars) {
+        return compileExpression(expr, localVars);
+    }
+
+    /**
+     * 编译 Blade 表达式为 Java 表达式。
+     * <p>
+     * jblade 原生支持以下 Blade 语法：
+     * <ul>
+     *   <li>单引号字符串字面量 'text' → Java 双引号 "text"</li>
+     *   <li>静态方法调用 URL::method(), Carbon::method() → 方法调用</li>
+     *   <li>辅助函数 csrf_field(), csrf_token(), old() → 空字符串</li>
+     *   <li>对象方法调用 $var->method(args) → invokeMethod(...)</li>
+     *   <li>对象属性访问 $var->prop → getProperty(...)</li>
+     *   <li>数组访问 $var['key'] → getMapValue(...)</li>
+     *   <li>关联数组字面量 ['key' => value] → Map.of("key", value)</li>
+     *   <li>字符串拼接运算符 . → Java +</li>
+     *   <li>空合并运算符 ?? → nullCoalescing()</li>
+     *   <li>Elvis 运算符 ?: → elvis()</li>
+     *   <li>三元运算符 ? : → toBoolean() ? :</li>
+     *   <li>变量引用 $var → ctx.getVariable("var")</li>
+     * </ul>
+     */
+    private String compileExpression(String expr, Set<String> localVars) {
         String result = expr.trim();
 
-        Matcher varMatcher = VAR_PATTERN.matcher(result);
-        StringBuffer sb = new StringBuffer();
-        while (varMatcher.find()) {
-            String varName = varMatcher.group(1);
-            if (localVars.contains(varName)) {
-                varMatcher.appendReplacement(sb, varName);
+        // Step 1: 单引号字符串 → 双引号字符串
+        result = compileStringLiterals(result);
+
+        // Step 2: 静态方法调用和命名空间
+        // URL::asset('path') → asset("path")
+        result = result.replaceAll("\\bURL::(\\w+)\\s*\\(", "$1(");
+        // \Carbon\Carbon::parse($date) → carbonParse($date)
+        result = result.replaceAll("\\\\?Carbon\\\\Carbon::(\\w+)\\s*\\(", "carbon$1(");
+        // \Illuminate\Support\Carbon::today() → carbonToday()
+        result = result.replaceAll("\\\\?Illuminate\\\\Support\\\\Carbon::(\\w+)\\s*\\(", "carbon$1(");
+        // Carbon::parse($date) → carbonParse($date) (without namespace)
+        result = result.replaceAll("\\bCarbon::(\\w+)\\s*\\(", "carbon$1(");
+
+        // Step 3: 空返回值的辅助函数
+        result = result.replaceAll("\\bcsrf_field\\s*\\(\\s*\\)", "\"\"");
+        result = result.replaceAll("\\bcsrf_token\\s*\\(\\s*\\)", "\"\"");
+        result = result.replaceAll("\\bold\\s*\\(\\s*\\)", "\"\"");
+
+        // Step 4: 对象方法调用 $var->method(args) → invokeMethod(varRef, "method", args)
+        result = compileMethodCalls(result, localVars);
+
+        // Step 5: 对象属性访问 $var->prop → getProperty(varRef, "prop")
+        result = compilePropertyAccess(result, localVars);
+
+        // Step 5b: 方法调用结果的属性访问 method()->prop → getProperty(method(), "prop")
+        result = compileMethodChainProperty(result);
+
+        // Step 6: 数组访问 $var['key'] 或 $var["key"] → getMapValue(varRef, "key")
+        result = compileArrayAccess(result, localVars);
+
+        // Step 7: 关联数组字面量 ['key' => value] → Map.of("key", value)
+        result = compileArrayLiterals(result, localVars);
+
+        // Step 8: 字符串拼接 . → +（仅在字符串外部）
+        result = compileStringConcatenation(result);
+
+        // Step 8b: 空合并运算符 ?? → nullCoalescing()
+        result = compileNullCoalescing(result, localVars);
+
+        // Step 9: Elvis 运算符 ?: → elvis()
+        result = compileElvisOperator(result, localVars);
+
+        // Step 10: 三元运算符 ? : → toBoolean() ? :
+        result = compileTernaryOperator(result, localVars);
+
+        // Step 11: 剩余 $var → ctx.getVariable("var") 或本地变量
+        result = compileVariables(result, localVars);
+
+        return result;
+    }
+
+    /**
+     * 编译单引号字符串字面量为 Java 双引号字符串。
+     * 'text' → "text"，同时转义内部双引号。
+     */
+    private String compileStringLiterals(String expr) {
+        StringBuilder result = new StringBuilder();
+        int i = 0;
+        while (i < expr.length()) {
+            char c = expr.charAt(i);
+            if (c == '\'') {
+                // 查找闭合单引号
+                int end = i + 1;
+                while (end < expr.length()) {
+                    if (expr.charAt(end) == '\\' && end + 1 < expr.length()) {
+                        end += 2;
+                    } else if (expr.charAt(end) == '\'') {
+                        break;
+                    } else {
+                        end++;
+                    }
+                }
+                if (end < expr.length()) {
+                    String content = expr.substring(i + 1, end);
+                    // 转义双引号和反斜杠
+                    content = content.replace("\\", "\\\\").replace("\"", "\\\"");
+                    // 处理 PHP 单引号转义：\\ → \，\' → '
+                    content = content.replace("\\\\'", "'").replace("\\\\", "\\");
+                    result.append('"').append(content).append('"');
+                    i = end + 1;
+                } else {
+                    result.append(c);
+                    i++;
+                }
             } else {
-                varMatcher.appendReplacement(sb, "toBoolean(ctx.getVariable(\"" + varName + "\"))");
+                result.append(c);
+                i++;
             }
         }
-        varMatcher.appendTail(sb);
+        return result.toString();
+    }
 
+    /**
+     * 编译对象方法调用 $var->method(args) → invokeMethod(varRef, "method", args)。
+     * 正确处理带参数的方法调用，手动查找匹配的闭括号并替换整个方法调用。
+     */
+    private String compileMethodCalls(String expr, Set<String> localVars) {
+        Pattern pattern = Pattern.compile("\\$(\\w+)->(\\w+)\\s*\\(");
+        Matcher matcher = pattern.matcher(expr);
+        StringBuilder result = new StringBuilder();
+        int lastEnd = 0;
+        while (matcher.find()) {
+            // 追加匹配前的内容
+            result.append(expr, lastEnd, matcher.start());
+
+            String varName = matcher.group(1);
+            String methodName = matcher.group(2);
+            String varRef = localVars.contains(varName) ? varName : "ctx.getVariable(\"" + varName + "\")";
+
+            // 找到匹配的闭括号
+            int argsStart = matcher.end();
+            int argsEnd = findMatchingParen(expr, argsStart);
+
+            if (argsEnd > 0) {
+                String args = expr.substring(argsStart, argsEnd).trim();
+                if (args.isEmpty()) {
+                    result.append("invokeMethod(").append(varRef).append(", \"").append(methodName).append("\")");
+                } else {
+                    result.append("invokeMethod(").append(varRef).append(", \"").append(methodName).append("\", ").append(args).append(")");
+                }
+                lastEnd = argsEnd + 1; // 跳过闭括号
+            } else {
+                result.append("invokeMethod(").append(varRef).append(", \"").append(methodName).append("\")(");
+                lastEnd = matcher.end();
+            }
+        }
+        result.append(expr, lastEnd, expr.length());
+        return result.toString();
+    }
+
+    /**
+     * 找到匹配的闭括号位置。
+     * @param expr 表达式
+     * @param start 起始位置（开括号之后）
+     * @return 闭括号位置，或 -1 如果未找到
+     */
+    private int findMatchingParen(String expr, int start) {
+        int depth = 1;
+        boolean inString = false;
+        char stringDelimiter = '"';
+        for (int i = start; i < expr.length(); i++) {
+            char c = expr.charAt(i);
+            if (!inString) {
+                if (c == '"' || c == '\'') {
+                    inString = true;
+                    stringDelimiter = c;
+                } else if (c == '(') {
+                    depth++;
+                } else if (c == ')') {
+                    depth--;
+                    if (depth == 0) {
+                        return i;
+                    }
+                }
+            } else {
+                if (c == '\\' && i + 1 < expr.length()) {
+                    i++;
+                } else if (c == stringDelimiter) {
+                    inString = false;
+                }
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * 编译对象属性访问 $var->prop → getProperty(varRef, "prop")。
+     */
+    private String compilePropertyAccess(String expr, Set<String> localVars) {
+        Pattern pattern = Pattern.compile("\\$(\\w+)->(\\w+)");
+        Matcher matcher = pattern.matcher(expr);
+        StringBuffer sb = new StringBuffer();
+        while (matcher.find()) {
+            String varName = matcher.group(1);
+            String propName = matcher.group(2);
+            String varRef = localVars.contains(varName) ? varName : "ctx.getVariable(\"" + varName + "\")";
+            matcher.appendReplacement(sb, "getProperty(" + varRef + ", \"" + propName + "\")");
+        }
+        matcher.appendTail(sb);
         return sb.toString();
     }
 
-    private String convertExpressionWithoutToBoolean(String expr, Set<String> localVars) {
-        String result = expr.trim();
+    /**
+     * 编译数组访问 $var['key'] 或 $var["key"] → getMapValue(varRef, "key")。
+     */
+    private String compileArrayAccess(String expr, Set<String> localVars) {
+        // 匹配 $var['key'] 或 $var["key"]
+        Pattern pattern = Pattern.compile("\\$(\\w+)\\[(?:'([^']*)'|\"([^\"]*)\")\\]");
+        Matcher matcher = pattern.matcher(expr);
+        StringBuffer sb = new StringBuffer();
+        while (matcher.find()) {
+            String varName = matcher.group(1);
+            String key = matcher.group(2) != null ? matcher.group(2) : matcher.group(3);
+            String varRef = localVars.contains(varName) ? varName : "ctx.getVariable(\"" + varName + "\")";
+            matcher.appendReplacement(sb, "getMapValue(" + varRef + ", \"" + key + "\")");
+        }
+        matcher.appendTail(sb);
+        return sb.toString();
+    }
 
-        Matcher varMatcher = VAR_PATTERN.matcher(result);
+    /**
+     * 编译关联数组字面量 ['key' => value] → Map.of("key", value)。
+     * 支持多键值对。
+     */
+    private String compileArrayLiterals(String expr, Set<String> localVars) {
+        // 匹配 ['key' => value] 或 ["key" => value]
+        Pattern pattern = Pattern.compile("\\[([^\\[\\]]+)\\]");
+        Matcher matcher = pattern.matcher(expr);
+        StringBuffer sb = new StringBuffer();
+        while (matcher.find()) {
+            String inner = matcher.group(1).trim();
+            // 检查是否是 PHP 关联数组（包含 =>）
+            if (inner.contains("=>")) {
+                String[] pairs = inner.split(",");
+                StringBuilder mapBuilder = new StringBuilder("Map.of(");
+                boolean first = true;
+                boolean hasArrow = false;
+                for (String pair : pairs) {
+                    pair = pair.trim();
+                    if (pair.contains("=>")) {
+                        hasArrow = true;
+                        String[] kv = pair.split("=>", 2);
+                        String key = kv[0].trim().replace("'", "").replace("\"", "");
+                        String value = kv[1].trim();
+                        if (!first) {
+                            mapBuilder.append(", ");
+                        }
+                        mapBuilder.append("\"").append(key).append("\", ").append(value);
+                        first = false;
+                    }
+                }
+                if (hasArrow) {
+                    mapBuilder.append(")");
+                    matcher.appendReplacement(sb, mapBuilder.toString());
+                } else {
+                    matcher.appendReplacement(sb, "[" + inner + "]");
+                }
+            } else {
+                matcher.appendReplacement(sb, "[" + inner + "]");
+            }
+        }
+        matcher.appendTail(sb);
+        return sb.toString();
+    }
+
+    /**
+     * 编译字符串拼接运算符 . 为 Java +。
+     * 仅在字符串字面量外部进行编译，避免破坏字符串内容。
+     */
+    private String compileStringConcatenation(String expr) {
+        StringBuilder result = new StringBuilder();
+        boolean inString = false;
+        char stringDelimiter = '"';
+        int i = 0;
+        while (i < expr.length()) {
+            char c = expr.charAt(i);
+
+            if (!inString) {
+                if (c == '"' || c == '\'') {
+                    inString = true;
+                    stringDelimiter = c;
+                    result.append(c);
+                    i++;
+                } else if (c == '.' && i > 0 && i < expr.length() - 1) {
+                    // 检查是否是数字小数点（前后都是数字）
+                    char prev = expr.charAt(i - 1);
+                    char next = expr.charAt(i + 1);
+                    if (Character.isDigit(prev) && Character.isDigit(next)) {
+                        result.append(c);
+                    } else {
+                        // 检查是否是 -> 的一部分（已经被处理过，但以防万一）
+                        if (prev == '-' || next == '>') {
+                            result.append(c);
+                        } else {
+                            result.append(" + ");
+                        }
+                    }
+                    i++;
+                } else {
+                    result.append(c);
+                    i++;
+                }
+            } else {
+                if (c == '\\' && i + 1 < expr.length()) {
+                    result.append(c);
+                    result.append(expr.charAt(i + 1));
+                    i += 2;
+                } else if (c == stringDelimiter) {
+                    inString = false;
+                    result.append(c);
+                    i++;
+                } else {
+                    result.append(c);
+                    i++;
+                }
+            }
+        }
+        return result.toString();
+    }
+
+    /**
+     * 编译 Elvis 运算符 ?: → elvis(a, b)。
+     * 注意：需要在三元运算符之前处理，因为 ?: 是 ? : 的简写。
+     */
+    private String compileElvisOperator(String expr, Set<String> localVars) {
+        // 匹配 a ?: b 模式（非贪婪）
+        // 需要确保 ? 后面紧跟着 :（没有中间内容）
+        Pattern pattern = Pattern.compile("([^?]+?)\\?:(.+)");
+        Matcher matcher = pattern.matcher(expr);
+        if (matcher.matches()) {
+            String a = matcher.group(1).trim();
+            String b = matcher.group(2).trim();
+            return "elvis(" + a + ", " + b + ")";
+        }
+        return expr;
+    }
+
+    /**
+     * 编译三元运算符 ? : → Java 三元运算符。
+     * 将条件部分包装为 toBoolean()。
+     */
+    private String compileTernaryOperator(String expr, Set<String> localVars) {
+        // 简单的三元运算符转换：condition ? truePart : falsePart
+        // 需要找到 ? 和 : 的位置，注意嵌套
+        int questionMark = findTernaryQuestionMark(expr);
+        if (questionMark < 0) {
+            return expr;
+        }
+        int colon = findTernaryColon(expr, questionMark + 1);
+        if (colon < 0) {
+            return expr;
+        }
+        String condition = expr.substring(0, questionMark).trim();
+        String truePart = expr.substring(questionMark + 1, colon).trim();
+        String falsePart = expr.substring(colon + 1).trim();
+        return "toBoolean(" + condition + ") ? " + truePart + " : " + falsePart;
+    }
+
+    /**
+     * 查找三元运算符的 ? 位置（跳过字符串内的 ?）。
+     */
+    private int findTernaryQuestionMark(String expr) {
+        boolean inString = false;
+        char stringDelimiter = '"';
+        for (int i = 0; i < expr.length(); i++) {
+            char c = expr.charAt(i);
+            if (!inString) {
+                if (c == '"' || c == '\'') {
+                    inString = true;
+                    stringDelimiter = c;
+                } else if (c == '?') {
+                    // 检查不是 ?: (Elvis，已处理)
+                    if (i + 1 < expr.length() && expr.charAt(i + 1) == ':') {
+                        return -1; // Elvis，不是三元
+                    }
+                    return i;
+                }
+            } else {
+                if (c == '\\' && i + 1 < expr.length()) {
+                    i++;
+                } else if (c == stringDelimiter) {
+                    inString = false;
+                }
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * 查找三元运算符的 : 位置（跳过字符串内的 :）。
+     */
+    private int findTernaryColon(String expr, int start) {
+        boolean inString = false;
+        char stringDelimiter = '"';
+        for (int i = start; i < expr.length(); i++) {
+            char c = expr.charAt(i);
+            if (!inString) {
+                if (c == '"' || c == '\'') {
+                    inString = true;
+                    stringDelimiter = c;
+                } else if (c == ':') {
+                    return i;
+                }
+            } else {
+                if (c == '\\' && i + 1 < expr.length()) {
+                    i++;
+                } else if (c == stringDelimiter) {
+                    inString = false;
+                }
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * 编译剩余的 $var 为 ctx.getVariable("var") 或本地变量名。
+     */
+    private String compileVariables(String expr, Set<String> localVars) {
+        Matcher varMatcher = VAR_PATTERN.matcher(expr);
         StringBuffer sb = new StringBuffer();
         while (varMatcher.find()) {
             String varName = varMatcher.group(1);
@@ -587,8 +1010,74 @@ public class BladeCompiler {
             }
         }
         varMatcher.appendTail(sb);
-
         return sb.toString();
+    }
+
+    /**
+     * 编译方法调用链的属性访问 method()->prop → getProperty(method(), "prop")。
+     * 处理如 carbonToday()->year 的模式。
+     */
+    private String compileMethodChainProperty(String expr) {
+        // 匹配 word(args)->prop 模式（简单括号，无嵌套）
+        Pattern pattern = Pattern.compile("(\\w+\\([^()]*\\))->(\\w+)");
+        Matcher matcher = pattern.matcher(expr);
+        StringBuffer sb = new StringBuffer();
+        while (matcher.find()) {
+            String methodCall = matcher.group(1);
+            String propName = matcher.group(2);
+            // Carbon 特殊处理：carbonToday()->year → carbonYear(carbonToday())
+            if ("year".equals(propName) && methodCall.startsWith("carbon")) {
+                matcher.appendReplacement(sb, "carbonYear(" + methodCall + ")");
+            } else {
+                matcher.appendReplacement(sb, "getProperty(" + methodCall + ", \"" + propName + "\")");
+            }
+        }
+        matcher.appendTail(sb);
+        return sb.toString();
+    }
+
+    /**
+     * 编译空合并运算符 ?? → nullCoalescing(a, b)。
+     * $a ?? $b 返回 a 如果 a 不为 null，否则返回 b。
+     */
+    private String compileNullCoalescing(String expr, Set<String> localVars) {
+        // 查找 ?? 运算符（不在字符串内）
+        int pos = findOperator(expr, "??");
+        if (pos < 0) {
+            return expr;
+        }
+        String left = expr.substring(0, pos).trim();
+        String right = expr.substring(pos + 2).trim();
+        return "nullCoalescing(" + left + ", " + right + ")";
+    }
+
+    /**
+     * 在表达式中查找运算符位置（跳过字符串内的匹配）。
+     * @param expr 表达式
+     * @param op 运算符字符串
+     * @return 运算符位置，或 -1 如果未找到
+     */
+    private int findOperator(String expr, String op) {
+        boolean inString = false;
+        char stringDelimiter = '"';
+        for (int i = 0; i < expr.length() - op.length() + 1; i++) {
+            char c = expr.charAt(i);
+            if (!inString) {
+                if (c == '"' || c == '\'') {
+                    inString = true;
+                    stringDelimiter = c;
+                } else if (expr.substring(i, i + op.length()).equals(op)) {
+                    return i;
+                }
+            } else {
+                if (c == '\\' && i + 1 < expr.length()) {
+                    i++;
+                } else if (c == stringDelimiter) {
+                    inString = false;
+                }
+            }
+        }
+        return -1;
     }
 
     private String escapeJava(String str) {

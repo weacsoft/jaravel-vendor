@@ -142,6 +142,70 @@ public class PluginRouteRegistrar {
     }
 
     /**
+     * 为已注册的路由注册别名路径。
+     * <p>
+     * 查找已有路由（通过 existingPath + httpMethod），复制其 beanName/methodName，
+     * 以 aliasPath 创建新的路由并注册。实现"一方法多路由"的手动注册。
+     * <p>
+     * 使用示例：
+     * <pre>
+     * // 已注册: GET /blog/list -> blogController.list()
+     * routeRegistrar.registerRouteAlias(pluginId, "/blog/list", "/a/list", "GET");
+     * // 结果: GET /a/list -> blogController.list()（别名路由）
+     * </pre>
+     *
+     * @param pluginId     插件 ID
+     * @param existingPath 已注册的路由路径
+     * @param aliasPath    别名路由路径
+     * @param httpMethod   HTTP 方法名（如 "GET"、"POST"）
+     * @return 注册成功返回 true，原路由不存在返回 false
+     */
+    public boolean registerRouteAlias(String pluginId, String existingPath,
+                                       String aliasPath, String httpMethod) {
+        if (existingPath == null || aliasPath == null || httpMethod == null) {
+            return false;
+        }
+        RouteInfo existing = routeHandler.getRouteInfo(httpMethod, existingPath);
+        if (existing == null) {
+            log.warn("注册别名失败：原路由不存在: {} {}", httpMethod, existingPath);
+            return false;
+        }
+        HttpMethod method;
+        try {
+            method = HttpMethod.valueOf(httpMethod.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            method = HttpMethod.GET;
+        }
+        RouteInfo aliasRoute = new RouteInfo(
+                aliasPath, method, existing.getBeanName(),
+                existing.getMethodName(), existing.getProduces());
+        return registerRoute(pluginId, aliasRoute);
+    }
+
+    /**
+     * 为已注册的路由注册别名路径（继承原路由的 HTTP 方法）。
+     *
+     * @param pluginId     插件 ID
+     * @param existingPath 已注册的路由路径
+     * @param aliasPath    别名路由路径
+     * @return 注册成功返回 true
+     */
+    public boolean registerRouteAlias(String pluginId, String existingPath, String aliasPath) {
+        if (existingPath == null) {
+            return false;
+        }
+        // 尝试常见 HTTP 方法查找原路由
+        for (String method : new String[]{"GET", "POST", "PUT", "DELETE", "PATCH"}) {
+            RouteInfo existing = routeHandler.getRouteInfo(method, existingPath);
+            if (existing != null) {
+                return registerRouteAlias(pluginId, existingPath, aliasPath, method);
+            }
+        }
+        log.warn("注册别名失败：原路由不存在: {}", existingPath);
+        return false;
+    }
+
+    /**
      * 返回插件已注册的路由数量。
      *
      * @param pluginId 插件 ID

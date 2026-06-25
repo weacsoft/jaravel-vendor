@@ -55,6 +55,14 @@ public class SharedDependencyScanner {
     public static final String PLUGIN_ROUTE_DESC =
             "Lcom/weacsoft/jaravel/vendor/plugin/jar/annotation/PluginRoute;";
 
+    /** PluginAlias 注解的 ASM 描述符 */
+    public static final String PLUGIN_ALIAS_DESC =
+            "Lcom/weacsoft/jaravel/vendor/plugin/jar/annotation/PluginAlias;";
+
+    /** PluginAliases 容器注解的 ASM 描述符（@Repeatable 生成的容器） */
+    public static final String PLUGIN_ALIASES_DESC =
+            "Lcom/weacsoft/jaravel/vendor/plugin/jar/annotation/PluginAliases;";
+
     /**
      * 扫描 JAR 文件。
      *
@@ -310,6 +318,17 @@ public class SharedDependencyScanner {
 
     /**
      * 方法扫描访问器。
+     * <p>
+     * 扫描方法上的注解：
+     * <ul>
+     *   <li>{@code @PluginMapping}：创建主路由（自动注册）</li>
+     *   <li>{@code @PluginRoute}：创建可注册路由（手动注册）</li>
+     *   <li>{@code @PluginAlias}：为当前方法创建别名路由（继承主路由的 beanName/methodName）</li>
+     *   <li>{@code @PluginAliases}：{@code @PluginAlias} 的容器（{@code @Repeatable} 生成）</li>
+     * </ul>
+     * {@code @PluginAlias} 的别名路由会跟随主路由的分类：
+     * 若主路由是 {@code @PluginMapping}（自动注册），别名也是自动注册；
+     * 若主路由是 {@code @PluginRoute}（手动注册），别名也是手动注册。
      */
     static class MethodScannerVisitor extends MethodVisitor {
 
@@ -317,6 +336,11 @@ public class SharedDependencyScanner {
         private final String methodName;
         private final ScanResult result;
         private final ClassScannerVisitor classVisitor;
+
+        /** 当前方法的主路由是否为 available（@PluginRoute） */
+        private boolean currentMethodAvailable = false;
+        /** 当前方法是否已有主路由 */
+        private boolean hasPrimaryRoute = false;
 
         MethodScannerVisitor(String className, String methodName, ScanResult result,
                              ClassScannerVisitor classVisitor) {
@@ -334,13 +358,30 @@ public class SharedDependencyScanner {
                 info.setMethodName(methodName);
                 // Bean 名称由类扫描器在 visitEnd 时设置；此处先取当前值
                 info.setBeanName(classVisitor.currentBeanName);
+                currentMethodAvailable = false;
+                hasPrimaryRoute = true;
                 return new PluginMappingAnnotationVisitor(info, result, classVisitor, false);
             }
             if (PLUGIN_ROUTE_DESC.equals(descriptor)) {
                 RouteScanInfo info = new RouteScanInfo();
                 info.setMethodName(methodName);
                 info.setBeanName(classVisitor.currentBeanName);
+                currentMethodAvailable = true;
+                hasPrimaryRoute = true;
                 return new PluginMappingAnnotationVisitor(info, result, classVisitor, true);
+            }
+            if (PLUGIN_ALIAS_DESC.equals(descriptor)) {
+                // 单个 @PluginAlias
+                RouteScanInfo aliasInfo = new RouteScanInfo();
+                aliasInfo.setMethodName(methodName);
+                aliasInfo.setBeanName(classVisitor.currentBeanName);
+                return new PluginAliasAnnotationVisitor(aliasInfo, result, classVisitor,
+                        () -> currentMethodAvailable);
+            }
+            if (PLUGIN_ALIASES_DESC.equals(descriptor)) {
+                // @PluginAliases 容器（多个 @PluginAlias 被 @Repeatable 包装时）
+                return new PluginAliasesContainerVisitor(result, classVisitor, methodName,
+                        () -> currentMethodAvailable);
             }
             return super.visitAnnotation(descriptor, visible);
         }
@@ -406,6 +447,113 @@ public class SharedDependencyScanner {
                 }
             }
             super.visitEnd();
+        }
+    }
+
+    /**
+     * PluginAlias 注解访问器。
+     * <p>
+     * 解析单个 {@code @PluginAlias} 注解，生成一条别名路由。
+     * 别名路由的 {@code available} 标志由主路由决定（通过 {@code availableSupplier} 获取）。
+     */
+    static class PluginAliasAnnotationVisitor extends AnnotationVisitor {
+
+        private final RouteScanInfo info;
+        private final ScanResult result;
+        private final ClassScannerVisitor classVisitor;
+        private final java.util.function.BooleanSupplier availableSupplier;
+
+        PluginAliasAnnotationVisitor(RouteScanInfo info, ScanResult result,
+                                     ClassScannerVisitor classVisitor,
+                                     java.util.function.BooleanSupplier availableSupplier) {
+            super(Opcodes.ASM9);
+            this.info = info;
+            this.result = result;
+            this.classVisitor = classVisitor;
+            this.availableSupplier = availableSupplier;
+        }
+
+        @Override
+        public void visit(String name, Object value) {
+            if ("value".equals(name) && value instanceof String s) {
+                info.setPath(s);
+            } else if ("path".equals(name) && value instanceof String s) {
+                info.setPath(s);
+            } else if ("produces".equals(name) && value instanceof String s) {
+                info.setProduces(s);
+            }
+            super.visit(name, value);
+        }
+
+        @Override
+        public void visitEnum(String name, String descriptor, String value) {
+            if ("method".equals(name)) {
+                try {
+                    info.setMethod(HttpMethod.valueOf(value));
+                } catch (IllegalArgumentException e) {
+                    info.setMethod(HttpMethod.GET);
+                }
+            }
+            super.visitEnum(name, descriptor, value);
+        }
+
+        @Override
+        public void visitEnd() {
+            info.setBeanName(classVisitor.currentBeanName);
+            if (info.getPath() != null) {
+                boolean available = availableSupplier.getAsBoolean();
+                if (available) {
+                    result.getAvailableRouteScanInfos().add(info);
+                } else {
+                    result.getRouteScanInfos().add(info);
+                }
+            }
+            super.visitEnd();
+        }
+    }
+
+    /**
+     * PluginAliases 容器注解访问器。
+     * <p>
+     * 当方法上有多个 {@code @PluginAlias} 时，编译器自动包装为 {@code @PluginAliases}。
+     * 本访问器遍历容器中的每个 {@code @PluginAlias}，为每个生成一条别名路由。
+     */
+    static class PluginAliasesContainerVisitor extends AnnotationVisitor {
+
+        private final ScanResult result;
+        private final ClassScannerVisitor classVisitor;
+        private final String methodName;
+        private final java.util.function.BooleanSupplier availableSupplier;
+
+        PluginAliasesContainerVisitor(ScanResult result, ClassScannerVisitor classVisitor,
+                                     String methodName,
+                                     java.util.function.BooleanSupplier availableSupplier) {
+            super(Opcodes.ASM9);
+            this.result = result;
+            this.classVisitor = classVisitor;
+            this.methodName = methodName;
+            this.availableSupplier = availableSupplier;
+        }
+
+        @Override
+        public AnnotationVisitor visitArray(String name) {
+            if ("value".equals(name)) {
+                // 遍历 @PluginAlias[] 数组，每个元素是一个 @PluginAlias 注解
+                return new AnnotationVisitor(Opcodes.ASM9) {
+                    @Override
+                    public AnnotationVisitor visitAnnotation(String name, String descriptor) {
+                        if (PLUGIN_ALIAS_DESC.equals(descriptor)) {
+                            RouteScanInfo aliasInfo = new RouteScanInfo();
+                            aliasInfo.setMethodName(methodName);
+                            aliasInfo.setBeanName(classVisitor.currentBeanName);
+                            return new PluginAliasAnnotationVisitor(aliasInfo, result, classVisitor,
+                                    availableSupplier);
+                        }
+                        return super.visitAnnotation(name, descriptor);
+                    }
+                };
+            }
+            return super.visitArray(name);
         }
     }
 }

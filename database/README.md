@@ -37,6 +37,9 @@ Database 模块是 Jaravel 框架的数据库 ORM 层，基于 `gaarason/databas
 | `Model::all()` | `BaseModel.all(Class)` |
 | `Model::query()` | `BaseModel.query(Class)` |
 | `$model->replicate()` | `BaseModel.replicate()` |
+| `orderBy('col', 'desc')` | `orderBy("col", "desc")` / `orderBy("col", OrderBy.DESC)` |
+| `Model::query()->where()->delete()` | `query().where("id", id).delete()` |
+| `->get()->toObjectList()` | `query().where().get().toObjectList()` |
 
 ### 关键设计决策
 
@@ -69,7 +72,7 @@ public class User extends BaseModel<User, Long> {
 <dependency>
     <groupId>com.weacsoft</groupId>
     <artifactId>database</artifactId>
-    <version>1.0.0</version>
+    <version>0.1.0</version>
 </dependency>
 ```
 
@@ -296,6 +299,24 @@ List<User> all = User.all();
 
 // 条件查询
 User u = User.query().where("name", "alice").first().toObject();
+
+// 排序 + 列表查询（支持字符串方向或 OrderBy 枚举）
+List<User> users = User.query()
+        .where("status", 1)
+        .orderBy("created_at", "desc")           // 字符串方向
+        .get()
+        .toObjectList();
+
+// 类型安全排序（gaarason.database.appointment.OrderBy 枚举）
+import gaarason.database.appointment.OrderBy;
+List<User> users2 = User.query()
+        .where("status", 1)
+        .orderBy("created_at", OrderBy.DESC)     // 枚举方向
+        .get()
+        .toObjectList();
+
+// 通过查询构造器删除
+int deleted = User.query().where("id", 1L).delete();  // 返回受影响行数
 
 // 复制（不含主键）
 User clone = user.replicate();
@@ -643,11 +664,26 @@ User alice = User.query()
         .first()
         .toObject();
 
+// 排序查询（字符串方向）
 List<User> activeUsers = User.query()
         .where("status", 1)
         .orderBy("created_at", "desc")
         .get()
         .toObjectList();
+
+// 排序查询（类型安全枚举 OrderBy.DESC）
+import gaarason.database.appointment.OrderBy;
+
+List<User> recentUsers = User.query()
+        .where("status", 1)
+        .orderBy("created_at", OrderBy.DESC)
+        .get()
+        .toObjectList();
+
+// 删除（通过查询构造器）
+int deletedCount = User.query()
+        .where("id", 1L)
+        .delete();   // 返回受影响行数
 
 // 复制
 User copy = found.replicate();

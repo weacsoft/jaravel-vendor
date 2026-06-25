@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.weacsoft</groupId>
+        <artifactId>jaravel-vendor</artifactId>
+        <version>0.1.0</version>
+    </parent>
+
+    <artifactId>plugin-jar-multi-tenant</artifactId>
+    <name>plugin-jar-multi-tenant</name>
+    <description>JAR 插件多租户支持：同一 JAR 可按租户隔离地重复加载，Bean 名称与路由路径自动按租户前缀化</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.weacsoft</groupId>
+            <artifactId>plugin-jar-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+    </dependencies>
+</project>

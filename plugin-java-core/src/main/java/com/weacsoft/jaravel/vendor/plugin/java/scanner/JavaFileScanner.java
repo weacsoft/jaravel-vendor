@@ -140,62 +140,25 @@ public class JavaFileScanner {
      * 路由扫描信息。
      * <p>
      * 从 {@link PluginMapping} 或 {@link PluginRoute} 注解中提取的路由元数据。
+     *
+     * @param className  控制器类全限定名
+     * @param methodName 处理方法名
+     * @param path       路由路径
+     * @param httpMethod HTTP 方法
+     * @param produces   响应内容类型
      */
-    public static class RouteScanInfo {
-
-        /** 控制器类全限定名 */
-        private final String className;
-
-        /** 处理方法名 */
-        private final String methodName;
-
-        /** 路由路径 */
-        private final String path;
-
-        /** HTTP 方法 */
-        private final HttpMethod httpMethod;
-
-        /** 响应内容类型 */
-        private final String produces;
-
-        public RouteScanInfo(String className, String methodName, String path,
-                             HttpMethod httpMethod, String produces) {
-            this.className = className;
-            this.methodName = methodName;
-            this.path = path;
-            this.httpMethod = httpMethod;
-            this.produces = produces;
-        }
-
-        public String getClassName() {
-            return className;
-        }
-
-        public String getMethodName() {
-            return methodName;
-        }
-
-        public String getPath() {
-            return path;
-        }
-
-        public HttpMethod getHttpMethod() {
-            return httpMethod;
-        }
-
-        public String getProduces() {
-            return produces;
-        }
+        public record RouteScanInfo(String className, String methodName, String path, HttpMethod httpMethod,
+                                    String produces) {
 
         @Override
-        public String toString() {
-            return "RouteScanInfo{" +
-                    "className='" + className + '\'' +
-                    ", methodName='" + methodName + '\'' +
-                    ", path='" + path + '\'' +
-                    ", httpMethod=" + httpMethod +
-                    ", produces='" + produces + '\'' +
-                    '}';
+            public String toString() {
+                return "RouteScanInfo{" +
+                        "className='" + className + '\'' +
+                        ", methodName='" + methodName + '\'' +
+                        ", path='" + path + '\'' +
+                        ", httpMethod=" + httpMethod +
+                        ", produces='" + produces + '\'' +
+                        '}';
+            }
         }
-    }
 }

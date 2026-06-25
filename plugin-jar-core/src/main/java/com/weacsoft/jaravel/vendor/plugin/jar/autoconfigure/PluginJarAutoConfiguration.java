@@ -143,7 +143,7 @@ public class PluginJarAutoConfiguration {
         if (coreJarPath != null) {
             manager.setCoreJarPath(coreJarPath);
             // 初始化共享 ClassLoader（仅含 core JAR，integration 提供的额外 JAR 由 initSharedClassLoader 处理）
-            manager.initSharedClassLoader(coreJarPath, "1.0.0");
+            manager.initSharedClassLoader(coreJarPath, "0.1.0");
         } else {
             log.warn("无法定位核心 JAR 路径，插件注解类可能无法被插件加载");
         }

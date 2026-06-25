@@ -25,7 +25,7 @@
 引入 `jaravel-starter` 后，框架自动完成以下工作：
 
 1. **注册核心基础设施**：`ConfigRepository`（配置仓库）、`SpringContext`（上下文持有器）、`ConfigDefinitionRegistrar`（代码级配置注册器）、`ProviderRegistry`（服务提供者注册器）。
-2. **聚合各模块自动装配**：通过传递依赖引入 `core`、`http`、`springboot`、`auth`、`database`、`migration`、`cache`、`jblade`、`event` 等模块，各模块的 `@AutoConfiguration` 类由 Spring Boot 自动加载。
+2. **聚合各模块自动装配**：通过传递依赖引入 `core`、`http`、`springboot`、`auth`、`database`、`migration`、`cache`、`jblade`、`event`、`redis-config`、`redis-cache`、`session-redis`、`artisan`、`schedule`、`queue-database`、`wechat-sdk` 共 16 个模块，各模块的 `@AutoConfiguration` 类由 Spring Boot 自动加载。
 3. **启用 Laravel 风格开发**：中间件管道、路由系统、Form Request 校验、门面（Facade）、配置仓库、Eloquent ORM、数据库迁移、缓存、事件分发、Blade 模板渲染全部就绪。
 
 > **JWT 为可选模块**，不在 starter 中聚合。需要 JWT 认证时，用户按需单独引入 `com.weacsoft:jwt` 依赖即可。
@@ -40,7 +40,7 @@
 <dependency>
     <groupId>com.weacsoft</groupId>
     <artifactId>starter</artifactId>
-    <version>1.0.0</version>
+    <version>0.1.0</version>
 </dependency>
 ```
 
@@ -55,10 +55,17 @@
 | Spring Boot 集成 | `springboot` | RouterFunction 桥接、Request 注入、Response 处理 |
 | 认证 | `auth` | Auth 门面、Session Guard、UserProvider |
 | 数据库 | `database` | Eloquent ORM（基于 gaarason/database）、BaseModel、DataSource |
-| 迁移 | `migration` | 数据库迁移、Schema 构建器、Blueprint |
+| 迁移 | `migration` | 数据库迁移（运行时编译，3 种源模式）、Schema 构建器、Blueprint |
 | 缓存 | `cache` | 缓存管理器、Array/File 驱动 |
-| 模板引擎 | `jblade` | Blade 模板编译与渲染 |
+| 模板引擎 | `jblade` | Blade 模板编译与渲染（表达式编译） |
 | 事件 | `event` | 事件分发器、监听器注册、队列支持 |
+| Redis 配置 | `redis-config` | Redis 连接管理（多机 session/缓存同步基础） |
+| Redis 缓存 | `redis-cache` | Redis 缓存驱动（多机缓存同步） |
+| Redis Session | `session-redis` | Redis Session 守卫（多机 Session 同步） |
+| 命令行工具 | `artisan` | Artisan CLI 命令框架 |
+| 定时任务 | `schedule` | 定时任务调度器 |
+| 数据库队列 | `queue-database` | 数据库队列驱动（持久化 + 多实例消费） |
+| 微信 SDK | `wechat-sdk` | 微信公众号 / 小程序 API（对齐 overtrue/laravel-wechat） |
 
 ### 外部依赖
 
@@ -133,7 +140,7 @@ Spring Environment（application.yml）
     <dependency>
         <groupId>com.weacsoft</groupId>
         <artifactId>starter</artifactId>
-        <version>1.0.0</version>
+        <version>0.1.0</version>
     </dependency>
 </dependencies>
 ```
@@ -248,10 +255,17 @@ router.post("/users", request -> {
 | --- | --- |
 | auth | AuthManager、AuthGuard、SessionGuard、认证中间件 |
 | database | DataSource、Eloquent ORM（gaarason/database） |
-| migration | MigrationRunner、MigrationRepository、Schema |
+| migration | MigrationRunner、MigrationRepository、Schema（3 种源模式） |
 | cache | CacheManager、Cache 驱动（Array/File） |
 | event | EventDispatcher、EventListenerRegistrar、QueueManager |
-| jblade | BladeEngine、BladeCompiler（模板渲染） |
+| jblade | BladeEngine、BladeCompiler（模板渲染，表达式编译） |
+| redis-config | Redis 连接配置、连接池管理（多机同步基础） |
+| redis-cache | Redis 缓存驱动（多机缓存同步） |
+| session-redis | Redis Session 守卫（多机 Session 同步） |
+| artisan | Artisan CLI 命令注册与调度 |
+| schedule | 定时任务调度器、Cron 表达式解析 |
+| queue-database | 数据库队列驱动（持久化 + 多实例消费） |
+| wechat-sdk | 微信公众号 / 小程序 API 封装 |
 
 ---
 
@@ -271,7 +285,7 @@ router.post("/users", request -> {
 <dependency>
     <groupId>com.weacsoft</groupId>
     <artifactId>jwt</artifactId>
-    <version>1.0.0</version>
+    <version>0.1.0</version>
 </dependency>
 ```
 

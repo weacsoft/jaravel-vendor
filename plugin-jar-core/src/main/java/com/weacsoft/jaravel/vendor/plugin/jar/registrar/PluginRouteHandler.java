@@ -110,6 +110,19 @@ public class PluginRouteHandler {
     }
 
     /**
+     * 按 HTTP 方法与路径查找已注册的路由信息。
+     * <p>
+     * 供 {@link PluginRouteRegistrar#registerRouteAlias} 查找已有路由的 beanName/methodName。
+     *
+     * @param httpMethod HTTP 方法名
+     * @param path       路径
+     * @return 路由信息，不存在返回 null
+     */
+    public RouteInfo getRouteInfo(String httpMethod, String path) {
+        return routeRegistry.get(routeKey(httpMethod, path));
+    }
+
+    /**
      * 处理 HTTP 请求。
      * <p>
      * 查找路由 -> 获取 Bean -> 反射调用 -> 写响应。

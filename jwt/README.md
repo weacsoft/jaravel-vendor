@@ -64,7 +64,7 @@ jwt 模块（插件）
 <dependency>
     <groupId>com.weacsoft</groupId>
     <artifactId>jwt</artifactId>
-    <version>1.0.0</version>
+    <version>0.1.0</version>
 </dependency>
 ```
 

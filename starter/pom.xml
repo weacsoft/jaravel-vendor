@@ -7,7 +7,7 @@
     <parent>
         <groupId>com.weacsoft</groupId>
         <artifactId>jaravel-vendor</artifactId>
-        <version>1.0.0</version>
+        <version>0.1.0</version>
     </parent>
 
     <artifactId>starter</artifactId>
@@ -82,6 +82,11 @@
         <dependency>
             <groupId>com.weacsoft</groupId>
             <artifactId>queue-database</artifactId>
+        </dependency>
+        <!-- 微信 SDK（对齐 overtrue/laravel-wechat） -->
+        <dependency>
+            <groupId>com.weacsoft</groupId>
+            <artifactId>wechat-sdk</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -73,7 +73,7 @@ Laravel 的 `Authenticatable` 接口包含 `getAuthPassword()`，`UserProvider` 
 <dependency>
     <groupId>com.weacsoft</groupId>
     <artifactId>auth</artifactId>
-    <version>1.0.0</version>
+    <version>0.1.0</version>
 </dependency>
 ```
 
@@ -706,7 +706,7 @@ public class AuthAutoConfiguration {
 public class AuthProperties {
 
     /** 默认守卫名（默认 "web"） */
-    private String defaultGuard = "web";
+    private final String defaultGuard = "web";
 
     // getter/setter ...
 }

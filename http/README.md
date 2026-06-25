@@ -53,7 +53,7 @@
 <dependency>
     <groupId>com.weacsoft</groupId>
     <artifactId>http</artifactId>
-    <version>1.0.0</version>
+    <version>0.1.0</version>
 </dependency>
 ```
 
@@ -373,6 +373,22 @@ request.removeCookie("token");
 | `void setRequest(HttpServletRequest)` | 绑定 Servlet 请求，自动同步 header、cookie、session |
 | `Cookie[] getCookieObjects()` | 获取全部 Cookie 对象数组 |
 | `Cookie[] getNewCookies()` | 获取本次新增的 Cookie 对象数组 |
+
+#### 客户端信息
+
+| 方法签名 | 说明 |
+| --- | --- |
+| `String ip()` | 获取客户端 IP 地址，对齐 Laravel `$request->ip()` |
+
+`ip()` 方法优先从 `X-Forwarded-For` 请求头获取（经过反向代理时取第一个 IP），否则使用 `HttpServletRequest.getRemoteAddr()`。若底层 Servlet 请求未绑定则返回 `"unknown"`。
+
+```java
+public Response store(Request request) {
+    String clientIp = request.ip();   // 对齐 Laravel $request->ip()
+    log.info("请求来自: {}", clientIp);
+    return ResponseBuilder.json(Map.of("ip", clientIp));
+}
+```
 
 #### 内部类 FluxMultipartFile
 
