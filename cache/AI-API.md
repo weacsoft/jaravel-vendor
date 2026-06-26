@@ -3,7 +3,7 @@
 > Module: `cache` | Package: `com.weacsoft.jaravel.vendor.cache` | Version: 0.1.0
 
 ## Overview
-cache 模块提供 Laravel 风格的缓存系统，包含 CacheManager（多仓库管理器）、CacheStore（高级缓存操作契约）、CacheDriver（底层存储契约）、DefaultCacheStore（默认仓库实现，带前缀隔离）、ArrayCacheDriver（内存驱动）、FileCacheDriver（文件驱动）和 Cache 门面。支持 put/get/has/forget/flush/pull/add/increment/decrement/putMany/getMany/remember/rememberForever 等完整语义，TTL 统一为秒。
+cache 模块提供 Laravel 风格的缓存系统，包含 CacheManager（多仓库管理器）、CacheStore（高级缓存操作契约）、CacheDriver（底层存储契约）、DefaultCacheStore（默认仓库实现，带前缀隔离）、ArrayCacheDriver（内存驱动）、FileCacheDriver（文件驱动）、DatabaseCacheDriver（数据库驱动）和 Cache 门面。支持 put/get/has/forget/flush/pull/add/increment/decrement/putMany/getMany/remember/rememberForever 等完整语义，TTL 统一为秒。redis 驱动位于独立的 `redis-cache` 模块。
 
 ## Classes & Interfaces
 
@@ -163,6 +163,47 @@ Object value = driver.get("user:1");
 
 ---
 
+### DatabaseCacheDriver
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.cache`
+- **Description**: 基于关系型数据库的缓存驱动，对齐 Laravel "database" 缓存驱动。使用 Spring `JdbcTemplate` 将缓存条目持久化到 `jaravel_cache` 表，缓存值以 JSON 字符串存储。构造时自动建表（若不存在），自动适配 MySQL / PostgreSQL / SQLite / H2 / SQL Server 方言（建表与 upsert 语义）。读取 / 存在性判断时命中已过期记录会异步删除。
+- **Implements**: `CacheDriver`
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `DatabaseCacheDriver` | `DataSource dataSource` | 构造方法 | 使用默认表名 `jaravel_cache`，构造时自动建表 |
+| `DatabaseCacheDriver` | `DataSource dataSource, String table` | 构造方法 | 指定表名，`null`/空串回退默认表名；构造时自动建表 |
+| `put` | `String key, Object value, long ttlSeconds` | `boolean` | 序列化为 JSON，upsert 写入并设置过期时间 |
+| `get` | `String key` | `Object` | 查询记录，若已过期则异步删除并返回 `null` |
+| `exists` | `String key` | `boolean` | 查询记录是否存在，若已过期则异步删除并返回 `false` |
+| `remove` | `String key` | `boolean` | DELETE 单条，返回是否删除 |
+| `removeAll` | 无 | `void` | DELETE 全部 |
+| `allKeys` | 无 | `Collection<String>` | 批量清理过期记录，返回所有未过期键 |
+
+#### Table Schema
+```sql
+CREATE TABLE jaravel_cache (
+  cache_key   VARCHAR(255) NOT NULL PRIMARY KEY,   -- 缓存键
+  cache_value TEXT,                                -- 缓存值（JSON 字符串）
+  expires_at  BIGINT NOT NULL DEFAULT 0            -- 过期时间戳（毫秒），0=永不过期
+);
+```
+- 表名可通过 `jaravel.cache.database-table` 配置
+- 不同方言下大文本类型自动适配（H2 用 `CLOB`，SQL Server 用 `NVARCHAR(MAX)`）
+- `put` 采用各方言 upsert 语义：MySQL `ON DUPLICATE KEY UPDATE`、PostgreSQL/SQLite `ON CONFLICT DO UPDATE`、H2 `MERGE ... KEY`、SQL Server `MERGE ... USING`
+
+#### Usage Example
+```java
+// 通常由自动装配创建（需容器中存在 DataSource bean，且 classpath 存在 spring-jdbc）
+DatabaseCacheDriver driver = new DatabaseCacheDriver(dataSource, "jaravel_cache");
+driver.put("user:1", user, 3600);   // 1 小时后过期
+Object value = driver.get("user:1");
+```
+
+---
+
 ### Cache
 - **Type**: class (final)
 - **Package**: `com.weacsoft.jaravel.vendor.cache`
@@ -217,8 +258,8 @@ Cache.store("file").put("key", "value", 3600);
 ### CacheAutoConfiguration
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.cache`
-- **Description**: 缓存自动装配，注册 ArrayCacheDriver、FileCacheDriver 驱动 Bean 和 CacheManager（注册 array/file 两个 store）。
-- **Annotations**: `@AutoConfiguration`, `@ConditionalOnClass(CacheManager.class)`, `@EnableConfigurationProperties(CacheProperties.class)`
+- **Description**: 缓存自动装配，注册 ArrayCacheDriver、FileCacheDriver 驱动 Bean 和 CacheManager（注册 array/file 两个 store）；database 驱动由内部 `DatabaseCacheConfiguration` 在 `DataSource` bean 存在时装配。
+- **Annotations**: `@AutoConfiguration`, `@ConditionalOnClass(CacheManager.class)`, `@AutoConfigureAfter(DataSourceAutoConfiguration)`, `@EnableConfigurationProperties(CacheProperties.class)`
 
 #### Bean Methods
 
@@ -226,7 +267,9 @@ Cache.store("file").put("key", "value", 3600);
 |------|-----------|--------|-------------|
 | `arrayCacheDriver` | 无 | `ArrayCacheDriver` | 内存缓存驱动（@Bean, @ConditionalOnMissingBean） |
 | `fileCacheDriver` | `CacheProperties properties` | `FileCacheDriver` | 文件缓存驱动（@Bean, @ConditionalOnMissingBean） |
-| `cacheManager` | `CacheProperties, ArrayCacheDriver, FileCacheDriver` | `CacheManager` | 缓存管理器，注册 array/file store（@Bean, @ConditionalOnMissingBean） |
+| `databaseCacheDriver` | `DataSource, CacheProperties` | `DatabaseCacheDriver` | 数据库缓存驱动（内部配置类，@ConditionalOnClass({DataSource, JdbcTemplate}), @ConditionalOnBean(DataSource), @ConditionalOnMissingBean） |
+| `databaseCacheStore` | `CacheManager, DatabaseCacheDriver, CacheProperties` | `DefaultCacheStore` | database store，创建时注册到 CacheManager（仅当 DatabaseCacheDriver 存在时） |
+| `cacheManager` | `CacheProperties, ArrayCacheDriver, FileCacheDriver` | `CacheManager` | 缓存管理器，注册 array/file store（@Bean, @ConditionalOnMissingBean）；database store 由 databaseCacheStore 追加注册 |
 
 ---
 
@@ -243,13 +286,15 @@ Cache.store("file").put("key", "value", 3600);
 | `defaultStore` | `String` | `"array"` | 默认 store 名称 |
 | `prefix` | `String` | `"jaravel"` | 缓存键前缀 |
 | `fileDir` | `String` | `""` | file 驱动目录，空则使用系统临时目录 |
+| `databaseTable` | `String` | `"jaravel_cache"` | database 驱动表名，构造时自动建表 |
 
 #### Usage Example
 ```yaml
 # application.yml
 jaravel:
   cache:
-    default-store: file
+    default-store: database
     prefix: myapp
     file-dir: /var/cache/myapp
+    database-table: app_cache
 ```

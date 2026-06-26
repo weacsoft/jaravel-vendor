@@ -6,6 +6,7 @@
 ## 目录
 
 - [模块概述](#模块概述)
+- [设计原则：retrieveById 不缓存](#设计原则retrievebyid-不缓存)
 - [Maven 依赖](#maven-依赖)
 - [类总览](#类总览)
 - [契约层（contract）](#契约层contract)
@@ -64,6 +65,16 @@ Laravel 的 `Authenticatable` 接口包含 `getAuthPassword()`，`UserProvider` 
 - `UserProvider` 仅负责按标识/凭证从存储中**取出**用户，**不**包含 `validateCredentials()`。
 
 认证流程为：应用层通过 query 查出用户 → 在应用代码中校验密码 → `Auth.login(user)` 登入 → `Auth.check()` 以主键校验登录态。密码校验是应用层的责任，不应出现在本契约或 UserProvider 中。
+
+### 关键设计决策：retrieveById 不缓存用户
+
+`UserProvider.retrieveById(Object identifier)` 的实现（如 `EloquentUserProvider`）**每次调用都从数据库查询最新用户**，不做任何跨请求缓存。
+
+**原因**：用户数据可能被其他模块或请求修改（如管理员修改角色权限、用户更新资料），如果缓存用户对象，后续请求将使用过期数据，导致权限检查、数据展示等出现不一致。
+
+**请求级缓存是合理的**：Guard 层（`SessionGuard`、`JwtGuard`）在同一请求内会缓存 `cachedUser`（通过 `AuthManager` 的 ThreadLocal 隔离），避免同一请求内多次调用 `user()` 重复查库。请求结束后由 `AuthLifecycleFilter` 清理 ThreadLocal，下次请求重新查库。
+
+**如需缓存用户对象**：请使用 `model-cache` 模块在 Model 层手动开启缓存，而非在认证层缓存。但**不建议缓存 User 模型**，因为用户数据需要实时性。
 
 ---
 

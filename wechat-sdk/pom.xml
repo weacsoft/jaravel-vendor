@@ -15,15 +15,10 @@
     <description>微信 SDK：公众号 / 小程序 API 访问，对齐 PHP overtrue/laravel-wechat（EasyWeChat）</description>
 
     <dependencies>
-        <!-- 内部模块：缓存（AccessToken 缓存基础） -->
+        <!-- 内部模块：缓存（AccessToken / jsapi_ticket 缓存基础，提供 CacheManager/CacheStore） -->
         <dependency>
             <groupId>io.github.lijialong1313</groupId>
             <artifactId>cache</artifactId>
-        </dependency>
-        <!-- 内部模块：Redis 连接管理（AccessToken 分布式缓存） -->
-        <dependency>
-            <groupId>io.github.lijialong1313</groupId>
-            <artifactId>redis-config</artifactId>
         </dependency>
         <!-- Spring Boot 自动装配 -->
         <dependency>

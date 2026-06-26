@@ -1,19 +1,18 @@
 package com.weacsoft.jaravel.vendor.wechat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.weacsoft.jaravel.vendor.redis.RedisManager;
-import io.lettuce.core.api.sync.RedisCommands;
+import com.weacsoft.jaravel.vendor.cache.ArrayCacheDriver;
+import com.weacsoft.jaravel.vendor.cache.CacheManager;
+import com.weacsoft.jaravel.vendor.cache.CacheStore;
+import com.weacsoft.jaravel.vendor.cache.DefaultCacheStore;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ObjectProvider;
 
 import java.io.IOException;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
 /**
  * 微信 Access Token 管理器，对齐 PHP {@code WechatService::controllerGetAccessToken()} 及
@@ -24,8 +23,8 @@ import java.util.concurrent.ConcurrentMap;
  *
  * <h3>缓存策略</h3>
  * <ul>
- *   <li><b>优先 Redis 缓存</b>：多实例部署时共享 token，避免各节点重复获取</li>
- *   <li><b>回退内存缓存</b>：Redis 不可用时使用本地 {@link ConcurrentHashMap} 缓存</li>
+ *   <li><b>基于 cache 模块</b>：通过 {@link CacheManager} 解析 {@link CacheStore}，优先使用
+ *       {@code redis} store（多实例共享），未注册时回退到 {@code array} 内存 store</li>
  *   <li><b>TTL 缓冲</b>：缓存 TTL = expires_in - 300（提前 5 分钟过期），防止临界点 token 失效</li>
  * </ul>
  *
@@ -38,8 +37,9 @@ import java.util.concurrent.ConcurrentMap;
  * </pre>
  *
  * <h3>线程安全</h3>
- * 本类为单例，使用 {@link ObjectProvider} 惰性获取 {@link RedisManager}（可能未配置）。
- * 内存回退缓存使用 {@link ConcurrentHashMap}，线程安全。OkHttpClient 与 ObjectMapper 均为线程安全。
+ * 本类为单例，{@link CacheStore} 实现自身保证线程安全（array 基于
+ * {@link java.util.concurrent.ConcurrentHashMap}，redis 基于 Redis 单线程模型）。
+ * OkHttpClient 与 ObjectMapper 均为线程安全。
  *
  * @author weacsoft
  */
@@ -50,7 +50,7 @@ public class AccessTokenManager {
     /** 微信 API 基础地址 */
     public static final String API_BASE_URL = "https://api.weixin.qq.com";
 
-    /** Redis 缓存键前缀 */
+    /** 缓存键前缀，完整 key 格式：wechat:access_token:{appId} */
     private static final String CACHE_KEY_PREFIX = "wechat:access_token:";
 
     /** Token 提前过期缓冲时间（秒），防止临界点失效 */
@@ -62,25 +62,25 @@ public class AccessTokenManager {
     /** Jackson JSON 解析器（线程安全） */
     private final ObjectMapper objectMapper;
 
-    /** Redis 管理器提供者（惰性获取，Redis 未配置时为空） */
-    private final ObjectProvider<RedisManager> redisManagerProvider;
-
-    /** 内存回退缓存：appId -> TokenEntry（Redis 不可用时使用） */
-    private final ConcurrentMap<String, TokenEntry> memoryCache = new ConcurrentHashMap<>();
+    /** 缓存仓库（优先 redis，未注册时回退 array） */
+    private final CacheStore cacheStore;
 
     /**
      * 构造 Access Token 管理器。
+     * <p>
+     * 通过 {@link CacheManager} 解析缓存仓库：优先使用 {@code redis} store（多实例共享 token），
+     * 当 redis store 未注册（未引入 redis-cache 模块或 Redis 未配置）时回退到 {@code array} 内存 store。
      *
-     * @param httpClient           OkHttp 客户端
-     * @param objectMapper         Jackson JSON 解析器
-     * @param redisManagerProvider Redis 管理器提供者（允许为空，Redis 未配置时回退内存缓存）
+     * @param httpClient   OkHttp 客户端
+     * @param objectMapper Jackson JSON 解析器
+     * @param cacheManager 缓存管理器（由 cache 模块提供）
      */
     public AccessTokenManager(OkHttpClient httpClient,
                               ObjectMapper objectMapper,
-                              ObjectProvider<RedisManager> redisManagerProvider) {
+                              CacheManager cacheManager) {
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
-        this.redisManagerProvider = redisManagerProvider;
+        this.cacheStore = resolveStore(cacheManager);
     }
 
     /**
@@ -88,8 +88,7 @@ public class AccessTokenManager {
      * <p>
      * 流程：
      * <ol>
-     *   <li>优先从 Redis 缓存读取（key: {@code wechat:access_token:{appId}}）</li>
-     *   <li>Redis 不可用时回退到内存缓存</li>
+     *   <li>从缓存仓库读取（key: {@code wechat:access_token:{appId}}）</li>
      *   <li>缓存未命中则调用微信 API 获取新 token</li>
      *   <li>将新 token 写入缓存，TTL = expires_in - 300（提前 5 分钟过期）</li>
      * </ol>
@@ -102,28 +101,16 @@ public class AccessTokenManager {
     public String getToken(String appId, String secret) {
         String cacheKey = CACHE_KEY_PREFIX + appId;
 
-        // 1. 优先从 Redis 读取
-        String cached = getFromRedis(cacheKey);
+        // 1. 优先从缓存读取
+        String cached = cacheStore.get(cacheKey, String.class);
         if (cached != null && !cached.isEmpty()) {
             logger.debug("[wechat] AccessToken 命中缓存: appId={}", appId);
             return cached;
         }
 
-        // 2. Redis 不可用时回退内存缓存
-        TokenEntry memoryEntry = memoryCache.get(appId);
-        if (memoryEntry != null && !memoryEntry.isExpired()) {
-            logger.debug("[wechat] AccessToken 命中内存缓存: appId={}", appId);
-            return memoryEntry.token;
-        }
-
-        // 3. 缓存未命中，调用微信 API 获取新 token
+        // 2. 缓存未命中，调用微信 API 获取新 token 并写入缓存
         logger.info("[wechat] AccessToken 缓存未命中，请求微信 API: appId={}", appId);
-        TokenEntry newEntry = requestTokenFromWechat(appId, secret);
-
-        // 4. 写入缓存
-        saveToCache(cacheKey, appId, newEntry);
-
-        return newEntry.token;
+        return fetchAndCacheToken(appId, secret);
     }
 
     /**
@@ -135,9 +122,30 @@ public class AccessTokenManager {
      */
     public String refreshToken(String appId, String secret) {
         logger.info("[wechat] 强制刷新 AccessToken: appId={}", appId);
-        TokenEntry newEntry = requestTokenFromWechat(appId, secret);
-        saveToCache(CACHE_KEY_PREFIX + appId, appId, newEntry);
-        return newEntry.token;
+        return fetchAndCacheToken(appId, secret);
+    }
+
+    /**
+     * 调用微信 API 获取 access_token 并写入缓存。
+     *
+     * @param appId  微信 AppID
+     * @param secret 微信 AppSecret
+     * @return access_token 字符串
+     */
+    @SuppressWarnings("unchecked")
+    private String fetchAndCacheToken(String appId, String secret) {
+        Map<String, Object> result = requestTokenFromWechat(appId, secret);
+        String token = (String) result.get("access_token");
+
+        // expires_in 默认 7200 秒
+        int expiresIn = result.get("expires_in") != null
+                ? ((Number) result.get("expires_in")).intValue() : 7200;
+        long ttlSeconds = Math.max(expiresIn - EXPIRY_BUFFER_SECONDS, 60);
+
+        cacheStore.put(CACHE_KEY_PREFIX + appId, token, ttlSeconds);
+        logger.info("[wechat] 获取 AccessToken 成功: appId={}, expires_in={}s, cache_ttl={}s",
+                appId, expiresIn, ttlSeconds);
+        return token;
     }
 
     /**
@@ -147,11 +155,11 @@ public class AccessTokenManager {
      *
      * @param appId  微信 AppID
      * @param secret 微信 AppSecret
-     * @return 包含 token 与过期时间的 TokenEntry
+     * @return 微信 API 响应（含 access_token 与 expires_in）
      * @throws RuntimeException API 返回错误码或网络异常时抛出
      */
     @SuppressWarnings("unchecked")
-    private TokenEntry requestTokenFromWechat(String appId, String secret) {
+    private Map<String, Object> requestTokenFromWechat(String appId, String secret) {
         String url = API_BASE_URL + "/cgi-bin/token?grant_type=client_credential"
                 + "&appid=" + appId + "&secret=" + secret;
 
@@ -176,15 +184,7 @@ public class AccessTokenManager {
                 throw new RuntimeException("获取 AccessToken 失败: errcode=" + errcode + ", errmsg=" + errmsg);
             }
 
-            // expires_in 默认 7200 秒
-            int expiresIn = result.get("expires_in") != null
-                    ? ((Number) result.get("expires_in")).intValue() : 7200;
-            long ttlSeconds = Math.max(expiresIn - EXPIRY_BUFFER_SECONDS, 60);
-
-            logger.info("[wechat] 获取 AccessToken 成功: appId={}, expires_in={}s, cache_ttl={}s",
-                    appId, expiresIn, ttlSeconds);
-
-            return new TokenEntry(accessToken, System.currentTimeMillis() + ttlSeconds * 1000, ttlSeconds);
+            return result;
 
         } catch (IOException e) {
             logger.error("[wechat] 获取 AccessToken 网络异常: appId={}", appId, e);
@@ -193,77 +193,23 @@ public class AccessTokenManager {
     }
 
     /**
-     * 从 Redis 读取缓存的 token。
+     * 解析缓存仓库：优先 {@code redis} store（多实例共享），未注册时回退到 {@code array} 内存 store。
+     * <p>
+     * 当 {@link CacheManager} 为空（cache 自动装配未启用）时，使用独立的内存 store 保证 SDK 仍可用。
      *
-     * @param cacheKey 缓存键
-     * @return 缓存的 token，不存在或 Redis 不可用返回 null
+     * @param cacheManager 缓存管理器，可为 null
+     * @return 解析出的缓存仓库
      */
-    private String getFromRedis(String cacheKey) {
-        if (redisManagerProvider == null) {
-            return null;
+    private static CacheStore resolveStore(CacheManager cacheManager) {
+        if (cacheManager == null) {
+            logger.warn("[wechat] CacheManager 未注入，AccessToken 使用本地内存缓存");
+            return new DefaultCacheStore(new ArrayCacheDriver(), "");
         }
         try {
-            RedisManager redisManager = redisManagerProvider.getIfAvailable();
-            if (redisManager == null) {
-                return null;
-            }
-            RedisCommands<String, String> commands = redisManager.sync();
-            return commands.get(cacheKey);
-        } catch (Exception e) {
-            logger.warn("[wechat] Redis 读取 AccessToken 缓存失败，回退内存缓存: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * 将 token 写入缓存（Redis + 内存双写）。
-     *
-     * @param cacheKey Redis 缓存键
-     * @param appId    微信 AppID（内存缓存键）
-     * @param entry    token 条目
-     */
-    private void saveToCache(String cacheKey, String appId, TokenEntry entry) {
-        // 写入内存缓存（始终写入，作为 Redis 不可用时的回退）
-        memoryCache.put(appId, entry);
-
-        // 写入 Redis
-        if (redisManagerProvider != null) {
-            try {
-                RedisManager redisManager = redisManagerProvider.getIfAvailable();
-                if (redisManager != null) {
-                    RedisCommands<String, String> commands = redisManager.sync();
-                    commands.setex(cacheKey, entry.ttlSeconds, entry.token);
-                    logger.debug("[wechat] AccessToken 已写入 Redis 缓存: key={}, ttl={}s", cacheKey, entry.ttlSeconds);
-                }
-            } catch (Exception e) {
-                logger.warn("[wechat] Redis 写入 AccessToken 缓存失败，仅使用内存缓存: {}", e.getMessage());
-            }
-        }
-    }
-
-    /**
-     * Token 缓存条目，记录 token 值与过期时间。
-     */
-    private static class TokenEntry {
-
-        /** access_token 值 */
-        final String token;
-
-        /** 过期时间戳（毫秒） */
-        final long expiryAt;
-
-        /** 缓存 TTL（秒） */
-        final long ttlSeconds;
-
-        TokenEntry(String token, long expiryAt, long ttlSeconds) {
-            this.token = token;
-            this.expiryAt = expiryAt;
-            this.ttlSeconds = ttlSeconds;
-        }
-
-        /** 判断是否已过期 */
-        boolean isExpired() {
-            return System.currentTimeMillis() >= expiryAt;
+            return cacheManager.store("redis");
+        } catch (IllegalStateException e) {
+            logger.debug("[wechat] Redis 缓存未注册，AccessToken 回退到 array 内存缓存: {}", e.getMessage());
+            return cacheManager.store("array");
         }
     }
 }

@@ -93,7 +93,6 @@ com.weacsoft.jaravel.vendor
 │   ├── BladeTemplate            // 编译后模板的抽象基类（含 PHP 辅助函数）
 │   └── BladeContext             // 执行上下文（变量/Section/组件）
 └── utils
-    ├── ExpiryMap                // 带过期时间的 HashMap
     ├── StringUtils              // 命名转换工具（驼峰/下划线/帕斯卡）
     └── memory
         ├── MemoryClassLoader    // 内存类加载器（从字节码加载类）
@@ -602,18 +601,6 @@ MemoryClassLoader.getCompiledClasses().put(name, bytes)  -- 存入类加载器
 | `static String camelCaseToPascalCase(String)` | 小驼峰转大驼峰 | `userName` -> `UserName` |
 | `static String pascalCaseToCamelCase(String)` | 大驼峰转小驼峰 | `UserName` -> `userName` |
 
-### 9.2 ExpiryMap —— 带过期时间的 Map
-
-`com.weacsoft.jaravel.vendor.utils.ExpiryMap`
-
-继承 `HashMap`，对每个 key 值设置有效期。读取时惰性清理过期条目。
-
-| 方法签名 | 说明 |
-| --- | --- |
-| `V put(K key, V value, long expiryTime)` | 写入并指定过期时间（毫秒） |
-| `Object isInvalid(Object key)` | 检查 key 是否失效（null=不存在，-1=过期，value=有效） |
-| `static ExpiryMap<String, String> getInstance()` | 获取单例实例 |
-
 ---
 
 ## 10. 支持的指令
@@ -826,6 +813,5 @@ public Object listUsers() {
 | `MemoryClassLoader` | 线程安全 | `compiledClasses` 使用 `ConcurrentHashMap`，`findClass` 通过 `defineClass` 加载（JVM 保证类加载的线程安全） |
 | `MemoryFileManager` | 线程安全 | `generatedClasses` 使用 `ConcurrentHashMap` |
 | `StringUtils` | 线程安全 | 无状态静态方法 |
-| `ExpiryMap` | 非线程安全 | 继承 `HashMap`，非线程安全。如需并发使用应外部同步或使用 `Collections.synchronizedMap()` 包装 |
 
 > **重要提示**：`BladeEngine.render()` 方法在渲染前会调用 `template.resetContext()` 重置上下文，因此多个请求**串行**调用 `render()` 是安全的。但**并发**调用同一 `BladeEngine` 实例的 `render()` 方法可能导致上下文状态混乱，建议在高并发场景下为每个请求创建独立的 `BladeEngine` 实例，或使用外部同步机制。

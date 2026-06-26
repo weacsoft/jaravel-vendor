@@ -6,6 +6,7 @@ import com.weacsoft.jaravel.vendor.cache.CacheStore;
 import com.weacsoft.jaravel.vendor.jwt.JwtConfig;
 import com.weacsoft.jaravel.vendor.jwt.JwtGuard;
 import com.weacsoft.jaravel.vendor.jwt.JwtService;
+import com.weacsoft.jaravel.vendor.jwt.JwtTokenResponseFilter;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -22,14 +23,12 @@ import org.springframework.context.annotation.Bean;
  * <p>
  * 引入 {@code jwt} 模块即自动启用 JWT 认证能力；未引入时 AuthManager 不会识别 "jwt" 驱动。
  * <p>
- * <b>黑名单缓存</b>：JwtService 依赖 {@link CacheStore} 实现 token 黑名单（登出踢 token）。
- * 默认使用 {@code jaravel.jwt.blacklist-store} 指定的缓存 store（默认 {@code array}），
- * 多实例部署可切换为 {@code file} 或 Redis 等共享缓存。
+ * <b>黑名单开关</b>：当 {@code jaravel.jwt.blacklist-enabled=false}（默认）时，JwtService 表现为
+ * 标准 JWT，不依赖缓存模块。开启后从 {@link CacheManager} 获取指定 store 做 token 黑名单。
  * <p>
- * 注意：{@link JwtService} 由本类的 {@code @Bean} 方法产生，因此不能在字段上
- * {@code @Autowired} 自身产生的 Bean（Spring 6 默认禁止循环引用）。这里改为在
- * {@link #afterSingletonsInstantiated()} 中通过 {@link ApplicationContext} 获取，
- * 该回调在所有单例 Bean 就绪后才执行，天然避免循环依赖。
+ * <b>宽限期</b>：当 {@code jaravel.jwt.grace-period-seconds > 0} 且黑名单开启时，
+ * 过期 token 在宽限期内仍可请求一次，{@link JwtTokenResponseFilter} 会自动将新 token
+ * 写入响应 header。
  */
 @AutoConfiguration
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
@@ -53,33 +52,45 @@ public class JwtAutoConfiguration implements SmartInitializingSingleton {
                 .setHeader(properties.getHeader())
                 .setPrefix(properties.getPrefix())
                 .setRefreshEnabled(properties.isRefreshEnabled())
+                .setBlacklistEnabled(properties.isBlacklistEnabled())
                 .setBlacklistStore(properties.getBlacklistStore())
-                .setBlacklistPrefix(properties.getBlacklistPrefix());
+                .setBlacklistPrefix(properties.getBlacklistPrefix())
+                .setGracePeriodSeconds(properties.getGracePeriodSeconds())
+                .setGraceHeader(properties.getGraceHeader());
     }
 
     /**
-     * 创建 JwtService，注入黑名单缓存 store。
+     * 创建 JwtService。
      * <p>
-     * 从 {@link CacheManager} 按 {@link JwtConfig#getBlacklistStore()} 指定的名称获取 store
-     * （默认 {@code array}）。若指定的 store 未注册，回退到默认 store。
+     * 当 {@code blacklistEnabled=true} 时，从 {@link CacheManager} 获取指定 store 注入黑名单。
+     * 当 {@code blacklistEnabled=false} 时，blacklistStore 传 null，JwtService 表现为标准 JWT。
      */
     @Bean
     @ConditionalOnMissingBean
     public JwtService jwtService(JwtConfig jwtConfig, CacheManager cacheManager) {
-        CacheStore blacklistStore;
-        try {
-            blacklistStore = cacheManager.store(jwtConfig.getBlacklistStore());
-        } catch (IllegalStateException e) {
-            // 指定的 store 未注册，回退到默认 store
-            blacklistStore = cacheManager.store();
+        CacheStore blacklistStore = null;
+        if (jwtConfig.isBlacklistEnabled()) {
+            try {
+                blacklistStore = cacheManager.store(jwtConfig.getBlacklistStore());
+            } catch (IllegalStateException e) {
+                blacklistStore = cacheManager.store();
+            }
         }
         return new JwtService(jwtConfig, blacklistStore);
     }
 
     /**
+     * JWT token 响应过滤器：当请求中签发了新 token（自动续期或宽限期续期）时，
+     * 自动将新 token 写入响应 header。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public JwtTokenResponseFilter jwtTokenResponseFilter(JwtConfig jwtConfig, AuthManager authManager) {
+        return new JwtTokenResponseFilter(jwtConfig, authManager);
+    }
+
+    /**
      * 所有单例 Bean 就绪后，将 jwt 守卫工厂注册到 AuthManager。
-     * <p>
-     * 工厂创建 JwtGuard 时传入 {@link JwtConfig#isRefreshEnabled()}，控制是否启用自动续期。
      */
     @Override
     public void afterSingletonsInstantiated() {
@@ -87,6 +98,6 @@ public class JwtAutoConfiguration implements SmartInitializingSingleton {
         JwtConfig jwtConfig = applicationContext.getBean(JwtConfig.class);
         boolean refreshEnabled = jwtConfig.isRefreshEnabled();
         authManager.registerGuardDriver("jwt",
-                (name, provider, config) -> new JwtGuard(name, provider, jwtService, refreshEnabled));
+                (name, provider, config) -> new JwtGuard(name, provider, jwtService, refreshEnabled, jwtConfig));
     }
 }

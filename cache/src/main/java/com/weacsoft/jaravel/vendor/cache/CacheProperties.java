@@ -7,9 +7,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * <pre>
  * jaravel:
  *   cache:
- *     default-store: array      # 默认 store 名称：array / file
+ *     default-store: array      # 默认 store 名称：array / file / database
  *     prefix: jaravel           # 缓存键前缀
  *     file-dir: /tmp/jaravel    # file 驱动目录，空则使用系统临时目录
+ *     database-table: jaravel_cache   # database 驱动表名
  * </pre>
  */
 @ConfigurationProperties(prefix = "jaravel.cache")
@@ -23,6 +24,9 @@ public class CacheProperties {
 
     /** file 驱动目录，空串表示使用系统临时目录下的 jaravel-cache 子目录 */
     private String fileDir = "";
+
+    /** database 驱动表名，默认 jaravel_cache */
+    private String databaseTable = "jaravel_cache";
 
     public String getDefaultStore() {
         return defaultStore;
@@ -46,5 +50,13 @@ public class CacheProperties {
 
     public void setFileDir(String fileDir) {
         this.fileDir = fileDir;
+    }
+
+    public String getDatabaseTable() {
+        return databaseTable;
+    }
+
+    public void setDatabaseTable(String databaseTable) {
+        this.databaseTable = databaseTable;
     }
 }

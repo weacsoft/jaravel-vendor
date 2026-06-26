@@ -5,7 +5,7 @@
 
 ## 模块概述
 
-`wechat-sdk` 模块为 jaravel-vendor 框架提供微信公众号与小程序的 API 访问能力，对齐 PHP 项目的 `WechatService`、`MiniProgramService` 等服务。所有 HTTP 调用使用 OkHttp，JSON 解析使用 Jackson，Access Token 通过 Redis 缓存（Redis 不可用时回退内存缓存）。
+`wechat-sdk` 模块为 jaravel-vendor 框架提供微信公众号与小程序的 API 访问能力，对齐 PHP 项目的 `WechatService`、`MiniProgramService` 等服务。所有 HTTP 调用使用 OkHttp，JSON 解析使用 Jackson，Access Token / jsapi_ticket 通过 cache 模块的 `CacheStore` 缓存（优先 redis store，未注册时回退 array 内存缓存）。
 
 ### PHP 对齐关系
 
@@ -36,14 +36,16 @@
 </dependency>
 ```
 
-传递依赖：`cache`、`redis-config`、`okhttp`、`jackson-databind`、`spring-boot-starter`。
+传递依赖：`cache`、`okhttp`、`jackson-databind`、`spring-boot-starter`。
+
+> 若需多实例共享 token / ticket（redis 缓存），需额外引入 `redis-cache` 模块（会自动将 `redis` store 注册到 `CacheManager`）。
 
 ## 类总览
 
 ```
 com.weacsoft.jaravel.vendor.wechat
 ├── WechatProperties            # 配置属性（jaravel.wechat.*），对齐 config/easywechat.php
-├── AccessTokenManager          # Access Token 管理器（Redis 缓存 + 内存回退）
+├── AccessTokenManager          # Access Token 管理器（基于 cache 模块缓存 token）
 ├── OfficialAccountService      # 公众号服务（用户/模板/菜单/标签/素材/客服/JSSDK）
 ├── MiniProgramService          # 小程序服务（登录/token/订阅消息）
 └── WechatAutoConfiguration     # Spring Boot 自动装配
@@ -271,20 +273,22 @@ Map<String, Object> result = miniProgramService.sendTemplateMessage(
 
 ## Access Token 缓存机制
 
-`AccessTokenManager` 负责管理微信 access_token 的获取与缓存：
+`AccessTokenManager` 负责管理微信 access_token 的获取与缓存，缓存能力委托给 cache 模块的 `CacheStore`：
 
-1. **优先 Redis 缓存**：多实例部署时共享 token，缓存键 `wechat:access_token:{appId}`
-2. **回退内存缓存**：Redis 不可用时使用本地 `ConcurrentHashMap` 缓存
+1. **基于 cache 模块**：通过 `CacheManager` 解析 `CacheStore`，优先使用 `redis` store（多实例共享 token），未注册时回退到 `array` 内存 store
+2. **缓存键**：`wechat:access_token:{appId}`（jsapi_ticket 缓存键为 `wechat:jsapi_ticket:{appId}`）
 3. **TTL 缓冲**：缓存 TTL = `expires_in - 300`（提前 5 分钟过期），防止临界点 token 失效
 4. **强制刷新**：可通过 `refreshToken(appId, secret)` 忽略缓存强制刷新
 
 > 微信 access_token 每天获取限额 2000 次，务必使用缓存避免超限。
+>
+> 默认仅依赖 `cache` 模块（array 内存缓存，进程级）。若需多实例共享，引入 `redis-cache` 模块后，`redis` store 会自动注册并被优先使用，无需修改任何代码或配置。
 
 ## 线程安全
 
 | 组件 | 线程安全机制 |
 |---|---|
-| `AccessTokenManager` | 无状态单例，内存缓存使用 `ConcurrentHashMap`，OkHttp/ObjectMapper 线程安全 |
-| `OfficialAccountService` | 无状态单例，JSSDK ticket 缓存使用 `ConcurrentHashMap` |
+| `AccessTokenManager` | 无状态单例，缓存委托给 `CacheStore`（array 基于 `ConcurrentHashMap`，redis 基于 Redis），OkHttp/ObjectMapper 线程安全 |
+| `OfficialAccountService` | 无状态单例，jsapi_ticket 缓存委托给 `CacheStore` |
 | `MiniProgramService` | 无状态单例，所有字段构造后不可变 |
 | `WechatProperties` | Spring Boot 配置属性绑定，启动后只读 |

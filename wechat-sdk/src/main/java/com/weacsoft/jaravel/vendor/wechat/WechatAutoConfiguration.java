@@ -1,7 +1,7 @@
 package com.weacsoft.jaravel.vendor.wechat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.weacsoft.jaravel.vendor.redis.RedisManager;
+import com.weacsoft.jaravel.vendor.cache.CacheManager;
 import okhttp3.OkHttpClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit;
  * 自动注册以下 Bean：
  * <ul>
  *   <li>{@link OkHttpClient} —— 微信 API HTTP 客户端（带超时配置）</li>
- *   <li>{@link AccessTokenManager} —— Access Token 管理器（Redis 缓存 + 内存回退）</li>
+ *   <li>{@link AccessTokenManager} —— Access Token 管理器（基于 cache 模块缓存 token）</li>
  *   <li>{@link OfficialAccountService} —— 公众号服务</li>
  *   <li>{@link MiniProgramService} —— 小程序服务</li>
  * </ul>
@@ -76,21 +76,21 @@ public class WechatAutoConfiguration {
     /**
      * Access Token 管理器 Bean。
      * <p>
-     * 注入 OkHttpClient、ObjectMapper 以及 RedisManager 提供者（允许为空）。
-     * Redis 未配置时自动回退到内存缓存。
+     * 注入 OkHttpClient、ObjectMapper 以及 CacheManager 提供者（由 cache 模块提供）。
+     * AccessTokenManager 通过 CacheManager 解析缓存仓库：优先 redis store，未注册时回退 array 内存缓存。
      *
-     * @param wechatHttpClient           OkHttp 客户端
+     * @param wechatHttpClient     OkHttp 客户端
      * @param objectMapper         Jackson JSON 解析器
-     * @param redisManagerProvider Redis 管理器提供者（可选）
+     * @param cacheManagerProvider 缓存管理器提供者（由 cache 模块提供）
      * @return AccessTokenManager 实例
      */
     @Bean
     @ConditionalOnMissingBean
     public AccessTokenManager accessTokenManager(OkHttpClient wechatHttpClient,
                                                   ObjectMapper objectMapper,
-                                                  ObjectProvider<RedisManager> redisManagerProvider) {
+                                                  ObjectProvider<CacheManager> cacheManagerProvider) {
         logger.info("[wechat] 初始化 AccessTokenManager");
-        return new AccessTokenManager(wechatHttpClient, objectMapper, redisManagerProvider);
+        return new AccessTokenManager(wechatHttpClient, objectMapper, cacheManagerProvider.getIfAvailable());
     }
 
     /**
@@ -100,7 +100,7 @@ public class WechatAutoConfiguration {
      * @param properties           微信配置属性
      * @param wechatHttpClient     OkHttp 客户端
      * @param objectMapper         Jackson JSON 解析器
-     * @param redisManagerProvider Redis 管理器提供者（用于 JSSDK ticket 缓存）
+     * @param cacheManagerProvider 缓存管理器提供者（用于 JSSDK ticket 缓存）
      * @return OfficialAccountService 实例
      */
     @Bean
@@ -109,10 +109,10 @@ public class WechatAutoConfiguration {
                                                          WechatProperties properties,
                                                          OkHttpClient wechatHttpClient,
                                                          ObjectMapper objectMapper,
-                                                         ObjectProvider<RedisManager> redisManagerProvider) {
+                                                         ObjectProvider<CacheManager> cacheManagerProvider) {
         logger.info("[wechat] 初始化 OfficialAccountService");
         return new OfficialAccountService(accessTokenManager, properties, wechatHttpClient,
-                objectMapper, redisManagerProvider);
+                objectMapper, cacheManagerProvider.getIfAvailable());
     }
 
     /**

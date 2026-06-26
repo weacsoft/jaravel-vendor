@@ -10,15 +10,28 @@
         <version>0.1.0</version>
     </parent>
 
-    <artifactId>cache</artifactId>
-    <name>cache</name>
-    <description>缓存：Cache 门面 / CacheStore 仓库 / Array·File·Database 驱动 / CacheManager 多仓库管理，对齐 Laravel Cache</description>
+    <artifactId>model-cache</artifactId>
+    <name>model-cache</name>
+    <description>模型缓存：基于版本号的查询缓存，@CachableModel 注解手动开启，对齐 Laravel laravel-model-caching</description>
 
     <dependencies>
+        <!-- 缓存基础设施（必需）：CacheStore / CacheManager -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>cache</artifactId>
+        </dependency>
+        <!-- Facade 基础设施（必需）：ModelCache 门面通过 Facade.resolve 解析 ModelCacheService -->
         <dependency>
             <groupId>io.github.lijialong1313</groupId>
             <artifactId>core</artifactId>
         </dependency>
+        <!-- Eloquent BaseModel（可选）：仅在业务 Model 继承 BaseModel 时需要，model-cache 核心不强依赖 -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>database</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-autoconfigure</artifactId>
@@ -30,12 +43,6 @@
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
-        </dependency>
-        <!-- DatabaseCacheDriver 依赖，optional=true：仅使用 array/file 驱动的应用无需引入 -->
-        <dependency>
-            <groupId>org.springframework</groupId>
-            <artifactId>spring-jdbc</artifactId>
-            <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

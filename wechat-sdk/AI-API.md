@@ -4,60 +4,99 @@
 
 ## Overview
 
-wechat-sdk 模块提供了微信开发平台 API 封装，支持公众号（OfficialAccount）和小程序（MiniProgram）两种应用类型。`AccessTokenManager` 负责获取和缓存 access_token（支持 Redis 分布式缓存）；`OfficialAccountService` 封装公众号用户、菜单、模板消息等 API；`MiniProgramService` 封装小程序登录（code2session）、订阅消息等 API。所有 HTTP 请求通过 `RestTemplate` 发送，响应通过 Jackson 解析。
+wechat-sdk 模块提供了微信开发平台 API 封装，支持公众号（OfficialAccount）和小程序（MiniProgram）两种应用类型。`AccessTokenManager` 负责获取和缓存 access_token（基于 cache 模块的 `CacheStore`，优先 redis、回退 array）；`OfficialAccountService` 封装公众号用户、菜单、模板消息、JSSDK 等 API；`MiniProgramService` 封装小程序登录（jscode2session）、订阅消息等 API。所有 HTTP 请求通过 OkHttp 发送，响应通过 Jackson 解析。
+
+> 缓存说明：token / jsapi_ticket 缓存委托给 cache 模块的 `CacheManager`。优先使用 `redis` store（多实例共享，需引入 `redis-cache` 模块自动注册）；未注册时回退到 `array` 内存 store。无需为缓存修改任何 yaml 配置。
 
 ## Classes & Interfaces
 
 ### AccessTokenManager
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.wechat`
-- **Description**: access_token 管理器。调用微信 `cgi-bin/token` 接口获取 access_token，缓存到内存（默认）或 Redis（当 `RedisManager` 可用时），提前 5 分钟刷新避免过期。支持公众号和小程序两种 token 类型。
+- **Description**: access_token 管理器。调用微信 `cgi-bin/token` 接口获取 access_token，并通过 cache 模块的 `CacheStore` 缓存，提前 5 分钟（300 秒）过期避免临界点失效。支持公众号和小程序的 token 获取。
+
+#### Constants
+
+| Constant | Type | Value | Description |
+|----------|------|-------|-------------|
+| `API_BASE_URL` | String | `https://api.weixin.qq.com` | 微信 API 基础地址（public） |
+
+#### Constructors
+
+| Constructor | Parameters | Description |
+|-------------|-----------|-------------|
+| `AccessTokenManager` | `OkHttpClient httpClient, ObjectMapper objectMapper, CacheManager cacheManager` | 构造 access_token 管理器；通过 `CacheManager` 解析缓存仓库（优先 `redis` store，未注册回退 `array` store） |
 
 #### Methods
 
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
-| `AccessTokenManager` | `RestTemplate restTemplate, WechatProperties properties` | - | 构造 access_token 管理器 |
-| `getAccessToken` | `String appType` | `String` | 获取指定类型的 access_token（`mp` 公众号 / `mini` 小程序），缓存未过期则直接返回 |
-| `refreshAccessToken` | `String appType` | `String` | 强制刷新 access_token（忽略缓存） |
-| `getCacheKey` | `String appType` | `String` | 获取缓存键名 |
-| `isExpired` | `String appType` | `boolean` | 检查当前缓存的 access_token 是否已过期 |
+| `getToken` | `String appId, String secret` | `String` | 获取 access_token；缓存命中（key `wechat:access_token:{appId}`）则直接返回，未命中则请求微信 API 并写入缓存（TTL = expires_in - 300） |
+| `refreshToken` | `String appId, String secret` | `String` | 强制刷新 access_token（忽略缓存，重新请求微信 API 并回填缓存） |
 
 #### Usage Example
 ```java
 @Autowired
 private AccessTokenManager tokenManager;
 
-// 获取公众号 access_token
-String mpToken = tokenManager.getAccessToken("mp");
-
-// 获取小程序 access_token
-String miniToken = tokenManager.getAccessToken("mini");
+// 获取 access_token（自动缓存）
+String token = tokenManager.getToken("wx1234567890abcdef", "your-secret");
 
 // 强制刷新
-String freshToken = tokenManager.refreshAccessToken("mp");
+String freshToken = tokenManager.refreshToken("wx1234567890abcdef", "your-secret");
 ```
 
 ### OfficialAccountService
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.wechat`
-- **Description**: 微信公众号 API 服务。封装公众号常用接口，包括用户信息获取、自定义菜单管理、模板消息发送、素材管理等。所有接口调用前自动获取有效的 access_token。
+- **Description**: 微信公众号 API 服务。封装公众号常用接口，包括用户信息、备注、模板消息、菜单、标签、素材、客服消息、JSSDK 配置等。所有接口调用前自动获取有效的 access_token；jsapi_ticket 通过 `CacheStore` 缓存（key `wechat:jsapi_ticket:{appId}`）。
+
+#### Constructors
+
+| Constructor | Parameters | Description |
+|-------------|-----------|-------------|
+| `OfficialAccountService` | `AccessTokenManager accessTokenManager, WechatProperties properties, OkHttpClient httpClient, ObjectMapper objectMapper, CacheManager cacheManager` | 构造公众号服务；`cacheManager` 用于 jsapi_ticket 缓存（优先 redis，回退 array） |
 
 #### Methods
 
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
-| `OfficialAccountService` | `RestTemplate restTemplate, AccessTokenManager tokenManager, WechatProperties properties` | - | 构造公众号服务 |
-| `getUserInfo` | `String openid` | `Map<String, Object>` | 获取用户基本信息（昵称、头像、性别等） |
-| `getUserList` | `String nextOpenid` | `Map<String, Object>` | 获取关注者列表，nextOpenid 为空从头开始 |
-| `sendTemplateMessage` | `String openid, String templateId, String url, Map<String, Object> data` | `String` | 发送模板消息，返回消息 ID |
-| `createMenu` | `Map<String, Object> menu` | `boolean` | 创建自定义菜单 |
-| `getMenu` | - | `Map<String, Object>` | 获取自定义菜单配置 |
-| `deleteMenu` | - | `boolean` | 删除自定义菜单 |
-| `getCallbackIp` | - | `List<String>` | 获取微信服务器 IP 列表 |
-| `getQrcode` | `String sceneStr, boolean isTemporary` | `String` | 生成带参数的二维码 ticket，返回 ticket 字符串 |
-| `getQrcodeUrl` | `String ticket` | `String` | 通过 ticket 获取二维码图片 URL |
-| `getJsApiTicket` | - | `String` | 获取 jsapi_ticket（用于 JS-SDK 签名） |
+| `getUserData` | `String openid` | `Map<String, Object>` | 获取用户基本信息（默认配置） |
+| `getUserData` | `String openid, String configName` | `Map<String, Object>` | 获取用户基本信息（指定配置） |
+| `updateUserRemark` | `String openid, String remark` | `Map<String, Object>` | 设置用户备注名（默认配置） |
+| `updateUserRemark` | `String openid, String remark, String configName` | `Map<String, Object>` | 设置用户备注名（指定配置） |
+| `sendTemplate` | `String templateId, String openid, Map<String, Object> data, String url, Map<String, Object> miniprogram` | `Map<String, Object>` | 发送模板消息（默认配置） |
+| `sendTemplate` | `String templateId, String openid, Map<String, Object> data, String url, Map<String, Object> miniprogram, String configName` | `Map<String, Object>` | 发送模板消息（指定配置） |
+| `getMenu` | - | `Map<String, Object>` | 获取自定义菜单（默认配置） |
+| `getMenu` | `String configName` | `Map<String, Object>` | 获取自定义菜单（指定配置） |
+| `setMenu` | `Object menuJson` | `Map<String, Object>` | 创建自定义菜单（默认配置） |
+| `setMenu` | `Object menuJson, String configName` | `Map<String, Object>` | 创建自定义菜单（指定配置） |
+| `createTag` | `String name` | `Map<String, Object>` | 创建标签（默认配置） |
+| `createTag` | `String name, String configName` | `Map<String, Object>` | 创建标签（指定配置） |
+| `getTags` | - | `Map<String, Object>` | 获取标签列表（默认配置） |
+| `getTags` | `String configName` | `Map<String, Object>` | 获取标签列表（指定配置） |
+| `deleteTag` | `int id` | `Map<String, Object>` | 删除标签（默认配置） |
+| `deleteTag` | `int id, String configName` | `Map<String, Object>` | 删除标签（指定配置） |
+| `batchTagging` | `int tagId, List<String> openids` | `Map<String, Object>` | 批量打标签（默认配置） |
+| `batchTagging` | `int tagId, List<String> openids, String configName` | `Map<String, Object>` | 批量打标签（指定配置） |
+| `batchUnTagging` | `int tagId, List<String> openids` | `Map<String, Object>` | 批量取消标签（默认配置） |
+| `batchUnTagging` | `int tagId, List<String> openids, String configName` | `Map<String, Object>` | 批量取消标签（指定配置） |
+| `uploadImageTemp` | `String path` | `Map<String, Object>` | 上传临时图片素材（默认配置） |
+| `uploadImageTemp` | `String path, String configName` | `Map<String, Object>` | 上传临时图片素材（指定配置） |
+| `uploadImageFull` | `String path` | `Map<String, Object>` | 上传永久图片素材（默认配置） |
+| `uploadImageFull` | `String path, String configName` | `Map<String, Object>` | 上传永久图片素材（指定配置） |
+| `downloadImageFull` | `String mediaId` | `Map<String, Object>` | 获取永久素材（默认配置） |
+| `downloadImageFull` | `String mediaId, String configName` | `Map<String, Object>` | 获取永久素材（指定配置） |
+| `deleteImageFull` | `String mediaId` | `Map<String, Object>` | 删除永久素材（默认配置） |
+| `deleteImageFull` | `String mediaId, String configName` | `Map<String, Object>` | 删除永久素材（指定配置） |
+| `getMaterialList` | `String type, int page, int count` | `Map<String, Object>` | 获取素材列表（默认配置） |
+| `getMaterialList` | `String type, int page, int count, String configName` | `Map<String, Object>` | 获取素材列表（指定配置） |
+| `sendMessage` | `Map<String, Object> data` | `Map<String, Object>` | 发送客服消息（默认配置） |
+| `sendMessage` | `Map<String, Object> data, String configName` | `Map<String, Object>` | 发送客服消息（指定配置） |
+| `sendTyping` | `String openid, int command` | `Map<String, Object>` | 发送输入状态（0=typing，1=cancel_typing，默认配置） |
+| `sendTyping` | `String openid, int command, String configName` | `Map<String, Object>` | 发送输入状态（指定配置） |
+| `buildJsSdkConfig` | `String url, List<String> jsApiList, List<String> openTagList, boolean debug` | `Map<String, Object>` | 构建 JSSDK 配置（默认配置） |
+| `buildJsSdkConfig` | `String url, List<String> jsApiList, List<String> openTagList, boolean debug, String configName` | `Map<String, Object>` | 构建 JSSDK 配置（指定配置） |
 
 #### Usage Example
 ```java
@@ -65,7 +104,7 @@ String freshToken = tokenManager.refreshAccessToken("mp");
 private OfficialAccountService mpService;
 
 // 获取用户信息
-Map<String, Object> userInfo = mpService.getUserInfo("o6_bmjrPTlm6_2sgVt7hMZOPfL2M");
+Map<String, Object> userInfo = mpService.getUserData("o6_bmjrPTlm6_2sgVt7hMZOPfL2M");
 
 // 发送模板消息
 Map<String, Object> data = Map.of(
@@ -73,38 +112,37 @@ Map<String, Object> data = Map.of(
     "keyword1", Map.of("value", "ORD-2024-001"),
     "remark", Map.of("value", "请及时处理")
 );
-String msgId = mpService.sendTemplateMessage(
-    "o6_bmjrPTlm6_2sgVt7hMZOPfL2M",
-    "template-id-xxx",
-    "https://example.com/order/1",
-    data
+Map<String, Object> result = mpService.sendTemplate(
+    "template-id-xxx", "o6_bmjrPTlm6_2sgVt7hMZOPfL2M",
+    data, "https://example.com/order/1", null
 );
 
-// 创建菜单
-mpService.createMenu(Map.of(
-    "button", List.of(
-        Map.of("type", "view", "name", "首页", "url", "https://example.com")
-    )
-));
+// 构建 JSSDK 配置
+Map<String, Object> config = mpService.buildJsSdkConfig(
+    "https://example.com/page",
+    List.of("chooseImage", "previewImage"),
+    null, false
+);
 ```
 
 ### MiniProgramService
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.wechat`
-- **Description**: 微信小程序 API 服务。封装小程序常用接口，包括登录凭证校验（code2session）、订阅消息发送、内容安全检测等。
+- **Description**: 微信小程序 API 服务。封装小程序登录凭证校验（jscode2session）、订阅消息发送等 API。
+
+#### Constructors
+
+| Constructor | Parameters | Description |
+|-------------|-----------|-------------|
+| `MiniProgramService` | `AccessTokenManager accessTokenManager, WechatProperties properties, OkHttpClient httpClient, ObjectMapper objectMapper` | 构造小程序服务（不直接持有缓存，token 委托 AccessTokenManager） |
 
 #### Methods
 
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
-| `MiniProgramService` | `RestTemplate restTemplate, AccessTokenManager tokenManager, WechatProperties properties` | - | 构造小程序服务 |
-| `code2Session` | `String jsCode` | `Map<String, Object>` | 登录凭证校验，返回 openid、session_key、unionid |
-| `sendSubscribeMessage` | `String openid, String templateId, String page, Map<String, Object> data` | `String` | 发送订阅消息，返回消息 ID |
-| `getPhoneNumber` | `String code` | `String` | 通过手机号授权 code 获取用户手机号 |
-| `checkTextSecurity` | `String content` | `boolean` | 文本内容安全检测，返回是否合规 |
-| `checkImageSecurity` | `String mediaUrl` | `boolean` | 图片内容安全检测，返回是否合规 |
-| `generateQrcode` | `String scene, String page, int width` | `byte[]` | 生成小程序码，返回图片字节数组 |
-| `getWxaCodeUnlimit` | `String scene, String page` | `byte[]` | 生成无数量限制的小程序码 |
+| `jscode2session` | `String appId, String code` | `Map<String, Object>` | 登录凭证校验，返回 openid、session_key、unionid |
+| `getAccessToken` | `String appId` | `String` | 获取小程序 access_token（委托 `AccessTokenManager`，自动缓存） |
+| `sendTemplateMessage` | `String appId, String openid, String templateId, Map<String, Object> data, String page` | `Map<String, Object>` | 发送订阅消息 |
 
 #### Usage Example
 ```java
@@ -112,7 +150,7 @@ mpService.createMenu(Map.of(
 private MiniProgramService miniService;
 
 // 小程序登录
-Map<String, Object> session = miniService.code2Session("js_code_from_client");
+Map<String, Object> session = miniService.jscode2session("wx7051c4a2a779d651", "js_code_from_client");
 String openid = (String) session.get("openid");
 String sessionKey = (String) session.get("session_key");
 
@@ -121,67 +159,73 @@ Map<String, Object> data = Map.of(
     "thing1", Map.of("value", "新订单提醒"),
     "amount2", Map.of("value", "￥99.00")
 );
-String msgId = miniService.sendSubscribeMessage(
-    openid, "template-id-xxx", "pages/order/detail", data
+Map<String, Object> result = miniService.sendTemplateMessage(
+    "wx7051c4a2a779d651", openid, "template-id-xxx", data, "pages/order/detail"
 );
-
-// 获取手机号
-String phone = miniService.getPhoneNumber("phone_code_from_client");
 ```
 
 ### WechatProperties
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.wechat`
 - **Annotations**: `@ConfigurationProperties(prefix = "jaravel.wechat")`
-- **Description**: 微信 SDK 配置属性，前缀 `jaravel.wechat`。支持公众号和小程序双应用配置。
+- **Description**: 微信 SDK 配置属性，前缀 `jaravel.wechat`，对齐 PHP `config/easywechat.php`。支持多公众号（`official-accounts`）与多小程序（`mini-apps`）命名配置。
 
-#### Methods
+#### Top-level Methods
 
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
-| `getMpAppId` | - | `String` | 获取公众号 AppID |
-| `setMpAppId` | `String mpAppId` | `void` | 设置公众号 AppID |
-| `getMpSecret` | - | `String` | 获取公众号 AppSecret |
-| `setMpSecret` | `String mpSecret` | `void` | 设置公众号 AppSecret |
-| `getMpToken` | - | `String` | 获取公众号服务器 Token |
-| `setMpToken` | `String mpToken` | `void` | 设置公众号服务器 Token |
-| `getMpAesKey` | - | `String` | 获取公众号消息加解密密钥 |
-| `setMpAesKey` | `String mpAesKey` | `void` | 设置公众号消息加解密密钥 |
-| `getMiniAppId` | - | `String` | 获取小程序 AppID |
-| `setMiniAppId` | `String miniAppId` | `void` | 设置小程序 AppID |
-| `getMiniSecret` | - | `String` | 获取小程序 AppSecret |
-| `setMiniSecret` | `String miniSecret` | `void` | 设置小程序 AppSecret |
-| `isUseRedisCache` | - | `boolean` | 是否使用 Redis 缓存 access_token，默认 true |
-| `setUseRedisCache` | `boolean useRedisCache` | `void` | 设置是否使用 Redis 缓存 |
+| `isEnabled` | - | `boolean` | 是否启用微信 SDK |
+| `getOfficialAccounts` | - | `Map<String, OfficialAccountConfig>` | 公众号配置映射 |
+| `getMiniApps` | - | `Map<String, MiniAppConfig>` | 小程序配置映射 |
+| `getHttp` | - | `HttpConfig` | HTTP 客户端配置 |
+| `getOfficialAccount` | `String configName` | `OfficialAccountConfig` | 按名称获取公众号配置，缺失回退 default |
+| `getMiniApp` | `String configName` | `MiniAppConfig` | 按名称获取小程序配置，缺失回退 default |
+
+#### Nested Classes
+
+| Class | Description | Key Fields |
+|-------|-------------|------------|
+| `OfficialAccountConfig` | 公众号配置 | `appId`, `secret`, `token`, `aesKey`, `oauth` |
+| `OauthConfig` | OAuth 授权配置 | `scopes`（默认 `snsapi_base`）, `callback`, `enforceHttps` |
+| `MiniAppConfig` | 小程序配置 | `appId`, `secret`, `token`, `aesKey`, `type`（2=客服，3=管理端） |
+| `HttpConfig` | HTTP 配置 | `timeout`（默认 5.0 秒）, `retry`（默认 true） |
 
 #### Usage Example
 ```yaml
-# application.yml
 jaravel:
   wechat:
-    mp-app-id: wx1234567890abcdef
-    mp-secret: your-mp-secret
-    mp-token: your-mp-token
-    mp-aes-key: your-mp-aes-key
-    mini-app-id: wxabcdef1234567890
-    mini-secret: your-mini-secret
-    use-redis-cache: true
+    enabled: true
+    official-accounts:
+      default:
+        app-id: wx1234567890abcdef
+        secret: your-official-secret
+        oauth:
+          scopes: snsapi_base
+          callback: /oauth_callback
+    mini-apps:
+      default:
+        app-id: wx7051c4a2a779d651
+        secret: your-mini-secret
+        type: 2
+    http:
+      timeout: 5.0
+      retry: true
 ```
 
 ### WechatAutoConfiguration
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.wechat`
-- **Annotations**: `@AutoConfiguration`, `@ConditionalOnClass(AccessTokenManager.class)`, `@ConditionalOnProperty(prefix = "jaravel.wechat", name = "enabled", havingValue = "true", matchIfMissing = true)`
-- **Description**: 微信 SDK 自动装配。创建 `RestTemplate`、`AccessTokenManager`、`OfficialAccountService`、`MiniProgramService` Bean。当 `RedisManager` 存在且 `useRedisCache=true` 时，access_token 缓存到 Redis。
+- **Annotations**: `@AutoConfiguration`, `@ConditionalOnClass(OkHttpClient.class)`, `@ConditionalOnProperty(name = "jaravel.wechat.enabled", havingValue = "true", matchIfMissing = true)`, `@EnableConfigurationProperties(WechatProperties.class)`
+- **Description**: 微信 SDK 自动装配。创建 `OkHttpClient`、`AccessTokenManager`、`OfficialAccountService`、`MiniProgramService` Bean。缓存依赖由 cache 模块的 `CacheManager` 提供（通过 `ObjectProvider<CacheManager>` 注入）。
 
 #### Methods
 
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
-| `wechatRestTemplate` | - | `RestTemplate` | 创建微信 API 专用 RestTemplate Bean（`@Bean`, `@ConditionalOnMissingBean`） |
-| `accessTokenManager` | `RestTemplate restTemplate, WechatProperties properties` | `AccessTokenManager` | 创建 access_token 管理器 Bean（`@Bean`, `@ConditionalOnMissingBean`） |
-| `officialAccountService` | `RestTemplate restTemplate, AccessTokenManager tokenManager, WechatProperties properties` | `OfficialAccountService` | 创建公众号服务 Bean（`@Bean`, `@ConditionalOnMissingBean`） |
-| `miniProgramService` | `RestTemplate restTemplate, AccessTokenManager tokenManager, WechatProperties properties` | `MiniProgramService` | 创建小程序服务 Bean（`@Bean`, `@ConditionalOnMissingBean`） |
+| `wechatHttpClient` | `WechatProperties properties` | `OkHttpClient` | 创建微信 API 专用 OkHttpClient Bean（`@Bean`, `@ConditionalOnMissingBean(name = "wechatHttpClient")`） |
+| `accessTokenManager` | `OkHttpClient wechatHttpClient, ObjectMapper objectMapper, ObjectProvider<CacheManager> cacheManagerProvider` | `AccessTokenManager` | 创建 access_token 管理器 Bean（`@Bean`, `@ConditionalOnMissingBean`） |
+| `officialAccountService` | `AccessTokenManager accessTokenManager, WechatProperties properties, OkHttpClient wechatHttpClient, ObjectMapper objectMapper, ObjectProvider<CacheManager> cacheManagerProvider` | `OfficialAccountService` | 创建公众号服务 Bean（`@Bean`, `@ConditionalOnMissingBean`） |
+| `miniProgramService` | `AccessTokenManager accessTokenManager, WechatProperties properties, OkHttpClient wechatHttpClient, ObjectMapper objectMapper` | `MiniProgramService` | 创建小程序服务 Bean（`@Bean`, `@ConditionalOnMissingBean`） |
 
 #### Usage Example
 ```java

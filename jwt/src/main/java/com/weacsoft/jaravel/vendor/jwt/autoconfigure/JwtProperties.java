@@ -12,11 +12,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *     refresh-ttl: 604800000
  *     header: Authorization
  *     prefix: "Bearer "
- *     # token 自动刷新（续期），默认 true
  *     refresh-enabled: true
- *     # 黑名单缓存 store，默认 array（内存）；多实例可用 file 或 redis
+ *     # 黑名单（登出踢 token），默认关闭。关闭时为标准 JWT
+ *     blacklist-enabled: false
  *     blacklist-store: array
  *     blacklist-prefix: "jwt:blacklist:"
+ *     # 宽限期（秒），默认 0 关闭。过期 token 在宽限期内仍可请求一次，返回新 token
+ *     grace-period-seconds: 0
+ *     grace-header: X-New-Token
  * </pre>
  */
 @ConfigurationProperties(prefix = "jaravel.jwt")
@@ -34,10 +37,16 @@ public class JwtProperties {
     private String prefix = "Bearer ";
     /** 是否启用 token 自动刷新（续期），默认启用 */
     private boolean refreshEnabled = true;
+    /** 是否启用黑名单（登出踢 token），默认关闭，关闭时为标准 JWT */
+    private boolean blacklistEnabled = false;
     /** 黑名单使用的缓存 store 名称，默认 array */
     private String blacklistStore = "array";
     /** 黑名单缓存键前缀 */
     private String blacklistPrefix = "jwt:blacklist:";
+    /** 宽限期秒数，默认 0（关闭） */
+    private long gracePeriodSeconds = 0;
+    /** 宽限期续期时新 token 的响应头名称 */
+    private String graceHeader = "X-New-Token";
 
     public String getSecret() {
         return secret;
@@ -87,6 +96,14 @@ public class JwtProperties {
         this.refreshEnabled = refreshEnabled;
     }
 
+    public boolean isBlacklistEnabled() {
+        return blacklistEnabled;
+    }
+
+    public void setBlacklistEnabled(boolean blacklistEnabled) {
+        this.blacklistEnabled = blacklistEnabled;
+    }
+
     public String getBlacklistStore() {
         return blacklistStore;
     }
@@ -101,5 +118,21 @@ public class JwtProperties {
 
     public void setBlacklistPrefix(String blacklistPrefix) {
         this.blacklistPrefix = blacklistPrefix;
+    }
+
+    public long getGracePeriodSeconds() {
+        return gracePeriodSeconds;
+    }
+
+    public void setGracePeriodSeconds(long gracePeriodSeconds) {
+        this.gracePeriodSeconds = gracePeriodSeconds;
+    }
+
+    public String getGraceHeader() {
+        return graceHeader;
+    }
+
+    public void setGraceHeader(String graceHeader) {
+        this.graceHeader = graceHeader;
     }
 }

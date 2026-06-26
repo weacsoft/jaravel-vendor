@@ -3,7 +3,12 @@ package com.weacsoft.jaravel.vendor.jwt;
 /**
  * JWT 配置，对齐 manage8 的 {@code config/jwt.php}。
  * <p>
- * 包含 token 签发、刷新（refresh）与黑名单（logout）相关配置。
+ * 包含 token 签发、刷新（refresh）、黑名单（logout）与宽限期（grace period）相关配置。
+ * <p>
+ * <b>设计原则</b>：当 {@link #blacklistEnabled} 为 {@code false}（默认）时，JWT 表现为标准形式
+ * —— 仅校验签名与过期，不依赖任何缓存。开启黑名单后，登出踢 token 功能生效，
+ * 需配合 cache 模块使用。宽限期功能需要黑名单开启才能工作（因为宽限期结束后需要将旧 token
+ * 加入黑名单以防止重复使用）。
  */
 public class JwtConfig {
 
@@ -22,20 +27,45 @@ public class JwtConfig {
     /**
      * 是否启用 token 自动刷新（续期），默认启用。
      * <p>
-     * 启用后，当 access token 过了 TTL 的一半时，下次请求会自动签发新 token，
-     * 对齐 Laravel tymon/jwt-auth 的 {@code blacklist_grace_period} + 自动续期机制。
-     * 项目可通过 {@code jaravel.jwt.refresh-enabled=false} 手动禁用。
+     * 启用后，当 access token 过了 TTL 的一半时，下次请求会自动签发新 token。
      */
     private boolean refreshEnabled = true;
     /**
+     * 是否启用黑名单（登出踢 token），默认 <b>关闭</b>。
+     * <p>
+     * 关闭时 JWT 表现为标准形式：仅校验签名与过期，不依赖缓存模块。
+     * 开启后，{@link JwtService#blacklist} 和 {@link JwtService#isBlacklisted} 生效，
+     * 需配合 cache 模块使用（通过 {@link #blacklistStore} 指定缓存 store）。
+     * <p>
+     * 多实例部署建议开启黑名单并使用 redis 等共享缓存，保证登出后所有节点都能识别。
+     */
+    private boolean blacklistEnabled = false;
+    /**
      * 黑名单使用的缓存 store 名称，默认 {@code array}。
      * <p>
-     * 单机部署可用 {@code array}（内存）；多实例部署应使用 {@code file} 或 Redis 等共享缓存，
-     * 以保证登出后所有节点都能识别黑名单 token。
+     * 仅当 {@link #blacklistEnabled} 为 {@code true} 时生效。
+     * 可选值：{@code array}（内存）、{@code file}、{@code redis}、{@code database}。
      */
     private String blacklistStore = "array";
     /** 黑名单缓存键前缀 */
     private String blacklistPrefix = "jwt:blacklist:";
+    /**
+     * 宽限期秒数，默认 {@code 0}（关闭）。
+     * <p>
+     * 当 access token 过期后，在宽限期时间内仍可正常请求一次：
+     * <ul>
+     *   <li>请求正常执行（用户通过认证）；</li>
+     *   <li>响应 header 中携带新 token（通过 {@link #graceHeader} 指定的响应头）；</li>
+     *   <li>旧 token 被加入黑名单，无法再次使用。</li>
+     * </ul>
+     * <b>注意</b>：宽限期功能需要 {@link #blacklistEnabled} 为 {@code true} 才能工作
+     * （因为宽限期结束后需要将旧 token 加入黑名单以防止重复使用）。
+     */
+    private long gracePeriodSeconds = 0;
+    /**
+     * 宽限期续期时，新 token 放入响应 header 的名称，默认 {@code X-New-Token}。
+     */
+    private String graceHeader = "X-New-Token";
 
     public String getSecret() {
         return secret;
@@ -100,6 +130,15 @@ public class JwtConfig {
         return this;
     }
 
+    public boolean isBlacklistEnabled() {
+        return blacklistEnabled;
+    }
+
+    public JwtConfig setBlacklistEnabled(boolean blacklistEnabled) {
+        this.blacklistEnabled = blacklistEnabled;
+        return this;
+    }
+
     public String getBlacklistStore() {
         return blacklistStore;
     }
@@ -115,6 +154,24 @@ public class JwtConfig {
 
     public JwtConfig setBlacklistPrefix(String blacklistPrefix) {
         this.blacklistPrefix = blacklistPrefix;
+        return this;
+    }
+
+    public long getGracePeriodSeconds() {
+        return gracePeriodSeconds;
+    }
+
+    public JwtConfig setGracePeriodSeconds(long gracePeriodSeconds) {
+        this.gracePeriodSeconds = gracePeriodSeconds;
+        return this;
+    }
+
+    public String getGraceHeader() {
+        return graceHeader;
+    }
+
+    public JwtConfig setGraceHeader(String graceHeader) {
+        this.graceHeader = graceHeader;
         return this;
     }
 }

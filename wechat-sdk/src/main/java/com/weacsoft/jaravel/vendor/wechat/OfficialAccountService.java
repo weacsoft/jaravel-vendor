@@ -1,8 +1,10 @@
 package com.weacsoft.jaravel.vendor.wechat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.weacsoft.jaravel.vendor.redis.RedisManager;
-import io.lettuce.core.api.sync.RedisCommands;
+import com.weacsoft.jaravel.vendor.cache.ArrayCacheDriver;
+import com.weacsoft.jaravel.vendor.cache.CacheManager;
+import com.weacsoft.jaravel.vendor.cache.CacheStore;
+import com.weacsoft.jaravel.vendor.cache.DefaultCacheStore;
 import okhttp3.MediaType;
 import okhttp3.MultipartBody;
 import okhttp3.OkHttpClient;
@@ -11,7 +13,6 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ObjectProvider;
 
 import java.io.File;
 import java.io.IOException;
@@ -23,8 +24,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
 /**
  * 微信公众号服务，对齐 PHP 项目的 {@code WechatService}。
@@ -56,7 +55,7 @@ import java.util.concurrent.ConcurrentMap;
  *
  * <h3>线程安全</h3>
  * 本类为无状态单例（配置、客户端、解析器均为构造后不可变字段），可被多线程并发安全调用。
- * JSSDK ticket 缓存使用 {@link ConcurrentHashMap}，线程安全。
+ * JSSDK ticket 通过 cache 模块的 {@link CacheStore} 缓存（优先 redis，回退 array），线程安全。
  *
  * @author weacsoft
  */
@@ -70,7 +69,7 @@ public class OfficialAccountService {
     /** JSON 媒体类型 */
     private static final MediaType JSON_MEDIA_TYPE = MediaType.parse("application/json; charset=utf-8");
 
-    /** JSSDK ticket Redis 缓存键前缀 */
+    /** JSSDK ticket 缓存键前缀，完整 key 格式：wechat:jsapi_ticket:{appId} */
     private static final String TICKET_CACHE_PREFIX = "wechat:jsapi_ticket:";
 
     /** JSSDK ticket 提前过期缓冲时间（秒） */
@@ -88,31 +87,31 @@ public class OfficialAccountService {
     /** Jackson JSON 解析器 */
     private final ObjectMapper objectMapper;
 
-    /** Redis 管理器提供者（用于 JSSDK ticket 缓存） */
-    private final ObjectProvider<RedisManager> redisManagerProvider;
-
-    /** JSSDK ticket 内存缓存（Redis 不可用时回退）：appId -> TicketEntry */
-    private final ConcurrentMap<String, TicketEntry> ticketCache = new ConcurrentHashMap<>();
+    /** 缓存仓库（用于 JSSDK ticket 缓存，优先 redis，未注册时回退 array） */
+    private final CacheStore cacheStore;
 
     /**
      * 构造公众号服务。
+     * <p>
+     * 通过 {@link CacheManager} 解析缓存仓库用于 JSSDK ticket 缓存：优先使用 {@code redis} store，
+     * 当 redis store 未注册时回退到 {@code array} 内存 store。
      *
-     * @param accessTokenManager   Access Token 管理器
-     * @param properties           微信配置属性
-     * @param httpClient           OkHttp 客户端
-     * @param objectMapper         Jackson JSON 解析器
-     * @param redisManagerProvider Redis 管理器提供者（允许为空）
+     * @param accessTokenManager Access Token 管理器
+     * @param properties         微信配置属性
+     * @param httpClient         OkHttp 客户端
+     * @param objectMapper       Jackson JSON 解析器
+     * @param cacheManager       缓存管理器（由 cache 模块提供，用于 JSSDK ticket 缓存）
      */
     public OfficialAccountService(AccessTokenManager accessTokenManager,
                                   WechatProperties properties,
                                   OkHttpClient httpClient,
                                   ObjectMapper objectMapper,
-                                  ObjectProvider<RedisManager> redisManagerProvider) {
+                                  CacheManager cacheManager) {
         this.accessTokenManager = accessTokenManager;
         this.properties = properties;
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
-        this.redisManagerProvider = redisManagerProvider;
+        this.cacheStore = resolveStore(cacheManager);
     }
 
     // ==================== 用户管理 ====================
@@ -698,6 +697,9 @@ public class OfficialAccountService {
     /**
      * 获取 jsapi_ticket（带缓存），对齐 EasyWeChat 的 jsapi_ticket 缓存机制。
      * <p>
+     * 缓存 key 格式：{@code wechat:jsapi_ticket:{appId}}，TTL = expires_in - 300（提前 5 分钟过期）。
+     * 缓存仓库优先 redis（多实例共享），未注册时回退 array 内存缓存。
+     * <p>
      * API: {@code GET /cgi-bin/ticket/getticket?type=jsapi}
      *
      * @param configName 公众号配置名
@@ -711,19 +713,13 @@ public class OfficialAccountService {
         String appId = config.getAppId();
         String cacheKey = TICKET_CACHE_PREFIX + appId;
 
-        // 1. 优先从 Redis 读取
-        String cached = getTicketFromRedis(cacheKey);
+        // 1. 优先从缓存读取
+        String cached = cacheStore.get(cacheKey, String.class);
         if (cached != null && !cached.isEmpty()) {
             return cached;
         }
 
-        // 2. 内存缓存
-        TicketEntry memoryEntry = ticketCache.get(appId);
-        if (memoryEntry != null && !memoryEntry.isExpired()) {
-            return memoryEntry.ticket;
-        }
-
-        // 3. 请求微信 API
+        // 2. 缓存未命中，请求微信 API
         String token = accessTokenManager.getToken(config.getAppId(), config.getSecret());
         String url = API_BASE_URL + "/cgi-bin/ticket/getticket?access_token=" + token + "&type=jsapi";
         Map<String, Object> result = executeGet(url, "getJsApiTicket");
@@ -737,51 +733,11 @@ public class OfficialAccountService {
                 ? ((Number) result.get("expires_in")).intValue() : 7200;
         long ttlSeconds = Math.max(expiresIn - TICKET_BUFFER_SECONDS, 60);
 
-        // 4. 写入缓存
-        TicketEntry entry = new TicketEntry(ticket, System.currentTimeMillis() + ttlSeconds * 1000, ttlSeconds);
-        ticketCache.put(appId, entry);
-        saveTicketToRedis(cacheKey, entry);
+        // 3. 写入缓存
+        cacheStore.put(cacheKey, ticket, ttlSeconds);
 
         logger.info("[wechat] 获取 jsapi_ticket 成功: appId={}, expires_in={}s", appId, expiresIn);
         return ticket;
-    }
-
-    /**
-     * 从 Redis 读取 jsapi_ticket。
-     */
-    private String getTicketFromRedis(String cacheKey) {
-        if (redisManagerProvider == null) {
-            return null;
-        }
-        try {
-            RedisManager redisManager = redisManagerProvider.getIfAvailable();
-            if (redisManager == null) {
-                return null;
-            }
-            RedisCommands<String, String> commands = redisManager.sync();
-            return commands.get(cacheKey);
-        } catch (Exception e) {
-            logger.warn("[wechat] Redis 读取 jsapi_ticket 缓存失败: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * 将 jsapi_ticket 写入 Redis。
-     */
-    private void saveTicketToRedis(String cacheKey, TicketEntry entry) {
-        if (redisManagerProvider == null) {
-            return;
-        }
-        try {
-            RedisManager redisManager = redisManagerProvider.getIfAvailable();
-            if (redisManager != null) {
-                RedisCommands<String, String> commands = redisManager.sync();
-                commands.setex(cacheKey, entry.ttlSeconds, entry.ticket);
-            }
-        } catch (Exception e) {
-            logger.warn("[wechat] Redis 写入 jsapi_ticket 缓存失败: {}", e.getMessage());
-        }
     }
 
     /**
@@ -898,22 +854,23 @@ public class OfficialAccountService {
     }
 
     /**
-     * JSSDK ticket 缓存条目。
+     * 解析缓存仓库：优先 {@code redis} store（多实例共享），未注册时回退到 {@code array} 内存 store。
+     * <p>
+     * 当 {@link CacheManager} 为空（cache 自动装配未启用）时，使用独立的内存 store 保证 SDK 仍可用。
+     *
+     * @param cacheManager 缓存管理器，可为 null
+     * @return 解析出的缓存仓库
      */
-    private static class TicketEntry {
-
-        final String ticket;
-        final long expiryAt;
-        final long ttlSeconds;
-
-        TicketEntry(String ticket, long expiryAt, long ttlSeconds) {
-            this.ticket = ticket;
-            this.expiryAt = expiryAt;
-            this.ttlSeconds = ttlSeconds;
+    private static CacheStore resolveStore(CacheManager cacheManager) {
+        if (cacheManager == null) {
+            logger.warn("[wechat] CacheManager 未注入，jsapi_ticket 使用本地内存缓存");
+            return new DefaultCacheStore(new ArrayCacheDriver(), "");
         }
-
-        boolean isExpired() {
-            return System.currentTimeMillis() >= expiryAt;
+        try {
+            return cacheManager.store("redis");
+        } catch (IllegalStateException e) {
+            logger.debug("[wechat] Redis 缓存未注册，jsapi_ticket 回退到 array 内存缓存: {}", e.getMessage());
+            return cacheManager.store("array");
         }
     }
 }

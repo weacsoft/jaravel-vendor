@@ -203,37 +203,6 @@ String html = engine.render("user.list", Map.of(
 
 ---
 
-### ExpiryMap
-- **Type**: class
-- **Package**: `com.weacsoft.jaravel.vendor.utils`
-- **Description**: 带过期时间的 HashMap，继承 HashMap 并为每个 key 设置有效期。过期后自动清除。
-- **Extends**: `java.util.HashMap<K, V>`
-
-#### Methods (主要)
-
-| Method | Parameters | Return | Description |
-|--------|-----------|--------|-------------|
-| `ExpiryMap` | 无 | 构造方法 | 默认过期时间 2 秒 |
-| `ExpiryMap` | `long defaultExpiryTime` | 构造方法 | 指定默认过期时间（毫秒） |
-| `ExpiryMap` | `int initialCapacity, long defaultExpiryTime` | 构造方法 | 指定初始容量和过期时间 |
-| `getInstance` | 无 | `ExpiryMap<String, String>` | 获取单例实例 |
-| `put` | `K key, V value` | `V` | 存入键值对（使用默认过期时间） |
-| `put` | `K key, V value, long expiryTime` | `V` | 存入键值对（指定过期时间） |
-| `get` | `Object key` | `V` | 获取值（过期返回 null） |
-| `isInvalid` | `Object key` | `Object` | 检查键是否过期（null=不存在, -1=已过期, 其他=值） |
-
-#### Usage Example
-```java
-ExpiryMap<String, String> cache = new ExpiryMap<>(5000); // 5秒过期
-cache.put("token", "abc123");
-Thread.sleep(3000);
-String value = cache.get("token"); // "abc123"
-Thread.sleep(3000);
-String expired = cache.get("token"); // null
-```
-
----
-
 ### StringUtils
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.utils`
