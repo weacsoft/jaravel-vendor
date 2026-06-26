@@ -220,6 +220,7 @@ td code { font-size: 0.82em; }
     <a href="#schedule" class="group">schedule 定时任务</a>
     <a href="#queue" class="group">queue-database 队列</a>
     <a href="#wechat" class="group">wechat-sdk 微信</a>
+    <a href="#model-cache" class="group">model-cache 模型缓存</a>
     <a href="#plugin" class="group">plugin 插件系统</a>
     <a href="#plugin-alias" class="sub">多路由 @PluginAlias</a>
     <a href="#plugin-multi-tenant" class="sub">多租户模式</a>
@@ -233,7 +234,7 @@ td code { font-size: 0.82em; }
 
 <div class="hero">
   <h1>jaravel-vendor 使用说明与接口表</h1>
-  <p class="subtitle">Laravel 风格的 Java Web 框架 — 25 个模块完整 API 参考</p>
+  <p class="subtitle">Laravel 风格的 Java Web 框架 — 26 个模块完整 API 参考</p>
   <div class="meta">
     <span>版本 1.0.0</span>
     <span>SpringBoot 3.2.5</span>
@@ -276,11 +277,11 @@ td code { font-size: 0.82em; }
 <tr><td>http</td><td>jaravel-http</td><td>路由、中间件、请求/响应</td><td>Router, Request, ResponseBuilder</td></tr>
 <tr><td>jblade</td><td>jaravel-jblade</td><td>Blade 模板引擎</td><td>BladeCompiler, BladeTemplate, BladeContext</td></tr>
 <tr><td>auth</td><td>jaravel-auth</td><td>认证管理器、Session 守卫</td><td>AuthManager, SessionGuard, Auth</td></tr>
-<tr><td>jwt</td><td>jaravel-jwt</td><td>JWT 认证守卫</td><td>JwtService, JwtGuard</td></tr>
+<tr><td>jwt</td><td>jaravel-jwt</td><td>JWT 认证（黑名单可选/宽限期续期）</td><td>JwtService, JwtGuard, JwtTokenResponseFilter</td></tr>
 <tr><td>database</td><td>jaravel-database</td><td>Eloquent ORM（基于 gaarason）</td><td>BaseModel, @DataSource, @Table</td></tr>
 <tr><td>migration</td><td>jaravel-migration</td><td>数据库迁移（3 种源模式）</td><td>MigrationRunner, MigrationScanner, Schema</td></tr>
 <tr><td>event</td><td>jaravel-event</td><td>事件调度器、队列管理</td><td>EventDispatcher, QueueManager</td></tr>
-<tr><td>cache</td><td>jaravel-cache</td><td>缓存门面、多 store 管理</td><td>Cache, CacheManager, CacheStore</td></tr>
+<tr><td>cache</td><td>jaravel-cache</td><td>缓存（内存/文件/redis/数据库 4 种驱动）</td><td>Cache, CacheManager, CacheStore, DatabaseCacheDriver</td></tr>
 <tr><td>redis-config</td><td>jaravel-redis-config</td><td>Redis 连接管理（多连接）</td><td>RedisManager, RedisProperties</td></tr>
 <tr><td>redis-cache</td><td>jaravel-redis-cache</td><td>Redis 缓存驱动</td><td>RedisCacheDriver</td></tr>
 <tr><td>session-redis</td><td>jaravel-session-redis</td><td>Redis Session 多机同步</td><td>RedisSessionGuard, RedisSessionStore</td></tr>
@@ -289,6 +290,7 @@ td code { font-size: 0.82em; }
 <tr><td>queue-database</td><td>jaravel-queue-database</td><td>数据库持久化队列</td><td>DatabaseQueueDriver, QueueDriver</td></tr>
 <tr><td>springboot</td><td>jaravel-springboot</td><td>SpringBoot 路由桥接</td><td>SpringBootRouteAutoConfiguration</td></tr>
 <tr><td>wechat-sdk</td><td>jaravel-wechat-sdk</td><td>微信公众号/小程序 SDK</td><td>OfficialAccountService, AccessTokenManager</td></tr>
+<tr><td>model-cache</td><td>jaravel-model-cache</td><td>模型查询缓存（@CachableModel 注解按需开启）</td><td>ModelCacheService, ModelCache, CachableModel</td></tr>
 <tr><td>starter</td><td>jaravel-starter</td><td>一键引入全部组件</td><td>JaravelAutoConfiguration</td></tr>
 <tr><td>plugin-jar-core</td><td>jaravel-plugin-jar-core</td><td>JAR 热插件系统（含 @PluginAlias 多路由）</td><td>HotPluginManager, @PluginComponent, @PluginAlias</td></tr>
 <tr><td>plugin-jar-database</td><td>jaravel-plugin-jar-database</td><td>插件元数据数据库持久化</td><td>ModelMetadataPersistence</td></tr>
@@ -1480,6 +1482,56 @@ wechatService.sendTemplateMessage(tpl);
 <span class="type">String</span> openid = user.getOpenid();
 <span class="type">String</span> nickname = user.getNickname();
 <span class="type">String</span> avatar = user.getHeadimgurl();</code></pre>
+</section>
+
+<!-- ==================== model-cache ==================== -->
+<section id="model-cache">
+<h2>model-cache — 模型查询缓存</h2>
+<p>可选模块，引入后可在 Model 类上通过 <code>@CachableModel</code> 注解手动开启查询缓存。采用版本化缓存失效机制，对齐 Laravel laravel-model-caching 方案。</p>
+
+<div class="mc-title"><span class="tag cl">class</span> ModelCacheService <span class="pkg">com.weacsoft.jaravel.vendor.modelcache</span></div>
+<div class="mc-desc">核心服务，注入 CacheManager 和 ModelCacheProperties。提供模型查询缓存和失效操作。</div>
+<div class="mc-methods">
+<ul>
+  <li><span class="sig"><span class="ret">T</span> <span class="name">find</span><span class="param">(Class&lt;T&gt; modelClass, Object id, Supplier&lt;T&gt; loader)</span></span> — 缓存按主键查询，null 不缓存</li>
+  <li><span class="sig"><span class="ret">List&lt;T&gt;</span> <span class="name">findAll</span><span class="param">(Class&lt;T&gt; modelClass, String queryKey, Supplier&lt;List&lt;T&gt;&gt; loader)</span></span> — 缓存列表查询</li>
+  <li><span class="sig"><span class="ret">Object</span> <span class="name">query</span><span class="param">(Class&lt;T&gt; modelClass, String queryKey, Supplier&lt;Object&gt; loader)</span></span> — 缓存任意查询</li>
+  <li><span class="sig"><span class="ret">void</span> <span class="name">invalidate</span><span class="param">(Class&lt;?&gt; modelClass)</span></span> — 失效模型类的所有缓存（递增版本号）</li>
+  <li><span class="sig"><span class="ret">void</span> <span class="name">invalidate</span><span class="param">(Class&lt;?&gt; modelClass, Object id)</span></span> — 失效单条记录缓存</li>
+  <li><span class="sig"><span class="ret">boolean</span> <span class="name">isCachable</span><span class="param">(Class&lt;?&gt; modelClass)</span></span> — 判断模型类是否标注 @CachableModel</li>
+</ul>
+</div>
+
+<div class="mc-title"><span class="tag an">@interface</span> CachableModel</div>
+<div class="mc-desc">标注在 Model 类上，开启查询缓存。</div>
+<ul>
+  <li><code>long ttl() default -1</code> — 缓存 TTL（秒），-1 使用全局默认值</li>
+  <li><code>String prefix() default ""</code> — 自定义缓存键前缀（为空时使用类名）</li>
+</ul>
+
+<div class="mc-title"><span class="tag cl">class</span> ModelCache <span class="pkg">com.weacsoft.jaravel.vendor.modelcache</span></div>
+<div class="mc-desc">静态门面，通过 Facade.resolve(ModelCacheService.class) 委托全部方法。</div>
+
+<h3>配置</h3>
+<pre><code>jaravel:
+  model-cache:
+    enabled: true              # 全局开关
+    store: array               # 缓存 store（array/file/redis/database）
+    default-ttl: 3600          # 默认 TTL（秒）
+    key-prefix: "model-cache:" # 缓存键前缀</code></pre>
+
+<h3>使用示例</h3>
+<pre><code>@CachableModel(ttl = 1800)
+@Repository
+public class User extends BaseModel&lt;User, Long&gt; { ... }
+
+// 查询时走缓存
+User user = ModelCache.find(User.class, 1L, () -> User.find(1L));
+
+// 修改后失效缓存
+user.save();
+ModelCache.invalidate(User.class);</code></pre>
+
 </section>
 
 <!-- ==================== plugin ==================== -->
