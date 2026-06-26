@@ -686,16 +686,17 @@ router.get(<span class="string">"/api/data"</span>, handler).middleware(<span cl
 <!-- ==================== jblade ==================== -->
 <section id="jblade">
 <h2>jblade — Blade 模板引擎</h2>
-<p>将 Blade 模板编译为 Java 源码再编译为字节码执行，原生支持 PHP 表达式语法。模板文件后缀为 <code>.jblade</code>。</p>
+<p>将 Blade 模板编译为 Java 源码再编译为字节码执行，原生支持 PHP 表达式语法。模板文件后缀为 <code>.blade.java</code>，让常见 IDE 仍能识别为 Java 相关文件并提供代码提示。</p>
 
 <div class="module-card">
   <div class="mc-title"><span class="tag cl">class</span> BladeEngine <span class="pkg">com.weacsoft.jaravel.vendor.jblade</span></div>
-  <div class="mc-desc">Blade 模板引擎，负责编译和渲染 Blade 模板。</div>
+  <div class="mc-desc">Blade 模板引擎，负责编译和渲染 Blade 模板。默认后缀 <code>.blade.java</code>，支持自定义后缀。</div>
   <div class="mc-methods">
   <ul>
-    <li><span class="sig"><span class="ret">String</span> <span class="name">render</span><span class="param">(String templateName, Map&lt;String, Object&gt; variables)</span></span> — 渲染模板</li>
-    <li><span class="sig"><span class="ret">void</span> <span class="name">setTemplatePath</span><span class="param">(String path)</span></span> — 设置模板根路径</li>
-    <li><span class="sig"><span class="ret">void</span> <span class="name">setCacheEnabled</span><span class="param">(boolean enabled)</span></span> — 启用/禁用编译缓存</li>
+    <li><span class="sig"><span class="ret">String</span> <span class="name">render</span><span class="param">(String templateName, Map&lt;String, Object&gt; variables)</span></span> — 渲染模板，返回 HTML</li>
+    <li><span class="sig"><span class="ret">BladeTemplate</span> <span class="name">loadTemplate</span><span class="param">(String templateName)</span></span> — 加载（编译+缓存）模板</li>
+    <li><span class="sig"><span class="ret">String</span> <span class="name">getSuffix</span><span class="param">()</span></span> — 获取模板文件后缀（默认 <code>.blade.java</code>）</li>
+    <li><span class="sig"><span class="ret">void</span> <span class="name">clearCache</span><span class="param">()</span></span> — 清除模板缓存</li>
   </ul>
   </div>
 </div>
