@@ -43,7 +43,7 @@ BladeEngine.render("users.list", variables)
         ▼
 BladeCompiler.compile("users.list")
         │
-        ├── 1. 读取模板文件（classpath: templateDir/users/list.jblade）
+        ├── 1. 读取模板文件（classpath: templateDir/users/list.blade.java）
         ├── 2. 将 Blade 指令编译为 Java 源码
         ├── 3. 使用 javax.tools.JavaCompiler 内存编译
         └── 4. 返回编译后的类全名
@@ -116,12 +116,15 @@ com.weacsoft.jaravel.vendor
 
 | 构造器签名 | 说明 |
 | --- | --- |
-| `BladeEngine(String templateDir)` | 指定模板目录，默认后缀 `.jblade`，无缓存 |
+| `BladeEngine(String templateDir)` | 指定模板目录，默认后缀 `.blade.java`，无缓存 |
 | `BladeEngine(String templateDir, String suffix)` | 指定模板目录与后缀 |
-| `BladeEngine(String templateDir, Cache cache)` | 指定模板目录与缓存 |
-| `BladeEngine(String templateDir, MemoryClassLoader classLoader)` | 指定模板目录与类加载器 |
+| `BladeEngine(String templateDir, Cache cache)` | 指定模板目录与缓存，默认后缀 `.blade.java` |
+| `BladeEngine(String templateDir, MemoryClassLoader classLoader)` | 指定模板目录与类加载器，默认后缀 `.blade.java` |
 | `BladeEngine(String templateDir, String suffix, Cache cache)` | 指定模板目录、后缀与缓存 |
+| `BladeEngine(String templateDir, Cache cache, MemoryClassLoader classLoader)` | 指定模板目录、缓存与类加载器，默认后缀 `.blade.java` |
 | `BladeEngine(String templateDir, String suffix, Cache cache, MemoryClassLoader classLoader)` | 全参构造器 |
+
+> **后缀说明**：默认使用 `.blade.java` 后缀。采用该后缀可使常见 IDE（如 IntelliJ IDEA）将模板文件识别为 Java 相关文件，从而在模板内提供部分代码提示与语法高亮。
 
 ### 方法文档
 
@@ -136,6 +139,7 @@ com.weacsoft.jaravel.vendor
 | `Cache getCache()` | 获取缓存（可能为 null） |
 | `boolean isUseCache()` | 是否启用缓存 |
 | `int getTemplateInstanceCacheSize()` | 获取模板实例缓存大小 |
+| `String getSuffix()` | 获取模板文件后缀（默认 `.blade.java`） |
 
 ### 渲染流程
 
@@ -170,8 +174,8 @@ template.init()  -- 初始化（注册 Section 渲染器、解析 @extends）
 ### 使用示例
 
 ```java
-// 创建引擎（模板目录为 classpath 下的 templates，后缀 .jblade）
-BladeEngine engine = new BladeEngine("templates", ".jblade");
+// 创建引擎（模板目录为 classpath 下的 templates，后缀 .blade.java）
+BladeEngine engine = new BladeEngine("templates", ".blade.java");
 
 // 渲染模板
 Map<String, Object> vars = new HashMap<>();
@@ -187,7 +191,7 @@ System.out.println(html);
 ```java
 // 使用 Cache 模块缓存编译后的模板类
 Cache cache = Cache.store();  // 从容器获取
-BladeEngine engine = new BladeEngine("templates", ".jblade", cache);
+BladeEngine engine = new BladeEngine("templates", ".blade.java", cache);
 
 // 首次渲染会编译模板，后续渲染从缓存加载
 String html = engine.render("users.list", vars);
@@ -208,8 +212,14 @@ engine.clearCache();
 
 | 构造器签名 | 说明 |
 | --- | --- |
-| `BladeCompiler(String templateDir, MemoryClassLoader classLoader)` | 默认后缀 `.jblade` |
+| `BladeCompiler(String templateDir, MemoryClassLoader classLoader)` | 默认后缀 `.blade.java` |
 | `BladeCompiler(String templateDir, MemoryClassLoader classLoader, String suffix)` | 指定后缀 |
+
+### 常量
+
+| 常量 | 说明 |
+| --- | --- |
+| `String DEFAULT_SUFFIX` | 默认模板文件后缀，值为 `.blade.java` |
 
 ### 方法文档
 
@@ -230,6 +240,7 @@ engine.clearCache();
 | `String compileElvisOperator(String expr, Set<String> localVars)` | 将 `?:` 编译为 `elvis(a, b)` |
 | `String compileTernaryOperator(String expr, Set<String> localVars)` | 将三元 `? :` 编译为 `toBoolean(cond) ? a : b` |
 | `String compileVariables(String expr, Set<String> localVars)` | 将剩余 `$var` 编译为 `ctx.getVariable("var")` 或本地变量名 |
+| `String getSuffix()` | 获取模板文件后缀（默认 `.blade.java`） |
 
 ### 编译流程
 
@@ -668,7 +679,7 @@ MemoryClassLoader.getCompiledClasses().put(name, bytes)  -- 存入类加载器
 
 ### 11.1 基本模板
 
-模板文件 `templates/hello.jblade`：
+模板文件 `templates/hello.blade.java`：
 
 ```blade
 <h1>Hello, {{ $name }}!</h1>
@@ -691,7 +702,7 @@ String html = engine.render("hello", vars);
 
 ### 11.2 条件与循环
 
-模板文件 `templates/users.jblade`：
+模板文件 `templates/users.blade.java`：
 
 ```blade
 <h1>User List</h1>
@@ -719,7 +730,7 @@ String html = engine.render("users", vars);
 
 ### 11.3 模板继承
 
-父模板 `templates/layout.jblade`：
+父模板 `templates/layout.blade.java`：
 
 ```blade
 <!DOCTYPE html>
@@ -736,7 +747,7 @@ String html = engine.render("users", vars);
 </html>
 ```
 
-子模板 `templates/page.jblade`：
+子模板 `templates/page.blade.java`：
 
 ```blade
 @extends('layout')
@@ -759,7 +770,7 @@ String html = engine.render("page", null);
 
 ### 11.4 组件
 
-组件模板 `templates/alert.jblade`：
+组件模板 `templates/alert.blade.java`：
 
 ```blade
 <div class="alert alert-{{ $type }}">
@@ -767,7 +778,7 @@ String html = engine.render("page", null);
 </div>
 ```
 
-使用组件的模板 `templates/message.jblade`：
+使用组件的模板 `templates/message.blade.java`：
 
 ```blade
 @component('alert', ['type' => 'danger'])

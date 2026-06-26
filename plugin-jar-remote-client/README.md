@@ -31,4 +31,27 @@ jaravel:
         http-endpoint: /my-rpc     # HTTP 模式端点路径
 ```
 
-详细文档请参考 `PROJECT_SUMMARY.md` 第 11 章。
+## 工作原理
+
+本模块作为 P2SP 架构中的**主节点**（协调端），管理多个子服务器（`plugin-jar-remote-server`），将方法调用请求分派到远程子服务器执行。
+
+### 核心流程
+
+1. **注册子服务器**：子服务器启动后向主节点注册（`SubServerRegistry.register`）
+2. **本地优先**：`RequestCoordinator` 先尝试本地执行，失败后轮询转发到子服务器
+3. **动态代理**：`RemoteProxy.create()` 生成接口的动态代理，自动包装参数、解包返回值
+4. **传输层**：支持 TCP（长连接 + 自动重连）和 HTTP（JSON-RPC）两种模式
+
+### 使用示例
+
+```java
+@Autowired
+private RemoteExecutionDispatcher dispatcher;
+
+// 注册子服务器
+dispatcher.registerSubServer("node-1", "192.168.1.10", 9700);
+
+// 通过动态代理调用远程方法
+MyService proxy = RemoteProxy.create(MyService.class, dispatcher, "node-1");
+String result = proxy.doWork("param");
+```

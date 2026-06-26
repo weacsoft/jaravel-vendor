@@ -9,6 +9,9 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class BladeEngine {
+    /** 默认模板文件后缀，与 BladeCompiler.DEFAULT_SUFFIX 保持一致 */
+    public static final String DEFAULT_SUFFIX = BladeCompiler.DEFAULT_SUFFIX;
+
     private final BladeCompiler compiler;
     private final Map<String, Class<?>> templateClassCache;
     private final Map<String, BladeTemplate> templateInstanceCache;
@@ -17,11 +20,11 @@ public class BladeEngine {
     private final boolean useCache;
 
     public BladeEngine(String templateDir) {
-        this(templateDir, null, null, null);
+        this(templateDir, DEFAULT_SUFFIX, null, null);
     }
 
     public BladeEngine(String templateDir, MemoryClassLoader memoryClassLoader) {
-        this(templateDir, null, null, memoryClassLoader);
+        this(templateDir, DEFAULT_SUFFIX, null, memoryClassLoader);
     }
 
     public BladeEngine(String templateDir, String suffix) {
@@ -33,11 +36,11 @@ public class BladeEngine {
     }
 
     public BladeEngine(String templateDir, Cache cache) {
-        this(templateDir, null, cache, null);
+        this(templateDir, DEFAULT_SUFFIX, cache, null);
     }
 
     public BladeEngine(String templateDir, Cache cache, MemoryClassLoader memoryClassLoader) {
-        this(templateDir, null, cache, memoryClassLoader);
+        this(templateDir, DEFAULT_SUFFIX, cache, memoryClassLoader);
     }
 
     public BladeEngine(String templateDir, String suffix, Cache cache) {
@@ -51,6 +54,14 @@ public class BladeEngine {
         this.useCache = cache != null;
         this.templateClassCache = useCache ? null : new ConcurrentHashMap<>();
         this.templateInstanceCache = new ConcurrentHashMap<>();
+    }
+
+    /**
+     * 获取当前模板文件后缀
+     * @return 后缀字符串，如 ".blade.java"
+     */
+    public String getSuffix() {
+        return compiler.getSuffix();
     }
 
     public MemoryClassLoader getMemoryClassLoader() {

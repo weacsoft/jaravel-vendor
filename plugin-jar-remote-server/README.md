@@ -31,4 +31,28 @@ jaravel:
         auth-token: "my-secret"    # 认证令牌
 ```
 
-详细文档请参考 `PROJECT_SUMMARY.md` 第 11 章。
+## 工作原理
+
+本模块作为 P2SP 架构中的**子节点**（执行端），接收来自主节点（`plugin-jar-remote-client`）的方法调用请求，在本地通过反射执行插件方法并返回结果。
+
+### TCP 模式（默认）
+
+启动时自动创建 `RemotePluginServer`，监听指定端口，采用自定义二进制帧协议：
+- 帧头：魔数(4B) + 消息类型(1B) + 正文长度(4B)
+- 正文：JSON 序列化的 `ExecuteRequest` / `ExecuteResponse`
+- 认证：握手阶段校验 `auth-token`
+
+### HTTP 模式
+
+通过 `HttpRpcHandler` 提供静态方法，用户自行创建 Spring Controller 调用：
+
+```java
+@RestController
+@RequestMapping("/rpc")
+public class RpcController {
+    @PostMapping("/execute")
+    public Object execute(@RequestBody ExecuteRequest request) {
+        return HttpRpcHandler.handle(request);
+    }
+}
+```

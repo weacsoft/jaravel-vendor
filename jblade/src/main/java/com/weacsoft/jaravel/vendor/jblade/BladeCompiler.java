@@ -22,19 +22,30 @@ public class BladeCompiler {
     //参数
     private static final Pattern VAR_PATTERN = Pattern.compile("\\$(\\w+)");
 
+    /** 默认模板文件后缀，使用 .blade.java 让常见 IDE 仍能识别为 Java 相关文件并提供提示 */
+    public static final String DEFAULT_SUFFIX = ".blade.java";
+
     private final String templateDir;
     private final MemoryClassLoader classLoader;
 
     private final String suffix;
 
     public BladeCompiler(String templateDir, MemoryClassLoader classLoader) {
-        this(templateDir, classLoader, ".jblade");
+        this(templateDir, classLoader, DEFAULT_SUFFIX);
     }
 
     public BladeCompiler(String templateDir, MemoryClassLoader classLoader, String suffix) {
         this.templateDir = templateDir;
         this.classLoader = classLoader;
-        this.suffix = suffix;
+        this.suffix = (suffix != null && !suffix.isEmpty()) ? suffix : DEFAULT_SUFFIX;
+    }
+
+    /**
+     * 获取当前模板文件后缀
+     * @return 后缀字符串，如 ".blade.java"
+     */
+    public String getSuffix() {
+        return suffix;
     }
 
     /**
@@ -358,14 +369,23 @@ public class BladeCompiler {
                     case "endsection":
                         break;
                     case "yield":
-                        String yieldName = args.replace("'", "").replace("\"", "");
-                        code.append("        Consumer<Writer> renderer = ctx.getSectionRenderer(\"").append(yieldName).append("\");\n");
-                        code.append("        if (renderer != null) {\n");
-                        code.append("            renderer.accept(writer);\n");
-                        code.append("        } else {\n");
-                        code.append("            String yieldContent = ctx.getSection(\"").append(yieldName).append("\");\n");
-                        code.append("            if (yieldContent != null) {\n");
-                        code.append("                write(writer, yieldContent);\n");
+                        // 解析 @yield('name') 或 @yield('name', 'default value')
+                        String[] yieldParts = args.split(",", 2);
+                        String yieldName = yieldParts[0].trim().replace("'", "").replace("\"", "");
+                        String yieldDefault = (yieldParts.length == 2) ? yieldParts[1].trim().replace("'", "").replace("\"", "") : null;
+                        code.append("        {\n");
+                        code.append("            Consumer<Writer> renderer = ctx.getSectionRenderer(\"").append(yieldName).append("\");\n");
+                        code.append("            if (renderer != null) {\n");
+                        code.append("                renderer.accept(writer);\n");
+                        code.append("            } else {\n");
+                        code.append("                String yieldContent = ctx.getSection(\"").append(yieldName).append("\");\n");
+                        code.append("                if (yieldContent != null) {\n");
+                        code.append("                    write(writer, yieldContent);\n");
+                        if (yieldDefault != null && !yieldDefault.isEmpty()) {
+                            code.append("                } else {\n");
+                            code.append("                    write(writer, \"").append(escapeJava(yieldDefault)).append("\");\n");
+                        }
+                        code.append("                }\n");
                         code.append("            }\n");
                         code.append("        }\n");
                         break;
