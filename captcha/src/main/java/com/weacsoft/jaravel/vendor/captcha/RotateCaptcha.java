@@ -12,8 +12,23 @@ import java.util.Random;
  * 旋转验证码：将一张带明显朝向的图片随机旋转，前端拖动将其转回正方向。
  * <p>
  * 类型名 {@code "rotate"}。生成结果中 {@code imageBase64} 为旋转后的图片，
- * {@code extra.size} 为图片边长。答案为旋转角度（0~359），验证时按
- * {@link CaptchaProperties#getTolerance()} 角度容差判定（双向最短角差）。
+ * {@code extra.size} 为图片边长。答案为旋转角度（0~359）。
+ * <p>
+ * 验证时：
+ * <ol>
+ *   <li>角度校验：用户提交的 value 与目标角度的最短角差在 {@link CaptchaProperties#getTolerance()} 内。</li>
+ *   <li>轨迹校验：若 {@link CaptchaProperties#isTrajectoryEnabled()} 为 true，
+ *       还需校验旋转轨迹是否为人类行为（点数、时长、连续性、非匀速、加速度多样性）。</li>
+ * </ol>
+ * <p>
+ * <h3>用户输入格式</h3>
+ * 启用轨迹验证时，前端需提交 JSON：
+ * <pre>
+ * {"value": 45, "trajectory": [{"t":0,"v":0},{"t":50,"v":3},...]}
+ * </pre>
+ * 其中 {@code value} 为最终旋转角度，{@code trajectory} 为旋转过程中采集的 {时间戳ms, 角度} 点序列。
+ * <p>
+ * 未启用轨迹验证时，用户输入可直接为数字字符串 {@code "45"}（向后兼容）。
  */
 public class RotateCaptcha extends AbstractCaptcha {
 
@@ -57,6 +72,7 @@ public class RotateCaptcha extends AbstractCaptcha {
         CaptchaResult result = new CaptchaResult();
         result.setImageBase64(toBase64(rotated));
         result.getExtra().put("size", size);
+        result.getExtra().put("trajectoryEnabled", p.isTrajectoryEnabled());
         return result;
     }
 
@@ -65,17 +81,34 @@ public class RotateCaptcha extends AbstractCaptcha {
         if (answer == null || userInput == null) {
             return false;
         }
-        try {
-            double target = Double.parseDouble(answer.trim());
-            double input = Double.parseDouble(userInput.trim());
-            double diff = ((target - input) % 360 + 360) % 360;
-            if (diff > 180) {
-                diff = 360 - diff;
-            }
-            return diff <= properties.getTolerance();
-        } catch (NumberFormatException e) {
+
+        // 提取用户提交的最终值
+        double target = Double.parseDouble(answer.trim());
+        double input = TrajectoryValidator.extractValue(userInput);
+
+        if (Double.isNaN(input)) {
             return false;
         }
+
+        // 1. 角度校验（双向最短角差）
+        double diff = ((target - input) % 360 + 360) % 360;
+        if (diff > 180) {
+            diff = 360 - diff;
+        }
+        if (diff > properties.getTolerance()) {
+            return false;
+        }
+
+        // 2. 轨迹校验
+        if (properties.isTrajectoryEnabled()) {
+            java.util.List<TrajectoryValidator.Point> points =
+                    TrajectoryValidator.extractTrajectory(userInput);
+            if (!TrajectoryValidator.validate(points, properties)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

@@ -16,7 +16,22 @@ import java.util.Random;
  *     <li>{@code extra.gapY} —— 缺口纵坐标（前端固定滑块纵坐标用）；</li>
  *     <li>{@code extra.blockSize} —— 滑块边长。</li>
  * </ul>
- * 答案为缺口横坐标 {@code gapX}，验证时按 {@link CaptchaProperties#getTolerance()} 像素容差判定。
+ * <p>
+ * 答案为缺口横坐标 {@code gapX}。验证时：
+ * <ol>
+ *   <li>位置校验：用户提交的 value 与 gapX 的偏差在 {@link CaptchaProperties#getTolerance()} 像素内。</li>
+ *   <li>轨迹校验：若 {@link CaptchaProperties#isTrajectoryEnabled()} 为 true，
+ *       还需校验拖动轨迹是否为人类行为（点数、时长、连续性、非匀速、加速度多样性）。</li>
+ * </ol>
+ * <p>
+ * <h3>用户输入格式</h3>
+ * 启用轨迹验证时，前端需提交 JSON：
+ * <pre>
+ * {"value": 123, "trajectory": [{"t":0,"v":0},{"t":50,"v":5},...]}
+ * </pre>
+ * 其中 {@code value} 为滑块最终 x 坐标，{@code trajectory} 为拖动过程中采集的 {时间戳ms, x坐标} 点序列。
+ * <p>
+ * 未启用轨迹验证时，用户输入可直接为数字字符串 {@code "123"}（向后兼容）。
  */
 public class SliderCaptcha extends AbstractCaptcha {
 
@@ -94,6 +109,7 @@ public class SliderCaptcha extends AbstractCaptcha {
         result.getExtra().put("sliderImage", toBase64(slider));
         result.getExtra().put("gapY", gapY);
         result.getExtra().put("blockSize", blockSize);
+        result.getExtra().put("trajectoryEnabled", p.isTrajectoryEnabled());
         return result;
     }
 
@@ -102,12 +118,29 @@ public class SliderCaptcha extends AbstractCaptcha {
         if (answer == null || userInput == null) {
             return false;
         }
-        try {
-            double target = Double.parseDouble(answer.trim());
-            double input = Double.parseDouble(userInput.trim());
-            return Math.abs(target - input) <= properties.getTolerance();
-        } catch (NumberFormatException e) {
+
+        // 提取用户提交的最终值
+        double target = Double.parseDouble(answer.trim());
+        double input = TrajectoryValidator.extractValue(userInput);
+
+        if (Double.isNaN(input)) {
             return false;
         }
+
+        // 1. 位置校验
+        if (Math.abs(target - input) > properties.getTolerance()) {
+            return false;
+        }
+
+        // 2. 轨迹校验
+        if (properties.isTrajectoryEnabled()) {
+            java.util.List<TrajectoryValidator.Point> points =
+                    TrajectoryValidator.extractTrajectory(userInput);
+            if (!TrajectoryValidator.validate(points, properties)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

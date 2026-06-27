@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jaravel 验证码演示 - 数字 / 算术 / 滑动 / 旋转</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #e4ecf7 100%);
+            color: #2c3e50;
+            min-height: 100vh;
+            padding: 24px;
+        }
+        h1 { text-align: center; margin-bottom: 8px; font-size: 26px; color: #1a2a4a; }
+        .subtitle { text-align: center; color: #7f8c9b; margin-bottom: 28px; font-size: 14px; }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+            gap: 22px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .card {
+            background: #fff;
+            border-radius: 14px;
+            padding: 22px;
+            box-shadow: 0 6px 22px rgba(40, 60, 120, 0.08);
+            border: 1px solid #eef2f8;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+        .card h2 { font-size: 17px; display: flex; align-items: center; gap: 8px; }
+        .tag { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: #eaf0fb; color: #3a6ea5; }
+        .stage {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            padding: 14px;
+            background: #f8fafc;
+            border-radius: 10px;
+            min-height: 130px;
+            justify-content: center;
+        }
+        .captcha-img { border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.12); background: #fff; }
+        .row { display: flex; gap: 8px; width: 100%; }
+        .row input {
+            flex: 1;
+            padding: 9px 12px;
+            border: 1px solid #d8e0ec;
+            border-radius: 8px;
+            font-size: 15px;
+            outline: none;
+            transition: border-color .15s;
+        }
+        .row input:focus { border-color: #4a90d9; }
+        button {
+            padding: 9px 16px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: filter .15s, background .15s;
+            font-weight: 600;
+        }
+        button:hover { filter: brightness(1.08); }
+        .btn-primary { background: #4a90d9; color: #fff; }
+        .btn-ghost { background: #eef2f8; color: #5a6a82; }
+        .result { font-size: 13px; min-height: 20px; font-weight: 600; }
+        .result.ok { color: #27ae60; }
+        .result.fail { color: #e74c3c; }
+        .payload {
+            font-family: "SFMono-Regular", Consolas, monospace;
+            font-size: 11px;
+            background: #1e2733;
+            color: #c8d3e0;
+            padding: 10px;
+            border-radius: 8px;
+            max-height: 130px;
+            overflow: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            display: none;
+        }
+        .payload.show { display: block; }
+
+        /* 滑动验证码 */
+        .slider-wrap { position: relative; display: inline-block; user-select: none; }
+        .slider-handle {
+            position: absolute;
+            top: 0; left: 0;
+            cursor: grab;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
+        }
+        .slider-handle:active { cursor: grabbing; }
+        .slider-track {
+            height: 18px; background: #eef2f8; border-radius: 9px;
+            position: relative; overflow: hidden;
+        }
+        .slider-progress { position: absolute; left: 0; top: 0; height: 100%; background: #4a90d9; opacity: .35; }
+
+        /* 旋转验证码 */
+        .rotate-wrap { position: relative; display: inline-block; user-select: none; cursor: grab; }
+        .rotate-wrap:active { cursor: grabbing; }
+        .rotate-img { transition: none; border-radius: 50%; box-shadow: 0 2px 10px rgba(0,0,0,0.15); }
+        .hint { font-size: 12px; color: #95a2b3; text-align: center; }
+
+        .footer { text-align: center; margin-top: 30px; color: #95a2b3; font-size: 12px; line-height: 1.7; }
+        code { background: #eef2f8; padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <h1>Jaravel 验证码演示</h1>
+    <p class="subtitle">数字 / 算术 / 滑动 / 旋转 四种验证码 · 含拖动轨迹采集 · 提交 JSON 含 value 与 trajectory</p>
+
+    <div class="grid">
+        <!-- 数字验证码 -->
+        <div class="card">
+            <h2>数字验证码 <span class="tag">number</span></h2>
+            <div class="stage" id="number-stage">
+                <img class="captcha-img" id="number-img" alt="数字验证码">
+            </div>
+            <div class="row">
+                <input type="text" id="number-input" placeholder="输入图中字符" maxlength="6">
+                <button class="btn-primary" onclick="verifyText('number')">验证</button>
+                <button class="btn-ghost" onclick="loadCaptcha('number')">刷新</button>
+            </div>
+            <div class="result" id="number-result"></div>
+        </div>
+
+        <!-- 算术验证码 -->
+        <div class="card">
+            <h2>算术验证码 <span class="tag">arithmetic</span></h2>
+            <div class="stage" id="arithmetic-stage">
+                <img class="captcha-img" id="arithmetic-img" alt="算术验证码">
+            </div>
+            <div class="row">
+                <input type="number" id="arithmetic-input" placeholder="输入计算结果">
+                <button class="btn-primary" onclick="verifyText('arithmetic')">验证</button>
+                <button class="btn-ghost" onclick="loadCaptcha('arithmetic')">刷新</button>
+            </div>
+            <div class="result" id="arithmetic-result"></div>
+        </div>
+
+        <!-- 滑动验证码 -->
+        <div class="card">
+            <h2>滑动验证码 <span class="tag">slider</span></h2>
+            <div class="stage" id="slider-stage">
+                <div class="slider-wrap" id="slider-wrap">
+                    <img class="captcha-img" id="slider-bg" alt="滑动背景">
+                    <img class="slider-handle" id="slider-handle" alt="滑块" draggable="false">
+                </div>
+                <div class="slider-track" style="width:320px">
+                    <div class="slider-progress" id="slider-progress"></div>
+                </div>
+                <div class="hint">拖动滑块拼回缺口（横向拖动）</div>
+            </div>
+            <div class="row">
+                <button class="btn-primary" onclick="verifySlider()">验证</button>
+                <button class="btn-ghost" onclick="loadCaptcha('slider')">刷新</button>
+            </div>
+            <pre class="payload" id="slider-payload"></pre>
+            <div class="result" id="slider-result"></div>
+        </div>
+
+        <!-- 旋转验证码 -->
+        <div class="card">
+            <h2>旋转验证码 <span class="tag">rotate</span></h2>
+            <div class="stage" id="rotate-stage">
+                <div class="rotate-wrap" id="rotate-wrap">
+                    <img class="captcha-img rotate-img" id="rotate-img" alt="旋转图" draggable="false">
+                </div>
+                <div class="hint">拖动图片将其转回正方向（横向拖动）</div>
+            </div>
+            <div class="row">
+                <button class="btn-primary" onclick="verifyRotate()">验证</button>
+                <button class="btn-ghost" onclick="loadCaptcha('rotate')">刷新</button>
+            </div>
+            <pre class="payload" id="rotate-payload"></pre>
+            <div class="result" id="rotate-result"></div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>API 约定：<code>GET /api/captcha/generate?type=number|arithmetic|slider|rotate</code> · <code>POST /api/captcha/verify</code>（body: <code>{captchaKey, input}</code>）</p>
+        <p>当后端接口不可用时，页面自动回退到内置 mock 数据，可独立演示。滑动 / 旋转需提交 JSON：<code>{"value":&lt;数值&gt;,"trajectory":[{"t":0,"v":0},...]}</code></p>
+    </div>
+
+<script>
+"use strict";
+
+// ==================== 状态与 mock 存储 ====================
+// 每个 captchaKey 对应一份 mock 记录（真实后端时不会用到）
+const MOCK = {};
+// 各类型当前会话
+const SESSION = { number: null, arithmetic: null, slider: null, rotate: null };
+
+// ==================== 工具函数 ====================
+function rndInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+function rndColor() { return `rgb(${rndInt(0,200)},${rndInt(0,200)},${rndInt(0,200)})`; }
+
+function drawTextImage(text, w, h) {
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const g = c.getContext("2d");
+    const grad = g.createLinearGradient(0, 0, w, h);
+    grad.addColorStop(0, rndColor()); grad.addColorStop(1, rndColor());
+    g.fillStyle = grad; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 60; i++) { g.fillStyle = rndColor(); g.fillRect(rndInt(0, w), rndInt(0, h), 1, 1); }
+    for (let i = 0; i < 4; i++) {
+        g.strokeStyle = rndColor(); g.lineWidth = 1;
+        g.beginPath(); g.moveTo(rndInt(0, w), rndInt(0, h)); g.lineTo(rndInt(0, w), rndInt(0, h)); g.stroke();
+    }
+    g.fillStyle = "#fff"; g.font = "bold 30px Arial";
+    g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillText(text, w / 2, h / 2);
+    return c.toDataURL();
+}
+
+function drawSliderImages(w, h, bs, gapX, gapY) {
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const g = c.getContext("2d");
+    const grad = g.createLinearGradient(0, 0, w, h);
+    grad.addColorStop(0, rndColor()); grad.addColorStop(1, rndColor());
+    g.fillStyle = grad; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 24; i++) { g.fillStyle = rndColor(); g.fillRect(rndInt(0, w), rndInt(0, h), rndInt(5, 25), rndInt(5, 25)); }
+
+    // 先拷贝缺口区域像素作为滑块拼图小块
+    const sc = document.createElement("canvas");
+    sc.width = bs; sc.height = bs;
+    const sg = sc.getContext("2d");
+    sg.drawImage(c, gapX, gapY, bs, bs, 0, 0, bs, bs);
+    sg.strokeStyle = "rgba(255,255,255,0.95)"; sg.lineWidth = 2; sg.strokeRect(1, 1, bs - 2, bs - 2);
+
+    // 再在背景上绘制缺口
+    g.fillStyle = "rgba(0,0,0,0.45)"; g.fillRect(gapX, gapY, bs, bs);
+    g.strokeStyle = "#fff"; g.lineWidth = 2; g.strokeRect(gapX + 1, gapY + 1, bs - 2, bs - 2);
+
+    return { bg: c.toDataURL(), slider: sc.toDataURL() };
+}
+
+function drawRotateImage(size, angle) {
+    const src = document.createElement("canvas");
+    src.width = size; src.height = size;
+    const g = src.getContext("2d");
+    const grad = g.createLinearGradient(0, 0, size, size);
+    grad.addColorStop(0, rndColor()); grad.addColorStop(1, rndColor());
+    g.fillStyle = grad; g.fillRect(0, 0, size, size);
+    for (let i = 0; i < 20; i++) { g.fillStyle = rndColor(); g.fillRect(rndInt(0, size), rndInt(0, size), rndInt(5, 25), rndInt(5, 25)); }
+
+    // 朝向标记：向上的箭头
+    const cx = size / 2;
+    g.fillStyle = "rgba(255,255,255,0.95)";
+    g.strokeStyle = "rgba(40,60,200,0.9)"; g.lineWidth = 3;
+    g.beginPath();
+    g.moveTo(cx, size * 0.15);
+    g.lineTo(cx - size * 0.13, size * 0.32);
+    g.lineTo(cx + size * 0.13, size * 0.32);
+    g.closePath(); g.fill(); g.stroke();
+    g.beginPath(); g.moveTo(cx, size * 0.28); g.lineTo(cx, size * 0.62); g.stroke();
+    g.fillStyle = "#fff"; g.font = "bold 16px Arial"; g.textAlign = "center";
+    g.fillText("TOP", cx, size * 0.82);
+
+    // 旋转生成展示图
+    const out = document.createElement("canvas");
+    out.width = size; out.height = size;
+    const og = out.getContext("2d");
+    og.translate(size / 2, size / 2);
+    og.rotate(angle * Math.PI / 180);
+    og.translate(-size / 2, -size / 2);
+    og.drawImage(src, 0, 0);
+    return out.toDataURL();
+}
+
+// ==================== mock 生成 ====================
+function mockGenerate(type) {
+    const captchaKey = type + "-" + Date.now() + "-" + rndInt(1000, 9999);
+    if (type === "number") {
+        const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+        let text = "";
+        for (let i = 0; i < 4; i++) text += chars[rndInt(0, chars.length - 1)];
+        MOCK[captchaKey] = { type, answer: text.toLowerCase() };
+        return { captchaKey, type, imageBase64: drawTextImage(text, 200, 60), extra: {} };
+    }
+    if (type === "arithmetic") {
+        const a = rndInt(1, 20), b = rndInt(1, 20);
+        MOCK[captchaKey] = { type, answer: String(a + b) };
+        return { captchaKey, type, imageBase64: drawTextImage(a + " + " + b + " = ?", 220, 60), extra: {} };
+    }
+    if (type === "slider") {
+        const w = 320, h = 160, bs = 44;
+        const gapX = rndInt(bs + 10, w - bs - 10);
+        const gapY = rndInt(0, h - bs);
+        const r = drawSliderImages(w, h, bs, gapX, gapY);
+        MOCK[captchaKey] = { type, answer: gapX, w, h, bs, gapY };
+        return { captchaKey, type, imageBase64: r.bg, extra: { sliderImage: r.slider, gapY, blockSize: bs, width: w, height: h } };
+    }
+    if (type === "rotate") {
+        const size = 220;
+        const angle = rndInt(0, 359);
+        MOCK[captchaKey] = { type, answer: angle, size };
+        return { captchaKey, type, imageBase64: drawRotateImage(size, angle), extra: { size, angle } };
+    }
+    return null;
+}
+
+// ==================== mock 校验 ====================
+function mockVerify(captchaKey, input) {
+    const rec = MOCK[captchaKey];
+    if (!rec) return { success: false, message: "验证码已过期或不存在" };
+    let ok = false, msg = "";
+    try {
+        if (rec.type === "number") {
+            ok = String(input).trim().toLowerCase() === rec.answer;
+        } else if (rec.type === "arithmetic") {
+            ok = parseInt(String(input).trim(), 10) === parseInt(rec.answer, 10);
+        } else if (rec.type === "slider") {
+            const obj = typeof input === "string" ? JSON.parse(input) : input;
+            const pts = (obj.trajectory || []).length;
+            const diff = Math.abs(obj.value - rec.answer);
+            ok = diff <= 5 && pts >= 5;
+            msg = "偏差 " + diff + "px，轨迹点 " + pts;
+        } else if (rec.type === "rotate") {
+            const obj = typeof input === "string" ? JSON.parse(input) : input;
+            const pts = (obj.trajectory || []).length;
+            let d = Math.abs(((rec.answer - obj.value) % 360 + 360) % 360);
+            if (d > 180) d = 360 - d;
+            ok = d <= 5 && pts >= 5;
+            msg = "角度差 " + d + "°，轨迹点 " + pts;
+        }
+    } catch (e) {
+        return { success: false, message: "输入解析失败：" + e.message };
+    }
+    delete MOCK[captchaKey]; // 一次性消费
+    return { success: ok, message: ok ? "验证通过" : ("验证失败 " + msg) };
+}
+
+// ==================== API 调用（真实后端优先，失败回退 mock） ====================
+async function apiGenerate(type) {
+    try {
+        const r = await fetch("/api/captcha/generate?type=" + type);
+        if (r.ok) return await r.json();
+    } catch (e) { /* 网络错误或无后端，回退 mock */ }
+    return mockGenerate(type);
+}
+
+async function apiVerify(captchaKey, input) {
+    try {
+        const r = await fetch("/api/captcha/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ captchaKey: captchaKey, input: input })
+        });
+        if (r.ok) return await r.json();
+    } catch (e) { /* 回退 mock */ }
+    return mockVerify(captchaKey, input);
+}
+
+// ==================== 渲染 ====================
+function setResult(type, ok, msg) {
+    const el = document.getElementById(type + "-result");
+    el.textContent = msg || "";
+    el.className = "result " + (ok ? "ok" : (msg ? "fail" : ""));
+}
+
+async function loadCaptcha(type) {
+    setResult(type, false, "");
+    const data = await apiGenerate(type);
+    SESSION[type] = data;
+    if (type === "number") {
+        document.getElementById("number-img").src = data.imageBase64;
+        document.getElementById("number-input").value = "";
+    } else if (type === "arithmetic") {
+        document.getElementById("arithmetic-img").src = data.imageBase64;
+        document.getElementById("arithmetic-input").value = "";
+    } else if (type === "slider") {
+        renderSlider(data);
+    } else if (type === "rotate") {
+        renderRotate(data);
+    }
+}
+
+function renderSlider(data) {
+    const bg = document.getElementById("slider-bg");
+    const handle = document.getElementById("slider-handle");
+    const wrap = document.getElementById("slider-wrap");
+    const progress = document.getElementById("slider-progress");
+    bg.src = data.imageBase64;
+    handle.src = data.extra.sliderImage;
+    const bs = data.extra.blockSize;
+    const gapY = data.extra.gapY;
+    const w = data.extra.width;
+    handle.style.width = bs + "px";
+    handle.style.height = bs + "px";
+    handle.style.top = gapY + "px";
+    handle.style.left = "0px";
+    wrap.style.width = w + "px";
+    progress.style.width = "0px";
+    // 拖动状态
+    handle._drag = { max: w - bs, value: 0, points: [] };
+}
+
+function renderRotate(data) {
+    const img = document.getElementById("rotate-img");
+    img.src = data.imageBase64;
+    const size = data.extra.size;
+    img.style.width = size + "px";
+    img.style.height = size + "px";
+    img.style.transform = "rotate(0deg)";
+    img._drag = { value: 0, points: [] };
+}
+
+// ==================== 文本类验证（数字 / 算术） ====================
+async function verifyText(type) {
+    const s = SESSION[type];
+    if (!s) { setResult(type, false, "请先获取验证码"); return; }
+    const val = document.getElementById(type + "-input").value;
+    if (!val) { setResult(type, false, "请输入答案"); return; }
+    const res = await apiVerify(s.captchaKey, val);
+    setResult(type, res.success, res.message + (res.success ? "" : "（已失效，请刷新）"));
+    if (!res.success) loadCaptcha(type);
+}
+
+// ==================== 滑动轨迹采集 ====================
+(function initSliderDrag() {
+    const handle = document.getElementById("slider-handle");
+    const progress = document.getElementById("slider-progress");
+    let dragging = false, startX = 0, startTime = 0;
+
+    handle.addEventListener("mousedown", function (e) {
+        if (!handle._drag) return;
+        dragging = true;
+        startX = e.clientX;
+        startTime = Date.now();
+        handle._drag.value = 0;
+        handle._drag.points = [{ t: 0, v: 0 }];
+        e.preventDefault();
+    });
+    document.addEventListener("mousemove", function (e) {
+        if (!dragging) return;
+        const d = handle._drag;
+        let dx = e.clientX - startX;
+        dx = Math.max(0, Math.min(dx, d.max));
+        d.value = dx;
+        d.points.push({ t: Date.now() - startTime, v: Math.round(dx) });
+        handle.style.left = dx + "px";
+        progress.style.width = dx + "px";
+    });
+    document.addEventListener("mouseup", function () {
+        if (dragging) dragging = false;
+    });
+})();
+
+async function verifySlider() {
+    const s = SESSION.slider;
+    if (!s) { setResult("slider", false, "请先获取验证码"); return; }
+    const d = document.getElementById("slider-handle")._drag;
+    if (!d || d.points.length < 2) { setResult("slider", false, "请拖动滑块"); return; }
+    const payload = { value: Math.round(d.value), trajectory: d.points };
+    const input = JSON.stringify(payload);
+    document.getElementById("slider-payload").textContent = input;
+    document.getElementById("slider-payload").classList.add("show");
+    const res = await apiVerify(s.captchaKey, input);
+    setResult("slider", res.success, res.message + (res.success ? "" : "（已失效，请刷新）"));
+    if (!res.success) loadCaptcha("slider");
+}
+
+// ==================== 旋转轨迹采集 ====================
+(function initRotateDrag() {
+    const img = document.getElementById("rotate-img");
+    let dragging = false, startX = 0, startTime = 0;
+
+    img.addEventListener("mousedown", function (e) {
+        if (!img._drag) return;
+        dragging = true;
+        startX = e.clientX;
+        startTime = Date.now();
+        img._drag.value = 0;
+        img._drag.points = [{ t: 0, v: 0 }];
+        e.preventDefault();
+    });
+    document.addEventListener("mousemove", function (e) {
+        if (!dragging) return;
+        const d = img._drag;
+        // 横向拖动：每像素 0.5 度
+        let deg = Math.round((e.clientX - startX) * 0.5);
+        if (deg < 0) deg = 0;
+        if (deg > 360) deg = 360;
+        d.value = deg;
+        d.points.push({ t: Date.now() - startTime, v: deg });
+        // 图片已按目标角度预旋转，用户反向旋转以归正
+        img.style.transform = "rotate(" + (-deg) + "deg)";
+    });
+    document.addEventListener("mouseup", function () {
+        if (dragging) dragging = false;
+    });
+})();
+
+async function verifyRotate() {
+    const s = SESSION.rotate;
+    if (!s) { setResult("rotate", false, "请先获取验证码"); return; }
+    const d = document.getElementById("rotate-img")._drag;
+    if (!d || d.points.length < 2) { setResult("rotate", false, "请拖动旋转图片"); return; }
+    const payload = { value: Math.round(d.value), trajectory: d.points };
+    const input = JSON.stringify(payload);
+    document.getElementById("rotate-payload").textContent = input;
+    document.getElementById("rotate-payload").classList.add("show");
+    const res = await apiVerify(s.captchaKey, input);
+    setResult("rotate", res.success, res.message + (res.success ? "" : "（已失效，请刷新）"));
+    if (!res.success) loadCaptcha("rotate");
+}
+
+// ==================== 初始化 ====================
+["number", "arithmetic", "slider", "rotate"].forEach(loadCaptcha);
+</script>
+</body>
+</html>

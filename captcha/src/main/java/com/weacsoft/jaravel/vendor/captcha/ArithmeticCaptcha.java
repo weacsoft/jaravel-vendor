@@ -67,6 +67,9 @@ public class ArithmeticCaptcha extends AbstractCaptcha {
         try {
             addNoise(g, width, height, p.getNoiseCount(), random);
             addInterfereLines(g, width, height, p.getInterfereCount(), random);
+            if (p.isArcInterfere()) {
+                addArcInterference(g, width, height, p.getArcInterfereCount(), random);
+            }
             drawText(g, expression, width, height, random);
         } finally {
             g.dispose();

@@ -18,6 +18,21 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *     tolerance: 5.0
  *     noise: 50
  *     interfere-lines: 30
+ *     # 视觉配置
+ *     font-family: Arial
+ *     font-style: 1
+ *     min-font-size: 28
+ *     max-font-size: 36
+ *     max-rotation-degree: 30
+ *     char-set: null
+ *     arc-interfere: true
+ *     arc-interfere-count: 5
+ *     # 轨迹验证配置
+ *     trajectory-enabled: true
+ *     min-trajectory-points: 5
+ *     min-trajectory-duration-ms: 500
+ *     max-trajectory-duration-ms: 30000
+ *     max-jump-distance: 80
  * </pre>
  */
 @ConfigurationProperties(prefix = "jaravel.captcha")
@@ -50,6 +65,23 @@ public class CaptchaProperties {
     /** 干扰线数量 */
     private int interfereLines = 30;
 
+    // 视觉配置
+    private String fontFamily = "Arial";
+    private int fontStyle = 1;
+    private int minFontSize = 0;
+    private int maxFontSize = 0;
+    private int maxRotationDegree = 30;
+    private String charSet = null;
+    private boolean arcInterfere = true;
+    private int arcInterfereCount = 5;
+
+    // 轨迹验证配置
+    private boolean trajectoryEnabled = true;
+    private int minTrajectoryPoints = 5;
+    private long minTrajectoryDurationMs = 500;
+    private long maxTrajectoryDurationMs = 30000;
+    private double maxJumpDistance = 80;
+
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
 
@@ -77,6 +109,45 @@ public class CaptchaProperties {
     public int getInterfereLines() { return interfereLines; }
     public void setInterfereLines(int interfereLines) { this.interfereLines = interfereLines; }
 
+    public String getFontFamily() { return fontFamily; }
+    public void setFontFamily(String fontFamily) { this.fontFamily = fontFamily; }
+
+    public int getFontStyle() { return fontStyle; }
+    public void setFontStyle(int fontStyle) { this.fontStyle = fontStyle; }
+
+    public int getMinFontSize() { return minFontSize; }
+    public void setMinFontSize(int minFontSize) { this.minFontSize = minFontSize; }
+
+    public int getMaxFontSize() { return maxFontSize; }
+    public void setMaxFontSize(int maxFontSize) { this.maxFontSize = maxFontSize; }
+
+    public int getMaxRotationDegree() { return maxRotationDegree; }
+    public void setMaxRotationDegree(int maxRotationDegree) { this.maxRotationDegree = maxRotationDegree; }
+
+    public String getCharSet() { return charSet; }
+    public void setCharSet(String charSet) { this.charSet = charSet; }
+
+    public boolean isArcInterfere() { return arcInterfere; }
+    public void setArcInterfere(boolean arcInterfere) { this.arcInterfere = arcInterfere; }
+
+    public int getArcInterfereCount() { return arcInterfereCount; }
+    public void setArcInterfereCount(int arcInterfereCount) { this.arcInterfereCount = arcInterfereCount; }
+
+    public boolean isTrajectoryEnabled() { return trajectoryEnabled; }
+    public void setTrajectoryEnabled(boolean trajectoryEnabled) { this.trajectoryEnabled = trajectoryEnabled; }
+
+    public int getMinTrajectoryPoints() { return minTrajectoryPoints; }
+    public void setMinTrajectoryPoints(int minTrajectoryPoints) { this.minTrajectoryPoints = minTrajectoryPoints; }
+
+    public long getMinTrajectoryDurationMs() { return minTrajectoryDurationMs; }
+    public void setMinTrajectoryDurationMs(long minTrajectoryDurationMs) { this.minTrajectoryDurationMs = minTrajectoryDurationMs; }
+
+    public long getMaxTrajectoryDurationMs() { return maxTrajectoryDurationMs; }
+    public void setMaxTrajectoryDurationMs(long maxTrajectoryDurationMs) { this.maxTrajectoryDurationMs = maxTrajectoryDurationMs; }
+
+    public double getMaxJumpDistance() { return maxJumpDistance; }
+    public void setMaxJumpDistance(double maxJumpDistance) { this.maxJumpDistance = maxJumpDistance; }
+
     /**
      * 转为核心层配置对象。
      */
@@ -91,6 +162,19 @@ public class CaptchaProperties {
         core.setTolerance(tolerance);
         core.setNoiseCount(noise);
         core.setInterfereCount(interfereLines);
+        core.setFontFamily(fontFamily);
+        core.setFontStyle(fontStyle);
+        core.setMinFontSize(minFontSize);
+        core.setMaxFontSize(maxFontSize);
+        core.setMaxRotationDegree(maxRotationDegree);
+        core.setCharSet(charSet);
+        core.setArcInterfere(arcInterfere);
+        core.setArcInterfereCount(arcInterfereCount);
+        core.setTrajectoryEnabled(trajectoryEnabled);
+        core.setMinTrajectoryPoints(minTrajectoryPoints);
+        core.setMinTrajectoryDurationMs(minTrajectoryDurationMs);
+        core.setMaxTrajectoryDurationMs(maxTrajectoryDurationMs);
+        core.setMaxJumpDistance(maxJumpDistance);
         return core;
     }
 }

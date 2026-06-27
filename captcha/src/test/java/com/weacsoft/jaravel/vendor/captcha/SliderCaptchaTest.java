@@ -3,13 +3,66 @@ package com.weacsoft.jaravel.vendor.captcha;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * {@link SliderCaptcha} 单元测试。
+ * {@link SliderCaptcha} 单元测试，覆盖轨迹验证启用 / 禁用两种模式。
+ * <p>
+ * 默认配置 {@link CaptchaProperties#isTrajectoryEnabled()} 为 true，
+ * 因此除"禁用轨迹"用例外，均需提交包含 trajectory 的 JSON。
  */
 class SliderCaptchaTest {
+
+    /**
+     * 构造一份合法的"人类拖动"轨迹 JSON：value 为最终滑块 x 坐标，
+     * trajectory 为 11 个采样点，总时长 1000ms，使用余弦缓动（ease-in-out）
+     * 模拟"加速 → 接近匀速 → 减速"的真实拖动过程。
+     * <p>
+     * 余弦缓动保证相邻点跳变随 finalValue 线性缩放：在 finalValue ≤ 360 时
+     * 单步跳变不超过约 56（默认 maxJumpDistance=80），且速度方差与加速度方向
+     * 多样性均满足 {@link TrajectoryValidator} 校验，从而对任意 gapX 均稳定合法。
+     */
+    private String buildHumanTrajectoryJson(int finalValue) {
+        int n = 11;
+        StringBuilder sb = new StringBuilder();
+        sb.append("{\"value\":").append(finalValue).append(",\"trajectory\":[");
+        for (int i = 0; i < n; i++) {
+            double s = (double) i / (n - 1);                  // 0..1
+            double eased = 0.5 * (1 - Math.cos(Math.PI * s)); // S 曲线 0..1
+            long t = Math.round(s * 1000.0);
+            long v = Math.round(finalValue * eased);
+            if (i > 0) {
+                sb.append(",");
+            }
+            sb.append("{\"t\":").append(t).append(",\"v\":").append(v).append("}");
+        }
+        sb.append("]}");
+        return sb.toString();
+    }
+
+    /** 轨迹点数不足（3 < 默认 5）的轨迹 JSON，value 正确。 */
+    private String buildTooFewPointsJson(int finalValue) {
+        return "{\"value\":" + finalValue + ",\"trajectory\":["
+                + "{\"t\":0,\"v\":0},"
+                + "{\"t\":500,\"v\":" + (finalValue / 2) + "},"
+                + "{\"t\":1000,\"v\":" + finalValue + "}"
+                + "]}";
+    }
+
+    /** 总时长过短（300ms < 默认 500ms）的轨迹 JSON，value 正确、点数充足。 */
+    private String buildTooFastJson(int finalValue) {
+        int step = finalValue / 5;
+        return "{\"value\":" + finalValue + ",\"trajectory\":["
+                + "{\"t\":0,\"v\":0},"
+                + "{\"t\":60,\"v\":" + step + "},"
+                + "{\"t\":120,\"v\":" + (2 * step) + "},"
+                + "{\"t\":180,\"v\":" + (3 * step) + "},"
+                + "{\"t\":240,\"v\":" + (4 * step) + "},"
+                + "{\"t\":300,\"v\":" + finalValue + "}"
+                + "]}";
+    }
 
     @Test
     void testGenerate() {
@@ -30,26 +83,77 @@ class SliderCaptchaTest {
     }
 
     @Test
-    void testVerifyCorrect() {
-        SliderCaptcha captcha = new SliderCaptcha();
-        String key = "sli-correct-key";
+    void testVerifyWithTrajectory() {
+        // 正确值 + 合法人类轨迹 → 验证通过
+        SliderCaptcha captcha = new SliderCaptcha(); // 默认启用轨迹验证
+        String key = "sli-with-traj-key";
         captcha.generate(key);
-        // 从 store 取回答案 gapX（get 不消费）
+        // store.get 不消费答案，verify 内部用 pull 消费
+        String answer = captcha.getStore().get(key);
+        assertNotNull(answer);
+        int gapX = Integer.parseInt(answer.trim());
+        assertTrue(captcha.verify(key, buildHumanTrajectoryJson(gapX)));
+    }
+
+    @Test
+    void testVerifyWithoutTrajectory() {
+        // 启用轨迹验证时，只提交数字（无 trajectory）应失败
+        SliderCaptcha captcha = new SliderCaptcha();
+        String key = "sli-no-traj-key";
+        captcha.generate(key);
+        String answer = captcha.getStore().get(key);
+        assertNotNull(answer);
+        // 即便数值正确，缺少轨迹也无法通过
+        assertFalse(captcha.verify(key, answer));
+    }
+
+    @Test
+    void testVerifyTrajectoryTooFewPoints() {
+        // 轨迹点数太少应失败
+        SliderCaptcha captcha = new SliderCaptcha();
+        String key = "sli-few-points-key";
+        captcha.generate(key);
+        String answer = captcha.getStore().get(key);
+        assertNotNull(answer);
+        int gapX = Integer.parseInt(answer.trim());
+        assertFalse(captcha.verify(key, buildTooFewPointsJson(gapX)));
+    }
+
+    @Test
+    void testVerifyTrajectoryTooFast() {
+        // 轨迹时长太短应失败
+        SliderCaptcha captcha = new SliderCaptcha();
+        String key = "sli-too-fast-key";
+        captcha.generate(key);
+        String answer = captcha.getStore().get(key);
+        assertNotNull(answer);
+        int gapX = Integer.parseInt(answer.trim());
+        assertFalse(captcha.verify(key, buildTooFastJson(gapX)));
+    }
+
+    @Test
+    void testVerifyTrajectoryDisabled() {
+        // 禁用轨迹验证时，只提交数字应通过
+        CaptchaProperties props = CaptchaProperties.createDefault();
+        props.setTrajectoryEnabled(false);
+        SliderCaptcha captcha = new SliderCaptcha(new MemoryCaptchaStore(), props);
+        String key = "sli-disabled-key";
+        captcha.generate(key);
         String answer = captcha.getStore().get(key);
         assertNotNull(answer);
         assertTrue(captcha.verify(key, answer));
     }
 
     @Test
-    void testVerifyTolerance() {
-        // 默认容差 tolerance=5.0
+    void testVerifyWrongValue() {
+        // 值不在容差范围内应失败
         SliderCaptcha captcha = new SliderCaptcha();
-        String key = "sli-tol-key";
+        String key = "sli-wrong-value-key";
         captcha.generate(key);
         String answer = captcha.getStore().get(key);
         assertNotNull(answer);
-        double gapX = Double.parseDouble(answer);
-        // 偏移 3 像素，在容差范围内
-        assertTrue(captcha.verify(key, String.valueOf(gapX + 3)));
+        int gapX = Integer.parseInt(answer.trim());
+        int wrongValue = gapX + 100; // 明显超出容差（默认 5）
+        assertFalse(captcha.verify(key, buildHumanTrajectoryJson(wrongValue)));
     }
 }

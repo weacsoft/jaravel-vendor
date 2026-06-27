@@ -13,14 +13,17 @@
 - [5. 四种验证码详解](#5-四种验证码详解)
 - [6. 无状态 token 验证](#6-无状态-token-验证)
 - [7. 配置说明](#7-配置说明)
-- [8. 存储选择](#8-存储选择)
-- [9. 自定义验证码类型](#9-自定义验证码类型)
+- [8. 轨迹验证](#8-轨迹验证)
+- [9. 可配置性](#9-可配置性)
+- [10. 存储选择](#10-存储选择)
+- [11. 自定义验证码类型](#11-自定义验证码类型)
 
 ---
 
 ## 1. 核心特性
 
 - **四种验证码**：图片数字（`number`）、算术（`arithmetic`）、滑动拼图（`slider`）、旋转（`rotate`）
+- **轨迹行为分析**：滑动/旋转验证码不仅校验最终位置，还校验拖动轨迹的人类行为特征——点数、时长、连续性、非匀速、加速度方向多样性，有效防范自动化脚本直接提交最终值
 - **核心层零 SpringBoot 依赖**：纯 Java 实现，图像生成基于 `java.awt`，编码基于 `java.util.Base64`，可独立嵌入任意 Java 项目
 - **模板方法模式**：`AbstractCaptcha` 封装生成/验证的模板流程，子类只需实现 `doGenerate` 与 `doVerify` 两个钩子方法
 - **存储解耦（SPI）**：通过 `CaptchaStore` 接口与具体存储解耦，内置 `MemoryCaptchaStore`（内存）与 `CacheStoreCaptchaStore`（适配 jaravel cache 模块，支持 Redis 等）
@@ -28,6 +31,7 @@
 - **答案防泄露**：答案仅存于 `CaptchaStore`，不下发到前端；`CaptchaResult` 中只包含 base64 图片、token 与额外展示数据
 - **统一管理器**：`CaptchaManager` 维护 `type -> Captcha` 映射，提供按类型生成/验证的统一入口，`createDefault()` 开箱注册四种验证码
 - **SpringBoot 3 自动装配**：引入依赖即自动创建 `CaptchaManager` Bean，并根据是否引入 cache 模块智能选择存储
+- **视觉高度可配置**：字体名称/样式/大小、字符旋转角度、自定义字符集、弧线干扰（比直线更难被 OCR 识别）等均可通过配置项调整
 
 ---
 
@@ -199,6 +203,8 @@ public class CaptchaController {
 
 无需任何配置即可启动，默认使用内存存储与默认图片参数。通过 `application.yml` 可自定义配置（见[第 7 节](#7-配置说明)）。
 
+> **前端示例**：模块内置了一个完整的演示页面 `src/main/resources/static/captcha-demo.html`，涵盖数字、算术、滑动、旋转四种验证码的生成、展示、轨迹采集与验证全流程。滑动/旋转验证码的轨迹采集逻辑可直接参考该文件（详见[第 8.4 节](#84-前端轨迹采集示例)）。在 SpringBoot 项目中引入本模块后，访问 `http://localhost:8080/captcha-demo.html` 即可打开演示页（需配置静态资源访问）。
+
 ### 4.3 自定义配置的独立使用
 
 不使用 SpringBoot 时，可手动构造配置与存储：
@@ -272,43 +278,56 @@ boolean ok = manager.verify("arithmetic", key, "17");
 
 ### 5.3 滑动验证码（`slider`）
 
-在背景图上随机位置抠出缺口，前端拖动滑块拼回缺口。
+在背景图上随机位置抠出缺口，前端拖动滑块拼回缺口。启用轨迹验证时还需校验拖动轨迹的人类行为特征。
 
 | 项 | 说明 |
 | --- | --- |
 | 类型名 | `slider` |
 | 答案 | 缺口横坐标 `gapX`（像素） |
-| 用户输入 | 滑块拖动的 x 坐标 |
-| 验证规则 | 按 `tolerance` 像素容差判定（`|gapX - input| <= tolerance`） |
+| 用户输入 | 滑块拖动的 x 坐标。启用轨迹验证时需提交 JSON（见[第 8 节](#8-轨迹验证)） |
+| 验证规则 | 1. 位置校验：`Math.abs(gapX - value) <= tolerance`；2. 轨迹校验（可选）：通过 `TrajectoryValidator` 校验拖动行为 |
 | `imageBase64` | 带缺口的背景图 |
 | `extra.sliderImage` | 滑块拼图小块（带透明通道的 PNG base64） |
 | `extra.gapY` | 缺口纵坐标（前端固定滑块纵坐标用） |
 | `extra.blockSize` | 滑块边长 |
+| `extra.trajectoryEnabled` | 是否启用了轨迹验证（前端可据此决定提交格式） |
 
 ```java
 CaptchaResult result = manager.generate("slider", key);
 // 前端用 imageBase64 作背景，sliderImage 作滑块，gapY 固定纵坐标
-// 用户拖动后提交 x 坐标
-boolean ok = manager.verify("slider", key, "123");  // 用户拖动到 x=123
+// 用户拖动后提交 JSON：
+// {"value": 123, "trajectory": [{"t":0,"v":0},{"t":50,"v":5},...]}
+boolean ok = manager.verify("slider", key,
+        "{\"value\":123,\"trajectory\":[{\"t\":0,\"v\":0},{\"t\":50,\"v\":5}]}");
+
+// 未启用轨迹验证时，也可直接提交数字字符串（向后兼容）
+boolean ok2 = manager.verify("slider", key, "123");
 ```
 
 ### 5.4 旋转验证码（`rotate`）
 
-将一张带明显朝向（向上箭头）的图片随机旋转，前端拖动将其转回正方向。
+将一张带明显朝向（向上箭头）的图片随机旋转，前端拖动将其转回正方向。启用轨迹验证时还需校验旋转轨迹的人类行为特征。
 
 | 项 | 说明 |
 | --- | --- |
 | 类型名 | `rotate` |
 | 答案 | 旋转角度（0~359） |
-| 用户输入 | 用户旋转的角度 |
-| 验证规则 | 按 `tolerance` 角度容差判定（双向最短角差） |
+| 用户输入 | 用户旋转的角度。启用轨迹验证时需提交 JSON（见[第 8 节](#8-轨迹验证)） |
+| 验证规则 | 1. 角度校验：双向最短角差 `diff <= tolerance`；2. 轨迹校验（可选）：通过 `TrajectoryValidator` 校验旋转行为 |
 | `imageBase64` | 旋转后的图片（正方形） |
 | `extra.size` | 图片边长 |
+| `extra.trajectoryEnabled` | 是否启用了轨迹验证（前端可据此决定提交格式） |
+| 朝向标记 | 顶部居中向上箭头（白色杆 + 蓝色三角头部），便于用户判断正方向 |
 
 ```java
 CaptchaResult result = manager.generate("rotate", key);
-// 前端展示旋转后的图片，用户拖动转回正方向并提交角度
-boolean ok = manager.verify("rotate", key, "90");  // 用户旋转 90 度
+// 前端展示旋转后的图片，用户拖动转回正方向并提交 JSON：
+// {"value": 90, "trajectory": [{"t":0,"v":0},{"t":50,"v":3},...]}
+boolean ok = manager.verify("rotate", key,
+        "{\"value\":90,\"trajectory\":[{\"t\":0,\"v\":0},{\"t\":50,\"v\":3}]}");
+
+// 未启用轨迹验证时，也可直接提交数字字符串（向后兼容）
+boolean ok2 = manager.verify("rotate", key, "90");
 ```
 
 ---
@@ -377,9 +396,26 @@ jaravel:
     tolerance: 5.0             # 滑动/旋转容差（滑动为像素，旋转为角度）
     noise: 50                  # 噪点数量
     interfere-lines: 30        # 干扰线数量
+    # 视觉配置
+    font-family: Arial         # 字体名称（null=系统默认）
+    font-style: 1              # 字体样式：PLAIN=0, BOLD=1, ITALIC=2, BOLD|ITALIC=3
+    min-font-size: 28          # 最小字体大小（0=自动按图片高度计算）
+    max-font-size: 36          # 最大字体大小（0=自动按图片高度计算）
+    max-rotation-degree: 30    # 每个字符最大旋转角度（0~90）
+    char-set: null             # 自定义字符集（null=默认字符集，排除易混淆字符 0/O/1/I/L）
+    arc-interfere: true        # 是否添加弧线干扰（比直线更难被 OCR 识别）
+    arc-interfere-count: 5     # 弧线干扰数量
+    # 轨迹验证配置
+    trajectory-enabled: true            # 是否启用轨迹验证（滑动/旋转验证码）
+    min-trajectory-points: 5           # 轨迹最少点数（低于此值判定为机器行为）
+    min-trajectory-duration-ms: 500    # 轨迹最短持续时间（毫秒）
+    max-trajectory-duration-ms: 30000  # 轨迹最长持续时间（毫秒）
+    max-jump-distance: 80              # 相邻轨迹点最大跳变距离
 ```
 
 ### 配置项说明
+
+#### 基础配置
 
 | 属性 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
@@ -393,7 +429,30 @@ jaravel:
 | `jaravel.captcha.noise` | `int` | `50` | 噪点数量 |
 | `jaravel.captcha.interfere-lines` | `int` | `30` | 干扰线数量 |
 
-> **注意**：SpringBoot 配置类（`springboot.CaptchaProperties`）的字段名 `noise` / `interfereLines` 与核心层配置类（`CaptchaProperties`）的字段名 `noiseCount` / `interfereCount` 不同。自动装配时通过 `toCoreProperties()` 方法完成映射转换。
+#### 视觉配置
+
+| 属性 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `jaravel.captcha.font-family` | `String` | `Arial` | 字体名称（`null` 表示使用系统默认） |
+| `jaravel.captcha.font-style` | `int` | `1` | 字体样式：`Font.PLAIN=0`、`Font.BOLD=1`、`Font.ITALIC=2`、`Font.BOLD\|Font.ITALIC=3` |
+| `jaravel.captcha.min-font-size` | `int` | `0` | 最小字体大小（`0` 表示自动按图片高度计算） |
+| `jaravel.captcha.max-font-size` | `int` | `0` | 最大字体大小（`0` 表示自动按图片高度计算） |
+| `jaravel.captcha.max-rotation-degree` | `int` | `30` | 每个字符最大旋转角度（0~90） |
+| `jaravel.captcha.char-set` | `String` | `null` | 自定义字符集（`null` 表示使用默认字符集 `ABCDEFGHJKMNPQRSTUVWXYZ23456789`） |
+| `jaravel.captcha.arc-interfere` | `boolean` | `true` | 是否添加弧线干扰（比直线更难被 OCR 识别） |
+| `jaravel.captcha.arc-interfere-count` | `int` | `5` | 弧线干扰数量 |
+
+#### 轨迹验证配置
+
+| 属性 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `jaravel.captcha.trajectory-enabled` | `boolean` | `true` | 是否启用轨迹验证（滑动/旋转验证码） |
+| `jaravel.captcha.min-trajectory-points` | `int` | `5` | 轨迹最少点数（低于此值判定为机器行为） |
+| `jaravel.captcha.min-trajectory-duration-ms` | `long` | `500` | 轨迹最短持续时间（毫秒，低于此值判定为机器行为） |
+| `jaravel.captcha.max-trajectory-duration-ms` | `long` | `30000` | 轨迹最长持续时间（毫秒，超过此值判定为可疑行为） |
+| `jaravel.captcha.max-jump-distance` | `double` | `80` | 相邻轨迹点最大跳变距离（超过此值判定为非连续操作） |
+
+> **注意**：SpringBoot 配置类（`springboot.CaptchaProperties`）的字段名 `noise` / `interfereLines` 与核心层配置类（`CaptchaProperties`）的字段名 `noiseCount` / `interfereCount` 不同。自动装配时通过 `toCoreProperties()` 方法完成映射转换。其余视觉与轨迹字段在两层中名称一致。
 
 ### 核心层配置（独立使用）
 
@@ -409,6 +468,21 @@ properties.setCaseSensitive(true);
 properties.setTolerance(8.0);
 properties.setNoiseCount(80);
 properties.setInterfereCount(40);
+// 视觉配置
+properties.setFontFamily("Arial");
+properties.setFontStyle(1);          // Font.BOLD
+properties.setMinFontSize(28);
+properties.setMaxFontSize(36);
+properties.setMaxRotationDegree(30);
+properties.setCharSet(null);         // null=默认字符集
+properties.setArcInterfere(true);
+properties.setArcInterfereCount(5);
+// 轨迹验证配置
+properties.setTrajectoryEnabled(true);
+properties.setMinTrajectoryPoints(5);
+properties.setMinTrajectoryDurationMs(500);
+properties.setMaxTrajectoryDurationMs(30000);
+properties.setMaxJumpDistance(80);
 ```
 
 | 字段 | 类型 | 默认值 | 说明 |
@@ -421,14 +495,235 @@ properties.setInterfereCount(40);
 | `tolerance` | `double` | `5.0` | 容差范围 |
 | `interfereCount` | `int` | `30` | 干扰线数量 |
 | `noiseCount` | `int` | `50` | 噪点数量 |
+| `fontFamily` | `String` | `"Arial"` | 字体名称 |
+| `fontStyle` | `int` | `1` | 字体样式（`Font.PLAIN=0`、`Font.BOLD=1`、`Font.ITALIC=2`、`Font.BOLD\|Font.ITALIC=3`） |
+| `minFontSize` | `int` | `0` | 最小字体大小（`0` = 自动按图片高度计算） |
+| `maxFontSize` | `int` | `0` | 最大字体大小（`0` = 自动按图片高度计算） |
+| `maxRotationDegree` | `int` | `30` | 每个字符最大旋转角度（0~90） |
+| `charSet` | `String` | `null` | 自定义字符集（`null` = 默认字符集） |
+| `arcInterfere` | `boolean` | `true` | 是否添加弧线干扰 |
+| `arcInterfereCount` | `int` | `5` | 弧线干扰数量 |
+| `trajectoryEnabled` | `boolean` | `true` | 是否启用轨迹验证 |
+| `minTrajectoryPoints` | `int` | `5` | 轨迹最少点数 |
+| `minTrajectoryDurationMs` | `long` | `500` | 轨迹最短持续时间（毫秒） |
+| `maxTrajectoryDurationMs` | `long` | `30000` | 轨迹最长持续时间（毫秒） |
+| `maxJumpDistance` | `double` | `80` | 相邻轨迹点最大跳变距离 |
+
+> 核心层 `CaptchaProperties` 还提供 `getEffectiveChars()` 方法：当 `charSet` 为空时返回默认字符集 `ABCDEFGHJKMNPQRSTUVWXYZ23456789`，否则返回自定义字符集的字符数组。默认字符集常量 `DEFAULT_CHARS` 也定义在本类中（包级可见）。
 
 ---
 
-## 8. 存储选择
+## 8. 轨迹验证
+
+滑动（`slider`）与旋转（`rotate`）验证码在启用 `trajectory-enabled` 后，不仅校验用户提交的最终位置/角度，还会校验拖动过程产生的轨迹是否具有人类行为特征，从而有效防范自动化脚本直接提交最终值绕过验证。
+
+### 8.1 用户输入格式变更
+
+启用轨迹验证时，前端必须以 **JSON 字符串** 提交用户输入，格式如下：
+
+```json
+{
+  "value": 123,
+  "trajectory": [
+    {"t": 0, "v": 0},
+    {"t": 50, "v": 5},
+    {"t": 120, "v": 18},
+    {"t": 200, "v": 42},
+    {"t": 280, "v": 78},
+    {"t": 350, "v": 110},
+    {"t": 420, "v": 123}
+  ]
+}
+```
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `value` | `number` | 最终值。滑动为滑块 x 坐标（像素），旋转为最终角度（0~360） |
+| `trajectory` | `array` | 拖动过程中采集的轨迹点序列 |
+| `trajectory[].t` | `number` | 相对拖动开始的时间戳（毫秒），首个点通常为 `0` |
+| `trajectory[].v` | `number` | 该时刻的值。滑动为 x 坐标，旋转为角度 |
+
+### 8.2 向后兼容
+
+当 `trajectory-enabled: false` 时（或轨迹点为空且未启用轨迹验证），`SliderCaptcha` / `RotateCaptcha` 的 `doVerify` 仍支持直接提交纯数字字符串（如 `"123"`、`"90"`），与旧版本完全兼容。`TrajectoryValidator.extractValue()` 会自动识别输入是 JSON 还是纯数字。
+
+### 8.3 五个验证维度
+
+`TrajectoryValidator.validate()` 按以下顺序依次校验，任一维度不通过即判定为机器行为：
+
+| 维度 | 检查内容 | 判定规则 |
+| --- | --- | --- |
+| 1. 点数检查 | 轨迹点数 | 必须 ≥ `min-trajectory-points`（默认 5）。机器行为往往点数过少 |
+| 2. 时长检查 | 总拖动时长 | 必须在 `[min-trajectory-duration-ms, max-trajectory-duration-ms]`（默认 500ms ~ 30000ms）区间内。过快或过慢均判定为可疑 |
+| 3. 连续性检查 | 相邻点值差 | 不能超过 `max-jump-distance`（默认 80）。排除瞬移式非连续操作 |
+| 4. 非匀速检查 | 速度方差 | 人类拖动具有"加速→匀速→减速"特征，速度方差应大于阈值。匀速直线运动判定为机器行为 |
+| 5. 加速度方向多样性 | 加速度正负方向 | 人类拖动过程中加速度方向会变化（先正后负），全程同方向加速度判定为可疑（仅在总位移较大时强制要求） |
+
+> 完整验证逻辑实现于 `com.weacsoft.jaravel.vendor.captcha.TrajectoryValidator`，详见 [AI-API.md](AI-API.md)。
+
+### 8.4 前端轨迹采集示例
+
+模块内置了一个完整的前端演示页面 `src/main/resources/static/captcha-demo.html`，其中包含滑动与旋转验证码的轨迹采集逻辑。以下为关键代码片段（滑动验证码）：
+
+```javascript
+// 滑动轨迹采集核心逻辑（摘自 captcha-demo.html）
+(function initSliderDrag() {
+    const handle = document.getElementById("slider-handle");
+    const progress = document.getElementById("slider-progress");
+    let dragging = false, startX = 0, startTime = 0;
+
+    // 鼠标按下：记录起点与起始时间，初始化轨迹首点 {t:0, v:0}
+    handle.addEventListener("mousedown", function (e) {
+        dragging = true;
+        startX = e.clientX;
+        startTime = Date.now();
+        handle._drag = { value: 0, points: [{ t: 0, v: 0 }] };
+        e.preventDefault();
+    });
+
+    // 鼠标移动：计算位移并追加轨迹点 {t: 相对毫秒, v: 当前 x 坐标}
+    document.addEventListener("mousemove", function (e) {
+        if (!dragging) return;
+        let dx = e.clientX - startX;
+        dx = Math.max(0, Math.min(dx, handle._drag.max));  // 限制在有效范围
+        handle._drag.value = dx;
+        handle._drag.points.push({ t: Date.now() - startTime, v: Math.round(dx) });
+        handle.style.left = dx + "px";
+        progress.style.width = dx + "px";
+    });
+
+    document.addEventListener("mouseup", function () { dragging = false; });
+})();
+
+// 提交验证：将最终值与轨迹组装为 JSON 提交
+async function verifySlider() {
+    const d = document.getElementById("slider-handle")._drag;
+    if (!d || d.points.length < 2) { setResult("slider", false, "请拖动滑块"); return; }
+    const payload = { value: Math.round(d.value), trajectory: d.points };
+    const input = JSON.stringify(payload);   // {"value":123,"trajectory":[...]}
+    const res = await apiVerify(captchaKey, input);
+    // ...
+}
+```
+
+旋转验证码的轨迹采集逻辑类似，区别在于将横向位移映射为角度（如每像素 0.5 度），并将 `value` 与 `trajectory[].v` 记录为角度值。完整实现参见 `captcha-demo.html` 中的 `initRotateDrag()` 与 `verifyRotate()`。
+
+### 8.5 关闭轨迹验证
+
+如需关闭轨迹验证（例如在测试环境或对兼容性有要求时），设置：
+
+```yaml
+jaravel:
+  captcha:
+    trajectory-enabled: false
+```
+
+关闭后，滑动/旋转验证码仅需提交纯数字字符串即可通过位置/角度校验，与旧版本行为一致。生成结果中的 `extra.trajectoryEnabled` 也会相应返回 `false`，前端可据此决定提交格式。
+
+---
+
+## 9. 可配置性
+
+captcha 模块的视觉呈现高度可配置，所有视觉相关参数均集中在 `CaptchaProperties`（核心层）与 `springboot.CaptchaProperties`（SpringBoot 适配层）中，可通过 `application.yml` 或 Java 代码调整。
+
+### 9.1 自定义字符集（`char-set`）
+
+默认字符集为 `ABCDEFGHJKMNPQRSTUVWXYZ23456789`（已排除易混淆字符 `0`/`O`/`1`/`I`/`L`）。如需自定义（例如仅使用数字、或加入小写字母），设置 `char-set`：
+
+```yaml
+jaravel:
+  captcha:
+    char-set: "0123456789"           # 仅数字
+    # char-set: "abcdefghjkmnpqrstuvwxyz23456789"  # 小写字母 + 数字
+```
+
+设为 `null` 时回退到默认字符集。核心层通过 `CaptchaProperties.getEffectiveChars()` 获取最终生效的字符数组，`AbstractCaptcha.randomString()` 会使用该方法生成的字符集。
+
+### 9.2 字体配置（`font-family` / `font-style` / `min-font-size` / `max-font-size`）
+
+| 配置项 | 说明 |
+| --- | --- |
+| `font-family` | 字体名称，如 `Arial`、`Microsoft YaHei`、`Serif` 等。`null` 表示使用系统默认 |
+| `font-style` | 字体样式：`Font.PLAIN=0`、`Font.BOLD=1`、`Font.ITALIC=2`、`Font.BOLD\|Font.ITALIC=3` |
+| `min-font-size` | 最小字体大小（像素）。设为 `0` 时自动按图片高度计算（`height - 14`） |
+| `max-font-size` | 最大字体大小（像素）。设为 `0` 时自动按图片高度计算（`height - 6`） |
+
+```yaml
+jaravel:
+  captcha:
+    font-family: "Microsoft YaHei"
+    font-style: 1            # 粗体
+    min-font-size: 28
+    max-font-size: 36
+```
+
+### 9.3 字符旋转角度（`max-rotation-degree`）
+
+每个字符会随机旋转一个角度以增加识别难度，旋转范围由 `max-rotation-degree` 控制（0~90）。设为 `0` 时字符不旋转。
+
+```yaml
+jaravel:
+  captcha:
+    max-rotation-degree: 30   # 每个字符在 -30° ~ +30° 之间随机旋转
+```
+
+### 9.4 弧线干扰（`arc-interfere` / `arc-interfere-count`）
+
+除了传统的直线干扰线（`interfere-lines`），模块还提供弧线干扰（二次贝塞尔曲线），比直线更难被 OCR 引擎识别：
+
+| 配置项 | 说明 |
+| --- | --- |
+| `arc-interfere` | 是否启用弧线干扰（默认 `true`） |
+| `arc-interfere-count` | 弧线数量（默认 `5`） |
+
+```yaml
+jaravel:
+  captcha:
+    arc-interfere: true
+    arc-interfere-count: 5
+```
+
+> 弧线干扰通过 `AbstractCaptcha.addArcInterference()` 方法绘制，使用 `java.awt.geom.QuadCurve2D` 实现二次贝塞尔曲线。
+
+### 9.5 完整配置示例
+
+```yaml
+jaravel:
+  captcha:
+    # 基础配置
+    enabled: true
+    width: 200
+    height: 60
+    length: 5
+    expire-seconds: 180
+    case-sensitive: true
+    tolerance: 6.0
+    noise: 60
+    interfere-lines: 25
+    # 视觉配置
+    font-family: "Microsoft YaHei"
+    font-style: 1
+    min-font-size: 28
+    max-font-size: 36
+    max-rotation-degree: 25
+    char-set: "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+    arc-interfere: true
+    arc-interfere-count: 6
+    # 轨迹验证配置
+    trajectory-enabled: true
+    min-trajectory-points: 6
+    min-trajectory-duration-ms: 600
+    max-trajectory-duration-ms: 20000
+    max-jump-distance: 60
+```
+
+---
+
+## 10. 存储选择
 
 验证码答案的存储通过 `CaptchaStore` 接口抽象，内置两种实现：
 
-### 8.1 MemoryCaptchaStore（默认）
+### 10.1 MemoryCaptchaStore（默认）
 
 | 项 | 说明 |
 | --- | --- |
@@ -439,7 +734,7 @@ properties.setInterfereCount(40);
 | 适用场景 | 单机、低并发场景 |
 | 跨进程 | 不支持（进程重启即失） |
 
-### 8.2 CacheStoreCaptchaStore（跨进程）
+### 10.2 CacheStoreCaptchaStore（跨进程）
 
 | 项 | 说明 |
 | --- | --- |
@@ -526,7 +821,7 @@ public class RedisCaptchaStore implements CaptchaStore {
 
 ---
 
-## 9. 自定义验证码类型
+## 11. 自定义验证码类型
 
 通过继承 `AbstractCaptcha` 实现自定义验证码，只需实现两个钩子方法：
 
@@ -651,4 +946,4 @@ verify(captchaKey, userInput)
   └─ 3. 调用 doVerify(answer, userInput)  ← 子类实现
 ```
 
-> `AbstractCaptcha` 还提供丰富的图像工具方法供子类复用：`createImage`、`createArgbImage`、`randomColor`、`drawRandomBackground`、`addNoise`、`addInterfereLines`、`drawText`、`toBase64`、`randomString` 等。
+> `AbstractCaptcha` 还提供丰富的图像工具方法供子类复用：`createImage`、`createArgbImage`、`randomColor`、`drawRandomBackground`、`addNoise`、`addInterfereLines`、`addArcInterference`（弧线干扰）、`drawText`（支持配置化字体/大小/旋转）、`toBase64`、`randomString`（支持自定义字符集）等。各方法签名详见 [AI-API.md](AI-API.md)。
