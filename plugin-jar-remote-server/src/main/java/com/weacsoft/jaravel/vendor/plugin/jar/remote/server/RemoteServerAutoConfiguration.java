@@ -41,9 +41,11 @@ public class RemoteServerAutoConfiguration {
                                                   HotPluginManager manager) {
         Application.HotPluginManagerRef ref = manager;
         RemotePluginServer server = new RemotePluginServer(
-                properties.getPort(), properties.getAuthToken(), ref);
+                properties.getPort(), properties.getAuthToken(), ref,
+                properties.getNodeId(), properties.isRelayEnabled());
+        server.setMaxHops(properties.getMaxHops());
         server.start();
-        log.info("远程插件服务端已自动启动: port={}", properties.getPort());
+        log.info("远程插件服务端已自动启动: port={}, relay={}", properties.getPort(), properties.isRelayEnabled());
         return server;
     }
 }

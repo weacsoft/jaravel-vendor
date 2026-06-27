@@ -110,6 +110,55 @@ public class RemoteExecutionDispatcher {
     }
 
     /**
+     * 注册子节点（树形模式，指定父节点）。
+     *
+     * @param id        子节点唯一标识
+     * @param host      主机地址
+     * @param port      端口
+     * @param authToken 认证令牌
+     * @param parentId  父节点 ID（null 表示根节点）
+     * @return 注册的子服务器信息
+     */
+    public SubServerInfo registerChild(String id, String host, int port, String authToken, String parentId) {
+        return registry.registerChild(id, host, port, authToken, parentId);
+    }
+
+    /**
+     * 注册子节点（树形模式，无认证）。
+     */
+    public SubServerInfo registerChild(String id, String host, int port, String parentId) {
+        return registry.registerChild(id, host, port, null, parentId);
+    }
+
+    /**
+     * 获取直接子节点列表。
+     */
+    public List<SubServerInfo> getChildren(String parentId) {
+        return registry.getChildren(parentId);
+    }
+
+    /**
+     * 获取整个子树。
+     */
+    public List<SubServerInfo> getSubtree(String rootId) {
+        return registry.getSubtree(rootId);
+    }
+
+    /**
+     * 获取所有根节点。
+     */
+    public List<SubServerInfo> getRoots() {
+        return registry.getRoots();
+    }
+
+    /**
+     * 打印树形结构（调试用）。
+     */
+    public String dumpTree() {
+        return registry.dumpTree();
+    }
+
+    /**
      * 注销子服务器，同时断开连接。
      */
     public boolean unregisterSubServer(String id) {

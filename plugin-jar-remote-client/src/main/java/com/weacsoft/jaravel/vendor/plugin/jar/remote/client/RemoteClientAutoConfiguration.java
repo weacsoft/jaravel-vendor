@@ -64,8 +64,16 @@ public class RemoteClientAutoConfiguration {
         HotPluginManager manager = managerProvider.getIfAvailable();
         Application.HotPluginManagerRef ref = manager;
         RemoteExecutionDispatcher dispatcher = new RemoteExecutionDispatcher(transport, ref);
-        log.info("远程插件执行客户端已初始化: transport={}, localExecute={}",
-                transport.getType(), ref != null);
+
+        // 应用树形路由配置
+        if (properties.isTreeRoutingEnabled()) {
+            dispatcher.getCoordinator().setTreeRoutingEnabled(true);
+            dispatcher.getCoordinator().setMaxHops(properties.getMaxHops());
+            log.info("树形路由已启用: maxHops={}", properties.getMaxHops());
+        }
+
+        log.info("远程插件执行客户端已初始化: transport={}, localExecute={}, treeRouting={}",
+                transport.getType(), ref != null, properties.isTreeRoutingEnabled());
         return dispatcher;
     }
 }

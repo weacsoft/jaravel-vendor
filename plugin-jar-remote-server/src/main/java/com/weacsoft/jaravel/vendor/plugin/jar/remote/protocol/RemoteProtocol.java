@@ -38,6 +38,21 @@ public final class RemoteProtocol {
     /** 消息类型：错误 */
     public static final int MSG_ERROR = 6;
 
+    // ==================== 树形拓扑消息类型 ====================
+
+    /** 消息类型：子节点注册（子节点向父节点注册自己） */
+    public static final int MSG_NODE_REGISTER = 10;
+    /** 消息类型：节点注册确认 */
+    public static final int MSG_NODE_REGISTER_ACK = 11;
+    /** 消息类型：节点树状态同步（心跳时携带子树状态） */
+    public static final int MSG_NODE_SYNC = 12;
+    /** 消息类型：节点注销 */
+    public static final int MSG_NODE_UNREGISTER = 13;
+    /** 消息类型：中继执行请求（树形转发，携带路由元数据） */
+    public static final int MSG_RELAY_REQUEST = 14;
+    /** 消息类型：中继执行响应 */
+    public static final int MSG_RELAY_RESPONSE = 15;
+
     /** 帧头长度（magic + msgType + bodyLen） */
     public static final int HEADER_LENGTH = 12;
 }
