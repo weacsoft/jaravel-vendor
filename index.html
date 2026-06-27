@@ -195,8 +195,8 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
 <a href="#remote" class="group">远程执行系统</a>
 <a href="#cat-plugin-jar-remote-server" class="sub" title="远程执行服务端，TCP 协议帧，反射调用 Bean 方法，握手认证，通过 BeanResolver 与热加载解耦">1. TCP 模式远程执行 — plugin-jar-remote-server</a>
 <a href="#cat-plugin-jar-remote-client" class="sub" title="远程执行客户端，TCP/HTTP 双传输，协调器路由，动态代理，多子服务器负载均衡">2. HTTP 模式支持 — plugin-jar-remote-client</a>
-<a href="#cat--remote-tree" class="sub" title="树形中继转发，节点无插件时自动转发子节点，三重防环机制（visitedNodes + maxHops + maxDepth）">3. 树形拓扑</a>
-<a href="#cat--remote-combo" class="sub" title="远程执行 + 热加载组合：分布式插件分发，热更新自动同步到子节点">4. 与热加载结合</a>
+<a href="#cat-remote-tree" class="sub" title="树形中继转发，节点无插件时自动转发子节点，三重防环机制（visitedNodes + maxHops + maxDepth）">3. 树形拓扑</a>
+<a href="#cat-remote-combo" class="sub" title="远程执行 + 热加载组合：分布式插件分发，热更新自动同步到子节点">4. 与热加载结合</a>
 <a href="#other" class="group">其他</a>
 <a href="#cat-springboot" class="sub" title="RouterFunction 转换，全局中间件注册，响应处理器">springboot — SpringBoot 适配</a>
 <a href="#cat-wechat-sdk" class="sub" title="公众号/小程序支持，AccessToken 缓存，OAuth 授权">wechat-sdk — 微信 SDK</a>
@@ -276,8 +276,6 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
 <h3>core — 核心容器</h3>
 <p class="module-desc">Spring 上下文、配置仓库、Arr/Str/Validator 工具类</p>
 <h4>简介</h4>
-<h4>core 模块</h4>
-
 <p>&gt; Jaravel-Vendor 的核心基础模块，提供门面（Facade）、配置仓库（Config）、服务提供者（ServiceProvider）、校验器（Validator）以及 <code>Str</code> / <code>Arr</code> 字符串与数组工具。所有 vendor 包的基础依赖，包名统一为 <code>com.weacsoft.jaravel.vendor.core</code>。</p>
 
 <p>---</p>
@@ -923,8 +921,6 @@ try {
 <tr><td>`FormRequest`</td><td>单线程使用</td><td>子类通常为每次请求新建实例，不应跨请求共享</td></tr>
 </table>
 <h4>类和方法</h4>
-<h4>core AI-API Reference</h4>
-
 <p>&gt; Module: <code>core</code> | Package: <code>com.weacsoft.jaravel.vendor.core</code> | Version: 0.1.0</p>
 
 <h5>Overview</h5>
@@ -1393,14 +1389,11 @@ Map&lt;String, Object&gt; valid = v.validate(); // 失败抛 ValidationException
 <tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
 <tr><td>`UnauthorizedException`</td><td>`String message`</td><td>构造方法</td><td>构造授权异常</td></tr>
 </table>
-
 </section>
 <section id="cat-utils">
 <h3>utils — 工具类</h3>
 <p class="module-desc">内存类加载器、源码编译器，支撑热加载和模板引擎</p>
 <h4>简介</h4>
-<h4>utils 模块</h4>
-
 <p>&gt; Jaravel-Vendor 的通用工具模块，提供内存编译基础设施。包含 <code>MemoryClassLoader</code>、<code>MemoryFileManager</code>、<code>SourceCodeJavaFileObject</code> 三个核心类，用于在运行时将 Java 源代码字符串编译为字节码并加载到内存中，无需写入磁盘。包名统一为 <code>com.weacsoft.jaravel.vendor.utils.memory</code>。</p>
 
 <p>---</p>
@@ -1761,8 +1754,6 @@ public class MemoryCompileExample {
 <tr><td>`MemoryClassLoader`</td><td>需外部同步</td><td>`findClass()` 读取 `Map`（若为 `ConcurrentHashMap` 则读取线程安全），但 `defineClass()` 对同一类名重复调用会抛出异常。应在单线程内加载，加载后的 `Class` 对象可安全并发使用</td></tr>
 </table>
 <h4>类和方法</h4>
-<h4>utils AI-API Reference</h4>
-
 <p>&gt; Module: <code>utils</code> | Package: <code>com.weacsoft.jaravel.vendor.utils</code> | Version: 0.1.0</p>
 
 <h5>Overview</h5>
@@ -1884,14 +1875,11 @@ MemoryFileManager fileManager = new MemoryFileManager(
     compiler.getStandardFileManager(null, null, null));
 compiler.getTask(null, fileManager, null, null, null, List.of(source)).call();
 </code></pre>
-
 </section>
 <section id="cat-http">
 <h3>http — HTTP 路由</h3>
 <p class="module-desc">Router/Route 路由注册、Request/Response 请求响应、Middleware 中间件、静态资源目录</p>
 <h4>简介</h4>
-<h4>http 模块</h4>
-
 <p>&gt; Jaravel-Vendor 的 HTTP 层模块，提供 Laravel 风格的中间件管道、Request / Response 抽象、路由系统与控制器契约。包名统一为 <code>com.weacsoft.jaravel.vendor.*</code>（含 <code>middleware</code>、<code>route</code>、<code>http.request</code>、<code>http.response</code>、<code>controller</code> 子包）。</p>
 
 <p>---</p>
@@ -2794,8 +2782,6 @@ jaravel:
 
 <p><code>@asset(&#x27;相对路径&#x27;)</code> 会拼接配置的 <code>urlPrefix</code>（默认 <code>/static</code>），渲染为完整 URL。资源目录与 URL 前缀保持一致即可正确服务模板引用的资源。</p>
 <h4>类和方法</h4>
-<h4>http AI-API Reference</h4>
-
 <p>&gt; Module: <code>http</code> | Package: <code>com.weacsoft.jaravel.vendor</code> | Version: 0.1.0</p>
 
 <h5>Overview</h5>
@@ -3342,7 +3328,6 @@ StaticResourceRoute route2 = new StaticResourceRoute(&quot;/static&quot;,
 router.serveStatic(&quot;/static&quot;, &quot;classpath:/static/&quot;, 3600);
 router.serveStatic(&quot;/static&quot;, List.of(&quot;file:./public/&quot;, &quot;classpath:/static/&quot;), 3600);
 </code></pre>
-
 </section>
 <h2 id="template">模板引擎</h2>
 <p class="module-desc">Blade 语法模板引擎，支持继承、布局、条件、循环。</p>
@@ -3350,8 +3335,6 @@ router.serveStatic(&quot;/static&quot;, List.of(&quot;file:./public/&quot;, &quo
 <h3>jblade — Blade 模板引擎</h3>
 <p class="module-desc">Laravel Blade 语法，支持 @extends/@yield/@section/@if/@foreach/@asset</p>
 <h4>简介</h4>
-<h4>jblade 模块</h4>
-
 <p>&gt; Jaravel-Vendor 的模板引擎模块，提供 Laravel Blade 风格的模板编译与渲染。支持 <code>{{ }}</code> 输出、<code>@if/@foreach/@for/@while</code> 控制结构、<code>@extends/@section/@yield</code> 模板继承、<code>@component</code> 组件等特性，通过内存编译（<code>MemoryClassLoader</code>）将模板编译为 Java 类后执行。包名统一为 <code>com.weacsoft.jaravel.vendor.jblade</code>。</p>
 
 <p>---</p>
@@ -4412,8 +4395,6 @@ jaravel:
 
 <p>&gt; <strong>关键点</strong>：<code>BladeAssetHelper</code> 的 URL 前缀必须与 <code>StaticResourceRoute</code> 的 <code>urlPrefix</code> 保持一致，否则 <code>@asset</code> 生成的 URL 将无法被静态资源路由命中。<code>StaticResourceRoute</code> 支持多目录回退查找（按顺序匹配第一个命中的文件）。</p>
 <h4>类和方法</h4>
-<h4>jblade AI-API Reference</h4>
-
 <p>&gt; Module: <code>jblade</code> | Package: <code>com.weacsoft.jaravel.vendor.jblade</code> | Version: 0.1.0</p>
 
 <h5>Overview</h5>
@@ -4749,7 +4730,6 @@ BladeAssetHelper.url(&quot;/js/app.js&quot;);     // &quot;/static/js/app.js&quo
 </code></pre>
 
 <p>&gt; 配合 HTTP 模块的 <code>StaticResourceRoute</code> 使用：<code>BladeAssetHelper</code> 的 URL 前缀须与 <code>StaticResourceRoute</code> 的 <code>urlPrefix</code> 一致，<code>@asset</code> 生成的 URL 才能被静态资源路由命中并返回对应文件。</p>
-
 </section>
 <h2 id="data">数据层</h2>
 <p class="module-desc">多数据源、数据库迁移、模型缓存、队列。</p>
@@ -4757,8 +4737,6 @@ BladeAssetHelper.url(&quot;/js/app.js&quot;);     // &quot;/static/js/app.js&quo
 <h3>database — 多数据源</h3>
 <p class="module-desc">多数据源管理、Eloquent ORM 集成、@DataSource 注解切换</p>
 <h4>简介</h4>
-<h4>Database 模块（Eloquent ORM）</h4>
-
 <p>&gt; 包名：<code>com.weacsoft.jaravel.vendor.database</code></p>
 <p>&gt; 对齐 Laravel 特性：<code>Illuminate\Database\Eloquent</code>（Model 基类、多数据源、EloquentUserProvider）</p>
 
@@ -5531,8 +5509,6 @@ public Response login(@RequestBody LoginRequest req, UserProvider provider) {
 
 <p>&gt; <strong>注意</strong>：<code>BaseModel</code> 的实例方法（<code>save()</code>、<code>replicate()</code>）可在 <code>new</code> 创建的普通实例上调用，这些实例为线程局部对象，不应跨线程共享。所有实际的数据库操作均委托给 Spring 单例完成，单例本身线程安全。</p>
 <h4>类和方法</h4>
-<h4>database AI-API Reference</h4>
-
 <p>&gt; Module: <code>database</code> | Package: <code>com.weacsoft.jaravel.vendor.database</code> | Version: 0.1.0</p>
 
 <h5>Overview</h5>
@@ -5676,14 +5652,11 @@ if (user == null || !passwordEncoder.matches(inputPassword, user.getPassword()))
 // 登入
 Auth.login(user);
 </code></pre>
-
 </section>
 <section id="cat-migration">
 <h3>migration — 数据库迁移</h3>
 <p class="module-desc">Laravel 风格迁移系统，独立于 SpringBoot 运行，支持 MySQL/SQLite/H2</p>
 <h4>简介</h4>
-<h4>migration 模块</h4>
-
 <p>&gt; Jaravel-Vendor 的数据库迁移模块，提供 Laravel 风格的 Blueprint 流式建表、<code>up()</code> / <code>down()</code> 迁移引擎、<code>migrate</code> / <code>rollback</code> / <code>reset</code> / <code>refresh</code> / <code>status</code> 命令，以及 MySQL、SQLite、H2、SQL Server 多数据库方言自动适配。支持 DIRECTORY / JAR / CLASSPATH 三种迁移源模式，适配开发与生产部署。<strong>核心逻辑独立于 SpringBoot，可通过 <code>MigrationCLI</code> 在纯 Java 环境中运行</strong>。包名统一为 <code>com.weacsoft.jaravel.vendor.migration</code>。</p>
 
 <p>---</p>
@@ -6920,8 +6893,6 @@ jaravel:
 <tr><td>`MigrationGenerator`</td><td>线程安全</td><td>静态方法，无共享可变状态，可安全并发调用（但同一文件路径并发写入会失败）</td></tr>
 </table>
 <h4>类和方法</h4>
-<h4>migration AI-API Reference</h4>
-
 <p>&gt; Module: <code>migration</code> | Package: <code>com.weacsoft.jaravel.vendor.migration</code> | Version: 0.1.0</p>
 
 <h5>Overview</h5>
@@ -7442,14 +7413,11 @@ java -cp migration.jar:utils.jar:mysql-connector.jar \
 <tr><td>`queryForList`</td><td>`String sql, Class<T> elementType, Object... args`</td><td>`<T> List<T>`</td><td>查询单列值列表</td></tr>
 <tr><td>`queryForMapList`</td><td>`String sql, Object... args`</td><td>`List<Map<String, Object>>`</td><td>查询多列结果集</td></tr>
 </table>
-
 </section>
 <section id="cat-model-cache">
 <h3>model-cache — 模型缓存</h3>
 <p class="module-desc">自动缓存查询结果，支持按类/ID 失效</p>
 <h4>简介</h4>
-<h4>model-cache 模块</h4>
-
 <p>&gt; Jaravel-Vendor 的模型缓存模块（可选），参考 Laravel <code>laravel-model-caching</code> 方案，在 Model 类上通过 <code>@CachableModel</code> 注解手动开启查询缓存。采用版本号机制实现缓存失效，基于 <code>cache</code> 模块的 <code>CacheStore</code> / <code>CacheManager</code>。包名统一为 <code>com.weacsoft.jaravel.vendor.modelcache</code>。</p>
 
 <p>---</p>
@@ -7828,8 +7796,6 @@ ModelCache（门面，静态 API）
 <li><strong>版本号并发</strong>：<code>increment</code> 为非原子 get-then-put（cache 模块实现），高并发失效时版本号可能跳跃，但不影响正确性（跳跃仍使旧缓存失效）。</li>
 <li><strong>查询缓存一致性</strong>：<code>invalidate(Class, id)</code> 仅失效主键查询键，查询缓存（<code>findAll</code>/<code>query</code>）可能含旧数据。需整体失效时调用 <code>invalidate(Class)</code>。</li>
 <h4>类和方法</h4>
-<h4>model-cache AI-API Reference</h4>
-
 <p>&gt; Module: <code>model-cache</code> | Package: <code>com.weacsoft.jaravel.vendor.modelcache</code> | Version: 0.1.0</p>
 
 <h5>Overview</h5>
@@ -8031,14 +7997,11 @@ public ModelCacheService modelCacheService(CacheManager cacheManager, ModelCache
     return new CustomModelCacheService(cacheManager, properties);
 }
 </code></pre>
-
 </section>
 <section id="cat-queue-database">
 <h3>queue-database — 数据库队列</h3>
 <p class="module-desc">基于数据库的队列系统，支持延迟执行、失败重试</p>
 <h4>简介</h4>
-<h4>queue-database</h4>
-
 <p>队列模块，对齐 Laravel <code>Illuminate\Queue</code>。支持 <strong>database</strong> 与 <strong>redis</strong> 两种驱动，将任务持久化存储，支持多实例消费、延迟执行、重试机制与失败队列（<code>failed_jobs</code>），用于事件监听器的异步队列处理。</p>
 
 <h5>依赖</h5>
@@ -8303,8 +8266,6 @@ event (QueueDispatcher 接口)
               └── DatabaseQueueWorker (消费 QueueDriver)
 </code></pre>
 <h4>类和方法</h4>
-<h4>queue-database AI-API Reference</h4>
-
 <p>&gt; Module: <code>queue-database</code> | Package: <code>com.weacsoft.jaravel.vendor.queue.database</code> | Version: 0.1.0</p>
 
 <h5>Overview</h5>
@@ -8616,7 +8577,6 @@ event (QueueDispatcher interface)
               │
               └── DatabaseQueueWorker (consumes QueueDriver)
 </code></pre>
-
 </section>
 <h2 id="auth">认证授权</h2>
 <p class="module-desc">认证管理器、JWT 令牌、Redis 会话。</p>
@@ -8624,8 +8584,6 @@ event (QueueDispatcher interface)
 <h3>auth — 认证管理</h3>
 <p class="module-desc">多 Guard 认证（Session/JWT），Auth 门面，EloquentUserProvider</p>
 <h4>简介</h4>
-<h4>Auth 模块（认证）</h4>
-
 <p>&gt; 包名：<code>com.weacsoft.jaravel.vendor.auth</code></p>
 <p>&gt; 对齐 Laravel 特性：<code>Illuminate\Auth</code>（AuthManager、Guard、UserProvider、Auth 门面、auth 中间件）</p>
 
@@ -9545,8 +9503,6 @@ public Response logout() {
 <tr><td>`SessionGuard` 可变状态</td><td>ThreadLocal 隔离</td><td>请求级</td></tr>
 </table>
 <h4>类和方法</h4>
-<h4>auth AI-API Reference</h4>
-
 <p>&gt; Module: <code>auth</code> | Package: <code>com.weacsoft.jaravel.vendor.auth</code> | Version: 0.1.0</p>
 
 <h5>Overview</h5>
@@ -9864,14 +9820,11 @@ jaravel:
   auth:
     default-guard: api
 </code></pre>
-
 </section>
 <section id="cat-jwt">
 <h3>jwt — JWT 令牌</h3>
 <p class="module-desc">JWT 生成/验证/刷新，黑名单机制，令牌续期</p>
 <h4>简介</h4>
-<h4>JWT 模块（JWT 认证插件）</h4>
-
 <p>&gt; 包名：<code>com.weacsoft.jaravel.vendor.jwt</code></p>
 <p>&gt; 对齐 Laravel 特性：<code>tymon/jwt-auth</code>（JWT 签发/解析/校验/刷新/黑名单）</p>
 
@@ -11208,8 +11161,6 @@ public Response logout() {
 
 <p>&gt; <strong>关键约束</strong>：<code>JwtGuard</code> 实例<strong>必须</strong>通过 <code>AuthManager.guard(String)</code> 获取，不可跨请求缓存或共享，否则其内部的可变状态会串态。<code>JwtService</code> 与 <code>JwtTokenResponseFilter</code> 作为无状态单例可安全地在任意线程共享调用。</p>
 <h4>类和方法</h4>
-<h4>jwt AI-API Reference</h4>
-
 <p>&gt; Module: <code>jwt</code> | Package: <code>com.weacsoft.jaravel.vendor.jwt</code> | Version: 0.1.0</p>
 
 <h5>Overview</h5>
@@ -11653,14 +11604,11 @@ jaravel:
     grace-period-seconds: 30       # 30 秒宽限期
     grace-header: X-New-Token
 </code></pre>
-
 </section>
 <section id="cat-session-redis">
 <h3>session-redis — Redis 会话</h3>
 <p class="module-desc">基于 Redis 的 Session 存储，32 位 Session ID</p>
 <h4>简介</h4>
-<h4>session-redis</h4>
-
 <p>Redis Session 守卫模块，对齐 Laravel 的 <code>SessionGuard</code>（Session 后端为 Redis）。基于 <code>redis-config</code> 模块将 Session 数据存储在共享 Redis 中，实现多机 Session 同步——用户在任一节点登录后，其他节点可通过同一 Session ID 读取登录态。</p>
 
 <h5>依赖</h5>
@@ -11799,8 +11747,6 @@ Auth.guard(&quot;web&quot;).logout();             // 登出，销毁 Redis Sessi
 <li><code>RedisSessionStore</code> — Redis Session 存储（<code>@ConditionalOnMissingBean</code>，便于业务方覆盖）</li>
 <li><code>RedisSessionGuardRegistrar</code> — 注册器，通过 <code>AuthManager.registerGuardDriver(&quot;redis-session&quot;, ...)</code> 将 <code>redis-session</code> guard 驱动注册到 <code>AuthManager</code>。注册后，guard 配置中 <code>driver=redis-session</code> 的守卫将使用 <code>RedisSessionGuard</code>。</li>
 <h4>类和方法</h4>
-<h4>session-redis AI-API Reference</h4>
-
 <p>&gt; Module: <code>session-redis</code> | Package: <code>com.weacsoft.jaravel.vendor.session.redis</code> | Version: 0.1.0</p>
 
 <h5>Overview</h5>
@@ -11917,7 +11863,6 @@ jaravel:
 Session::store(&quot;redis&quot;).put(&quot;user_id&quot;, 123);
 Object userId = Session::store(&quot;redis&quot;).get(&quot;user_id&quot;);
 </code></pre>
-
 </section>
 <h2 id="cache">缓存与事件</h2>
 <p class="module-desc">缓存系统、事件系统、Redis 配置与缓存。</p>
@@ -11925,8 +11870,6 @@ Object userId = Session::store(&quot;redis&quot;).get(&quot;user_id&quot;);
 <h3>cache — 缓存系统</h3>
 <p class="module-desc">ArrayStore 内存缓存，CacheManager 多 store 切换，remember/increment</p>
 <h4>简介</h4>
-<h4>cache 模块</h4>
-
 <p>&gt; Jaravel-Vendor 的缓存模块，提供 Laravel 风格的 <code>Cache</code> 门面、<code>CacheStore</code> 仓库抽象、<code>ArrayCacheDriver</code>（内存）、<code>FileCacheDriver</code>（文件）、<code>DatabaseCacheDriver</code>（数据库）三种驱动，以及 <code>CacheManager</code> 多仓库管理。redis 驱动位于独立的 <code>redis-cache</code> 模块。包名统一为 <code>com.weacsoft.jaravel.vendor.cache</code>。</p>
 
 <p>---</p>
@@ -12593,8 +12536,6 @@ Object value = Cache.store(&quot;database&quot;).get(&quot;user:1&quot;);
 <tr><td>`CacheProperties`</td><td>配置只读</td><td>Spring Boot 配置属性绑定，启动后只读</td></tr>
 </table>
 <h4>类和方法</h4>
-<h4>cache AI-API Reference</h4>
-
 <p>&gt; Module: <code>cache</code> | Package: <code>com.weacsoft.jaravel.vendor.cache</code> | Version: 0.1.0</p>
 
 <h5>Overview</h5>
@@ -12903,14 +12844,11 @@ jaravel:
     file-dir: /var/cache/myapp
     database-table: app_cache
 </code></pre>
-
 </section>
 <section id="cat-event">
 <h3>event — 事件系统</h3>
 <p class="module-desc">EventDispatcher 事件分发，同步/异步执行，ShouldQueue 队列事件</p>
 <h4>简介</h4>
-<h4>event 模块</h4>
-
 <p>&gt; Jaravel-Vendor 的事件模块，提供 Laravel 风格的 Event/Listener 契约、同步与异步事件分发、<code>ShouldQueue</code> per-listener 队列决策、<code>QueueManager</code> 多队列线程池管理、<code>@ListensTo</code> 注解自动注册、<code>EventFacade</code> 静态门面。包名统一为 <code>com.weacsoft.jaravel.vendor.event</code>。</p>
 
 <p>---</p>
@@ -13576,8 +13514,6 @@ jaravel:
 
 <p><code>invokeWithRetry</code> 方法无共享可变状态，<code>listener</code> 与 <code>event</code> 由调用方保证可见性（通过线程池提交时的 happens-before 关系）。重试通过 <code>Thread.sleep</code> 实现，在队列线程池的工作线程中阻塞等待，不影响其它队列。所有重试耗尽后仅记录错误日志，不会中断其它监听器的执行。</p>
 <h4>类和方法</h4>
-<h4>event AI-API Reference</h4>
-
 <p>&gt; Module: <code>event</code> | Package: <code>com.weacsoft.jaravel.vendor.event</code> | Version: 0.1.0</p>
 
 <h5>Overview</h5>
@@ -13912,14 +13848,11 @@ jaravel:
       max-attempts: 5
       delay-ms: 2000
 </code></pre>
-
 </section>
 <section id="cat-redis-config">
 <h3>redis-config — Redis 配置</h3>
 <p class="module-desc">多 Redis 连接管理，集群/哨兵模式</p>
 <h4>简介</h4>
-<h4>redis-config</h4>
-
 <p>Redis 连接管理模块，对齐 Laravel <code>RedisManager</code>（<code>Illuminate\Redis\RedisManager</code>）。基于 Lettuce 客户端管理多个命名连接（default / cache / session / model-cache 等），支持 standalone、sentinel、cluster 三种部署模式，是 redis-cache、session-redis 等模块的基础依赖。</p>
 
 <h5>依赖</h5>
@@ -14114,8 +14047,6 @@ public void executeWithLock(String taskName) {
 
 <p>该模块是其他 Redis 相关模块（redis-cache、session-redis）的基础依赖，提供统一的 Redis 连接管理能力，避免每个模块各自创建连接池。</p>
 <h4>类和方法</h4>
-<h4>redis-config AI-API Reference</h4>
-
 <p>&gt; Module: <code>redis-config</code> | Package: <code>com.weacsoft.jaravel.vendor.redis</code> | Version: 0.1.0</p>
 
 <h5>Overview</h5>
@@ -14316,14 +14247,11 @@ if (lockProvider.tryLock(lockKey, 300)) {  // 5 分钟 TTL
     log.info(&quot;另一个实例正在执行此任务，跳过&quot;);
 }
 </code></pre>
-
 </section>
 <section id="cat-redis-cache">
 <h3>redis-cache — Redis 缓存</h3>
 <p class="module-desc">基于 Redis 的缓存实现，JSON 序列化，TTL 管理</p>
 <h4>简介</h4>
-<h4>redis-cache</h4>
-
 <p>Redis 缓存驱动，对齐 Laravel <code>Illuminate\Cache\RedisStore</code>。实现 <code>CacheDriver</code> 接口，底层通过 <code>redis-config</code> 模块的 <code>RedisManager</code> 获取指定命名连接的 Redis 命令接口，所有缓存键值以 JSON 序列化存储，TTL 通过 Redis <code>SETEX</code>/<code>EXPIRE</code> 实现。</p>
 
 <h5>依赖</h5>
@@ -14420,8 +14348,6 @@ Object cached = Cache.get(&quot;user:123&quot;);
 <li><code>RedisCacheDriver</code> — Redis 缓存驱动（<code>@ConditionalOnMissingBean</code>，便于业务方覆盖），使用 <code>cache</code> 命名连接</li>
 <li><code>RedisCacheRegistrar</code> — 注册器，通过 <code>CacheManager.addStore(&quot;redis&quot;, ...)</code> 将 Redis 缓存驱动动态注册为 <code>redis</code> store，使用全局缓存前缀</li>
 <h4>类和方法</h4>
-<h4>redis-cache AI-API Reference</h4>
-
 <p>&gt; Module: <code>redis-cache</code> | Package: <code>com.weacsoft.jaravel.vendor.redis.cache</code> | Version: 0.1.0</p>
 
 <h5>Overview</h5>
@@ -14522,7 +14448,6 @@ Cache::store(&quot;redis&quot;).put(&quot;key&quot;, value, 3600);
 <tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
 <tr><td>`RedisCacheRegistrar`</td><td>`CacheManager cacheManager, RedisCacheDriver driver, String prefix`</td><td>-</td><td>构造时将 Redis store 注册到 CacheManager</td></tr>
 </table>
-
 </section>
 <h2 id="cli">CLI 工具</h2>
 <p class="module-desc">Artisan 命令行、代码生成、定时任务。</p>
@@ -14530,8 +14455,6 @@ Cache::store(&quot;redis&quot;).put(&quot;key&quot;, value, 3600);
 <h3>artisan — Artisan 命令行</h3>
 <p class="module-desc">Laravel artisan 风格 CLI，make:xxx 代码生成（controller/model/migration 等 8 种），make:all 一键生成</p>
 <h4>简介</h4>
-<h4>artisan</h4>
-
 <p>Artisan CLI 命令框架，对齐 Laravel <code>Illuminate\Console</code>。提供命令注册、签名解析（参数/选项）、命令调度，以及 <code>java -jar app.jar artisan</code> 模式检测入口，让 Spring Boot 应用同时承载 HTTP 服务与 CLI 命令。</p>
 
 <h5>依赖</h5>
@@ -14809,8 +14732,6 @@ java -jar app.jar artisan make:all User --force
 
 <p><code>make:all</code> 命令对每个子生成任务独立处理：单个文件已存在时记为「跳过」并继续后续生成，不会中断整体流程；带 <code>--force</code> 时全部覆盖。</p>
 <h4>类和方法</h4>
-<h4>artisan AI-API Reference</h4>
-
 <p>&gt; Module: <code>artisan</code> | Package: <code>com.weacsoft.jaravel.vendor.artisan</code> | Version: 0.1.0</p>
 
 <h5>Overview</h5>
@@ -15250,14 +15171,11 @@ java -jar app.jar artisan make:all User --force
 
 ===== 完成: 7 成功, 0 跳过 =====
 </code></pre>
-
 </section>
 <section id="cat-schedule">
 <h3>schedule — 定时任务</h3>
 <p class="module-desc">Cron 表达式调度，分布式锁，链式调用（everyMinute/hourly/dailyAt）</p>
 <h4>简介</h4>
-<h4>schedule</h4>
-
 <p>Cron 定时任务调度器，对齐 Laravel <code>Illuminate\Console\Scheduling</code>。提供 Laravel 风格的链式调度方法（<code>dailyAt</code> / <code>hourly</code> / <code>everyMinute</code> 等），支持回调任务与 Artisan 命令任务，并通过 Redis 分布式锁防止多机重复执行。</p>
 
 <h5>依赖</h5>
@@ -15393,8 +15311,6 @@ public Schedule schedule(Schedule schedule) {
 <li><code>Schedule</code> — 任务注册表（<code>@ConditionalOnMissingBean</code>）</li>
 <li><code>ScheduleRunner</code> — 任务执行器（<code>@ConditionalOnMissingBean</code>），通过 <code>ObjectProvider</code> 可选注入 <code>ArtisanApplication</code> 和 <code>RedisLockProvider</code>，当二者不存在时对应功能降级。</li>
 <h4>类和方法</h4>
-<h4>schedule AI-API Reference</h4>
-
 <p>&gt; Module: <code>schedule</code> | Package: <code>com.weacsoft.jaravel.vendor.schedule</code> | Version: 0.1.0</p>
 
 <h5>Overview</h5>
@@ -15576,7 +15492,6 @@ jaravel:
 <tr><td>`scheduleRunner`</td><td>`Schedule schedule, ScheduleProperties properties`</td><td>`ScheduleRunner`</td><td>创建调度执行器 Bean（`@Bean`, `@ConditionalOnMissingBean`）</td></tr>
 <tr><td>`redisLockProvider`</td><td>`RedisManager redisManager, ScheduleProperties properties`</td><td>`RedisLockProvider`</td><td>创建 Redis 锁提供者 Bean（`@Bean`, `@ConditionalOnBean(RedisManager)`, `@ConditionalOnProperty`）</td></tr>
 </table>
-
 </section>
 <h2 id="hotreload">热加载插件系统</h2>
 <p class="module-desc">JAR 插件热加载、Java 文件热编译、多租户隔离。可独立于 jaravel 使用，仅依赖 SpringBoot。</p>
@@ -15584,8 +15499,6 @@ jaravel:
 <h3>1. 热加载功能 — plugin-jar-core</h3>
 <p class="module-desc">JAR 插件热加载/卸载，三级 ClassLoader 隔离，@PluginMapping 路由注册，共享 JAR 热更新</p>
 <h4>简介</h4>
-<h4>plugin-jar-core</h4>
-
 <p>&gt; 包名：<code>com.weacsoft.jaravel.vendor.plugin.jar</code></p>
 <p>&gt; artifactId：<code>plugin-jar-core</code></p>
 
@@ -15607,6 +15520,7 @@ jaravel:
 <li><a href="#路由注册模式">路由注册模式</a></li>
 <li><a href="#核心-api">核心 API</a></li>
 <li><a href="#hotpluginmanager-方法列表">HotPluginManager 方法列表</a></li>
+<li><a href="#字节数组模式内存插件">字节数组模式（内存插件）</a></li>
 <li><a href="#插件开发指南">插件开发指南</a></li>
 <li><a href="#添加-maven-依赖">添加 Maven 依赖</a></li>
 <li><a href="#编写插件类">编写插件类</a></li>
@@ -15635,6 +15549,7 @@ jaravel:
 <li><strong>ASM 字节码扫描依赖与路由</strong>：使用 ASM 9.7 在不加载类的前提下扫描插件 JAR 的字节码，提取 <code>@PluginComponent</code> 组件类、<code>@SharedService</code> 共享依赖和 <code>@PluginMapping</code> / <code>@PluginRoute</code> 路由映射。</li>
 <li><strong>元数据持久化</strong>：重启后自动恢复插件状态。支持 JSON 文件（默认）和数据库两种持久化模式，仅落盘文件可自动持久化恢复。</li>
 <li><strong>内存 JAR 加载</strong>：支持从内存字节（<code>byte[]</code>）直接加载插件 JAR，不要求 <code>.jar</code> 落盘。但仅落盘文件（<code>persist=true</code>）可自动持久化恢复。</li>
+<li><strong>字节数组模式</strong>：从内存中的 JAR 二进制数据直接热加载，无需落盘到插件目录。</li>
 <li><strong>Spring Boot AutoConfiguration 开箱即用</strong>：引入依赖后自动装配 <code>HotPluginManager</code>、<code>PluginBeanRegistrar</code>、<code>PluginRouteRegistrar</code>、<code>MetadataPersistence</code> 等核心组件。</li>
 <li><strong>线程安全</strong>：核心管理器使用 <code>ReadWriteLock</code> + <code>ConcurrentHashMap</code> 保证并发安全，插件注册/卸载与路由查询可安全并发。</li>
 
@@ -15948,6 +15863,46 @@ hotPluginManager.uninstallPlugin(&quot;my-plugin&quot;);
 List&lt;PluginInfo&gt; all = hotPluginManager.getAllPlugins();
 PluginInfo info = hotPluginManager.getPlugin(&quot;my-plugin&quot;);
 </code></pre>
+
+<p>---</p>
+
+<h5>字节数组模式（内存插件）</h5>
+
+<p>字节数组模式适合从数据库、网络等获取 JAR 二进制数据后直接热加载的场景。JAR 数据会写入临时文件（JVM 退出时自动删除），不持久化到插件目录，因此重启后不会自动恢复。</p>
+
+<h6>API 方法</h6>
+
+<table>
+<tr><th>方法签名</th><th>说明</th></tr>
+<tr><td>`String registerPluginFromBytes(byte[] jarBytes, String pluginId)`</td><td>从字节数组注册插件（不持久化）。将 JAR 写入临时文件后加载，返回实际使用的 pluginId</td></tr>
+<tr><td>`boolean reloadPluginFromBytes(String pluginId, byte[] jarBytes)`</td><td>从新的字节数组热重载插件。先禁用旧版本（若已启用），再用新字节数组重新加载并启用，保持 pluginId 不变</td></tr>
+</table>
+
+<h6>代码示例</h6>
+
+<pre><code>
+// 从数据库获取 JAR 二进制
+byte[] jarBytes = repository.findPluginJar(&quot;my-plugin&quot;);
+
+// 直接注册并启用
+manager.registerPluginFromBytes(jarBytes, &quot;my-plugin&quot;);
+manager.enablePlugin(&quot;my-plugin&quot;);
+
+// 后续从数据库获取新版本，热重载
+byte[] newJarBytes = repository.findPluginJar(&quot;my-plugin&quot;);
+manager.reloadPluginFromBytes(&quot;my-plugin&quot;, newJarBytes);
+</code></pre>
+
+<h6>三种注册模式对比</h6>
+
+<p>插件系统支持三种注册模式，对应不同的 JAR 来源与持久化策略：</p>
+
+<table>
+<tr><th>模式</th><th>API</th><th>JAR 处理方式</th><th>是否持久化</th><th>自动恢复</th></tr>
+<tr><td>磁盘模式</td><td>`registerPluginFromPath(jarFile, pluginId, true)`</td><td>复制 JAR 到插件目录</td><td>是</td><td>支持</td></tr>
+<tr><td>路径模式</td><td>`registerPluginFromPath(jarFile, pluginId, false)`</td><td>仅记录路径，JAR 不复制</td><td>否</td><td>不支持</td></tr>
+<tr><td>字节数组模式</td><td>`registerPluginFromBytes(jarBytes, pluginId)`</td><td>写入临时文件，JVM 退出自动删除</td><td>否</td><td>不支持</td></tr>
+</table>
 
 <p>---</p>
 
@@ -16361,8 +16316,6 @@ com.weacsoft.jaravel.vendor.plugin.jar
 <tr><td>`Application`</td><td>插件间调用代理，通过静态方法 `getService()` 跨插件获取服务实例</td></tr>
 </table>
 <h4>类和方法</h4>
-<h4>plugin-jar-core AI-API Reference</h4>
-
 <p>&gt; Module: <code>plugin-jar-core</code> | Package: <code>com.weacsoft.jaravel.vendor.plugin.jar</code> | Version: 0.1.0</p>
 
 <h5>Overview</h5>
@@ -16386,6 +16339,7 @@ com.weacsoft.jaravel.vendor.plugin.jar
 <tr><td>`enable`</td><td>`String pluginId`</td><td>`boolean`</td><td>启用插件（注册 Bean 和路由）</td></tr>
 <tr><td>`disable`</td><td>`String pluginId`</td><td>`boolean`</td><td>禁用插件（注销 Bean 和路由，保留 ClassLoader）</td></tr>
 <tr><td>`reload`</td><td>`String pluginId`</td><td>`boolean`</td><td>重载插件（先卸载再加载）</td></tr>
+<tr><td>`reloadPluginFromBytes`</td><td>`String pluginId, byte[] jarBytes`</td><td>`boolean`</td><td>从字节数组热重载插件（先禁用旧版本，再用新字节数组重新加载并启用，保持 pluginId 不变）</td></tr>
 <tr><td>`getPlugin`</td><td>`String pluginId`</td><td>`PluginInfo`</td><td>获取插件信息</td></tr>
 <tr><td>`getPlugins`</td><td>-</td><td>`List<PluginInfo>`</td><td>获取所有已加载插件信息</td></tr>
 <tr><td>`getEnabledPlugins`</td><td>-</td><td>`List<PluginInfo>`</td><td>获取所有已启用插件信息</td></tr>
@@ -16612,6 +16566,7 @@ routeRegistrar.unregisterRoutes(pluginInfo);
 <table>
 <tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
 <tr><td>`scan`</td><td>`Path pluginJar`</td><td>`Set<String>`</td><td>扫描插件 JAR 的共享依赖，返回共享依赖坐标集合</td></tr>
+<tr><td>`scan`</td><td>`byte[] jarBytes, Set<String> sharedPackagePrefixes`</td><td>`ScanResult`</td><td>从字节数组扫描 JAR（静态方法）。使用 `JarInputStream` 从内存读取，无需文件系统</td></tr>
 <tr><td>`getSharedJars`</td><td>-</td><td>`List<Path>`</td><td>获取所有共享依赖 JAR 路径</td></tr>
 <tr><td>`isShared`</td><td>`String className`</td><td>`boolean`</td><td>检查指定类是否属于共享依赖</td></tr>
 </table>
@@ -16856,14 +16811,11 @@ public class AlipayService implements PaymentService {
 @PluginMapping(path = &quot;/api/data&quot;, method = HttpMethod.POST)
 public String createData(@RequestBody String data) { ... }
 </code></pre>
-
 </section>
 <section id="cat-plugin-jar-database">
 <h3>1b. 插件数据库隔离 — plugin-jar-database</h3>
 <p class="module-desc">插件元数据持久化，@DataSource 插件级数据源隔离，PluginMetadataModel</p>
 <h4>简介</h4>
-<h4>plugin-jar-database</h4>
-
 <p>&gt; 包名：<code>com.weacsoft.jaravel.vendor.plugin.jar.database</code></p>
 <p>&gt; artifactId：<code>plugin-jar-database</code></p>
 <p>&gt; 定位：<code>plugin-jar-core</code> 的数据库持久化扩展模块</p>
@@ -17317,8 +17269,6 @@ com.weacsoft.jaravel.vendor.plugin.jar.database.autoconfigure.PluginJarDatabaseA
 
 <p>引入依赖后，Spring Boot 会自动加载该自动装配类，无需手动 <code>@Import</code> 或 <code>@ComponentScan</code>。</p>
 <h4>类和方法</h4>
-<h4>plugin-jar-database AI-API Reference</h4>
-
 <p>&gt; Module: <code>plugin-jar-database</code> | Package: <code>com.weacsoft.jaravel.vendor.plugin.jar.database</code> | Version: 0.1.0</p>
 
 <h5>Overview</h5>
@@ -17473,14 +17423,11 @@ private HotPluginManager pluginManager;
 pluginManager.load(Paths.get(&quot;/plugins/my-plugin.jar&quot;));
 pluginManager.enable(&quot;my-plugin&quot;);
 </code></pre>
-
 </section>
 <section id="cat-plugin-java-core">
 <h3>2. 热加载增强：Java 文件 — plugin-java-core</h3>
 <p class="module-desc">直接编译 .java 源文件为插件，无需打包 JAR，内存编译 + 加载</p>
 <h4>简介</h4>
-<h4>plugin-java-core</h4>
-
 <p>&gt; 轻量级 Java 文件插件系统 —— 无需打包成 JAR，直接加载 <code>.java</code> 源文件动态编译执行。</p>
 
 <p><code>plugin-java-core</code> 是 Jaravel 体系下的一个轻量级插件模块。它直接读取 <code>.java</code> 源文件，使用 JDK 内置编译器在内存中完成编译与加载，支持热更新（重新编译所有 <code>.java</code> 文件完成更新）与动态路由注册。既可以作为 <code>plugin-jar-core</code> 的轻量替代方案，也可以作为 JAR 插件系统的范例插件使用。</p>
@@ -17501,6 +17448,7 @@ pluginManager.enable(&quot;my-plugin&quot;);
 <li><a href="#路由注册模式">路由注册模式</a></li>
 <li><a href="#插件开发指南">插件开发指南</a></li>
 <li><a href="#热更新">热更新</a></li>
+<li><a href="#字符串源码模式">字符串源码模式</a></li>
 <li><a href="#与-jar-插件系统的关系">与 JAR 插件系统的关系</a></li>
 <li><a href="#限制">限制</a></li>
 <li><a href="#目录结构">目录结构</a></li>
@@ -17511,6 +17459,7 @@ pluginManager.enable(&quot;my-plugin&quot;);
 
 <li><strong>动态编译</strong>：使用 JDK 内置 <code>javax.tools.JavaCompiler</code> 编译 <code>.java</code> 文件，无需引入第三方编译器。</li>
 <li><strong>内存加载</strong>：编译后的字节码存储在内存中（<code>Map&lt;String, byte[]&gt;</code>），无需落盘，由 <code>DynamicClassLoader</code> 直接加载。</li>
+<li><strong>字符串源码模式</strong>：从内存中的 Java 源码字符串直接编译热加载，无需文件系统。</li>
 <li><strong>热更新</strong>：修改 <code>.java</code> 文件后重新编译，刷新所有类，创建新的 <code>ClassLoader</code> 实现插件热重载。</li>
 <li><strong>动态路由</strong>：自动扫描 <code>@PluginMapping</code> 注解注册路由，支持 <code>path</code>、<code>method</code>、<code>produces</code> 等属性。</li>
 <li><strong>双注册模式</strong>：支持自动注册（<code>@PluginMapping</code>）与手动注册（<code>@PluginRoute</code>）两种路由注册模式，通过 <code>auto-register</code> 配置项切换。</li>
@@ -17817,6 +17766,52 @@ new Thread(() -&gt; {
 
 <p>---</p>
 
+<h5>字符串源码模式</h5>
+
+<p>除了从文件系统目录加载 <code>.java</code> 文件外，<code>plugin-java-core</code> 还支持<strong>字符串源码模式</strong>：直接将内存中的 Java 源码字符串交给编译器编译并热加载，整个过程不依赖文件系统。该模式适合从数据库、网络、配置中心等任意来源获取源码后编译热加载。</p>
+
+<h6>API 方法</h6>
+
+<table>
+<tr><th>方法签名</th><th>说明</th></tr>
+<tr><td>`registerPluginFromSource(String pluginId, String sourceCode)`</td><td>从单个源码字符串注册插件（便捷方法）</td></tr>
+<tr><td>`registerPluginFromSource(String pluginId, Map<String, String> sources)`</td><td>从多个源码字符串注册插件，Map 的 key 为文件名（如 `HelloController.java`），value 为源码内容</td></tr>
+<tr><td>`reloadPluginFromSource(String pluginId, String sourceCode)`</td><td>从新的单个源码字符串热重载插件</td></tr>
+<tr><td>`reloadPluginFromSource(String pluginId, Map<String, String> sources)`</td><td>从多个新的源码字符串热重载插件</td></tr>
+</table>
+
+<p>&gt; 注册成功后返回插件 ID（即传入的 <code>pluginId</code>），随后仍需调用 <code>enablePlugin</code> 启用插件；<code>reloadPluginFromSource</code> 会自动完成「禁用 → 重新编译 → 启用」的完整热重载流程。</p>
+
+<h6>代码示例</h6>
+
+<pre><code>
+// 从数据库获取源码字符串
+String sourceCode = repository.findPluginSource(&quot;my-plugin&quot;);
+
+// 直接编译并注册
+pluginManager.registerPluginFromSource(&quot;my-plugin&quot;, sourceCode);
+pluginManager.enablePlugin(&quot;my-plugin&quot;);
+
+// 后续从数据库获取新版本源码，热重载
+String newSourceCode = repository.findPluginSource(&quot;my-plugin&quot;);
+pluginManager.reloadPluginFromSource(&quot;my-plugin&quot;, newSourceCode);
+</code></pre>
+
+<h6>文件模式与字符串模式的区别</h6>
+
+<table>
+<tr><th>模式</th><th>注册方法</th><th>源码来源</th><th>变更检测</th></tr>
+<tr><td>文件模式</td><td>`registerPlugin(Path pluginDir)`</td><td>文件系统目录下的 `.java` 文件</td><td>通过 `WatchService` / `hasChanges` 自动检测文件变更</td></tr>
+<tr><td>字符串模式</td><td>`registerPluginFromSource(...)`</td><td>内存中的源码字符串（数据库、网络、配置中心等）</td><td>无文件系统依赖，由调用方负责获取新版本源码并调用 `reloadPluginFromSource`</td></tr>
+</table>
+
+<li><strong>文件模式</strong>：<code>registerPlugin(Path)</code>，通过 WatchService 自动检测文件变更。</li>
+<li><strong>字符串模式</strong>：<code>registerPluginFromSource</code>，无文件系统依赖，调用方负责获取源码。</li>
+
+<p>两种模式在编译、加载、扫描、注册的后续流程完全一致，均复用 <code>DynamicJavaCompiler</code>、<code>DynamicClassLoader</code>、<code>JavaFileScanner</code> 与 <code>plugin-jar-core</code> 的注册器。通过 <code>JavaFilePluginInfo.getSourceMode()</code> 可区分插件当前的源码模式（<code>FILE</code> 或 <code>STRING</code>）。</p>
+
+<p>---</p>
+
 <h5>与 JAR 插件系统的关系</h5>
 
 <p><code>plugin-java-core</code> 与 <code>plugin-jar-core</code> 既独立又协同：</p>
@@ -17865,7 +17860,7 @@ com.weacsoft.jaravel.vendor.plugin.java
 ├── manager                            # 插件管理
 │   └── JavaFilePluginManager          # 核心管理器，负责插件注册、启用、禁用、热重载
 ├── model                              # 数据模型
-│   └── JavaFilePluginInfo             # 插件信息模型（含 State 枚举：LOADED/ENABLED/DISABLED）
+│   └── JavaFilePluginInfo             # 插件信息模型（含 State 枚举：LOADED/ENABLED/DISABLED；SourceMode 枚举：FILE/STRING）
 └── scanner                            # 注解扫描
     └── JavaFileScanner                # 反射扫描 @PluginComponent / @PluginMapping
         ├── ScanResult                 # 内部类：扫描结果（组件类集合 + 路由映射列表）
@@ -17880,8 +17875,6 @@ src/main/resources/META-INF/spring/
     # 注册 PluginJavaAutoConfiguration 为 Spring Boot 自动装配类
 </code></pre>
 <h4>类和方法</h4>
-<h4>plugin-java-core AI-API Reference</h4>
-
 <p>&gt; Module: <code>plugin-java-core</code> | Package: <code>com.weacsoft.jaravel.vendor.plugin.java</code> | Version: 0.1.0</p>
 
 <h5>Overview</h5>
@@ -17893,7 +17886,7 @@ src/main/resources/META-INF/spring/
 <h6>JavaFilePluginManager</h6>
 <li><strong>Type</strong>: class</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.plugin.java.manager</code></li>
-<li><strong>Description</strong>: Java 文件插件管理器，负责 <code>.java</code> 源文件插件的完整生命周期管理。注册时扫描源目录下的 <code>.java</code> 文件，通过 <code>DynamicJavaCompiler</code> 编译为字节码，通过 <code>DynamicClassLoader</code> 加载，通过 <code>JavaFileScanner</code> 扫描组件和路由。启用时复用 <code>plugin-jar-core</code> 的 <code>PluginBeanRegistrar</code> 和 <code>PluginRouteRegistrar</code> 注册到主应用。支持文件变更检测和热重载。</li>
+<li><strong>Description</strong>: Java 文件插件管理器，负责 <code>.java</code> 源文件插件的完整生命周期管理。注册时扫描源目录下的 <code>.java</code> 文件，通过 <code>DynamicJavaCompiler</code> 编译为字节码，通过 <code>DynamicClassLoader</code> 加载，通过 <code>JavaFileScanner</code> 扫描组件和路由。启用时复用 <code>plugin-jar-core</code> 的 <code>PluginBeanRegistrar</code> 和 <code>PluginRouteRegistrar</code> 注册到主应用。支持文件变更检测和热重载。除文件模式外，还提供字符串源码模式（<code>registerPluginFromSource</code> / <code>reloadPluginFromSource</code>），可直接从内存中的源码字符串编译加载，无需文件系统依赖。</li>
 
 <h6>Methods</h6>
 
@@ -17901,6 +17894,10 @@ src/main/resources/META-INF/spring/
 <tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
 <tr><td>`JavaFilePluginManager`</td><td>`Path sourceDir, PluginBeanRegistrar beanRegistrar, PluginRouteRegistrar routeRegistrar, boolean autoRegister`</td><td>-</td><td>构造插件管理器，指定源目录和注册器</td></tr>
 <tr><td>`registerPlugin`</td><td>`Path pluginDir`</td><td>`String`</td><td>注册插件（扫描 .java 文件并编译），返回插件 ID（目录名）</td></tr>
+<tr><td>`registerPluginFromSource`</td><td>`String pluginId, Map<String, String> sources`</td><td>`String`</td><td>从源码字符串映射注册插件（key 为文件名，value 为源码内容），返回插件 ID</td></tr>
+<tr><td>`registerPluginFromSource`</td><td>`String pluginId, String sourceCode`</td><td>`String`</td><td>从单个源码字符串注册插件（便捷方法），返回插件 ID</td></tr>
+<tr><td>`reloadPluginFromSource`</td><td>`String pluginId, Map<String, String> sources`</td><td>`boolean`</td><td>从源码字符串热重载插件（禁用 → 重新编译 → 启用）</td></tr>
+<tr><td>`reloadPluginFromSource`</td><td>`String pluginId, String sourceCode`</td><td>`boolean`</td><td>从单个源码字符串热重载插件（便捷方法）</td></tr>
 <tr><td>`enablePlugin`</td><td>`String pluginId`</td><td>`boolean`</td><td>启用插件（注册 Bean 和路由）</td></tr>
 <tr><td>`disablePlugin`</td><td>`String pluginId`</td><td>`boolean`</td><td>禁用插件（注销 Bean 和路由，关闭 ClassLoader）</td></tr>
 <tr><td>`reloadPlugin`</td><td>`String pluginId`</td><td>`boolean`</td><td>重载插件（重新编译并注册）</td></tr>
@@ -18064,7 +18061,7 @@ for (JavaFileScanner.RouteScanInfo route : result.getRouteMappings()) {
 <h6>JavaFilePluginInfo</h6>
 <li><strong>Type</strong>: class</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.plugin.java.model</code></li>
-<li><strong>Description</strong>: Java 文件插件信息模型。描述一个 <code>.java</code> 文件插件的完整元数据，包括源文件路径、组件类、路由映射、已注册 Bean 名称、状态和错误信息等。</li>
+<li><strong>Description</strong>: Java 文件插件信息模型。描述一个 <code>.java</code> 文件插件的完整元数据，包括源文件路径、源码模式、组件类、路由映射、已注册 Bean 名称、状态和错误信息等。</li>
 
 <h6>Methods</h6>
 
@@ -18074,6 +18071,8 @@ for (JavaFileScanner.RouteScanInfo route : result.getRouteMappings()) {
 <tr><td>`setPluginId`</td><td>`String pluginId`</td><td>`void`</td><td>设置插件 ID</td></tr>
 <tr><td>`getSourceDir`</td><td>-</td><td>`String`</td><td>获取源目录路径</td></tr>
 <tr><td>`setSourceDir`</td><td>`String sourceDir`</td><td>`void`</td><td>设置源目录路径</td></tr>
+<tr><td>`getSourceMode`</td><td>-</td><td>`SourceMode`</td><td>获取源码模式（`FILE` 文件模式 / `STRING` 字符串模式），默认 `FILE`</td></tr>
+<tr><td>`setSourceMode`</td><td>`SourceMode sourceMode`</td><td>`void`</td><td>设置源码模式</td></tr>
 <tr><td>`getState`</td><td>-</td><td>`State`</td><td>获取插件状态</td></tr>
 <tr><td>`setState`</td><td>`State state`</td><td>`void`</td><td>设置插件状态</td></tr>
 <tr><td>`getSourceFiles`</td><td>-</td><td>`Set<String>`</td><td>获取 .java 源文件路径集合</td></tr>
@@ -18091,6 +18090,13 @@ for (JavaFileScanner.RouteScanInfo route : result.getRouteMappings()) {
 <tr><td>`getLastModified`</td><td>-</td><td>`long`</td><td>获取最后修改时间戳</td></tr>
 <tr><td>`setLastModified`</td><td>`long lastModified`</td><td>`void`</td><td>设置最后修改时间戳</td></tr>
 </table>
+
+<h6>Inner Enum: JavaFilePluginInfo.SourceMode</h6>
+<li><strong>Type</strong>: enum</li>
+<li><strong>Description</strong>: 插件源码模式，标识插件源码来自文件系统还是内存字符串。<code>registerPlugin</code> 注册的插件为 <code>FILE</code> 模式，<code>registerPluginFromSource</code> 注册的插件为 <code>STRING</code> 模式。默认值为 <code>FILE</code>。</li>
+<li><strong>Values</strong>:</li>
+<li><code>FILE</code>：文件模式，从文件系统目录读取 <code>.java</code> 源文件编译加载</li>
+<li><code>STRING</code>：字符串模式，从内存中的源码字符串直接编译加载，无文件系统依赖</li>
 
 <h6>Inner Enum: JavaFilePluginInfo.State</h6>
 <li><strong>Type</strong>: enum</li>
@@ -18171,14 +18177,11 @@ public class UserController {
     }
 }
 </code></pre>
-
 </section>
 <section id="cat-plugin-jar-multi-tenant">
 <h3>3. 热加载再增强：多租户 — plugin-jar-multi-tenant</h3>
 <p class="module-desc">tenant@plugin 多租户插件隔离，每个租户独立 ClassLoader 和路由前缀</p>
 <h4>简介</h4>
-<h4>plugin-jar-multi-tenant</h4>
-
 <p>&gt; 包名：com.weacsoft.jaravel.vendor.plugin.jar.multitenant</p>
 <p>&gt; 版本：0.1.0</p>
 
@@ -18239,8 +18242,6 @@ try {
 }
 </code></pre>
 <h4>类和方法</h4>
-<h4>plugin-jar-multi-tenant AI-API Reference</h4>
-
 <p>&gt; Module: <code>plugin-jar-multi-tenant</code> | Package: <code>com.weacsoft.jaravel.vendor.plugin.jar.multitenant</code> | Version: 0.1.0</p>
 
 <h5>Overview</h5>
@@ -18458,7 +18459,6 @@ String fullId = TenantNaming.buildPluginId(&quot;studentA&quot;, &quot;blog&quot
 <h5>Annotations & Enums</h5>
 
 <p>本模块不包含任何注解或枚举类型。所有类型均为普通类，复用 plugin-jar-core 模块中的 <code>@PluginComponent</code>、<code>@PluginMapping</code> 等注解与 <code>HttpMethod</code>、<code>PluginInfo.State</code> 等枚举。</p>
-
 </section>
 <h2 id="remote">远程执行系统</h2>
 <p class="module-desc">P2SP 远程方法调用，TCP/HTTP 双模式，树形中继转发。可独立于 jaravel 和热加载使用，仅依赖 SpringBoot。</p>
@@ -18466,8 +18466,6 @@ String fullId = TenantNaming.buildPluginId(&quot;studentA&quot;, &quot;blog&quot
 <h3>1. TCP 模式远程执行 — plugin-jar-remote-server</h3>
 <p class="module-desc">远程执行服务端，TCP 协议帧，反射调用 Bean 方法，握手认证，通过 BeanResolver 与热加载解耦</p>
 <h4>简介</h4>
-<h4>plugin-jar-remote-server</h4>
-
 <p>&gt; 包名：com.weacsoft.jaravel.vendor.plugin.jar.remote.server</p>
 <p>&gt; 版本：0.1.0</p>
 
@@ -18669,8 +18667,6 @@ executeWithRelay(request)
 <li>树形路由元数据字段（<code>sourceNodeId</code>/<code>visitedNodes</code>/<code>maxHops</code>/<code>currentHop</code>）在扁平模式下保持默认值，不影响原有逻辑。</li>
 <li>现有 <code>MSG_EXECUTE_REQUEST</code> 消息类型照常处理；树形转发使用独立的 <code>MSG_RELAY_REQUEST</code>/<code>MSG_RELAY_RESPONSE</code> 消息类型，互不干扰。</li>
 <h4>类和方法</h4>
-<h4>plugin-jar-remote-server AI-API Reference</h4>
-
 <p>&gt; Module: <code>plugin-jar-remote-server</code> | Package: <code>com.weacsoft.jaravel.vendor.plugin.jar.remote</code> | Version: 0.1.0</p>
 
 <h5>Overview</h5>
@@ -19071,14 +19067,11 @@ public class TcpRemoteTransport implements RemoteTransport {
     public String getType() { return &quot;TCP&quot;; }
 }
 </code></pre>
-
 </section>
 <section id="cat-plugin-jar-remote-client">
 <h3>2. HTTP 模式支持 — plugin-jar-remote-client</h3>
 <p class="module-desc">远程执行客户端，TCP/HTTP 双传输，协调器路由，动态代理，多子服务器负载均衡</p>
 <h4>简介</h4>
-<h4>plugin-jar-remote-client</h4>
-
 <p>&gt; 包名：com.weacsoft.jaravel.vendor.plugin.jar.remote.client</p>
 <p>&gt; 版本：0.1.0</p>
 
@@ -19248,8 +19241,6 @@ dispatcher.registerChild(&quot;node-A1&quot;, &quot;192.168.1.13&quot;, 9703, &q
 System.out.println(dispatcher.dumpTree());
 </code></pre>
 <h4>类和方法</h4>
-<h4>plugin-jar-remote-client AI-API Reference</h4>
-
 <p>&gt; Module: <code>plugin-jar-remote-client</code> | Package: <code>com.weacsoft.jaravel.vendor.plugin.jar.remote.client</code> | Version: 0.1.0</p>
 
 <h5>Overview</h5>
@@ -19727,7 +19718,6 @@ private RemoteExecutionDispatcher dispatcher;
 <p>&gt; 无 plugin-jar-core 时，本模块通过 <code>SpringBeanResolver</code> 从 Spring 容器获取 Bean，可独立于 jaravel 热加载系统使用，仅依赖 SpringBoot。</p>
 
 <p>&gt; 注：上述 <code>protocol</code> 与 <code>spi</code> 包类型由 plugin-jar-remote-server 模块定义，本模块作为客户端消费这些契约；服务端需实现对应的处理器（如 <code>HttpRpcHandler.processRequest</code>，现已接受 <code>BeanResolver</code> 参数）与 TCP 服务端逻辑。详细的服务端 API 请参阅 plugin-jar-remote-server 模块的 AI-API 文档。</p>
-
 </section>
 <section id="cat-remote-tree">
 <h3>3. 树形拓扑</h3>
@@ -19945,8 +19935,6 @@ System.out.println(dispatcher.dumpTree());
 <h3>springboot — SpringBoot 适配</h3>
 <p class="module-desc">RouterFunction 转换，全局中间件注册，响应处理器</p>
 <h4>简介</h4>
-<h4>springboot 模块</h4>
-
 <p>&gt; Jaravel-Vendor 的 Spring Boot 集成模块，将 <code>http</code> 模块的 Laravel 风格路由、中间件、Request / Response 与 Spring MVC（<code>RouterFunction</code>、<code>HandlerMethodArgumentResolver</code>、<code>HandlerMethodReturnValueHandler</code>、<code>ResponseBodyAdvice</code>）桥接。包名统一为 <code>com.weacsoft.jaravel.vendor.springboot</code>。</p>
 
 <p>---</p>
@@ -20398,8 +20386,6 @@ public class MyApp { ... }
 <tr><td>`ResponseReturnValueHandler`</td><td>线程安全</td><td>无实例字段，`handleReturnValue` 仅操作方法参数，每请求独立</td></tr>
 </table>
 <h4>类和方法</h4>
-<h4>springboot AI-API Reference</h4>
-
 <p>&gt; Module: <code>springboot</code> | Package: <code>com.weacsoft.jaravel.vendor.springboot</code> | Version: 0.1.0</p>
 
 <h5>Overview</h5>
@@ -20567,14 +20553,11 @@ jaravel:
   response:
     uniform: true
 </code></pre>
-
 </section>
 <section id="cat-wechat-sdk">
 <h3>wechat-sdk — 微信 SDK</h3>
 <p class="module-desc">公众号/小程序支持，AccessToken 缓存，OAuth 授权</p>
 <h4>简介</h4>
-<h4>wechat-sdk 模块（微信 SDK）</h4>
-
 <p>&gt; 包名：<code>com.weacsoft.jaravel.vendor.wechat</code></p>
 <p>&gt; 对齐 PHP 扩展包：<code>overtrue/laravel-wechat</code>（EasyWeChat）</p>
 
@@ -20876,8 +20859,6 @@ Map&lt;String, Object&gt; result = miniProgramService.sendTemplateMessage(
 <tr><td>`WechatProperties`</td><td>Spring Boot 配置属性绑定，启动后只读</td></tr>
 </table>
 <h4>类和方法</h4>
-<h4>wechat-sdk AI-API Reference</h4>
-
 <p>&gt; Module: <code>wechat-sdk</code> | Package: <code>com.weacsoft.jaravel.vendor.wechat</code> | Version: 0.1.0</p>
 
 <h5>Overview</h5>
@@ -21131,14 +21112,11 @@ private OfficialAccountService mpService;
 @Autowired
 private MiniProgramService miniService;
 </code></pre>
-
 </section>
 <section id="cat-starter">
 <h3>starter — 聚合启动器</h3>
 <p class="module-desc">一键引入全部模块的 starter POM</p>
 <h4>简介</h4>
-<h4>starter 模块</h4>
-
 <p>&gt; Jaravel-Vendor 的 Spring Boot Starter，一键引入全部 Laravel 风格组件。只需添加一个 Maven 依赖，即可获得中间件、Auth、Validation、Config、Eloquent ORM、迁移、缓存、事件、JBlade 模板引擎全套能力。包名统一为 <code>com.weacsoft.jaravel.vendor.springboot</code>。</p>
 
 <p>---</p>
@@ -21523,8 +21501,6 @@ Config.get(&quot;server.port&quot;); // 8080（仅 yml 中有）
 
 <p>&gt; 总体而言，starter 装配的所有组件均遵循&quot;启动阶段写入、运行时只读&quot;的模式，运行时并发安全。唯一需注意的是 <code>Config.set</code> 的运行时写入，若在高并发场景频繁调用，建议外部加锁或在启动阶段完成所有配置写入。</p>
 <h4>类和方法</h4>
-<h4>starter AI-API Reference</h4>
-
 <p>&gt; Module: <code>starter</code> | Package: <code>com.weacsoft.jaravel.vendor.springboot</code> | Version: 0.1.0</p>
 
 <h5>Overview</h5>
@@ -21613,7 +21589,6 @@ public class DemoController {
         return &quot;ok&quot;;  // 自动包装为统一响应格式
     }
 </code></pre>
-
 </section>
 </div>
 </div>
