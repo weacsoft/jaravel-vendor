@@ -8,8 +8,11 @@ import java.util.Set;
 /**
  * Java 文件插件信息模型。
  * <p>
- * 描述一个 .java 文件插件的完整元数据，包括源文件路径、组件类、路由映射、
+ * 描述一个 Java 源码插件的完整元数据，包括源文件路径、组件类、路由映射、
  * 已注册 Bean 名称、状态和错误信息等。
+ * <p>
+ * 支持两种源码模式：文件模式（{@link SourceMode#FILE}）和字符串模式（{@link SourceMode#STRING}）。
+ * 文件模式下 sourceDir 为插件目录路径，字符串模式下 sourceDir 为 null。
  * <p>
  * 由 {@link com.weacsoft.jaravel.vendor.plugin.java.manager.JavaFilePluginManager} 在注册、
  * 启用、禁用、重载插件时维护。
@@ -28,11 +31,24 @@ public class JavaFilePluginInfo {
         DISABLED
     }
 
-    /** 插件 ID（目录名） */
+    /**
+     * 源码模式枚举。
+     */
+    public enum SourceMode {
+        /** 文件模式：从文件系统目录读取 .java 文件 */
+        FILE,
+        /** 字符串模式：从内存中的源码字符串直接编译，无需文件系统 */
+        STRING
+    }
+
+    /** 插件 ID（目录名或调用方指定） */
     private String pluginId;
 
-    /** 源目录路径 */
+    /** 源目录路径（文件模式有值，字符串模式为 null） */
     private String sourceDir;
+
+    /** 源码模式（默认 FILE） */
+    private SourceMode sourceMode = SourceMode.FILE;
 
     /** 插件状态 */
     private State state;
@@ -82,6 +98,14 @@ public class JavaFilePluginInfo {
 
     public void setSourceDir(String sourceDir) {
         this.sourceDir = sourceDir;
+    }
+
+    public SourceMode getSourceMode() {
+        return sourceMode;
+    }
+
+    public void setSourceMode(SourceMode sourceMode) {
+        this.sourceMode = sourceMode;
     }
 
     public State getState() {

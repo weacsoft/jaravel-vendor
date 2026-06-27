@@ -21,6 +21,7 @@ JAR 插件系统核心库，提供动态加载/卸载 JAR 插件、三级 ClassL
 - [路由注册模式](#路由注册模式)
 - [核心 API](#核心-api)
   - [HotPluginManager 方法列表](#hotpluginmanager-方法列表)
+- [字节数组模式（内存插件）](#字节数组模式内存插件)
 - [插件开发指南](#插件开发指南)
   - [添加 Maven 依赖](#添加-maven-依赖)
   - [编写插件类](#编写插件类)
@@ -49,6 +50,7 @@ JAR 插件系统核心库，提供动态加载/卸载 JAR 插件、三级 ClassL
 - **ASM 字节码扫描依赖与路由**：使用 ASM 9.7 在不加载类的前提下扫描插件 JAR 的字节码，提取 `@PluginComponent` 组件类、`@SharedService` 共享依赖和 `@PluginMapping` / `@PluginRoute` 路由映射。
 - **元数据持久化**：重启后自动恢复插件状态。支持 JSON 文件（默认）和数据库两种持久化模式，仅落盘文件可自动持久化恢复。
 - **内存 JAR 加载**：支持从内存字节（`byte[]`）直接加载插件 JAR，不要求 `.jar` 落盘。但仅落盘文件（`persist=true`）可自动持久化恢复。
+- **字节数组模式**：从内存中的 JAR 二进制数据直接热加载，无需落盘到插件目录。
 - **Spring Boot AutoConfiguration 开箱即用**：引入依赖后自动装配 `HotPluginManager`、`PluginBeanRegistrar`、`PluginRouteRegistrar`、`MetadataPersistence` 等核心组件。
 - **线程安全**：核心管理器使用 `ReadWriteLock` + `ConcurrentHashMap` 保证并发安全，插件注册/卸载与路由查询可安全并发。
 
@@ -354,6 +356,44 @@ hotPluginManager.uninstallPlugin("my-plugin");
 List<PluginInfo> all = hotPluginManager.getAllPlugins();
 PluginInfo info = hotPluginManager.getPlugin("my-plugin");
 ```
+
+---
+
+## 字节数组模式（内存插件）
+
+字节数组模式适合从数据库、网络等获取 JAR 二进制数据后直接热加载的场景。JAR 数据会写入临时文件（JVM 退出时自动删除），不持久化到插件目录，因此重启后不会自动恢复。
+
+### API 方法
+
+| 方法签名 | 说明 |
+|---|---|
+| `String registerPluginFromBytes(byte[] jarBytes, String pluginId)` | 从字节数组注册插件（不持久化）。将 JAR 写入临时文件后加载，返回实际使用的 pluginId |
+| `boolean reloadPluginFromBytes(String pluginId, byte[] jarBytes)` | 从新的字节数组热重载插件。先禁用旧版本（若已启用），再用新字节数组重新加载并启用，保持 pluginId 不变 |
+
+### 代码示例
+
+```java
+// 从数据库获取 JAR 二进制
+byte[] jarBytes = repository.findPluginJar("my-plugin");
+
+// 直接注册并启用
+manager.registerPluginFromBytes(jarBytes, "my-plugin");
+manager.enablePlugin("my-plugin");
+
+// 后续从数据库获取新版本，热重载
+byte[] newJarBytes = repository.findPluginJar("my-plugin");
+manager.reloadPluginFromBytes("my-plugin", newJarBytes);
+```
+
+### 三种注册模式对比
+
+插件系统支持三种注册模式，对应不同的 JAR 来源与持久化策略：
+
+| 模式 | API | JAR 处理方式 | 是否持久化 | 自动恢复 |
+|------|-----|-------------|-----------|---------|
+| 磁盘模式 | `registerPluginFromPath(jarFile, pluginId, true)` | 复制 JAR 到插件目录 | 是 | 支持 |
+| 路径模式 | `registerPluginFromPath(jarFile, pluginId, false)` | 仅记录路径，JAR 不复制 | 否 | 不支持 |
+| 字节数组模式 | `registerPluginFromBytes(jarBytes, pluginId)` | 写入临时文件，JVM 退出自动删除 | 否 | 不支持 |
 
 ---
 

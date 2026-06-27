@@ -11,7 +11,7 @@ plugin-java-core 模块提供了基于 `.java` 源文件的动态插件系统。
 ### JavaFilePluginManager
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.plugin.java.manager`
-- **Description**: Java 文件插件管理器，负责 `.java` 源文件插件的完整生命周期管理。注册时扫描源目录下的 `.java` 文件，通过 `DynamicJavaCompiler` 编译为字节码，通过 `DynamicClassLoader` 加载，通过 `JavaFileScanner` 扫描组件和路由。启用时复用 `plugin-jar-core` 的 `PluginBeanRegistrar` 和 `PluginRouteRegistrar` 注册到主应用。支持文件变更检测和热重载。
+- **Description**: Java 文件插件管理器，负责 `.java` 源文件插件的完整生命周期管理。注册时扫描源目录下的 `.java` 文件，通过 `DynamicJavaCompiler` 编译为字节码，通过 `DynamicClassLoader` 加载，通过 `JavaFileScanner` 扫描组件和路由。启用时复用 `plugin-jar-core` 的 `PluginBeanRegistrar` 和 `PluginRouteRegistrar` 注册到主应用。支持文件变更检测和热重载。除文件模式外，还提供字符串源码模式（`registerPluginFromSource` / `reloadPluginFromSource`），可直接从内存中的源码字符串编译加载，无需文件系统依赖。
 
 #### Methods
 
@@ -19,6 +19,10 @@ plugin-java-core 模块提供了基于 `.java` 源文件的动态插件系统。
 |--------|-----------|--------|-------------|
 | `JavaFilePluginManager` | `Path sourceDir, PluginBeanRegistrar beanRegistrar, PluginRouteRegistrar routeRegistrar, boolean autoRegister` | - | 构造插件管理器，指定源目录和注册器 |
 | `registerPlugin` | `Path pluginDir` | `String` | 注册插件（扫描 .java 文件并编译），返回插件 ID（目录名） |
+| `registerPluginFromSource` | `String pluginId, Map<String, String> sources` | `String` | 从源码字符串映射注册插件（key 为文件名，value 为源码内容），返回插件 ID |
+| `registerPluginFromSource` | `String pluginId, String sourceCode` | `String` | 从单个源码字符串注册插件（便捷方法），返回插件 ID |
+| `reloadPluginFromSource` | `String pluginId, Map<String, String> sources` | `boolean` | 从源码字符串热重载插件（禁用 → 重新编译 → 启用） |
+| `reloadPluginFromSource` | `String pluginId, String sourceCode` | `boolean` | 从单个源码字符串热重载插件（便捷方法） |
 | `enablePlugin` | `String pluginId` | `boolean` | 启用插件（注册 Bean 和路由） |
 | `disablePlugin` | `String pluginId` | `boolean` | 禁用插件（注销 Bean 和路由，关闭 ClassLoader） |
 | `reloadPlugin` | `String pluginId` | `boolean` | 重载插件（重新编译并注册） |
@@ -175,7 +179,7 @@ for (JavaFileScanner.RouteScanInfo route : result.getRouteMappings()) {
 ### JavaFilePluginInfo
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.plugin.java.model`
-- **Description**: Java 文件插件信息模型。描述一个 `.java` 文件插件的完整元数据，包括源文件路径、组件类、路由映射、已注册 Bean 名称、状态和错误信息等。
+- **Description**: Java 文件插件信息模型。描述一个 `.java` 文件插件的完整元数据，包括源文件路径、源码模式、组件类、路由映射、已注册 Bean 名称、状态和错误信息等。
 
 #### Methods
 
@@ -185,6 +189,8 @@ for (JavaFileScanner.RouteScanInfo route : result.getRouteMappings()) {
 | `setPluginId` | `String pluginId` | `void` | 设置插件 ID |
 | `getSourceDir` | - | `String` | 获取源目录路径 |
 | `setSourceDir` | `String sourceDir` | `void` | 设置源目录路径 |
+| `getSourceMode` | - | `SourceMode` | 获取源码模式（`FILE` 文件模式 / `STRING` 字符串模式），默认 `FILE` |
+| `setSourceMode` | `SourceMode sourceMode` | `void` | 设置源码模式 |
 | `getState` | - | `State` | 获取插件状态 |
 | `setState` | `State state` | `void` | 设置插件状态 |
 | `getSourceFiles` | - | `Set<String>` | 获取 .java 源文件路径集合 |
@@ -201,6 +207,13 @@ for (JavaFileScanner.RouteScanInfo route : result.getRouteMappings()) {
 | `setErrorMessage` | `String errorMessage` | `void` | 设置错误信息 |
 | `getLastModified` | - | `long` | 获取最后修改时间戳 |
 | `setLastModified` | `long lastModified` | `void` | 设置最后修改时间戳 |
+
+#### Inner Enum: JavaFilePluginInfo.SourceMode
+- **Type**: enum
+- **Description**: 插件源码模式，标识插件源码来自文件系统还是内存字符串。`registerPlugin` 注册的插件为 `FILE` 模式，`registerPluginFromSource` 注册的插件为 `STRING` 模式。默认值为 `FILE`。
+- **Values**:
+  - `FILE`：文件模式，从文件系统目录读取 `.java` 源文件编译加载
+  - `STRING`：字符串模式，从内存中的源码字符串直接编译加载，无文件系统依赖
 
 #### Inner Enum: JavaFilePluginInfo.State
 - **Type**: enum

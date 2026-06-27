@@ -23,6 +23,7 @@ plugin-jar-core 模块是 JAR 插件系统的核心，提供 JAR 包形式插件
 | `enable` | `String pluginId` | `boolean` | 启用插件（注册 Bean 和路由） |
 | `disable` | `String pluginId` | `boolean` | 禁用插件（注销 Bean 和路由，保留 ClassLoader） |
 | `reload` | `String pluginId` | `boolean` | 重载插件（先卸载再加载） |
+| `reloadPluginFromBytes` | `String pluginId, byte[] jarBytes` | `boolean` | 从字节数组热重载插件（先禁用旧版本，再用新字节数组重新加载并启用，保持 pluginId 不变） |
 | `getPlugin` | `String pluginId` | `PluginInfo` | 获取插件信息 |
 | `getPlugins` | - | `List<PluginInfo>` | 获取所有已加载插件信息 |
 | `getEnabledPlugins` | - | `List<PluginInfo>` | 获取所有已启用插件信息 |
@@ -239,6 +240,7 @@ routeRegistrar.unregisterRoutes(pluginInfo);
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
 | `scan` | `Path pluginJar` | `Set<String>` | 扫描插件 JAR 的共享依赖，返回共享依赖坐标集合 |
+| `scan` | `byte[] jarBytes, Set<String> sharedPackagePrefixes` | `ScanResult` | 从字节数组扫描 JAR（静态方法）。使用 `JarInputStream` 从内存读取，无需文件系统 |
 | `getSharedJars` | - | `List<Path>` | 获取所有共享依赖 JAR 路径 |
 | `isShared` | `String className` | `boolean` | 检查指定类是否属于共享依赖 |
 

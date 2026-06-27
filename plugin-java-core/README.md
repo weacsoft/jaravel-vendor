@@ -20,6 +20,7 @@
 - [路由注册模式](#路由注册模式)
 - [插件开发指南](#插件开发指南)
 - [热更新](#热更新)
+- [字符串源码模式](#字符串源码模式)
 - [与 JAR 插件系统的关系](#与-jar-插件系统的关系)
 - [限制](#限制)
 - [目录结构](#目录结构)
@@ -30,6 +31,7 @@
 
 - **动态编译**：使用 JDK 内置 `javax.tools.JavaCompiler` 编译 `.java` 文件，无需引入第三方编译器。
 - **内存加载**：编译后的字节码存储在内存中（`Map<String, byte[]>`），无需落盘，由 `DynamicClassLoader` 直接加载。
+- **字符串源码模式**：从内存中的 Java 源码字符串直接编译热加载，无需文件系统。
 - **热更新**：修改 `.java` 文件后重新编译，刷新所有类，创建新的 `ClassLoader` 实现插件热重载。
 - **动态路由**：自动扫描 `@PluginMapping` 注解注册路由，支持 `path`、`method`、`produces` 等属性。
 - **双注册模式**：支持自动注册（`@PluginMapping`）与手动注册（`@PluginRoute`）两种路由注册模式，通过 `auto-register` 配置项切换。
@@ -332,6 +334,50 @@ new Thread(() -> {
 
 ---
 
+## 字符串源码模式
+
+除了从文件系统目录加载 `.java` 文件外，`plugin-java-core` 还支持**字符串源码模式**：直接将内存中的 Java 源码字符串交给编译器编译并热加载，整个过程不依赖文件系统。该模式适合从数据库、网络、配置中心等任意来源获取源码后编译热加载。
+
+### API 方法
+
+| 方法签名 | 说明 |
+| --- | --- |
+| `registerPluginFromSource(String pluginId, String sourceCode)` | 从单个源码字符串注册插件（便捷方法） |
+| `registerPluginFromSource(String pluginId, Map<String, String> sources)` | 从多个源码字符串注册插件，Map 的 key 为文件名（如 `HelloController.java`），value 为源码内容 |
+| `reloadPluginFromSource(String pluginId, String sourceCode)` | 从新的单个源码字符串热重载插件 |
+| `reloadPluginFromSource(String pluginId, Map<String, String> sources)` | 从多个新的源码字符串热重载插件 |
+
+> 注册成功后返回插件 ID（即传入的 `pluginId`），随后仍需调用 `enablePlugin` 启用插件；`reloadPluginFromSource` 会自动完成「禁用 → 重新编译 → 启用」的完整热重载流程。
+
+### 代码示例
+
+```java
+// 从数据库获取源码字符串
+String sourceCode = repository.findPluginSource("my-plugin");
+
+// 直接编译并注册
+pluginManager.registerPluginFromSource("my-plugin", sourceCode);
+pluginManager.enablePlugin("my-plugin");
+
+// 后续从数据库获取新版本源码，热重载
+String newSourceCode = repository.findPluginSource("my-plugin");
+pluginManager.reloadPluginFromSource("my-plugin", newSourceCode);
+```
+
+### 文件模式与字符串模式的区别
+
+| 模式 | 注册方法 | 源码来源 | 变更检测 |
+| --- | --- | --- | --- |
+| 文件模式 | `registerPlugin(Path pluginDir)` | 文件系统目录下的 `.java` 文件 | 通过 `WatchService` / `hasChanges` 自动检测文件变更 |
+| 字符串模式 | `registerPluginFromSource(...)` | 内存中的源码字符串（数据库、网络、配置中心等） | 无文件系统依赖，由调用方负责获取新版本源码并调用 `reloadPluginFromSource` |
+
+- **文件模式**：`registerPlugin(Path)`，通过 WatchService 自动检测文件变更。
+- **字符串模式**：`registerPluginFromSource`，无文件系统依赖，调用方负责获取源码。
+
+两种模式在编译、加载、扫描、注册的后续流程完全一致，均复用 `DynamicJavaCompiler`、`DynamicClassLoader`、`JavaFileScanner` 与 `plugin-jar-core` 的注册器。通过 `JavaFilePluginInfo.getSourceMode()` 可区分插件当前的源码模式（`FILE` 或 `STRING`）。
+
+---
+
 ## 与 JAR 插件系统的关系
 
 `plugin-java-core` 与 `plugin-jar-core` 既独立又协同：
@@ -379,7 +425,7 @@ com.weacsoft.jaravel.vendor.plugin.java
 ├── manager                            # 插件管理
 │   └── JavaFilePluginManager          # 核心管理器，负责插件注册、启用、禁用、热重载
 ├── model                              # 数据模型
-│   └── JavaFilePluginInfo             # 插件信息模型（含 State 枚举：LOADED/ENABLED/DISABLED）
+│   └── JavaFilePluginInfo             # 插件信息模型（含 State 枚举：LOADED/ENABLED/DISABLED；SourceMode 枚举：FILE/STRING）
 └── scanner                            # 注解扫描
     └── JavaFileScanner                # 反射扫描 @PluginComponent / @PluginMapping
         ├── ScanResult                 # 内部类：扫描结果（组件类集合 + 路由映射列表）

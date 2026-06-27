@@ -228,6 +228,7 @@ public class HotPluginManager implements Application.HotPluginManagerRef {
      * 从字节数组注册插件（内存插件，不持久化）。
      * <p>
      * 将字节数组写入临时文件后加载，{@code persisted=false}，重启后丢失。
+     * 适合从数据库、网络等获取 JAR 二进制数据后直接热加载，无需落盘到插件目录。
      *
      * @param jarBytes JAR 字节数组
      * @param pluginId 插件 ID（为空时自动生成）
@@ -252,6 +253,65 @@ public class HotPluginManager implements Application.HotPluginManagerRef {
         } catch (IOException e) {
             log.error("注册内存插件失败: {}", pluginId, e);
             throw new RuntimeException("注册内存插件失败: " + pluginId, e);
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
+    /**
+     * 从字节数组热重载插件（内存模式）。
+     * <p>
+     * 先禁用旧版本（若已启用），然后用新字节数组重新加载并启用。
+     * 适合从数据库/网络获取新版本 JAR 二进制后热更新。
+     * <p>
+     * 与 {@link #registerPluginFromBytes} 不同，此方法要求插件已注册。
+     *
+     * @param pluginId  插件 ID
+     * @param jarBytes  新 JAR 字节数组
+     * @return 重载成功返回 true
+     */
+    public boolean reloadPluginFromBytes(String pluginId, byte[] jarBytes) {
+        lock.writeLock().lock();
+        try {
+            PluginInfo info = plugins.get(pluginId);
+            if (info == null) {
+                log.warn("插件不存在: {}", pluginId);
+                return false;
+            }
+
+            log.info("热重载内存插件: {}", pluginId);
+
+            boolean wasEnabled = info.getState() == PluginInfo.State.ENABLED;
+            if (wasEnabled) {
+                disablePlugin(pluginId);
+            }
+
+            try {
+                // 写入新临时文件
+                Path tempFile = Files.createTempFile("plugin-" + pluginId + "-", ".jar");
+                Files.write(tempFile, jarBytes);
+                tempFile.toFile().deleteOnExit();
+
+                // 更新插件信息
+                info.setJarPath(tempFile.toString());
+                info.setVersion("0.1.0");
+                info.setPersisted(false);
+                info.setState(PluginInfo.State.UPLOADED);
+                info.setErrorMessage(null);
+
+                log.info("内存插件 {} 已更新: tempJar={}", pluginId, tempFile);
+
+            } catch (IOException e) {
+                log.error("内存插件 {} 重载失败", pluginId, e);
+                info.setErrorMessage(e.getMessage());
+                info.setState(PluginInfo.State.DISABLED);
+                return false;
+            }
+
+            if (wasEnabled) {
+                return enablePlugin(pluginId);
+            }
+            return true;
         } finally {
             lock.writeLock().unlock();
         }

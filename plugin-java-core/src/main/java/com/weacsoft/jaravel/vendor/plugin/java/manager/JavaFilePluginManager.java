@@ -32,11 +32,18 @@ import java.util.stream.Stream;
 /**
  * Java 文件插件管理器。
  * <p>
- * 核心管理器，负责 .java 文件插件的完整生命周期：注册、启用、禁用、热重载。
+ * 核心管理器，负责 Java 源码插件的完整生命周期：注册、启用、禁用、热重载。
+ * <p>
+ * 支持两种源码输入方式：
+ * <ul>
+ *   <li><b>文件模式</b>：{@link #registerPlugin(Path)} 扫描目录中的 .java 文件，适合本地开发。</li>
+ *   <li><b>字符串模式</b>：{@link #registerPluginFromSource(String, Map)} 直接传入源码字符串，
+ *       适合从数据库、网络、配置中心等任意来源获取源码后编译热加载，无需文件系统。</li>
+ * </ul>
  * <p>
  * 工作流程：
  * <ol>
- *   <li>{@link #registerPlugin(Path)}：扫描目录中的 .java 文件，解析包名/类名，编译为内存字节码，
+ *   <li>注册（文件或字符串）：解析包名/类名，编译为内存字节码，
  *       创建 {@link DynamicClassLoader}，反射扫描 {@link PluginComponent} 注解，存储插件信息。</li>
  *   <li>{@link #enablePlugin(String)}：加载组件类，通过 {@link PluginBeanRegistrar} 注册 Bean，
  *       根据 autoRegister 模式处理路由：
@@ -46,7 +53,8 @@ import java.util.stream.Stream;
  *       </ul>
  *   </li>
  *   <li>{@link #disablePlugin(String)}：注销路由和 Bean，关闭 ClassLoader。</li>
- *   <li>{@link #reloadPlugin(String)}：先禁用再重新编译启用，实现热重载。</li>
+ *   <li>热重载：{@link #reloadPlugin(String)}（文件模式）或 {@link #reloadPluginFromSource(String, Map)}（字符串模式），
+ *       先禁用再重新编译启用。</li>
  * </ol>
  * <p>
  * 线程安全：使用 {@link java.util.concurrent.locks.ReadWriteLock} 保护所有状态变更操作。
@@ -124,6 +132,7 @@ public class JavaFilePluginManager {
             log.info("注册 Java 文件插件: {} ({})", pluginId, pluginDir);
 
             JavaFilePluginInfo info = new JavaFilePluginInfo(pluginId, pluginDir.toString());
+            info.setSourceMode(JavaFilePluginInfo.SourceMode.FILE);
 
             try {
                 // 1. 读取所有 .java 文件
@@ -133,30 +142,8 @@ public class JavaFilePluginManager {
                     throw new RuntimeException("插件目录中没有 .java 文件: " + pluginDir);
                 }
 
-                // 2. 编译所有文件
-                Map<String, byte[]> compiledClasses = compiler.compile(sourceFiles, getClass().getClassLoader());
-                log.info("插件 {} 编译完成，共 {} 个类", pluginId, compiledClasses.size());
-
-                // 3. 创建 ClassLoader
-                DynamicClassLoader classLoader = new DynamicClassLoader(
-                        getClass().getClassLoader(), compiledClasses);
-                classLoaders.put(pluginId, classLoader);
-
-                // 4. 扫描注解
-                ScanResult scanResult = scanner.scan(classLoader, compiledClasses.keySet());
-
-                info.setComponentClasses(scanResult.getComponentClasses());
-                info.setRouteMappings(convertToRouteInfos(scanResult.getRouteMappings(), classLoader));
-                info.setAvailableRoutes(convertToRouteInfos(scanResult.getAvailableRouteMappings(), classLoader));
-                info.setLastModified(computeLastModified(info.getSourceFiles()));
-                info.setState(JavaFilePluginInfo.State.LOADED);
-                info.setErrorMessage(null);
-
-                plugins.put(pluginId, info);
-
-                log.info("插件 {} 注册成功：{} 个组件，{} 条路由，{} 条可注册路由",
-                        pluginId, info.getComponentClasses().size(),
-                        info.getRouteMappings().size(), info.getAvailableRoutes().size());
+                // 2. 编译、扫描、存储（公共逻辑）
+                compileScanAndStore(pluginId, info, sourceFiles);
 
             } catch (Exception e) {
                 log.error("插件 {} 注册失败", pluginId, e);
@@ -170,6 +157,127 @@ public class JavaFilePluginManager {
         } finally {
             rwLock.writeLock().unlock();
         }
+    }
+
+    /**
+     * 从源码字符串注册插件（字符串模式）。
+     * <p>
+     * 直接传入 Java 源码字符串，无需文件系统。适合从数据库、网络、配置中心等
+     * 任意来源获取源码后编译热加载。
+     * <p>
+     * 方法内部自动解析每个源码字符串的 package 声明和类声明，推导出类全限定名，
+     * 然后编译为内存字节码，创建 ClassLoader，扫描注解，存储插件信息。
+     *
+     * @param pluginId 插件 ID（由调用方指定，如 "my-plugin" 或数据库 ID）
+     * @param sources  源码映射：key 为文件名（如 "Hello.java"，仅用于日志），value 为源码字符串
+     * @return 插件 ID
+     * @throws RuntimeException 编译或扫描失败时抛出
+     */
+    public String registerPluginFromSource(String pluginId, Map<String, String> sources) {
+        rwLock.writeLock().lock();
+        try {
+            log.info("注册字符串源码插件: {} ({} 个源文件)", pluginId, sources != null ? sources.size() : 0);
+
+            JavaFilePluginInfo info = new JavaFilePluginInfo(pluginId, null);
+            info.setSourceMode(JavaFilePluginInfo.SourceMode.STRING);
+
+            try {
+                List<JavaSourceFile> sourceFiles = parseSourceStrings(sources);
+
+                if (sourceFiles.isEmpty()) {
+                    throw new RuntimeException("没有有效的源码: " + pluginId);
+                }
+
+                // 编译、扫描、存储（公共逻辑）
+                compileScanAndStore(pluginId, info, sourceFiles);
+
+            } catch (Exception e) {
+                log.error("插件 {} 注册失败", pluginId, e);
+                info.setErrorMessage(e.getMessage());
+                info.setState(JavaFilePluginInfo.State.DISABLED);
+                plugins.put(pluginId, info);
+                throw new RuntimeException("插件注册失败: " + pluginId, e);
+            }
+
+            return pluginId;
+        } finally {
+            rwLock.writeLock().unlock();
+        }
+    }
+
+    /**
+     * 从单个源码字符串注册插件（便捷方法）。
+     * <p>
+     * 等价于 {@code registerPluginFromSource(pluginId, Map.of(fileName, sourceCode))}。
+     *
+     * @param pluginId   插件 ID
+     * @param sourceCode 源码字符串
+     * @return 插件 ID
+     */
+    public String registerPluginFromSource(String pluginId, String sourceCode) {
+        return registerPluginFromSource(pluginId, Map.of("Source.java", sourceCode));
+    }
+
+    /**
+     * 从源码字符串热重载插件（字符串模式）。
+     * <p>
+     * 先禁用旧版本（若已启用），然后用新源码重新编译并启用。
+     * 适合运行时动态更新插件代码：从数据库/网络获取新版本源码后调用此方法。
+     *
+     * @param pluginId 插件 ID
+     * @param sources  新源码映射
+     * @return 重载成功返回 true
+     */
+    public boolean reloadPluginFromSource(String pluginId, Map<String, String> sources) {
+        rwLock.writeLock().lock();
+        try {
+            JavaFilePluginInfo info = plugins.get(pluginId);
+            if (info == null) {
+                log.warn("插件不存在: {}", pluginId);
+                return false;
+            }
+
+            log.info("热重载字符串源码插件: {} ({} 个源文件)", pluginId, sources != null ? sources.size() : 0);
+
+            boolean wasEnabled = info.getState() == JavaFilePluginInfo.State.ENABLED;
+            if (wasEnabled) {
+                disablePlugin(pluginId);
+            }
+
+            try {
+                List<JavaSourceFile> sourceFiles = parseSourceStrings(sources);
+                if (sourceFiles.isEmpty()) {
+                    throw new RuntimeException("没有有效的源码: " + pluginId);
+                }
+
+                // 编译、扫描、更新 info
+                compileScanAndStore(pluginId, info, sourceFiles);
+
+            } catch (Exception e) {
+                log.error("插件 {} 从源码重载失败", pluginId, e);
+                info.setErrorMessage(e.getMessage());
+                info.setState(JavaFilePluginInfo.State.DISABLED);
+                return false;
+            }
+
+            if (wasEnabled) {
+                return enablePlugin(pluginId);
+            }
+            return true;
+        } finally {
+            rwLock.writeLock().unlock();
+        }
+    }
+
+    /**
+     * 从单个源码字符串热重载插件（便捷方法）。
+     *
+     * @param pluginId   插件 ID
+     * @param sourceCode 新源码字符串
+     * @return 重载成功返回 true
+     */
+    public boolean reloadPluginFromSource(String pluginId, String sourceCode) {
+        return reloadPluginFromSource(pluginId, Map.of("Source.java", sourceCode));
     }
 
     /**
@@ -316,7 +424,7 @@ public class JavaFilePluginManager {
                 disablePlugin(pluginId);
             }
 
-            // 2. 重新编译和扫描
+            // 2. 重新编译和扫描（文件模式）
             try {
                 Path pluginDir = Paths.get(info.getSourceDir());
                 List<JavaSourceFile> sourceFiles = readJavaFiles(pluginDir, info);
@@ -325,25 +433,7 @@ public class JavaFilePluginManager {
                     throw new RuntimeException("插件目录中没有 .java 文件: " + pluginDir);
                 }
 
-                Map<String, byte[]> compiledClasses = compiler.compile(sourceFiles, getClass().getClassLoader());
-                log.info("插件 {} 重新编译完成，共 {} 个类", pluginId, compiledClasses.size());
-
-                DynamicClassLoader classLoader = new DynamicClassLoader(
-                        getClass().getClassLoader(), compiledClasses);
-                classLoaders.put(pluginId, classLoader);
-
-                ScanResult scanResult = scanner.scan(classLoader, compiledClasses.keySet());
-
-                info.setComponentClasses(scanResult.getComponentClasses());
-                info.setRouteMappings(convertToRouteInfos(scanResult.getRouteMappings(), classLoader));
-                info.setAvailableRoutes(convertToRouteInfos(scanResult.getAvailableRouteMappings(), classLoader));
-                info.setLastModified(computeLastModified(info.getSourceFiles()));
-                info.setErrorMessage(null);
-                info.setState(JavaFilePluginInfo.State.LOADED);
-
-                log.info("插件 {} 重新扫描完成：{} 个组件，{} 条路由，{} 条可注册路由",
-                        pluginId, info.getComponentClasses().size(),
-                        info.getRouteMappings().size(), info.getAvailableRoutes().size());
+                compileScanAndStore(pluginId, info, sourceFiles);
 
             } catch (Exception e) {
                 log.error("插件 {} 重新编译失败", pluginId, e);
@@ -523,6 +613,90 @@ public class JavaFilePluginManager {
 
         info.setSourceFiles(sourceFilePaths);
         return sourceFiles;
+    }
+
+    /**
+     * 从源码字符串映射解析出 JavaSourceFile 列表（字符串模式）。
+     * <p>
+     * 遍历 sources 中的每个源码字符串，自动解析包名和类名，生成 JavaSourceFile。
+     *
+     * @param sources 源码映射：key 为文件名（仅用于日志），value 为源码字符串
+     * @return 解析出的源文件列表
+     */
+    private List<JavaSourceFile> parseSourceStrings(Map<String, String> sources) {
+        List<JavaSourceFile> sourceFiles = new ArrayList<>();
+
+        if (sources == null || sources.isEmpty()) {
+            return sourceFiles;
+        }
+
+        for (Map.Entry<String, String> entry : sources.entrySet()) {
+            String fileName = entry.getKey();
+            String content = entry.getValue();
+
+            if (content == null || content.isBlank()) {
+                log.warn("源码为空: {}", fileName);
+                continue;
+            }
+
+            String className = parseClassName(content);
+            if (className != null) {
+                sourceFiles.add(new JavaSourceFile(className, content, fileName));
+            } else {
+                log.warn("无法从源码解析类名: {}", fileName);
+            }
+        }
+
+        return sourceFiles;
+    }
+
+    /**
+     * 公共编译+扫描+存储逻辑（文件模式和字符串模式共用）。
+     * <p>
+     * 编译源文件 → 创建 ClassLoader → 扫描注解 → 更新插件信息。
+     * 若 info 是已有插件（热重载场景），先关闭旧 ClassLoader。
+     *
+     * @param pluginId    插件 ID
+     * @param info        插件信息对象
+     * @param sourceFiles 源文件列表
+     * @throws Exception 编译或扫描失败
+     */
+    private void compileScanAndStore(String pluginId, JavaFilePluginInfo info,
+                                      List<JavaSourceFile> sourceFiles) throws Exception {
+        // 热重载场景：先关闭旧 ClassLoader
+        DynamicClassLoader oldClassLoader = classLoaders.remove(pluginId);
+        if (oldClassLoader != null) {
+            try {
+                oldClassLoader.close();
+            } catch (Exception e) {
+                log.debug("关闭旧 ClassLoader 失败: {}", pluginId, e);
+            }
+        }
+
+        // 编译
+        Map<String, byte[]> compiledClasses = compiler.compile(sourceFiles, getClass().getClassLoader());
+        log.info("插件 {} 编译完成，共 {} 个类", pluginId, compiledClasses.size());
+
+        // 创建 ClassLoader
+        DynamicClassLoader classLoader = new DynamicClassLoader(
+                getClass().getClassLoader(), compiledClasses);
+        classLoaders.put(pluginId, classLoader);
+
+        // 扫描注解
+        ScanResult scanResult = scanner.scan(classLoader, compiledClasses.keySet());
+
+        info.setComponentClasses(scanResult.getComponentClasses());
+        info.setRouteMappings(convertToRouteInfos(scanResult.getRouteMappings(), classLoader));
+        info.setAvailableRoutes(convertToRouteInfos(scanResult.getAvailableRouteMappings(), classLoader));
+        info.setLastModified(System.currentTimeMillis());
+        info.setState(JavaFilePluginInfo.State.LOADED);
+        info.setErrorMessage(null);
+
+        plugins.put(pluginId, info);
+
+        log.info("插件 {} 注册成功：{} 个组件，{} 条路由，{} 条可注册路由",
+                pluginId, info.getComponentClasses().size(),
+                info.getRouteMappings().size(), info.getAvailableRoutes().size());
     }
 
     /**

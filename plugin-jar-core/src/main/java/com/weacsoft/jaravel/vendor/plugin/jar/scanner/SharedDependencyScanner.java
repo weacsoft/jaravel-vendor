@@ -101,6 +101,57 @@ public class SharedDependencyScanner {
         return result;
     }
 
+    /**
+     * 从字节数组扫描 JAR（无需文件系统）。
+     * <p>
+     * 使用 {@link java.util.jar.JarInputStream} 直接从内存中的字节数组读取 JAR 内容，
+     * 适合从数据库、网络等获取 JAR 二进制后直接扫描，无需写入临时文件。
+     *
+     * @param jarBytes              JAR 字节数组
+     * @param sharedPackagePrefixes 共享包前缀集合
+     * @return 扫描结果
+     */
+    public static ScanResult scan(byte[] jarBytes, Set<String> sharedPackagePrefixes) {
+        ScanResult result = new ScanResult();
+        Set<String> prefixes = sharedPackagePrefixes == null ? Collections.emptySet() : sharedPackagePrefixes;
+        try (java.util.jar.JarInputStream jis = new java.util.jar.JarInputStream(
+                new java.io.ByteArrayInputStream(jarBytes))) {
+            java.util.jar.JarEntry entry;
+            while ((entry = jis.getNextJarEntry()) != null) {
+                if (!entry.getName().endsWith(".class")) {
+                    continue;
+                }
+                String className = entry.getName()
+                        .replace('/', '.')
+                        .replace(".class", "");
+                if (matchesPrefix(className, prefixes)) {
+                    continue;
+                }
+                // 读取 entry 的全部字节
+                byte[] classBytes = readAllBytes(jis);
+                ClassReader reader = new ClassReader(classBytes);
+                ClassScannerVisitor visitor = new ClassScannerVisitor(className, result);
+                reader.accept(visitor, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+            }
+        } catch (IOException e) {
+            log.error("从字节数组扫描 JAR 失败", e);
+        }
+        return result;
+    }
+
+    /**
+     * 从 InputStream 读取全部字节（不关闭流）。
+     */
+    private static byte[] readAllBytes(InputStream is) throws IOException {
+        java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        int len;
+        while ((len = is.read(buffer)) != -1) {
+            bos.write(buffer, 0, len);
+        }
+        return bos.toByteArray();
+    }
+
     private static boolean matchesPrefix(String className, Set<String> prefixes) {
         for (String prefix : prefixes) {
             if (prefix != null && className.startsWith(prefix.replace('/', '.'))) {
