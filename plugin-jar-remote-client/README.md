@@ -5,6 +5,17 @@
 
 JAR 插件远程执行客户端（P2SP 主节点）。管理子服务器注册表，通过 TCP 或 HTTP 将方法调用分派到远程子服务器执行，实现主从业务处理。
 
+## 可独立于热加载使用
+
+**本模块可独立于 jaravel 热加载插件系统（plugin-jar-core）使用，仅依赖 SpringBoot。** 协调器（`RequestCoordinator`）的"本地优先执行"策略通过 `BeanResolver` 接口获取目标 Bean，与具体的 Bean 来源解耦：
+
+- **有热加载插件（plugin-jar-core 在类路径上）**：自动使用 `HotPluginManager` 适配为 `BeanResolver`，按 `pluginId` 从对应插件的 ClassLoader 中获取 Bean，本地优先执行热加载插件中的方法。
+- **无热加载插件（仅引入 remote-server + remote-client）**：自动使用 `SpringBeanResolver`，直接从 Spring `ApplicationContext` 中按 `beanName` 获取普通 Spring Bean，`pluginId` 参数被忽略。
+
+`plugin-jar-core` 现为**可选依赖**（`optional=true`）。自动装配（`RemoteClientAutoConfiguration`）通过 `@ConditionalOnClass`/`@ConditionalOnMissingClass` 在启动时自动选择合适的 `BeanResolver` 实现。若不配置 `BeanResolver`（设为 null），协调器仅转发不本地执行。
+
+> `BeanResolver` 接口与 `SpringBeanResolver` 实现由 plugin-jar-remote-server 模块的 `com.weacsoft.jaravel.vendor.plugin.jar.remote.spi` 包提供，本模块通过依赖 remote-server 间接引入。
+
 ## 核心类
 
 | 类 | 说明 |
@@ -30,6 +41,39 @@ jaravel:
         transport: tcp             # tcp 或 http
         http-endpoint: /my-rpc     # HTTP 模式端点路径
 ```
+
+### 独立使用（无热加载）
+
+无需引入 plugin-jar-core，仅依赖 SpringBoot 即可使用远程执行功能。此时协调器的本地优先执行针对普通 Spring Bean，`pluginId` 参数被忽略。配置与上方完全一致，无需额外开关——自动装配会检测类路径上是否存在 `HotPluginManager`，不存在则自动使用 `SpringBeanResolver`。
+
+Maven 依赖（仅需 remote-server、remote-client 与 SpringBoot，无需 plugin-jar-core）：
+
+```xml
+<dependency>
+    <groupId>io.github.lijialong1313</groupId>
+    <artifactId>plugin-jar-remote-server</artifactId>
+</dependency>
+<dependency>
+    <groupId>io.github.lijialong1313</groupId>
+    <artifactId>plugin-jar-remote-client</artifactId>
+</dependency>
+```
+
+调用示例（被远程执行的 Bean 为普通 Spring Bean，`pluginId` 传任意值即可）：
+
+```java
+@Autowired
+private RemoteExecutionDispatcher dispatcher;
+
+// 注册子服务器（远程节点同样仅依赖 SpringBoot）
+dispatcher.registerSubServer("node-1", "192.168.1.10", 9700);
+
+// 协调器分配执行：优先本地 Spring Bean，无则转发到子服务器
+// pluginId 在无热加载模式下被忽略，beanName 须为 Spring 容器中注册的 Bean 名称
+ExecuteResponse resp = dispatcher.execute("any", "userService", "getUser", args, argTypes);
+```
+
+> 自动选择逻辑：`RemoteClientAutoConfiguration` 通过 `@ConditionalOnMissingClass("...HotPluginManager")` 激活 `SpringBeanResolver`；当类路径存在 `HotPluginManager` 时改用 `HotPluginManager` 适配为 `BeanResolver`。使用者无需手动配置。
 
 ## 工作原理
 

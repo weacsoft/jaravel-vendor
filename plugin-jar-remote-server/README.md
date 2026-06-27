@@ -5,6 +5,19 @@
 
 JAR 插件远程执行服务端（P2SP 子节点）。通过 TCP 或 HTTP 接收远程方法调用请求，在本地执行插件方法。
 
+## 可独立于热加载使用
+
+**本模块可独立于 jaravel 热加载插件系统（plugin-jar-core）使用，仅依赖 SpringBoot。** 远程执行系统通过 `BeanResolver` 接口获取目标 Bean，与具体的 Bean 来源解耦：
+
+- **有热加载插件（plugin-jar-core 在类路径上）**：自动使用 `HotPluginManager` 适配为 `BeanResolver`，按 `pluginId` 从对应插件的 ClassLoader 中获取 Bean，执行热加载插件中的方法。
+- **无热加载插件（仅引入 remote-server + remote-client）**：自动使用 `SpringBeanResolver`，直接从 Spring `ApplicationContext` 中按 `beanName` 获取普通 Spring Bean，`pluginId` 参数被忽略。
+
+`plugin-jar-core` 现为**可选依赖**（`optional=true`）。自动装配（`RemoteServerAutoConfiguration`）通过 `@ConditionalOnClass`/`@ConditionalOnMissingClass` 在启动时自动选择合适的 `BeanResolver` 实现，使用者无需关心底层差异。
+
+> 相关 SPI 类位于 `com.weacsoft.jaravel.vendor.plugin.jar.remote.spi` 包：
+> - `BeanResolver`：Bean 解析器接口，方法 `Object getBean(String pluginId, String beanName)`
+> - `SpringBeanResolver`：基于 Spring `ApplicationContext` 的默认实现
+
 ## 核心类
 
 | 类 | 说明 |
@@ -31,6 +44,33 @@ jaravel:
         auth-token: "my-secret"    # 认证令牌
 ```
 
+### 独立使用（无热加载）
+
+无需引入 plugin-jar-core，仅依赖 SpringBoot 即可使用远程执行功能。此时远程执行的目标是普通 Spring Bean，`pluginId` 参数被忽略。配置与上方完全一致，无需额外开关——自动装配会检测类路径上是否存在 `HotPluginManager`，不存在则自动使用 `SpringBeanResolver`。
+
+Maven 依赖（仅需 remote-server、remote-client 与 SpringBoot，无需 plugin-jar-core）：
+
+```xml
+<dependency>
+    <groupId>io.github.lijialong1313</groupId>
+    <artifactId>plugin-jar-remote-server</artifactId>
+</dependency>
+<dependency>
+    <groupId>io.github.lijialong1313</groupId>
+    <artifactId>plugin-jar-remote-client</artifactId>
+</dependency>
+```
+
+调用示例（被远程执行的 Bean 为普通 Spring Bean，`pluginId` 传任意值即可）：
+
+```java
+// 客户端：调用远程 Spring Bean 的方法
+// pluginId 在无热加载模式下被忽略，beanName 须为 Spring 容器中注册的 Bean 名称
+ExecuteResponse resp = dispatcher.execute("any", "userService", "getUser", args, argTypes);
+```
+
+> 自动选择逻辑：`RemoteServerAutoConfiguration` 通过 `@ConditionalOnMissingClass("...HotPluginManager")` 激活 `SpringBeanResolver`；当类路径存在 `HotPluginManager` 时改用 `HotPluginManager` 适配为 `BeanResolver`。使用者无需手动配置。
+
 ## 工作原理
 
 本模块作为 P2SP 架构中的**子节点**（执行端），接收来自主节点（`plugin-jar-remote-client`）的方法调用请求，在本地通过反射执行插件方法并返回结果。
@@ -44,15 +84,19 @@ jaravel:
 
 ### HTTP 模式
 
-通过 `HttpRpcHandler` 提供静态方法，用户自行创建 Spring Controller 调用：
+通过 `HttpRpcHandler` 提供静态方法，用户自行创建 Spring Controller 调用。注入 `BeanResolver`（自动装配已提供）传入 `processRequest`：
 
 ```java
 @RestController
 @RequestMapping("/rpc")
 public class RpcController {
+    @Autowired
+    private BeanResolver beanResolver;  // 由自动装配提供（SpringBeanResolver 或 HotPluginManager 适配）
+
     @PostMapping("/execute")
-    public Object execute(@RequestBody ExecuteRequest request) {
-        return HttpRpcHandler.handle(request);
+    public String execute(@RequestBody String body,
+                          @RequestHeader(value = "X-Auth-Token", required = false) String token) {
+        return HttpRpcHandler.processRequest(beanResolver, "my-secret", token, body);
     }
 }
 ```
@@ -92,8 +136,9 @@ public class RpcController {
 | 层级 | 类 | 说明 |
 |------|------|------|
 | **核心层（无 SpringBoot）** | `RemoteProtocol`、`ProtocolCodec`、`ExecuteRequest`、`ExecuteResponse`、`RemoteTransport` | 协议常量、帧编解码、请求/响应模型、传输抽象。纯 POJO，无 Spring 依赖 |
-| **服务核心层** | `RemotePluginServer`、`HttpRpcHandler` | TCP 服务端实现与 HTTP RPC 处理工具，含中继转发逻辑。通过 `HotPluginManagerRef` 接口获取插件 Bean，不直接依赖 Spring 容器 |
-| **适配层** | `RemoteServerProperties`、`RemoteServerAutoConfiguration` | SpringBoot 配置属性与自动装配。`enabled=true` 时自动创建并启动 `RemotePluginServer` |
+| **SPI 层** | `BeanResolver`、`SpringBeanResolver` | Bean 解析器接口及其 Spring 默认实现。解耦远程执行与具体 Bean 来源（热加载插件或 Spring 容器），使本模块可独立于 plugin-jar-core 使用 |
+| **服务核心层** | `RemotePluginServer`、`HttpRpcHandler` | TCP 服务端实现与 HTTP RPC 处理工具，含中继转发逻辑。通过 `BeanResolver` 接口获取 Bean（热加载模式由 `HotPluginManager` 适配，无热加载模式由 `SpringBeanResolver` 实现），不直接依赖 Spring 容器或 plugin-jar-core |
+| **适配层** | `RemoteServerProperties`、`RemoteServerAutoConfiguration` | SpringBoot 配置属性与自动装配。`enabled=true` 时自动创建并启动 `RemotePluginServer`，并通过 `@ConditionalOnClass`/`@ConditionalOnMissingClass` 自动选择 `BeanResolver` 实现 |
 
 ### 配置项
 

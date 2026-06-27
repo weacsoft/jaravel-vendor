@@ -1,6 +1,6 @@
 package com.weacsoft.jaravel.vendor.plugin.jar.remote.server;
 
-import com.weacsoft.jaravel.vendor.plugin.jar.annotation.Application;
+import com.weacsoft.jaravel.vendor.plugin.jar.remote.spi.BeanResolver;
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.ExecuteRequest;
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.ExecuteResponse;
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.ProtocolCodec;
@@ -27,8 +27,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * 远程插件执行服务端。
  * <p>
- * 监听 TCP 端口，接收来自客户端的方法执行请求，在本地通过 {@link Application#getService}
- * 获取插件 Bean 并反射调用目标方法，返回执行结果。
+ * 监听 TCP 端口，接收来自客户端的方法执行请求，在本地通过 {@link BeanResolver#getBean}
+ * 获取 Bean 并反射调用目标方法，返回执行结果。
  * <p>
  * <h3>树形中继转发</h3>
  * 当 {@code relayEnabled=true} 时，服务端不仅能在本地执行，还能将请求转发给子节点：
@@ -61,7 +61,7 @@ public class RemotePluginServer {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final int port;
     private final String authToken;
-    private final Application.HotPluginManagerRef managerRef;
+    private final BeanResolver beanResolver;
 
     private ServerSocket serverSocket;
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -108,12 +108,12 @@ public class RemotePluginServer {
      *
      * @param port      监听端口
      * @param authToken 认证令牌（null 表示不认证）
-     * @param managerRef 插件管理器引用
+     * @param beanResolver Bean 解析器（从插件或 Spring 容器获取 Bean）
      */
-    public RemotePluginServer(int port, String authToken, Application.HotPluginManagerRef managerRef) {
+    public RemotePluginServer(int port, String authToken, BeanResolver beanResolver) {
         this.port = port;
         this.authToken = authToken;
-        this.managerRef = managerRef;
+        this.beanResolver = beanResolver;
     }
 
     /**
@@ -121,15 +121,15 @@ public class RemotePluginServer {
      *
      * @param port         监听端口
      * @param authToken    认证令牌
-     * @param managerRef   插件管理器引用
+     * @param beanResolver Bean 解析器
      * @param nodeId       本节点 ID
      * @param relayEnabled 是否启用中继转发
      */
-    public RemotePluginServer(int port, String authToken, Application.HotPluginManagerRef managerRef,
+    public RemotePluginServer(int port, String authToken, BeanResolver beanResolver,
                                String nodeId, boolean relayEnabled) {
         this.port = port;
         this.authToken = authToken;
-        this.managerRef = managerRef;
+        this.beanResolver = beanResolver;
         this.nodeId = nodeId != null ? nodeId : this.nodeId;
         this.relayEnabled = relayEnabled;
     }
@@ -466,7 +466,7 @@ public class RemotePluginServer {
      */
     private ExecuteResponse tryLocalExecute(ExecuteRequest request) {
         try {
-            Object bean = managerRef.getServiceFromPlugin(request.getPluginId(), request.getBeanName());
+            Object bean = beanResolver.getBean(request.getPluginId(), request.getBeanName());
             if (bean == null) {
                 return null; // 本地无此插件，可继续转发
             }

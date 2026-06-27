@@ -1,6 +1,6 @@
 package com.weacsoft.jaravel.vendor.plugin.jar.remote.client;
 
-import com.weacsoft.jaravel.vendor.plugin.jar.annotation.Application;
+import com.weacsoft.jaravel.vendor.plugin.jar.remote.spi.BeanResolver;
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.ExecuteRequest;
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.ExecuteResponse;
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.RemoteTransport;
@@ -14,7 +14,7 @@ import java.util.List;
  * <p>
  * 当客户端不指定子服务器时，请求发送到协调器，由协调器决定在哪个节点执行：
  * <ol>
- *   <li>优先本地执行：若插件在本地已加载，直接通过 {@link Application#getService} 获取 Bean 并执行</li>
+ *   <li>优先本地执行：若插件在本地已加载，直接通过 {@link BeanResolver#getBean} 获取 Bean 并执行</li>
  *   <li>远程转发：若本地无此插件，从 {@link SubServerRegistry} 选择一个在线子服务器转发</li>
  * </ol>
  * <p>
@@ -46,7 +46,7 @@ public class RequestCoordinator {
 
     private final SubServerRegistry registry;
     private final RemoteTransport transport;
-    private final Application.HotPluginManagerRef localManagerRef;
+    private final BeanResolver localBeanResolver;
     private volatile int roundRobinIndex = 0;
 
     /** 是否启用树形路由 */
@@ -63,13 +63,13 @@ public class RequestCoordinator {
      *
      * @param registry         子服务器注册表
      * @param transport        传输层（TCP 或 HTTP）
-     * @param localManagerRef  本地插件管理器引用（null 表示不本地执行）
+     * @param localBeanResolver 本地 Bean 解析器（null 表示不本地执行）
      */
     public RequestCoordinator(SubServerRegistry registry, RemoteTransport transport,
-                              Application.HotPluginManagerRef localManagerRef) {
+                              BeanResolver localBeanResolver) {
         this.registry = registry;
         this.transport = transport;
-        this.localManagerRef = localManagerRef;
+        this.localBeanResolver = localBeanResolver;
     }
 
     /**
@@ -82,7 +82,7 @@ public class RequestCoordinator {
      */
     public ExecuteResponse dispatch(ExecuteRequest request) {
         // 1. 尝试本地执行
-        if (localManagerRef != null) {
+        if (localBeanResolver != null) {
             ExecuteResponse localResult = tryLocalExecute(request);
             if (localResult != null) {
                 return localResult;
@@ -100,7 +100,7 @@ public class RequestCoordinator {
      */
     private ExecuteResponse tryLocalExecute(ExecuteRequest request) {
         try {
-            Object bean = localManagerRef.getServiceFromPlugin(request.getPluginId(), request.getBeanName());
+            Object bean = localBeanResolver.getBean(request.getPluginId(), request.getBeanName());
             if (bean == null) {
                 return null; // 本地无此插件
             }

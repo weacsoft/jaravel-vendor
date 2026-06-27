@@ -1,16 +1,20 @@
 package com.weacsoft.jaravel.vendor.plugin.jar.remote.client;
 
-import com.weacsoft.jaravel.vendor.plugin.jar.annotation.Application;
-import com.weacsoft.jaravel.vendor.plugin.jar.manager.HotPluginManager;
+import com.weacsoft.jaravel.vendor.plugin.jar.remote.spi.BeanResolver;
+import com.weacsoft.jaravel.vendor.plugin.jar.remote.spi.SpringBeanResolver;
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.RemoteTransport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 
 /**
  * 远程插件客户端自动装配。
@@ -24,33 +28,72 @@ import org.springframework.context.annotation.Bean;
  *   <li>{@code http}：使用 HTTP JSON-RPC，复用 Web 端口，无需额外端口</li>
  * </ul>
  * <p>
- * <h3>协调器模式</h3>
- * 若 {@code HotPluginManager} Bean 存在，自动注入为本地执行引用，
- * 使 {@link RemoteExecutionDispatcher#execute} 支持本地优先执行。
+ * <h3>Bean 解析器选择</h3>
+ * 与服务端相同，客户端协调器也需要 {@link BeanResolver} 来执行本地优先策略：
+ * <ul>
+ *   <li>有 plugin-jar-core：使用 HotPluginManager 适配</li>
+ *   <li>无 plugin-jar-core：使用 {@link SpringBeanResolver}，从 Spring 容器获取 Bean</li>
+ * </ul>
+ * 若不配置 BeanResolver（设为 null），协调器仅转发不本地执行。
  * <p>
  * <h3>安全设计</h3>
  * 不暴露任何 HTTP 接口，所有操作均通过 Java 方法调用。
  */
 @AutoConfiguration
 @ConditionalOnClass(RemoteExecutionDispatcher.class)
+@ConditionalOnProperty(prefix = "jaravel.plugin-jar.remote.client", name = "enabled", havingValue = "true", matchIfMissing = true)
 @EnableConfigurationProperties(RemoteClientProperties.class)
 public class RemoteClientAutoConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(RemoteClientAutoConfiguration.class);
 
     /**
+     * 无热加载插件时的默认配置：使用 SpringBeanResolver。
+     */
+    @Configuration
+    @ConditionalOnMissingClass("com.weacsoft.jaravel.vendor.plugin.jar.manager.HotPluginManager")
+    static class DefaultBeanResolverConfig {
+        @Bean
+        @ConditionalOnMissingBean(BeanResolver.class)
+        BeanResolver beanResolver(ApplicationContext applicationContext) {
+            log.info("客户端使用 SpringBeanResolver（无热加载模式）");
+            return new SpringBeanResolver(applicationContext);
+        }
+    }
+
+    /**
+     * 有热加载插件时的配置：使用 HotPluginManager 适配为 BeanResolver。
+     */
+    @Configuration
+    @ConditionalOnClass(name = "com.weacsoft.jaravel.vendor.plugin.jar.manager.HotPluginManager")
+    static class HotPluginBeanResolverConfig {
+
+        @Bean
+        @ConditionalOnMissingBean(BeanResolver.class)
+        BeanResolver beanResolver(ApplicationContext applicationContext,
+                                   ObjectProvider<com.weacsoft.jaravel.vendor.plugin.jar.manager.HotPluginManager> managerProvider) {
+            com.weacsoft.jaravel.vendor.plugin.jar.manager.HotPluginManager manager = managerProvider.getIfAvailable();
+            if (manager != null) {
+                log.info("客户端使用 HotPluginManager 作为 BeanResolver（热加载模式）");
+                final com.weacsoft.jaravel.vendor.plugin.jar.manager.HotPluginManager finalManager = manager;
+                return (pluginId, beanName) -> finalManager.getServiceFromPlugin(pluginId, beanName);
+            }
+            log.info("客户端 HotPluginManager 未注册，回退到 SpringBeanResolver");
+            return new SpringBeanResolver(applicationContext);
+        }
+    }
+
+    /**
      * 创建远程执行调度器 Bean。
-     * <p>
-     * 根据配置选择 TCP 或 HTTP 传输，并注入本地插件管理器引用（若存在）。
      *
      * @param properties       客户端配置
-     * @param managerProvider  插件管理器（可选，存在时启用协调器本地执行）
+     * @param beanResolverProvider Bean 解析器提供者（用于协调器本地执行）
      * @return 远程执行调度器
      */
     @Bean
     public RemoteExecutionDispatcher remoteExecutionDispatcher(
             RemoteClientProperties properties,
-            ObjectProvider<HotPluginManager> managerProvider) {
+            ObjectProvider<BeanResolver> beanResolverProvider) {
         // 选择传输层
         RemoteTransport transport;
         if ("http".equalsIgnoreCase(properties.getTransport())) {
@@ -60,10 +103,11 @@ public class RemoteClientAutoConfiguration {
             transport = new TcpTransport();
             log.info("远程插件客户端使用 TCP 传输模式");
         }
-        // 注入本地插件管理器（若存在）
-        HotPluginManager manager = managerProvider.getIfAvailable();
-        Application.HotPluginManagerRef ref = manager;
-        RemoteExecutionDispatcher dispatcher = new RemoteExecutionDispatcher(transport, ref);
+
+        // 注入 Bean 解析器（若存在）
+        BeanResolver beanResolver = beanResolverProvider.getIfAvailable();
+
+        RemoteExecutionDispatcher dispatcher = new RemoteExecutionDispatcher(transport, beanResolver);
 
         // 应用树形路由配置
         if (properties.isTreeRoutingEnabled()) {
@@ -73,7 +117,7 @@ public class RemoteClientAutoConfiguration {
         }
 
         log.info("远程插件执行客户端已初始化: transport={}, localExecute={}, treeRouting={}",
-                transport.getType(), ref != null, properties.isTreeRoutingEnabled());
+                transport.getType(), beanResolver != null, properties.isTreeRoutingEnabled());
         return dispatcher;
     }
 }

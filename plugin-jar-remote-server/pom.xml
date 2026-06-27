@@ -15,9 +15,11 @@
     <description>JAR 插件远程执行服务端：通过 TCP 接收远程方法调用请求并在本地执行插件方法（P2SP 子节点）</description>
 
     <dependencies>
+        <!-- plugin-jar-core 为可选依赖：有热加载时用 HotPluginManager 解析 Bean，无热加载时用 SpringBeanResolver -->
         <dependency>
             <groupId>io.github.lijialong1313</groupId>
             <artifactId>plugin-jar-core</artifactId>
+            <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -26,6 +28,10 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
         </dependency>
 
         <!-- 测试依赖 -->

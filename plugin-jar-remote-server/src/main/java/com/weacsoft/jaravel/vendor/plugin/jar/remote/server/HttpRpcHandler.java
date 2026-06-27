@@ -1,6 +1,6 @@
 package com.weacsoft.jaravel.vendor.plugin.jar.remote.server;
 
-import com.weacsoft.jaravel.vendor.plugin.jar.annotation.Application;
+import com.weacsoft.jaravel.vendor.plugin.jar.remote.spi.BeanResolver;
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.ExecuteRequest;
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.ExecuteResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -18,12 +18,12 @@ import org.slf4j.LoggerFactory;
  * <pre>
  * {@literal @RestController}
  * public class MyRpcController {
- *     {@literal @Autowired} private HotPluginManager manager;
+ *     {@literal @Autowired} private BeanResolver beanResolver;
  *
  *     {@literal @PostMapping("/my-custom-rpc-endpoint")}
  *     public String handleRpc({@literal @RequestBody} String body,
  *                              {@literal @RequestHeader(value = "X-Auth-Token", required = false)} String token) {
- *         return HttpRpcHandler.processRequest(manager, "my-secret", token, body);
+ *         return HttpRpcHandler.processRequest(beanResolver, "my-secret", token, body);
  *     }
  * }
  * </pre>
@@ -73,13 +73,13 @@ public final class HttpRpcHandler {
      * 用户在自己的控制器中调用此方法，传入请求体 JSON 字符串。
      * 方法内部解析请求、本地执行插件方法、返回响应 JSON 字符串。
      *
-     * @param managerRef 插件管理器引用
+     * @param beanResolver Bean 解析器
      * @param authToken  预期的认证令牌（null 或空表示不认证）
      * @param token      请求中携带的令牌（从 HTTP Header 获取）
      * @param requestBody 请求体 JSON 字符串（{@link ExecuteRequest} 的序列化）
      * @return 响应 JSON 字符串（{@link ExecuteResponse} 的序列化）
      */
-    public static String processRequest(Application.HotPluginManagerRef managerRef,
+    public static String processRequest(BeanResolver beanResolver,
                                         String authToken, String token, String requestBody) {
         // 认证
         if (authToken != null && !authToken.isEmpty()) {
@@ -89,7 +89,7 @@ public final class HttpRpcHandler {
         }
         try {
             ExecuteRequest execRequest = objectMapper.readValue(requestBody, ExecuteRequest.class);
-            ExecuteResponse execResponse = executeLocally(managerRef, execRequest);
+            ExecuteResponse execResponse = executeLocally(beanResolver, execRequest);
             return toJson(execResponse);
         } catch (Exception e) {
             log.error("处理 RPC 请求失败", e);
@@ -100,21 +100,21 @@ public final class HttpRpcHandler {
     /**
      * 处理 RPC 请求（不认证）。
      *
-     * @param managerRef 插件管理器引用
+     * @param beanResolver Bean 解析器
      * @param requestBody 请求体 JSON 字符串
      * @return 响应 JSON 字符串
      */
-    public static String processRequest(Application.HotPluginManagerRef managerRef, String requestBody) {
-        return processRequest(managerRef, null, null, requestBody);
+    public static String processRequest(BeanResolver beanResolver, String requestBody) {
+        return processRequest(beanResolver, null, null, requestBody);
     }
 
     /**
      * 在本地执行插件方法。
      */
-    private static ExecuteResponse executeLocally(Application.HotPluginManagerRef managerRef,
+    private static ExecuteResponse executeLocally(BeanResolver beanResolver,
                                                    ExecuteRequest request) {
         try {
-            Object bean = managerRef.getServiceFromPlugin(request.getPluginId(), request.getBeanName());
+            Object bean = beanResolver.getBean(request.getPluginId(), request.getBeanName());
             if (bean == null) {
                 return ExecuteResponse.error(request.getRequestId(),
                         "Bean 未找到: pluginId=" + request.getPluginId() + ", beanName=" + request.getBeanName());

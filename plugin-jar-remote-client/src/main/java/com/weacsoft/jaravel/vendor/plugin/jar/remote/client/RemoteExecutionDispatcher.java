@@ -1,6 +1,6 @@
 package com.weacsoft.jaravel.vendor.plugin.jar.remote.client;
 
-import com.weacsoft.jaravel.vendor.plugin.jar.annotation.Application;
+import com.weacsoft.jaravel.vendor.plugin.jar.remote.spi.BeanResolver;
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.ExecuteRequest;
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.ExecuteResponse;
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.RemoteTransport;
@@ -55,13 +55,13 @@ public class RemoteExecutionDispatcher {
      * 构造远程执行调度器，指定传输层和本地插件管理器引用。
      *
      * @param transport       传输层（TCP 或 HTTP）
-     * @param localManagerRef 本地插件管理器引用（null 表示不本地执行，仅转发）
+     * @param localBeanResolver 本地 Bean 解析器（null 表示不本地执行，仅转发）
      */
     public RemoteExecutionDispatcher(RemoteTransport transport,
-                                      Application.HotPluginManagerRef localManagerRef) {
+                                      BeanResolver localBeanResolver) {
         this.registry = new SubServerRegistry();
         this.transport = transport;
-        this.coordinator = new RequestCoordinator(registry, transport, localManagerRef);
+        this.coordinator = new RequestCoordinator(registry, transport, localBeanResolver);
     }
 
     // ==================== 传输模式切换 ====================
@@ -283,7 +283,7 @@ public class RemoteExecutionDispatcher {
      * <p>
      * 由 {@link RequestCoordinator} 决定执行位置：
      * <ol>
-     *   <li>优先本地执行（若插件已加载且配置了 localManagerRef）</li>
+     *   <li>优先本地执行（若插件已加载且配置了 localBeanResolver）</li>
      *   <li>本地无此插件时，轮询选择一个在线子服务器转发</li>
      * </ol>
      *

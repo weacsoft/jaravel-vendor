@@ -15,17 +15,24 @@
     <description>JAR 插件远程执行客户端：管理子服务器注册表，通过 TCP 将方法调用分派到远程子服务器执行（P2SP 主节点）</description>
 
     <dependencies>
-        <dependency>
-            <groupId>io.github.lijialong1313</groupId>
-            <artifactId>plugin-jar-core</artifactId>
-        </dependency>
+        <!-- remote-server 提供 BeanResolver/SpringBeanResolver 和协议类 -->
         <dependency>
             <groupId>io.github.lijialong1313</groupId>
             <artifactId>plugin-jar-remote-server</artifactId>
         </dependency>
+        <!-- plugin-jar-core 为可选依赖：有热加载时用 HotPluginManager 解析 Bean -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>plugin-jar-core</artifactId>
+            <optional>true</optional>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-autoconfigure</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
