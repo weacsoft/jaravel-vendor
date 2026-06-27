@@ -161,7 +161,7 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
 <div class="layout">
 <div class="sidebar">
 <h2>jaravel-vendor</h2>
-<div class="version">v0.1.0 · 26 模块 · 409 测试</div>
+<div class="version">v0.1.0 · 27 模块 · 433 测试</div>
 <nav>
 <a href="#overview" class="group">框架总览</a>
 <a href="#core" class="group">核心模块</a>
@@ -198,9 +198,10 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
 <a href="#cat-remote-tree" class="sub" title="树形中继转发，节点无插件时自动转发子节点，三重防环机制（visitedNodes + maxHops + maxDepth）">3. 树形拓扑</a>
 <a href="#cat-remote-combo" class="sub" title="远程执行 + 热加载组合：分布式插件分发，热更新自动同步到子节点">4. 与热加载结合</a>
 <a href="#other" class="group">其他</a>
-<a href="#cat-springboot" class="sub" title="RouterFunction 转换，全局中间件注册，响应处理器">springboot — SpringBoot 适配</a>
+<a href="#cat-springboot" class="sub" title="SpringBoot 集成核心，自动装配路由/中间件/响应">springboot — SpringBoot 适配</a>
 <a href="#cat-wechat-sdk" class="sub" title="公众号/小程序支持，AccessToken 缓存，OAuth 授权">wechat-sdk — 微信 SDK</a>
-<a href="#cat-starter" class="sub" title="一键引入全部模块的 starter POM">starter — 聚合启动器</a>
+<a href="#cat-captcha" class="sub" title="图片数字/算术/滑动/旋转验证码，核心层无 SpringBoot 依赖，可独立使用">captcha — 验证码模块</a>
+<a href="#cat-starter" class="sub" title="引入所有模块的便捷 starter">starter — 聚合启动器</a>
 </nav>
 </div>
 <div class="content">
@@ -208,8 +209,8 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
 <h1>jaravel-vendor</h1>
 <div class="subtitle">Laravel 风格的 Java Web 框架 · 路由/模板/ORM/认证/缓存/事件/CLI/插件热加载/远程执行</div>
 <div class="meta">
-<span>26 个模块</span>
-<span>409 个测试</span>
+<span>27 个模块</span>
+<span>433 个测试</span>
 <span>v0.1.0</span>
 </div>
 </div>
@@ -240,7 +241,7 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
 <tr><td>**微信 SDK**</td><td>公众号/小程序，AccessToken 缓存，OAuth 授权</td></tr>
 </table>
 
-<h5>模块总览（26 个模块）</h5>
+<h5>模块总览（27 个模块）</h5>
 
 <table>
 <tr><th>分类</th><th>模块</th><th>说明</th></tr>
@@ -252,7 +253,7 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
 <tr><td>CLI</td><td>artisan, schedule</td><td>命令行、定时任务</td></tr>
 <tr><td>热加载</td><td>plugin-jar-core, plugin-java-core, plugin-jar-multi-tenant</td><td>JAR 热加载→Java文件→多租户</td></tr>
 <tr><td>远程执行</td><td>plugin-jar-remote-server, plugin-jar-remote-client</td><td>TCP→HTTP→树形→热加载结合</td></tr>
-<tr><td>其他</td><td>springboot, wechat-sdk, starter</td><td>适配、微信、聚合</td></tr>
+<tr><td>其他</td><td>springboot, wechat-sdk, captcha, starter</td><td>适配、微信、验证码、聚合</td></tr>
 </table>
 
 <h5>架构原则</h5>
@@ -267,7 +268,7 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
 
 <h6>测试覆盖</h6>
 
-<p>全部 26 个模块均有单元测试，共 409 个测试用例，覆盖核心功能、边界条件和异常处理。</p>
+<p>全部 27 个模块均有单元测试，共 433 个测试用例，覆盖核心功能、边界条件和异常处理。</p>
 
 </section>
 <h2 id="core">核心模块</h2>
@@ -19930,10 +19931,10 @@ System.out.println(dispatcher.dumpTree());
 
 </section>
 <h2 id="other">其他</h2>
-<p class="module-desc">SpringBoot 适配、微信 SDK、聚合启动器。</p>
+<p class="module-desc">SpringBoot 适配、微信 SDK、验证码、聚合启动器。</p>
 <section id="cat-springboot">
 <h3>springboot — SpringBoot 适配</h3>
-<p class="module-desc">RouterFunction 转换，全局中间件注册，响应处理器</p>
+<p class="module-desc">SpringBoot 集成核心，自动装配路由/中间件/响应</p>
 <h4>简介</h4>
 <p>&gt; Jaravel-Vendor 的 Spring Boot 集成模块，将 <code>http</code> 模块的 Laravel 风格路由、中间件、Request / Response 与 Spring MVC（<code>RouterFunction</code>、<code>HandlerMethodArgumentResolver</code>、<code>HandlerMethodReturnValueHandler</code>、<code>ResponseBodyAdvice</code>）桥接。包名统一为 <code>com.weacsoft.jaravel.vendor.springboot</code>。</p>
 
@@ -21113,9 +21114,1380 @@ private OfficialAccountService mpService;
 private MiniProgramService miniService;
 </code></pre>
 </section>
+<section id="cat-captcha">
+<h3>captcha — 验证码模块</h3>
+<p class="module-desc">图片数字/算术/滑动/旋转验证码，核心层无 SpringBoot 依赖，可独立使用</p>
+<h4>简介</h4>
+<p>&gt; Jaravel-Vendor 的验证码模块，提供图片数字、算术、滑动、旋转四种验证码。核心层为纯 Java 实现（基于 <code>java.awt</code> 与 <code>java.util.Base64</code>），无 SpringBoot 依赖，可独立使用；同时提供 SpringBoot 3 自动装配适配层，开箱即用。包名统一为 <code>com.weacsoft.jaravel.vendor.captcha</code>。</p>
+
+<p>---</p>
+
+<h5>目录</h5>
+
+<li><a href="#1-核心特性">1. 核心特性</a></li>
+<li><a href="#2-架构设计">2. 架构设计</a></li>
+<li><a href="#3-依赖信息">3. 依赖信息</a></li>
+<li><a href="#4-快速开始">4. 快速开始</a></li>
+<li><a href="#5-四种验证码详解">5. 四种验证码详解</a></li>
+<li><a href="#6-无状态-token-验证">6. 无状态 token 验证</a></li>
+<li><a href="#7-配置说明">7. 配置说明</a></li>
+<li><a href="#8-存储选择">8. 存储选择</a></li>
+<li><a href="#9-自定义验证码类型">9. 自定义验证码类型</a></li>
+
+<p>---</p>
+
+<h5>1. 核心特性</h5>
+
+<li><strong>四种验证码</strong>：图片数字（<code>number</code>）、算术（<code>arithmetic</code>）、滑动拼图（<code>slider</code>）、旋转（<code>rotate</code>）</li>
+<li><strong>核心层零 SpringBoot 依赖</strong>：纯 Java 实现，图像生成基于 <code>java.awt</code>，编码基于 <code>java.util.Base64</code>，可独立嵌入任意 Java 项目</li>
+<li><strong>模板方法模式</strong>：<code>AbstractCaptcha</code> 封装生成/验证的模板流程，子类只需实现 <code>doGenerate</code> 与 <code>doVerify</code> 两个钩子方法</li>
+<li><strong>存储解耦（SPI）</strong>：通过 <code>CaptchaStore</code> 接口与具体存储解耦，内置 <code>MemoryCaptchaStore</code>（内存）与 <code>CacheStoreCaptchaStore</code>（适配 jaravel cache 模块，支持 Redis 等）</li>
+<li><strong>无状态 token 验证</strong>：生成结果携带 token（Base64 编码 captchaKey + answer + expireTime），可在不依赖服务端存储的场景下完成验证</li>
+<li><strong>答案防泄露</strong>：答案仅存于 <code>CaptchaStore</code>，不下发到前端；<code>CaptchaResult</code> 中只包含 base64 图片、token 与额外展示数据</li>
+<li><strong>统一管理器</strong>：<code>CaptchaManager</code> 维护 <code>type -&gt; Captcha</code> 映射，提供按类型生成/验证的统一入口，<code>createDefault()</code> 开箱注册四种验证码</li>
+<li><strong>SpringBoot 3 自动装配</strong>：引入依赖即自动创建 <code>CaptchaManager</code> Bean，并根据是否引入 cache 模块智能选择存储</li>
+
+<p>---</p>
+
+<h5>2. 架构设计</h5>
+
+<pre><code>
+┌─────────────────────────────────────────────────────────────┐
+│                      适配层（springboot 包）                  │
+│   CaptchaAutoConfiguration  +  CaptchaProperties(@ConfProps) │
+│   - 自动装配 CaptchaManager Bean                              │
+│   - 智能选择存储（CacheStore / Memory）                       │
+│   - 将 yml 配置转为核心层 CaptchaProperties                    │
+└───────────────────────────┬─────────────────────────────────┘
+                            │ 依赖（optional）
+┌───────────────────────────┴─────────────────────────────────┐
+│                      核心层（纯 Java）                        │
+│                                                              │
+│   CaptchaManager  ──管理──▶  Captcha（接口）                  │
+│        │                        ▲                            │
+│        │ 注册                   │ 实现                       │
+│        ▼                        │                            │
+│   type -&gt; Captcha        AbstractCaptcha（模板方法）          │
+│                                 │                            │
+│              ┌──────────────────┼──────────────────┐         │
+│              │                  │                  │         │
+│        NumberCaptcha   ArithmeticCaptcha   SliderCaptcha   RotateCaptcha
+│                                                              │
+│   CaptchaStore（SPI）◀── MemoryCaptchaStore / CacheStoreCaptchaStore
+│   CaptchaProperties（配置）   CaptchaResult（结果）           │
+└──────────────────────────────────────────────────────────────┘
+</code></pre>
+
+<h6>分层说明</h6>
+
+<table>
+<tr><th>层</th><th>包</th><th>职责</th><th>依赖</th></tr>
+<tr><td>核心层</td><td>`com.weacsoft.jaravel.vendor.captcha`</td><td>验证码接口、抽象基类、四种实现、存储、配置、管理器</td><td>纯 JDK（`java.awt`）</td></tr>
+<tr><td>适配层</td><td>`com.weacsoft.jaravel.vendor.captcha.springboot`</td><td>SpringBoot 自动装配、`@ConfigurationProperties` 绑定</td><td>SpringBoot 3（optional）</td></tr>
+</table>
+
+<p>核心层的 <code>CaptchaStore</code> 通过 SPI 与存储解耦：默认使用 <code>MemoryCaptchaStore</code>；当项目引入 jaravel <code>cache</code> 模块时，可使用 <code>CacheStoreCaptchaStore</code> 将答案存入 Redis / 数据库，实现跨进程验证码共享。</p>
+
+<p>---</p>
+
+<h5>3. 依赖信息</h5>
+
+<h6>Maven 坐标</h6>
+
+<pre><code>
+&lt;dependency&gt;
+    &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
+    &lt;artifactId&gt;captcha&lt;/artifactId&gt;
+    &lt;version&gt;0.1.0&lt;/version&gt;
+&lt;/dependency&gt;
+</code></pre>
+
+<h6>独立使用（无 SpringBoot）</h6>
+
+<p>核心层无 SpringBoot 依赖，仅需 JDK 17+。<code>spring-boot-autoconfigure</code> 与 <code>cache</code> 均为 optional 依赖，不引入也不影响核心层使用：</p>
+
+<pre><code>
+&lt;dependency&gt;
+    &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
+    &lt;artifactId&gt;captcha&lt;/artifactId&gt;
+    &lt;version&gt;0.1.0&lt;/version&gt;
+&lt;/dependency&gt;
+&lt;!-- 无需引入 spring-boot，核心层可独立运行 --&gt;
+</code></pre>
+
+<h6>SpringBoot 使用</h6>
+
+<pre><code>
+&lt;dependency&gt;
+    &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
+    &lt;artifactId&gt;captcha&lt;/artifactId&gt;
+    &lt;version&gt;0.1.0&lt;/version&gt;
+&lt;/dependency&gt;
+&lt;!-- 引入 spring-boot-starter 即可触发自动装配 --&gt;
+</code></pre>
+
+<h6>跨进程存储（可选）</h6>
+
+<p>引入 jaravel <code>cache</code> 模块后，自动装配会自动切换为 <code>CacheStoreCaptchaStore</code>，答案存入 Redis / 数据库：</p>
+
+<pre><code>
+&lt;dependency&gt;
+    &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
+    &lt;artifactId&gt;captcha&lt;/artifactId&gt;
+    &lt;version&gt;0.1.0&lt;/version&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
+    &lt;artifactId&gt;cache&lt;/artifactId&gt;
+    &lt;version&gt;0.1.0&lt;/version&gt;
+&lt;/dependency&gt;
+</code></pre>
+
+<h6>传递依赖</h6>
+
+<table>
+<tr><th>依赖</th><th>用途</th><th>是否必须</th></tr>
+<tr><td>`io.github.lijialong1313:cache`</td><td>`CacheStoreCaptchaStore` 的跨进程存储后端</td><td>可选（optional）</td></tr>
+<tr><td>`org.springframework.boot:spring-boot-autoconfigure`</td><td>SpringBoot 自动装配</td><td>可选（optional）</td></tr>
+<tr><td>`org.springframework.boot:spring-boot-configuration-processor`</td><td>配置元数据生成</td><td>可选（optional）</td></tr>
+</table>
+
+<p>&gt; 运行环境要求：JDK 17+。图像生成基于 <code>java.awt</code>，在无图形界面的服务器环境（如 Linux headless）需确保启用 headless 模式（<code>-Djava.awt.headless=true</code>，SpringBoot 默认已设置）。</p>
+
+<p>---</p>
+
+<h5>4. 快速开始</h5>
+
+<h6>4.1 独立使用（无 SpringBoot）</h6>
+
+<p>通过 <code>CaptchaManager.createDefault()</code> 获取开箱即用的管理器，已注册数字、算术、滑动、旋转四种验证码：</p>
+
+<pre><code>
+import com.weacsoft.jaravel.vendor.captcha.CaptchaManager;
+import com.weacsoft.jaravel.vendor.captcha.CaptchaResult;
+
+// 1. 创建默认管理器（内存存储 + 默认配置，注册四种验证码）
+CaptchaManager manager = CaptchaManager.createDefault();
+
+// 2. 生成验证码（type + captchaKey）
+String captchaKey = java.util.UUID.randomUUID().toString();
+CaptchaResult result = manager.generate(&quot;number&quot;, captchaKey);
+
+// 3. 将结果下发前端（JSON 序列化）
+//    result.getImageBase64() -&gt; base64 图片
+//    result.getToken()       -&gt; 无状态 token
+//    result.getCaptchaKey()  -&gt; 验证码标识
+System.out.println(result.toMap());
+
+// 4. 验证用户输入（一次性消费，验证后答案从存储中删除）
+boolean ok = manager.verify(&quot;number&quot;, captchaKey, &quot;ABCD&quot;);
+</code></pre>
+
+<h6>4.2 SpringBoot 使用</h6>
+
+<p>引入依赖后自动装配 <code>CaptchaManager</code> Bean，直接注入即可：</p>
+
+<pre><code>
+import com.weacsoft.jaravel.vendor.captcha.CaptchaManager;
+import com.weacsoft.jaravel.vendor.captcha.CaptchaResult;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping(&quot;/captcha&quot;)
+public class CaptchaController {
+
+    @Autowired
+    private CaptchaManager captchaManager;
+
+    // 生成验证码
+    @GetMapping(&quot;/generate&quot;)
+    public CaptchaResult generate(@RequestParam String type) {
+        String captchaKey = java.util.UUID.randomUUID().toString();
+        return captchaManager.generate(type, captchaKey);
+    }
+
+    // 验证
+    @PostMapping(&quot;/verify&quot;)
+    public boolean verify(@RequestParam String type,
+                          @RequestParam String captchaKey,
+                          @RequestParam String userInput) {
+        return captchaManager.verify(type, captchaKey, userInput);
+    }
+}
+</code></pre>
+
+<p>无需任何配置即可启动，默认使用内存存储与默认图片参数。通过 <code>application.yml</code> 可自定义配置（见<a href="#7-配置说明">第 7 节</a>）。</p>
+
+<h6>4.3 自定义配置的独立使用</h6>
+
+<p>不使用 SpringBoot 时，可手动构造配置与存储：</p>
+
+<pre><code>
+import com.weacsoft.jaravel.vendor.captcha.*;
+
+// 自定义配置
+CaptchaProperties properties = CaptchaProperties.createDefault();
+properties.setWidth(200);
+properties.setHeight(60);
+properties.setLength(5);
+properties.setExpireSeconds(120);
+properties.setCaseSensitive(true);
+
+// 自定义存储
+CaptchaStore store = new MemoryCaptchaStore();
+
+// 构造管理器并注册验证码
+CaptchaManager manager = new CaptchaManager(store, properties);
+manager.register(new NumberCaptcha(store, properties));
+manager.register(new ArithmeticCaptcha(store, properties));
+manager.register(new SliderCaptcha(store, properties));
+manager.register(new RotateCaptcha(store, properties));
+
+CaptchaResult result = manager.generate(&quot;number&quot;, &quot;my-key&quot;);
+boolean ok = manager.verify(&quot;number&quot;, &quot;my-key&quot;, &quot;ABC23&quot;);
+</code></pre>
+
+<p>---</p>
+
+<h5>5. 四种验证码详解</h5>
+
+<p>四种验证码共享同一套 <code>generate(captchaKey)</code> / <code>verify(captchaKey, userInput)</code> 接口，区别在于类型名、图片内容、用户输入含义与额外数据。</p>
+
+<h6>5.1 图片数字验证码（`number`）</h6>
+
+<p>随机字母 + 数字字符串（排除易混淆字符 0/O/1/I/L），带噪点、干扰线、随机旋转。</p>
+
+<table>
+<tr><th>项</th><th>说明</th></tr>
+<tr><td>类型名</td><td>`number`</td></tr>
+<tr><td>答案</td><td>随机字符串（默认 4 位）</td></tr>
+<tr><td>用户输入</td><td>用户识别的字符</td></tr>
+<tr><td>验证规则</td><td>按 `caseSensitive` 决定是否区分大小写</td></tr>
+<tr><td>图片</td><td>`imageBase64`（带 `data:image/png;base64,` 前缀）</td></tr>
+</table>
+
+<pre><code>
+CaptchaResult result = manager.generate(&quot;number&quot;, key);
+// 前端展示 result.getImageBase64()，用户输入识别结果
+boolean ok = manager.verify(&quot;number&quot;, key, &quot;AB23&quot;);
+</code></pre>
+
+<h6>5.2 算术验证码（`arithmetic`）</h6>
+
+<p>随机生成 <code>a op b = ?</code> 形式的算式（加 / 减 / 乘），答案为运算结果。</p>
+
+<table>
+<tr><th>项</th><th>说明</th></tr>
+<tr><td>类型名</td><td>`arithmetic`</td></tr>
+<tr><td>答案</td><td>运算结果（数字字符串）</td></tr>
+<tr><td>用户输入</td><td>计算结果</td></tr>
+<tr><td>验证规则</td><td>去除空格后字符串相等</td></tr>
+<tr><td>图片</td><td>`imageBase64`，内容如 `12 + 5 = ?`</td></tr>
+</table>
+
+<pre><code>
+CaptchaResult result = manager.generate(&quot;arithmetic&quot;, key);
+// 图片显示如 &quot;12 + 5 = ?&quot;，用户输入 &quot;17&quot;
+boolean ok = manager.verify(&quot;arithmetic&quot;, key, &quot;17&quot;);
+</code></pre>
+
+<h6>5.3 滑动验证码（`slider`）</h6>
+
+<p>在背景图上随机位置抠出缺口，前端拖动滑块拼回缺口。</p>
+
+<table>
+<tr><th>项</th><th>说明</th></tr>
+<tr><td>类型名</td><td>`slider`</td></tr>
+<tr><td>答案</td><td>缺口横坐标 `gapX`（像素）</td></tr>
+<tr><td>用户输入</td><td>滑块拖动的 x 坐标</td></tr>
+<tr><td>验证规则</td><td>按 `tolerance` 像素容差判定（`</td><td>gapX - input</td><td><= tolerance`）</td></tr>
+<tr><td>`imageBase64`</td><td>带缺口的背景图</td></tr>
+<tr><td>`extra.sliderImage`</td><td>滑块拼图小块（带透明通道的 PNG base64）</td></tr>
+<tr><td>`extra.gapY`</td><td>缺口纵坐标（前端固定滑块纵坐标用）</td></tr>
+<tr><td>`extra.blockSize`</td><td>滑块边长</td></tr>
+</table>
+
+<pre><code>
+CaptchaResult result = manager.generate(&quot;slider&quot;, key);
+// 前端用 imageBase64 作背景，sliderImage 作滑块，gapY 固定纵坐标
+// 用户拖动后提交 x 坐标
+boolean ok = manager.verify(&quot;slider&quot;, key, &quot;123&quot;);  // 用户拖动到 x=123
+</code></pre>
+
+<h6>5.4 旋转验证码（`rotate`）</h6>
+
+<p>将一张带明显朝向（向上箭头）的图片随机旋转，前端拖动将其转回正方向。</p>
+
+<table>
+<tr><th>项</th><th>说明</th></tr>
+<tr><td>类型名</td><td>`rotate`</td></tr>
+<tr><td>答案</td><td>旋转角度（0~359）</td></tr>
+<tr><td>用户输入</td><td>用户旋转的角度</td></tr>
+<tr><td>验证规则</td><td>按 `tolerance` 角度容差判定（双向最短角差）</td></tr>
+<tr><td>`imageBase64`</td><td>旋转后的图片（正方形）</td></tr>
+<tr><td>`extra.size`</td><td>图片边长</td></tr>
+</table>
+
+<pre><code>
+CaptchaResult result = manager.generate(&quot;rotate&quot;, key);
+// 前端展示旋转后的图片，用户拖动转回正方向并提交角度
+boolean ok = manager.verify(&quot;rotate&quot;, key, &quot;90&quot;);  // 用户旋转 90 度
+</code></pre>
+
+<p>---</p>
+
+<h5>6. 无状态 token 验证</h5>
+
+<p>除了默认的「基于 <code>CaptchaStore</code> 存储答案」的有状态验证外，<code>AbstractCaptcha</code> 还提供无状态 token 机制，适用于不希望（或无法）在服务端维护验证码存储的场景。</p>
+
+<h6>原理</h6>
+
+<p><code>generate</code> 时会同时生成一个 token，其结构为：</p>
+
+<pre><code>
+base64(captchaKey) . base64(answer) . base64(expireTime)
+</code></pre>
+
+<li>三段以 <code>.</code> 拼接</li>
+<li>每段为 UTF-8 字符串的 Base64 编码</li>
+<li><code>expireTime</code> 为毫秒时间戳</li>
+
+<p>&gt; 注意：token 仅做 Base64 编码，<strong>非加密安全</strong>。如需更高安全性可由子类覆盖 <code>generateToken</code> / <code>verifyToken</code> 方法（如改用 HMAC 签名）。</p>
+<h4>使用示例</h4>
+<h6>使用方式</h6>
+
+<p>由于 <code>verifyToken</code> 为 <code>protected</code> 方法，无状态验证需通过 <code>Captcha</code> 实现实例调用。典型做法是在自定义验证码或控制器中调用：</p>
+
+<pre><code>
+import com.weacsoft.jaravel.vendor.captcha.*;
+
+CaptchaManager manager = CaptchaManager.createDefault();
+CaptchaResult result = manager.generate(&quot;number&quot;, &quot;my-key&quot;);
+
+// 前端同时拿到 imageBase64 与 token
+String token = result.getToken();
+String userInput = &quot;AB23&quot;;
+
+// 无状态验证：通过 Captcha 实例的 verifyToken（需子类暴露或反射）
+// 默认 verify() 走的是 store 有状态验证（一次性消费）：
+boolean ok1 = manager.verify(&quot;number&quot;, &quot;my-key&quot;, userInput);
+
+// 若要使用 token 无状态验证，需扩展 Captcha 暴露 verifyToken，
+// 或直接使用 AbstractCaptcha 子类实例（protected 方法）
+</code></pre>
+
+<p>&gt; <strong>有状态 vs 无状态</strong>：</p>
+<p>&gt; - 有状态（<code>verify</code>）：从 <code>CaptchaStore</code> 取出答案并一次性删除，验证后不可重复使用，更安全。</p>
+<p>&gt; - 无状态（<code>verifyToken</code>）：不依赖服务端存储，token 自带答案与过期时间，但 token 被截获后可在有效期内重复使用。</p>
+
+<p>---</p>
+
+<h5>7. 配置说明</h5>
+
+<h6>SpringBoot 配置（`application.yml`）</h6>
+
+<p>配置前缀为 <code>jaravel.captcha</code>，对应 <code>springboot.CaptchaProperties</code>：</p>
+
+<pre><code>
+jaravel:
+  captcha:
+    enabled: true              # 是否启用自动装配
+    width: 160                 # 图片宽度（像素）
+    height: 50                 # 图片高度（像素）
+    length: 4                  # 验证码字符长度（数字/算术）
+    expire-seconds: 300        # 过期秒数，默认 5 分钟
+    case-sensitive: false      # 是否区分大小写（数字验证码）
+    tolerance: 5.0             # 滑动/旋转容差（滑动为像素，旋转为角度）
+    noise: 50                  # 噪点数量
+    interfere-lines: 30        # 干扰线数量
+</code></pre>
+
+<h6>配置项说明</h6>
+
+<table>
+<tr><th>属性</th><th>类型</th><th>默认值</th><th>说明</th></tr>
+<tr><td>`jaravel.captcha.enabled`</td><td>`boolean`</td><td>`true`</td><td>是否启用自动装配</td></tr>
+<tr><td>`jaravel.captcha.width`</td><td>`int`</td><td>`160`</td><td>图片宽度（像素）</td></tr>
+<tr><td>`jaravel.captcha.height`</td><td>`int`</td><td>`50`</td><td>图片高度（像素）</td></tr>
+<tr><td>`jaravel.captcha.length`</td><td>`int`</td><td>`4`</td><td>验证码字符长度（适用于数字/算术验证码）</td></tr>
+<tr><td>`jaravel.captcha.expire-seconds`</td><td>`long`</td><td>`300`</td><td>过期秒数，默认 5 分钟</td></tr>
+<tr><td>`jaravel.captcha.case-sensitive`</td><td>`boolean`</td><td>`false`</td><td>是否区分大小写（适用于数字验证码）</td></tr>
+<tr><td>`jaravel.captcha.tolerance`</td><td>`double`</td><td>`5.0`</td><td>滑动/旋转验证的容差范围（滑动为像素，旋转为角度）</td></tr>
+<tr><td>`jaravel.captcha.noise`</td><td>`int`</td><td>`50`</td><td>噪点数量</td></tr>
+<tr><td>`jaravel.captcha.interfere-lines`</td><td>`int`</td><td>`30`</td><td>干扰线数量</td></tr>
+</table>
+
+<p>&gt; <strong>注意</strong>：SpringBoot 配置类（<code>springboot.CaptchaProperties</code>）的字段名 <code>noise</code> / <code>interfereLines</code> 与核心层配置类（<code>CaptchaProperties</code>）的字段名 <code>noiseCount</code> / <code>interfereCount</code> 不同。自动装配时通过 <code>toCoreProperties()</code> 方法完成映射转换。</p>
+
+<h6>核心层配置（独立使用）</h6>
+
+<p>独立使用时直接操作核心层 <code>CaptchaProperties</code>：</p>
+
+<pre><code>
+CaptchaProperties properties = CaptchaProperties.createDefault();
+properties.setWidth(200);
+properties.setHeight(60);
+properties.setLength(5);
+properties.setExpireSeconds(120);
+properties.setCaseSensitive(true);
+properties.setTolerance(8.0);
+properties.setNoiseCount(80);
+properties.setInterfereCount(40);
+</code></pre>
+
+<table>
+<tr><th>字段</th><th>类型</th><th>默认值</th><th>说明</th></tr>
+<tr><td>`width`</td><td>`int`</td><td>`160`</td><td>图片宽度（像素）</td></tr>
+<tr><td>`height`</td><td>`int`</td><td>`50`</td><td>图片高度（像素）</td></tr>
+<tr><td>`length`</td><td>`int`</td><td>`4`</td><td>验证码字符长度</td></tr>
+<tr><td>`expireSeconds`</td><td>`long`</td><td>`300`</td><td>过期秒数</td></tr>
+<tr><td>`caseSensitive`</td><td>`boolean`</td><td>`false`</td><td>是否区分大小写</td></tr>
+<tr><td>`tolerance`</td><td>`double`</td><td>`5.0`</td><td>容差范围</td></tr>
+<tr><td>`interfereCount`</td><td>`int`</td><td>`30`</td><td>干扰线数量</td></tr>
+<tr><td>`noiseCount`</td><td>`int`</td><td>`50`</td><td>噪点数量</td></tr>
+</table>
+
+<p>---</p>
+
+<h5>8. 存储选择</h5>
+
+<p>验证码答案的存储通过 <code>CaptchaStore</code> 接口抽象，内置两种实现：</p>
+
+<h6>8.1 MemoryCaptchaStore（默认）</h6>
+
+<table>
+<tr><th>项</th><th>说明</th></tr>
+<tr><td>实现类</td><td>`com.weacsoft.jaravel.vendor.captcha.MemoryCaptchaStore`</td></tr>
+<tr><td>底层</td><td>`ConcurrentHashMap`</td></tr>
+<tr><td>线程安全</td><td>是</td></tr>
+<tr><td>TTL</td><td>自带过期机制，读取时惰性清理，另提供 `cleanup()` 主动清理</td></tr>
+<tr><td>适用场景</td><td>单机、低并发场景</td></tr>
+<tr><td>跨进程</td><td>不支持（进程重启即失）</td></tr>
+</table>
+
+<h6>8.2 CacheStoreCaptchaStore（跨进程）</h6>
+
+<table>
+<tr><th>项</th><th>说明</th></tr>
+<tr><td>实现类</td><td>`com.weacsoft.jaravel.vendor.captcha.CacheStoreCaptchaStore`</td></tr>
+<tr><td>底层</td><td>jaravel `cache` 模块的 `CacheStore`（可为 Redis、数据库等）</td></tr>
+<tr><td>key 前缀</td><td>`captcha:`（避免与其他业务缓存冲突）</td></tr>
+<tr><td>适用场景</td><td>分布式、多实例部署，需要跨进程共享验证码答案</td></tr>
+<tr><td>前置条件</td><td>需引入 jaravel `cache` 模块</td></tr>
+</table>
+
+<h6>自动选择策略</h6>
+
+<p>SpringBoot 自动装配（<code>CaptchaAutoConfiguration</code>）会根据 classpath 智能选择存储：</p>
+
+<table>
+<tr><th>条件</th><th>选择的存储</th></tr>
+<tr><td>classpath 存在 `com.weacsoft.jaravel.vendor.cache.CacheStore` 且容器中有 `CacheStore` Bean</td><td>`CacheStoreCaptchaStore`（跨进程模式）</td></tr>
+<tr><td>classpath 不存在 cache 模块</td><td>`MemoryCaptchaStore`（内存模式）</td></tr>
+<tr><td>classpath 存在 cache 模块但容器中无 `CacheStore` Bean</td><td>回退到 `MemoryCaptchaStore`</td></tr>
+</table>
+
+<h6>手动指定存储</h6>
+
+<p>无论是否使用 SpringBoot，均可手动注入自定义存储：</p>
+
+<pre><code>
+// 独立使用：手动构造 CacheStoreCaptchaStore
+import com.weacsoft.jaravel.vendor.cache.CacheStore;
+import com.weacsoft.jaravel.vendor.cache.DefaultCacheStore;
+import com.weacsoft.jaravel.vendor.cache.ArrayCacheDriver;
+
+CacheStore cacheStore = new DefaultCacheStore(new ArrayCacheDriver(), &quot;myapp&quot;);
+CaptchaStore captchaStore = new CacheStoreCaptchaStore(cacheStore);
+
+CaptchaManager manager = new CaptchaManager(captchaStore, CaptchaProperties.createDefault());
+manager.register(new NumberCaptcha(captchaStore, manager.getProperties()));
+// ... 注册其他类型
+</code></pre>
+
+<pre><code>
+// SpringBoot：覆盖默认存储 Bean
+@Bean
+public CaptchaStore captchaStore(CacheStore cacheStore) {
+    return new CacheStoreCaptchaStore(cacheStore);
+}
+</code></pre>
+
+<h6>自定义存储实现</h6>
+
+<p>实现 <code>CaptchaStore</code> 接口即可接入任意存储（如 Redis 直连）：</p>
+
+<pre><code>
+public class RedisCaptchaStore implements CaptchaStore {
+    private final Jedis jedis;
+
+    public RedisCaptchaStore(Jedis jedis) {
+        this.jedis = jedis;
+    }
+
+    @Override
+    public void put(String captchaKey, String answer, long ttlSeconds) {
+        jedis.setex(&quot;captcha:&quot; + captchaKey, ttlSeconds, answer);
+    }
+
+    @Override
+    public String get(String captchaKey) {
+        return jedis.get(&quot;captcha:&quot; + captchaKey);
+    }
+
+    @Override
+    public String pull(String captchaKey) {
+        String key = &quot;captcha:&quot; + captchaKey;
+        String value = jedis.get(key);
+        if (value != null) {
+            jedis.del(key);
+        }
+        return value;
+    }
+
+    @Override
+    public void remove(String captchaKey) {
+        jedis.del(&quot;captcha:&quot; + captchaKey);
+    }
+}
+</code></pre>
+
+<p>---</p>
+
+<h5>9. 自定义验证码类型</h5>
+
+<p>通过继承 <code>AbstractCaptcha</code> 实现自定义验证码，只需实现两个钩子方法：</p>
+
+<table>
+<tr><th>方法</th><th>职责</th></tr>
+<tr><td>`doGenerate(CaptchaContext context)`</td><td>生成图片并通过 `context.setAnswer()` 回写答案，返回填充了 `imageBase64` 与 `extra` 的 `CaptchaResult`</td></tr>
+<tr><td>`doVerify(String answer, String userInput)`</td><td>比对真实答案与用户输入，返回是否匹配</td></tr>
+<tr><td>`getType()`</td><td>返回类型名（用于 `CaptchaManager` 注册与查找）</td></tr>
+</table>
+
+<h6>示例：自定义中文成语验证码</h6>
+
+<pre><code>
+import com.weacsoft.jaravel.vendor.captcha.*;
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
+import java.util.Random;
+
+public class IdiomCaptcha extends AbstractCaptcha {
+
+    private static final String[] IDIOMS = {
+        &quot;一帆风顺&quot;, &quot;万事如意&quot;, &quot;心想事成&quot;, &quot;马到成功&quot;, &quot;春暖花开&quot;
+    };
+
+    public IdiomCaptcha() {
+        super();
+    }
+
+    public IdiomCaptcha(CaptchaStore store, CaptchaProperties properties) {
+        super(store, properties);
+    }
+
+    @Override
+    public String getType() {
+        return &quot;idiom&quot;;
+    }
+
+    @Override
+    protected CaptchaResult doGenerate(CaptchaContext context) {
+        CaptchaProperties p = context.getProperties();
+        Random random = new Random();
+
+        // 随机选取成语作为答案
+        String answer = IDIOMS[random.nextInt(IDIOMS.length)];
+        context.setAnswer(answer);
+
+        // 绘制图片
+        BufferedImage image = createImage(p.getWidth(), p.getHeight());
+        Graphics2D g = image.createGraphics();
+        try {
+            addNoise(g, p.getWidth(), p.getHeight(), p.getNoiseCount(), random);
+            drawText(g, answer, p.getWidth(), p.getHeight(), random);
+        } finally {
+            g.dispose();
+        }
+
+        CaptchaResult result = new CaptchaResult();
+        result.setImageBase64(toBase64(image));
+        return result;
+    }
+
+    @Override
+    protected boolean doVerify(String answer, String userInput) {
+        if (answer == null || userInput == null) {
+            return false;
+        }
+        return answer.equals(userInput.trim());
+    }
+}
+</code></pre>
+
+<h6>注册并使用</h6>
+
+<pre><code>
+// 独立使用
+CaptchaManager manager = CaptchaManager.createDefault();
+manager.register(new IdiomCaptcha(manager.getStore(), manager.getProperties()));
+
+CaptchaResult result = manager.generate(&quot;idiom&quot;, key);
+boolean ok = manager.verify(&quot;idiom&quot;, key, &quot;一帆风顺&quot;);
+</code></pre>
+
+<pre><code>
+// SpringBoot：在配置类中注册自定义验证码
+@Bean
+public CaptchaManager captchaManager(CaptchaProperties properties,
+                                      ObjectProvider&lt;CaptchaStore&gt; storeProvider) {
+    CaptchaStore store = storeProvider.getIfAvailable(() -&gt; new MemoryCaptchaStore());
+    CaptchaProperties coreProps = properties.toCoreProperties();
+    CaptchaManager manager = new CaptchaManager();
+    manager.register(new NumberCaptcha(store, coreProps));
+    manager.register(new ArithmeticCaptcha(store, coreProps));
+    manager.register(new SliderCaptcha(store, coreProps));
+    manager.register(new RotateCaptcha(store, coreProps));
+    manager.register(new IdiomCaptcha(store, coreProps));  // 注册自定义类型
+    return manager;
+}
+</code></pre>
+
+<h6>模板方法流程</h6>
+
+<p><code>AbstractCaptcha.generate()</code> 的完整流程：</p>
+
+<pre><code>
+generate(captchaKey)
+  │
+  ├─ 1. 构造 CaptchaContext（携带 captchaKey + properties）
+  ├─ 2. 调用 doGenerate(context)  ← 子类实现
+  │      └─ 子类通过 context.setAnswer() 回写答案
+  │      └─ 子类返回 CaptchaResult（含 imageBase64 + extra）
+  ├─ 3. 填充 result 的 captchaKey / type / expireTime
+  ├─ 4. 将答案存入 CaptchaStore（带 TTL）
+  └─ 5. 生成无状态 token 并写入 result
+</code></pre>
+
+<p><code>AbstractCaptcha.verify()</code> 的完整流程：</p>
+
+<pre><code>
+verify(captchaKey, userInput)
+  │
+  ├─ 1. 从 CaptchaStore 一次性取出答案（pull，取出即删除）
+  ├─ 2. 答案为 null 则返回 false（不存在或已过期）
+  └─ 3. 调用 doVerify(answer, userInput)  ← 子类实现
+</code></pre>
+
+<p>&gt; <code>AbstractCaptcha</code> 还提供丰富的图像工具方法供子类复用：<code>createImage</code>、<code>createArgbImage</code>、<code>randomColor</code>、<code>drawRandomBackground</code>、<code>addNoise</code>、<code>addInterfereLines</code>、<code>drawText</code>、<code>toBase64</code>、<code>randomString</code> 等。</p>
+<h4>类和方法</h4>
+<p>&gt; Module: <code>captcha</code> | Package: <code>com.weacsoft.jaravel.vendor.captcha</code> | Version: 0.1.0</p>
+
+<h5>Overview</h5>
+<p>captcha 模块提供四种验证码（图片数字 <code>number</code>、算术 <code>arithmetic</code>、滑动 <code>slider</code>、旋转 <code>rotate</code>），核心层为纯 Java 实现（基于 <code>java.awt</code> 与 <code>java.util.Base64</code>），无 SpringBoot 依赖，可独立使用。采用模板方法模式：<code>AbstractCaptcha</code> 封装生成/验证流程，子类只需实现 <code>doGenerate</code> 与 <code>doVerify</code>。存储通过 <code>CaptchaStore</code> SPI 解耦，内置 <code>MemoryCaptchaStore</code>（内存）与 <code>CacheStoreCaptchaStore</code>（适配 jaravel cache 模块）。<code>CaptchaManager</code> 统一管理多类型注册与调用，并提供无状态 token 验证能力。SpringBoot 3 适配层提供自动装配与 <code>@ConfigurationProperties</code> 绑定。</p>
+
+<h5>Classes & Interfaces</h5>
+
+<h6>Captcha</h6>
+<li><strong>Type</strong>: interface</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.captcha</code></li>
+<li><strong>Description</strong>: 验证码接口。所有验证码类型（图片数字、算术、滑动、旋转等）实现此接口。核心层不依赖 SpringBoot，可独立使用。</li>
+
+<h6>Methods</h6>
+
+<table>
+<tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
+<tr><td>`generate`</td><td>`String captchaKey`</td><td>`CaptchaResult`</td><td>生成验证码。`captchaKey` 为验证码唯一标识（用于后续验证时查找），返回验证码结果（含 base64 图片、token 等）</td></tr>
+<tr><td>`verify`</td><td>`String captchaKey, String userInput`</td><td>`boolean`</td><td>验证用户提交的答案。`captchaKey` 为验证码标识，`userInput` 为用户输入（数字验证码填字符，滑动填 x 坐标，旋转填角度）</td></tr>
+<tr><td>`getType`</td><td>无</td><td>`String`</td><td>返回验证码类型名称（如 `"number"`、`"arithmetic"`、`"slider"`、`"rotate"`）</td></tr>
+</table>
+
+<h6>Usage Example</h6>
+<pre><code>
+Captcha captcha = new NumberCaptcha();
+CaptchaResult result = captcha.generate(&quot;my-key&quot;);
+boolean ok = captcha.verify(&quot;my-key&quot;, &quot;AB23&quot;);
+</code></pre>
+
+<p>---</p>
+
+<h6>CaptchaContext</h6>
+<li><strong>Type</strong>: class</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.captcha</code></li>
+<li><strong>Description</strong>: 验证码生成上下文。由 <code>AbstractCaptcha.generate()</code> 在调用 <code>doGenerate</code> 前构造，携带本次生成所需的 <code>captchaKey</code> 与 <code>CaptchaProperties</code>，并提供一个 <code>answer</code> 写回通道：子类在 <code>doGenerate</code> 中计算答案后通过 <code>setAnswer()</code> 写入，由模板方法统一存入 <code>CaptchaStore</code>。这样可以避免把答案放进会下发到前端的 <code>CaptchaResult</code>，降低答案泄露风险。</li>
+
+<h6>Methods</h6>
+
+<table>
+<tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
+<tr><td>`CaptchaContext`</td><td>`String captchaKey, CaptchaProperties properties`</td><td>构造方法</td><td>创建生成上下文</td></tr>
+<tr><td>`getCaptchaKey`</td><td>无</td><td>`String`</td><td>获取验证码标识</td></tr>
+<tr><td>`getProperties`</td><td>无</td><td>`CaptchaProperties`</td><td>获取配置属性</td></tr>
+<tr><td>`getAnswer`</td><td>无</td><td>`String`</td><td>获取答案（由子类在 doGenerate 中写入）</td></tr>
+<tr><td>`setAnswer`</td><td>`String answer`</td><td>`void`</td><td>写入答案（子类在 doGenerate 中调用）</td></tr>
+</table>
+
+<h6>Usage Example</h6>
+<pre><code>
+// 在 AbstractCaptcha 子类的 doGenerate 中使用
+@Override
+protected CaptchaResult doGenerate(CaptchaContext context) {
+    CaptchaProperties p = context.getProperties();
+    String answer = randomString(p.getLength(), new Random());
+    context.setAnswer(answer);  // 回写答案，由模板方法存入 store
+    // ... 绘制图片
+    CaptchaResult result = new CaptchaResult();
+    result.setImageBase64(toBase64(image));
+    return result;
+}
+</code></pre>
+
+<p>---</p>
+
+<h6>AbstractCaptcha</h6>
+<li><strong>Type</strong>: abstract class</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.captcha</code></li>
+<li><strong>Description</strong>: 验证码抽象基类，实现 <code>Captcha</code> 接口，提供模板方法与公共图像处理逻辑。采用模板方法模式：<code>generate()</code> 构造上下文、调用 <code>doGenerate()</code> 生成结果、将答案写入 <code>CaptchaStore</code> 并生成无状态 token；<code>verify()</code> 从 <code>CaptchaStore</code> 一次性取出答案交给 <code>doVerify()</code> 比对。另提供 <code>generateToken</code> / <code>verifyToken</code> 用于无状态场景。核心层不依赖任何第三方库，图像生成基于 <code>java.awt</code>，编码基于 <code>java.util.Base64</code>。</li>
+<li><strong>Implements</strong>: <code>Captcha</code></li>
+
+<h6>Fields</h6>
+
+<table>
+<tr><th>Field</th><th>Type</th><th>Modifiers</th><th>Description</th></tr>
+<tr><td>`store`</td><td>`CaptchaStore`</td><td>`protected`</td><td>验证码存储</td></tr>
+<tr><td>`properties`</td><td>`CaptchaProperties`</td><td>`protected`</td><td>配置属性</td></tr>
+<tr><td>`DEFAULT_CHARS`</td><td>`char[]`</td><td>`protected static final`</td><td>默认字符集（排除易混淆字符 0/O/1/I/L）：`ABCDEFGHJKMNPQRSTUVWXYZ23456789`</td></tr>
+</table>
+
+<h6>Constructors</h6>
+
+<table>
+<tr><th>Constructor</th><th>Parameters</th><th>Description</th></tr>
+<tr><td>`AbstractCaptcha`</td><td>无</td><td>默认构造：使用 `MemoryCaptchaStore` 与默认配置</td></tr>
+<tr><td>`AbstractCaptcha`</td><td>`CaptchaStore store, CaptchaProperties properties`</td><td>指定存储与配置构造</td></tr>
+</table>
+
+<h6>Methods</h6>
+
+<table>
+<tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
+<tr><td>`doGenerate`</td><td>`CaptchaContext context`</td><td>`CaptchaResult`（abstract, protected）</td><td>子类实现：生成验证码图片并通过 `context.setAnswer()` 回写答案</td></tr>
+<tr><td>`doVerify`</td><td>`String answer, String userInput`</td><td>`boolean`（abstract, protected）</td><td>子类实现：比对真实答案与用户输入</td></tr>
+<tr><td>`generate`</td><td>`String captchaKey`</td><td>`CaptchaResult`</td><td>模板方法：构造上下文 -> doGenerate -> 填充元信息 -> 存答案到 store -> 生成 token</td></tr>
+<tr><td>`verify`</td><td>`String captchaKey, String userInput`</td><td>`boolean`</td><td>模板方法：从 store 一次性取出答案 -> doVerify 比对</td></tr>
+<tr><td>`generateToken`</td><td>`String captchaKey, String answer, long expireTime`</td><td>`String`（protected）</td><td>生成无状态 token：三段 Base64 以 `.` 拼接</td></tr>
+<tr><td>`verifyToken`</td><td>`String token, String userInput`</td><td>`boolean`（protected）</td><td>校验无状态 token：解码取答案与过期时间，过期或解码失败返回 false，否则交由 doVerify 比对</td></tr>
+<tr><td>`createImage`</td><td>`int width, int height`</td><td>`BufferedImage`（protected）</td><td>创建白色背景的 RGB 图片</td></tr>
+<tr><td>`createArgbImage`</td><td>`int width, int height`</td><td>`BufferedImage`（protected）</td><td>创建透明背景的 ARGB 图片（用于滑块等需要透明通道的场景）</td></tr>
+<tr><td>`randomColor`</td><td>`Random random`</td><td>`Color`（protected）</td><td>生成随机颜色（限制亮度避免过白）</td></tr>
+<tr><td>`drawRandomBackground`</td><td>`Graphics2D g, int width, int height, Random random`</td><td>`void`（protected）</td><td>绘制随机渐变背景 + 色块（滑动/旋转验证码底图纹理）</td></tr>
+<tr><td>`addNoise`</td><td>`Graphics2D g, int width, int height, int count, Random random`</td><td>`void`（protected）</td><td>添加噪点</td></tr>
+<tr><td>`addInterfereLines`</td><td>`Graphics2D g, int width, int height, int count, Random random`</td><td>`void`（protected）</td><td>添加干扰线</td></tr>
+<tr><td>`drawText`</td><td>`Graphics2D g, String text, int width, int height, Random random`</td><td>`void`（protected）</td><td>绘制验证码文本（每字符独立颜色、字体大小与旋转角度）</td></tr>
+<tr><td>`toBase64`</td><td>`BufferedImage image`</td><td>`String`（protected）</td><td>将图片编码为带前缀的 base64 字符串：`data:image/png;base64,...`</td></tr>
+<tr><td>`randomString`</td><td>`int length, Random random`</td><td>`String`（protected）</td><td>从默认字符集随机生成指定长度字符串</td></tr>
+<tr><td>`getStore`</td><td>无</td><td>`CaptchaStore`</td><td>获取存储</td></tr>
+<tr><td>`setStore`</td><td>`CaptchaStore store`</td><td>`void`</td><td>设置存储</td></tr>
+<tr><td>`getProperties`</td><td>无</td><td>`CaptchaProperties`</td><td>获取配置</td></tr>
+<tr><td>`setProperties`</td><td>`CaptchaProperties properties`</td><td>`void`</td><td>设置配置</td></tr>
+</table>
+
+<h6>Token 结构</h6>
+<p>token 由 <code>generateToken</code> 生成，格式为：</p>
+<pre><code>
+base64(captchaKey) . base64(answer) . base64(expireTime)
+</code></pre>
+<li>三段以 <code>.</code> 拼接</li>
+<li>每段为 UTF-8 字符串的 Base64 编码</li>
+<li><code>expireTime</code> 为毫秒时间戳</li>
+<li>注意：仅 Base64 编码，非加密安全</li>
+
+<h6>Usage Example</h6>
+<pre><code>
+// 子类只需实现 doGenerate 与 doVerify
+public class MyCaptcha extends AbstractCaptcha {
+    public MyCaptcha(CaptchaStore store, CaptchaProperties properties) {
+        super(store, properties);
+    }
+
+    @Override
+    public String getType() { return &quot;my&quot;; }
+
+    @Override
+    protected CaptchaResult doGenerate(CaptchaContext context) {
+        String answer = randomString(context.getProperties().getLength(), new Random());
+        context.setAnswer(answer);
+        BufferedImage image = createImage(160, 50);
+        Graphics2D g = image.createGraphics();
+        try {
+            drawText(g, answer, 160, 50, new Random());
+        } finally {
+            g.dispose();
+        }
+        CaptchaResult result = new CaptchaResult();
+        result.setImageBase64(toBase64(image));
+        return result;
+    }
+
+    @Override
+    protected boolean doVerify(String answer, String userInput) {
+        return answer.equalsIgnoreCase(userInput.trim());
+    }
+}
+</code></pre>
+
+<p>---</p>
+
+<h6>CaptchaResult</h6>
+<li><strong>Type</strong>: class</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.captcha</code></li>
+<li><strong>Description</strong>: 验证码生成结果。封装一次验证码生成产生的全部信息：base64 图片、加密 token、过期时间以及额外数据。该对象会被返回给调用方用于 JSON 序列化下发到前端，因此答案本身不包含在此对象中（答案仅存于 <code>CaptchaStore</code>，避免泄露）。</li>
+
+<h6>Fields</h6>
+
+<table>
+<tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr>
+<tr><td>`captchaKey`</td><td>`String`</td><td>-</td><td>验证码标识</td></tr>
+<tr><td>`type`</td><td>`String`</td><td>-</td><td>验证码类型</td></tr>
+<tr><td>`imageBase64`</td><td>`String`</td><td>-</td><td>base64 编码的图片（带 `data:image/png;base64,` 前缀）</td></tr>
+<tr><td>`token`</td><td>`String`</td><td>-</td><td>加密 token（包含答案的加密信息，可用于无状态验证）</td></tr>
+<tr><td>`expireTime`</td><td>`long`</td><td>-</td><td>过期时间戳（毫秒）</td></tr>
+<tr><td>`extra`</td><td>`Map<String, Object>`</td><td>`new HashMap<>()`</td><td>额外数据（如滑动验证码的滑块图、缺口位置等）</td></tr>
+</table>
+
+<h6>Constructors</h6>
+
+<table>
+<tr><th>Constructor</th><th>Parameters</th><th>Description</th></tr>
+<tr><td>`CaptchaResult`</td><td>无</td><td>创建空结果（extra 初始化为空 HashMap）</td></tr>
+<tr><td>`CaptchaResult`</td><td>`String captchaKey, String type, String imageBase64, String token, long expireTime, Map<String, Object> extra`</td><td>全参构造（extra 为 null 时初始化为空 HashMap）</td></tr>
+</table>
+
+<h6>Methods</h6>
+
+<table>
+<tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
+<tr><td>`getCaptchaKey` / `setCaptchaKey`</td><td>`String`</td><td>`String` / `void`</td><td>验证码标识 getter/setter</td></tr>
+<tr><td>`getType` / `setType`</td><td>`String`</td><td>`String` / `void`</td><td>验证码类型 getter/setter</td></tr>
+<tr><td>`getImageBase64` / `setImageBase64`</td><td>`String`</td><td>`String` / `void`</td><td>base64 图片 getter/setter</td></tr>
+<tr><td>`getToken` / `setToken`</td><td>`String`</td><td>`String` / `void`</td><td>token getter/setter</td></tr>
+<tr><td>`getExpireTime` / `setExpireTime`</td><td>`long`</td><td>`long` / `void`</td><td>过期时间 getter/setter</td></tr>
+<tr><td>`getExtra` / `setExtra`</td><td>`Map<String, Object>`</td><td>`Map` / `void`</td><td>额外数据 getter/setter</td></tr>
+<tr><td>`toMap`</td><td>无</td><td>`Map<String, Object>`</td><td>将结果转为 Map，便于 JSON 序列化</td></tr>
+<tr><td>`toString`</td><td>无</td><td>`String`</td><td>返回简要字符串描述（不含图片/token 完整内容）</td></tr>
+</table>
+
+<h6>Usage Example</h6>
+<pre><code>
+CaptchaResult result = manager.generate(&quot;slider&quot;, &quot;my-key&quot;);
+
+// 获取各字段
+String image = result.getImageBase64();    // &quot;data:image/png;base64,...&quot;
+String token = result.getToken();           // &quot;YXNk.Zmdo.cWVy&quot;
+String key = result.getCaptchaKey();        // &quot;my-key&quot;
+String type = result.getType();             // &quot;slider&quot;
+long expire = result.getExpireTime();       // 毫秒时间戳
+
+// 获取额外数据（滑动验证码特有）
+String sliderImg = (String) result.getExtra().get(&quot;sliderImage&quot;);
+int gapY = (int) result.getExtra().get(&quot;gapY&quot;);
+int blockSize = (int) result.getExtra().get(&quot;blockSize&quot;);
+
+// 转 Map 便于 JSON 序列化
+Map&lt;String, Object&gt; map = result.toMap();
+</code></pre>
+
+<p>---</p>
+
+<h6>CaptchaStore</h6>
+<li><strong>Type</strong>: interface</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.captcha</code></li>
+<li><strong>Description</strong>: 验证码存储接口（SPI）。核心层通过此接口存取验证码答案，与具体存储介质解耦。默认实现 <code>MemoryCaptchaStore</code>（<code>ConcurrentHashMap</code> + TTL）。可适配为 CacheStore（jaravel cache 模块）、Redis 等。</li>
+
+<h6>Methods</h6>
+
+<table>
+<tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
+<tr><td>`put`</td><td>`String captchaKey, String answer, long ttlSeconds`</td><td>`void`</td><td>存储验证码答案。`ttlSeconds` 为过期秒数</td></tr>
+<tr><td>`get`</td><td>`String captchaKey`</td><td>`String`</td><td>读取验证码答案，不存在或已过期返回 `null`</td></tr>
+<tr><td>`pull`</td><td>`String captchaKey`</td><td>`String`</td><td>读取并删除（验证成功后一次性消费），不存在或已过期返回 `null`</td></tr>
+<tr><td>`remove`</td><td>`String captchaKey`</td><td>`void`</td><td>移除验证码</td></tr>
+</table>
+
+<h6>Usage Example</h6>
+<pre><code>
+CaptchaStore store = new MemoryCaptchaStore();
+store.put(&quot;my-key&quot;, &quot;AB23&quot;, 300);    // 存入答案，300 秒过期
+String answer = store.get(&quot;my-key&quot;); // &quot;AB23&quot;
+String pulled = store.pull(&quot;my-key&quot;);// &quot;AB23&quot;（取出后即删除）
+store.get(&quot;my-key&quot;);                  // null（已被 pull 删除）
+</code></pre>
+
+<p>---</p>
+
+<h6>MemoryCaptchaStore</h6>
+<li><strong>Type</strong>: class</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.captcha</code></li>
+<li><strong>Description</strong>: 基于 <code>ConcurrentHashMap</code> 的内存验证码存储默认实现。线程安全，自带 TTL 过期机制：<code>get()</code> 与 <code>pull()</code> 读取时会检查过期，过期则自动删除并返回 <code>null</code>。另提供 <code>cleanup()</code> 主动清理全部过期项。适用于单机、低并发场景；分布式环境请改用基于 Redis / jaravel cache 模块的实现。</li>
+<li><strong>Implements</strong>: <code>CaptchaStore</code></li>
+
+<h6>Methods</h6>
+
+<table>
+<tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
+<tr><td>`MemoryCaptchaStore`</td><td>无</td><td>构造方法</td><td>创建内存验证码存储</td></tr>
+<tr><td>`put`</td><td>`String captchaKey, String answer, long ttlSeconds`</td><td>`void`</td><td>存储验证码答案，计算过期时间</td></tr>
+<tr><td>`get`</td><td>`String captchaKey`</td><td>`String`</td><td>读取答案，若已过期则惰性删除并返回 `null`</td></tr>
+<tr><td>`pull`</td><td>`String captchaKey`</td><td>`String`</td><td>读取并删除答案，若已过期返回 `null`</td></tr>
+<tr><td>`remove`</td><td>`String captchaKey`</td><td>`void`</td><td>移除验证码</td></tr>
+<tr><td>`cleanup`</td><td>无</td><td>`int`</td><td>主动清理所有已过期条目，返回实际清理的条目数</td></tr>
+<tr><td>`size`</td><td>无</td><td>`int`</td><td>返回当前存储条目数（含可能已过期但未触发清理的）</td></tr>
+</table>
+
+<h6>Nested Types</h6>
+<li><strong>MemoryCaptchaStore.Entry</strong> (class): 存储条目，记录 <code>answer</code> 与 <code>expireTime</code>（毫秒时间戳），提供 <code>isExpired()</code> 判断是否过期</li>
+
+<h6>Usage Example</h6>
+<pre><code>
+MemoryCaptchaStore store = new MemoryCaptchaStore();
+store.put(&quot;key1&quot;, &quot;AB23&quot;, 60);    // 60 秒过期
+store.put(&quot;key2&quot;, &quot;XY99&quot;, 300);   // 300 秒过期
+
+String answer = store.get(&quot;key1&quot;); // &quot;AB23&quot;
+String pulled = store.pull(&quot;key2&quot;);// &quot;XY99&quot;（取出即删除）
+
+// 主动清理过期条目
+int removed = store.cleanup();
+int total = store.size();
+</code></pre>
+
+<p>---</p>
+
+<h6>CacheStoreCaptchaStore</h6>
+<li><strong>Type</strong>: class</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.captcha</code></li>
+<li><strong>Description</strong>: 基于 jaravel <code>CacheStore</code> 的验证码存储适配器。当项目引入了 jaravel cache 模块时，可通过此类将验证码答案存入 CacheStore（底层可以是 Redis、数据库等），实现跨进程验证码共享。未引入 cache 模块时使用 <code>MemoryCaptchaStore</code>。key 前缀默认为 <code>captcha:</code>，避免与其他业务缓存冲突。</li>
+<li><strong>Implements</strong>: <code>CaptchaStore</code></li>
+
+<h6>Constructors</h6>
+
+<table>
+<tr><th>Constructor</th><th>Parameters</th><th>Description</th></tr>
+<tr><td>`CacheStoreCaptchaStore`</td><td>`CacheStore cacheStore`</td><td>创建适配器，传入 jaravel cache 模块的 `CacheStore` 实例</td></tr>
+</table>
+
+<h6>Methods</h6>
+
+<table>
+<tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
+<tr><td>`put`</td><td>`String captchaKey, String answer, long ttlSeconds`</td><td>`void`</td><td>委托 `cacheStore.put("captcha:" + captchaKey, answer, ttlSeconds)`</td></tr>
+<tr><td>`get`</td><td>`String captchaKey`</td><td>`String`</td><td>委托 `cacheStore.get("captcha:" + captchaKey)`，值为 null 返回 null，否则 `toString()`</td></tr>
+<tr><td>`pull`</td><td>`String captchaKey`</td><td>`String`</td><td>委托 `cacheStore.pull("captcha:" + captchaKey)`，值为 null 返回 null，否则 `toString()`</td></tr>
+<tr><td>`remove`</td><td>`String captchaKey`</td><td>`void`</td><td>委托 `cacheStore.forget("captcha:" + captchaKey)`</td></tr>
+</table>
+
+<h6>Usage Example</h6>
+<pre><code>
+import com.weacsoft.jaravel.vendor.cache.CacheStore;
+import com.weacsoft.jaravel.vendor.cache.DefaultCacheStore;
+import com.weacsoft.jaravel.vendor.cache.ArrayCacheDriver;
+
+// 使用 jaravel cache 模块的 CacheStore 作为后端
+CacheStore cacheStore = new DefaultCacheStore(new ArrayCacheDriver(), &quot;myapp&quot;);
+CaptchaStore captchaStore = new CacheStoreCaptchaStore(cacheStore);
+
+captchaStore.put(&quot;my-key&quot;, &quot;AB23&quot;, 300);  // 实际存入 &quot;captcha:my-key&quot;
+String answer = captchaStore.get(&quot;my-key&quot;); // &quot;AB23&quot;
+captchaStore.remove(&quot;my-key&quot;);
+</code></pre>
+
+<p>---</p>
+
+<h6>CaptchaProperties（核心层）</h6>
+<li><strong>Type</strong>: class</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.captcha</code></li>
+<li><strong>Description</strong>: 验证码配置属性（核心层）。核心层不依赖 Spring，因此使用普通 Java 类而非 <code>@ConfigurationProperties</code>。SpringBoot 兼容层可在外部继承或包装本类，通过 <code>jaravel.captcha</code> 前缀绑定配置后注入。</li>
+
+<h6>Properties</h6>
+
+<table>
+<tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr>
+<tr><td>`width`</td><td>`int`</td><td>`160`</td><td>图片宽度（像素）</td></tr>
+<tr><td>`height`</td><td>`int`</td><td>`50`</td><td>图片高度（像素）</td></tr>
+<tr><td>`length`</td><td>`int`</td><td>`4`</td><td>验证码字符长度（适用于数字/算术验证码）</td></tr>
+<tr><td>`expireSeconds`</td><td>`long`</td><td>`300`</td><td>过期秒数，默认 5 分钟</td></tr>
+<tr><td>`caseSensitive`</td><td>`boolean`</td><td>`false`</td><td>是否区分大小写（适用于数字验证码）</td></tr>
+<tr><td>`tolerance`</td><td>`double`</td><td>`5.0`</td><td>滑动/旋转验证的容差范围（滑动为像素，旋转为角度）</td></tr>
+<tr><td>`interfereCount`</td><td>`int`</td><td>`30`</td><td>干扰线数量</td></tr>
+<tr><td>`noiseCount`</td><td>`int`</td><td>`50`</td><td>噪点数量</td></tr>
+</table>
+
+<h6>Static Methods</h6>
+
+<table>
+<tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
+<tr><td>`createDefault`</td><td>无</td><td>`CaptchaProperties`</td><td>创建一份使用默认值的配置实例</td></tr>
+</table>
+
+<h6>Usage Example</h6>
+<pre><code>
+// 使用默认配置
+CaptchaProperties properties = CaptchaProperties.createDefault();
+
+// 自定义配置
+properties.setWidth(200);
+properties.setHeight(60);
+properties.setLength(5);
+properties.setExpireSeconds(120);
+properties.setCaseSensitive(true);
+properties.setTolerance(8.0);
+properties.setNoiseCount(80);
+properties.setInterfereCount(40);
+
+CaptchaManager manager = new CaptchaManager(new MemoryCaptchaStore(), properties);
+</code></pre>
+
+<p>---</p>
+
+<h6>CaptchaManager</h6>
+<li><strong>Type</strong>: class</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.captcha</code></li>
+<li><strong>Description</strong>: 验证码管理器，统一管理多种验证码类型的注册与调用。内部维护 <code>type -&gt; Captcha</code> 映射（<code>LinkedHashMap</code> 保持注册顺序），提供按类型生成/验证的入口，并通过 <code>createDefault()</code> 提供开箱即用的默认管理器（注册数字、算术、滑动、旋转四种）。核心层不依赖 Spring，可独立使用；SpringBoot 兼容层可将其包装为 Bean。</li>
+
+<h6>Constructors</h6>
+
+<table>
+<tr><th>Constructor</th><th>Parameters</th><th>Description</th></tr>
+<tr><td>`CaptchaManager`</td><td>无</td><td>创建管理器（默认使用 `MemoryCaptchaStore` 与默认配置）</td></tr>
+<tr><td>`CaptchaManager`</td><td>`CaptchaStore store, CaptchaProperties properties`</td><td>指定存储与配置创建管理器</td></tr>
+</table>
+
+<h6>Methods</h6>
+
+<table>
+<tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
+<tr><td>`register`</td><td>`Captcha captcha`</td><td>`void`</td><td>注册验证码实现（captcha 及其 type 不能为 null，否则抛 `IllegalArgumentException`）</td></tr>
+<tr><td>`generate`</td><td>`String type, String captchaKey`</td><td>`CaptchaResult`</td><td>生成指定类型的验证码，类型未注册时抛 `IllegalArgumentException`</td></tr>
+<tr><td>`verify`</td><td>`String type, String captchaKey, String userInput`</td><td>`boolean`</td><td>验证指定类型的验证码，类型未注册返回 `false`</td></tr>
+<tr><td>`getTypes`</td><td>无</td><td>`Set<String>`</td><td>返回所有已注册类型（不可修改）</td></tr>
+<tr><td>`getCaptcha`</td><td>`String type`</td><td>`Captcha`</td><td>按类型获取验证码实现，不存在返回 `null`</td></tr>
+<tr><td>`getCaptchas`</td><td>无</td><td>`Map<String, Captcha>`</td><td>返回全部已注册验证码的不可修改视图</td></tr>
+<tr><td>`getStore` / `setStore`</td><td>`CaptchaStore`</td><td>`CaptchaStore` / `void`</td><td>存储 getter/setter</td></tr>
+<tr><td>`getProperties` / `setProperties`</td><td>`CaptchaProperties`</td><td>`CaptchaProperties` / `void`</td><td>配置 getter/setter</td></tr>
+</table>
+
+<h6>Static Methods</h6>
+
+<table>
+<tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
+<tr><td>`createDefault`</td><td>无</td><td>`CaptchaManager`</td><td>创建默认管理器：使用内存存储与默认配置，注册数字、算术、滑动、旋转四种验证码（共享同一 store 与 properties）</td></tr>
+</table>
+
+<h6>Usage Example</h6>
+<pre><code>
+// 开箱即用
+CaptchaManager manager = CaptchaManager.createDefault();
+
+// 查看已注册类型
+Set&lt;String&gt; types = manager.getTypes();  // [number, arithmetic, slider, rotate]
+
+// 生成与验证
+CaptchaResult result = manager.generate(&quot;number&quot;, uuid);
+boolean ok = manager.verify(&quot;number&quot;, uuid, &quot;AB23&quot;);
+
+// 注册自定义类型
+manager.register(new MyCaptcha(manager.getStore(), manager.getProperties()));
+
+// 自定义构造
+CaptchaProperties props = CaptchaProperties.createDefault();
+props.setWidth(200);
+CaptchaManager custom = new CaptchaManager(new MemoryCaptchaStore(), props);
+custom.register(new NumberCaptcha(custom.getStore(), custom.getProperties()));
+</code></pre>
+
+<p>---</p>
+
+<h6>NumberCaptcha</h6>
+<li><strong>Type</strong>: class</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.captcha</code></li>
+<li><strong>Description</strong>: 图片数字验证码：随机字母 + 数字字符串。类型名 <code>&quot;number&quot;</code>。在 <code>AbstractCaptcha</code> 提供的图像工具之上绘制带噪点、干扰线、随机旋转的字符图片。验证时按 <code>CaptchaProperties.isCaseSensitive()</code> 决定是否区分大小写。字符集排除易混淆字符 0/O/1/I/L。</li>
+<li><strong>Extends</strong>: <code>AbstractCaptcha</code></li>
+<li><strong>Type Name</strong>: <code>&quot;number&quot;</code></li>
+
+<h6>Constructors</h6>
+
+<table>
+<tr><th>Constructor</th><th>Parameters</th><th>Description</th></tr>
+<tr><td>`NumberCaptcha`</td><td>无</td><td>默认构造：使用 `MemoryCaptchaStore` 与默认配置</td></tr>
+<tr><td>`NumberCaptcha`</td><td>`CaptchaStore store, CaptchaProperties properties`</td><td>指定存储与配置构造</td></tr>
+</table>
+
+<h6>Behavior</h6>
+
+<table>
+<tr><th>项</th><th>说明</th></tr>
+<tr><td>答案</td><td>从 `DEFAULT_CHARS` 随机生成 `length` 位字符串</td></tr>
+<tr><td>用户输入</td><td>用户识别的字符</td></tr>
+<tr><td>验证规则</td><td>`caseSensitive=true` 时 `equals`，`false` 时 `equalsIgnoreCase`</td></tr>
+<tr><td>图片</td><td>带噪点 + 干扰线 + 随机旋转字符的 base64 PNG</td></tr>
+</table>
+
+<h6>Usage Example</h6>
+<pre><code>
+NumberCaptcha captcha = new NumberCaptcha(store, properties);
+CaptchaResult result = captcha.generate(&quot;my-key&quot;);
+// result.getImageBase64() -&gt; base64 图片
+// result.getToken() -&gt; 无状态 token
+
+boolean ok = captcha.verify(&quot;my-key&quot;, &quot;AB23&quot;);
+</code></pre>
+
+<p>---</p>
+
+<h6>ArithmeticCaptcha</h6>
+<li><strong>Type</strong>: class</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.captcha</code></li>
+<li><strong>Description</strong>: 算术验证码：随机生成 <code>a op b = ?</code> 形式的算式，答案为运算结果。类型名 <code>&quot;arithmetic&quot;</code>。支持加、减、乘三种运算，减法保证结果非负，乘法限制操作数在 1~9 之间避免结果过大。验证时按字符串相等比对（去除空格）。</li>
+<li><strong>Extends</strong>: <code>AbstractCaptcha</code></li>
+<li><strong>Type Name</strong>: <code>&quot;arithmetic&quot;</code></li>
+
+<h6>Constructors</h6>
+
+<table>
+<tr><th>Constructor</th><th>Parameters</th><th>Description</th></tr>
+<tr><td>`ArithmeticCaptcha`</td><td>无</td><td>默认构造：使用 `MemoryCaptchaStore` 与默认配置</td></tr>
+<tr><td>`ArithmeticCaptcha`</td><td>`CaptchaStore store, CaptchaProperties properties`</td><td>指定存储与配置构造</td></tr>
+</table>
+
+<h6>Behavior</h6>
+
+<table>
+<tr><th>项</th><th>说明</th></tr>
+<tr><td>答案</td><td>运算结果（数字字符串）</td></tr>
+<tr><td>用户输入</td><td>计算结果</td></tr>
+<tr><td>验证规则</td><td>去除空格后 `equals`</td></tr>
+<tr><td>图片</td><td>带噪点 + 干扰线 + 算式文本的 base64 PNG，内容如 `12 + 5 = ?`</td></tr>
+<tr><td>运算规则</td><td>加法：a+b（a,b 为 1~20）；减法：保证非负；乘法：a*b（a,b 为 1~9）</td></tr>
+</table>
+
+<h6>Usage Example</h6>
+<pre><code>
+ArithmeticCaptcha captcha = new ArithmeticCaptcha(store, properties);
+CaptchaResult result = captcha.generate(&quot;my-key&quot;);
+// 图片显示如 &quot;12 + 5 = ?&quot;
+
+boolean ok = captcha.verify(&quot;my-key&quot;, &quot;17&quot;);
+</code></pre>
+
+<p>---</p>
+
+<h6>SliderCaptcha</h6>
+<li><strong>Type</strong>: class</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.captcha</code></li>
+<li><strong>Description</strong>: 滑动验证码：在背景图上随机位置抠出缺口，前端拖动滑块拼回缺口。类型名 <code>&quot;slider&quot;</code>。答案为缺口横坐标 <code>gapX</code>，验证时按 <code>CaptchaProperties.getTolerance()</code> 像素容差判定。</li>
+<li><strong>Extends</strong>: <code>AbstractCaptcha</code></li>
+<li><strong>Type Name</strong>: <code>&quot;slider&quot;</code></li>
+
+<h6>Constructors</h6>
+
+<table>
+<tr><th>Constructor</th><th>Parameters</th><th>Description</th></tr>
+<tr><td>`SliderCaptcha`</td><td>无</td><td>默认构造：使用 `MemoryCaptchaStore` 与默认配置</td></tr>
+<tr><td>`SliderCaptcha`</td><td>`CaptchaStore store, CaptchaProperties properties`</td><td>指定存储与配置构造</td></tr>
+</table>
+
+<h6>Behavior</h6>
+
+<table>
+<tr><th>项</th><th>说明</th></tr>
+<tr><td>答案</td><td>缺口横坐标 `gapX`（像素，字符串）</td></tr>
+<tr><td>用户输入</td><td>滑块拖动的 x 坐标（字符串）</td></tr>
+<tr><td>验证规则</td><td>`Math.abs(gapX - input) <= tolerance`，解析失败返回 `false`</td></tr>
+<tr><td>`imageBase64`</td><td>带缺口的背景图（base64 PNG）</td></tr>
+<tr><td>`extra.sliderImage`</td><td>滑块拼图小块（带透明通道的 PNG base64）</td></tr>
+<tr><td>`extra.gapY`</td><td>缺口纵坐标（前端固定滑块纵坐标用）</td></tr>
+<tr><td>`extra.blockSize`</td><td>滑块边长（`Math.max(20, height / 2)`）</td></tr>
+</table>
+
+<h6>Usage Example</h6>
+<pre><code>
+SliderCaptcha captcha = new SliderCaptcha(store, properties);
+CaptchaResult result = captcha.generate(&quot;my-key&quot;);
+
+String bgImage = result.getImageBase64();                  // 带缺口的背景图
+String sliderImg = (String) result.getExtra().get(&quot;sliderImage&quot;); // 滑块小块
+int gapY = (int) result.getExtra().get(&quot;gapY&quot;);            // 缺口纵坐标
+int blockSize = (int) result.getExtra().get(&quot;blockSize&quot;);  // 滑块边长
+
+// 前端拖动后提交 x 坐标
+boolean ok = captcha.verify(&quot;my-key&quot;, &quot;123&quot;);
+</code></pre>
+
+<p>---</p>
+
+<h6>RotateCaptcha</h6>
+<li><strong>Type</strong>: class</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.captcha</code></li>
+<li><strong>Description</strong>: 旋转验证码：将一张带明显朝向（向上箭头）的图片随机旋转，前端拖动将其转回正方向。类型名 <code>&quot;rotate&quot;</code>。答案为旋转角度（0~359），验证时按 <code>CaptchaProperties.getTolerance()</code> 角度容差判定（双向最短角差）。使用正方形画布（<code>Math.max(width, 200)</code>）。</li>
+<li><strong>Extends</strong>: <code>AbstractCaptcha</code></li>
+<li><strong>Type Name</strong>: <code>&quot;rotate&quot;</code></li>
+
+<h6>Constructors</h6>
+
+<table>
+<tr><th>Constructor</th><th>Parameters</th><th>Description</th></tr>
+<tr><td>`RotateCaptcha`</td><td>无</td><td>默认构造：使用 `MemoryCaptchaStore` 与默认配置</td></tr>
+<tr><td>`RotateCaptcha`</td><td>`CaptchaStore store, CaptchaProperties properties`</td><td>指定存储与配置构造</td></tr>
+</table>
+
+<h6>Behavior</h6>
+
+<table>
+<tr><th>项</th><th>说明</th></tr>
+<tr><td>答案</td><td>旋转角度（0~359，字符串）</td></tr>
+<tr><td>用户输入</td><td>用户旋转的角度（字符串）</td></tr>
+<tr><td>验证规则</td><td>双向最短角差 `diff <= tolerance`，解析失败返回 `false`</td></tr>
+<tr><td>`imageBase64`</td><td>旋转后的图片（正方形 base64 PNG）</td></tr>
+<tr><td>`extra.size`</td><td>图片边长（`Math.max(width, 200)`）</td></tr>
+<tr><td>朝向标记</td><td>顶部居中向上箭头（白色杆 + 蓝色三角头部），便于用户判断正方向</td></tr>
+</table>
+
+<h6>Usage Example</h6>
+<pre><code>
+RotateCaptcha captcha = new RotateCaptcha(store, properties);
+CaptchaResult result = captcha.generate(&quot;my-key&quot;);
+
+String image = result.getImageBase64();          // 旋转后的图片
+int size = (int) result.getExtra().get(&quot;size&quot;);  // 图片边长
+
+// 前端展示图片，用户拖动转回正方向并提交角度
+boolean ok = captcha.verify(&quot;my-key&quot;, &quot;90&quot;);
+</code></pre>
+
+<p>---</p>
+
+<h6>CaptchaAutoConfiguration</h6>
+<li><strong>Type</strong>: class</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.captcha.springboot</code></li>
+<li><strong>Description</strong>: 验证码 SpringBoot 自动装配。当 <code>jaravel.captcha.enabled=true</code>（默认）时自动创建 <code>CaptchaManager</code> Bean，注册四种验证码类型（数字、算术、滑动、旋转）。根据是否引入 jaravel cache 模块智能选择存储：有 cache 模块使用 <code>CacheStoreCaptchaStore</code>（跨进程），无则使用 <code>MemoryCaptchaStore</code>（内存）。</li>
+<li><strong>Annotations</strong>: <code>@AutoConfiguration</code>, <code>@ConditionalOnClass(CaptchaManager.class)</code>, <code>@ConditionalOnProperty(prefix = &quot;jaravel.captcha&quot;, name = &quot;enabled&quot;, havingValue = &quot;true&quot;, matchIfMissing = true)</code>, <code>@EnableConfigurationProperties(CaptchaProperties.class)</code></li>
+
+<h6>Inner Configurations</h6>
+
+<table>
+<tr><th>内部配置类</th><th>条件</th><th>说明</th></tr>
+<tr><td>`MemoryStoreConfig`</td><td>`@ConditionalOnMissingClass("com.weacsoft.jaravel.vendor.cache.CacheStore")`</td><td>无 cache 模块时注册 `MemoryCaptchaStore` Bean</td></tr>
+<tr><td>`CacheStoreConfig`</td><td>`@ConditionalOnClass(name = "com.weacsoft.jaravel.vendor.cache.CacheStore")`</td><td>有 cache 模块时注册 `CacheStoreCaptchaStore` Bean（容器中无 `CacheStore` Bean 时回退到 `MemoryCaptchaStore`）</td></tr>
+</table>
+
+<h6>Bean Methods</h6>
+
+<table>
+<tr><th>Bean</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
+<tr><td>`captchaStore`（MemoryStoreConfig）</td><td>无</td><td>`CaptchaStore`</td><td>内存存储（`@Bean`, `@ConditionalOnMissingBean`）</td></tr>
+<tr><td>`captchaStore`（CacheStoreConfig）</td><td>`ObjectProvider<CacheStore> cacheStoreProvider`</td><td>`CaptchaStore`</td><td>CacheStore 适配存储或回退内存（`@Bean`, `@ConditionalOnMissingBean`）</td></tr>
+<tr><td>`captchaManager`</td><td>`CaptchaProperties properties, ObjectProvider<CaptchaStore> captchaStoreProvider`</td><td>`CaptchaManager`</td><td>验证码管理器，注册四种验证码类型（`@Bean`, `@ConditionalOnMissingBean`）；存储为 null 时回退 `MemoryCaptchaStore`；通过 `properties.toCoreProperties()` 转换为核心层配置</td></tr>
+</table>
+
+<h6>Usage Example</h6>
+<pre><code>
+// 引入依赖后自动装配，直接注入使用
+@Autowired
+private CaptchaManager captchaManager;
+
+@GetMapping(&quot;/captcha&quot;)
+public CaptchaResult captcha(@RequestParam(defaultValue = &quot;number&quot;) String type) {
+    String key = UUID.randomUUID().toString();
+    return captchaManager.generate(type, key);
+}
+</code></pre>
+
+<pre><code>
+# application.yml
+jaravel:
+  captcha:
+    enabled: true
+    width: 160
+    height: 50
+    expire-seconds: 300
+</code></pre>
+
+<p>---</p>
+
+<h6>CaptchaProperties（SpringBoot 适配层）</h6>
+<li><strong>Type</strong>: class</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.captcha.springboot</code></li>
+<li><strong>Description</strong>: SpringBoot 配置属性，前缀 <code>jaravel.captcha</code>。在 <code>application.yml</code> 中通过 <code>jaravel.captcha.*</code> 配置。通过 <code>toCoreProperties()</code> 方法转为核心层 <code>CaptchaProperties</code> 对象供 <code>CaptchaManager</code> 使用。</li>
+<li><strong>Annotations</strong>: <code>@ConfigurationProperties(prefix = &quot;jaravel.captcha&quot;)</code></li>
+
+<h6>Properties</h6>
+
+<table>
+<tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr>
+<tr><td>`enabled`</td><td>`boolean`</td><td>`true`</td><td>是否启用自动装配</td></tr>
+<tr><td>`width`</td><td>`int`</td><td>`160`</td><td>图片宽度（像素）</td></tr>
+<tr><td>`height`</td><td>`int`</td><td>`50`</td><td>图片高度（像素）</td></tr>
+<tr><td>`length`</td><td>`int`</td><td>`4`</td><td>验证码字符长度（数字/字母验证码）</td></tr>
+<tr><td>`expireSeconds`</td><td>`long`</td><td>`300`</td><td>过期时间（秒）</td></tr>
+<tr><td>`caseSensitive`</td><td>`boolean`</td><td>`false`</td><td>是否区分大小写</td></tr>
+<tr><td>`tolerance`</td><td>`double`</td><td>`5.0`</td><td>滑动/旋转验证的容差范围</td></tr>
+<tr><td>`noise`</td><td>`int`</td><td>`50`</td><td>噪点数量（对应核心层 `noiseCount`）</td></tr>
+<tr><td>`interfereLines`</td><td>`int`</td><td>`30`</td><td>干扰线数量（对应核心层 `interfereCount`）</td></tr>
+</table>
+
+<h6>Methods</h6>
+
+<table>
+<tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
+<tr><td>`toCoreProperties`</td><td>无</td><td>`com.weacsoft.jaravel.vendor.captcha.CaptchaProperties`</td><td>转为核心层配置对象（映射：`noise` -> `noiseCount`，`interfereLines` -> `interfereCount`）</td></tr>
+<tr><td>各属性 getter/setter</td><td>-</td><td>-</td><td>标准 getter/setter</td></tr>
+</table>
+
+<h6>Field映射（SpringBoot -> 核心层）</h6>
+
+<table>
+<tr><th>SpringBoot 字段</th><th>核心层字段</th></tr>
+<tr><td>`width`</td><td>`width`</td></tr>
+<tr><td>`height`</td><td>`height`</td></tr>
+<tr><td>`length`</td><td>`length`</td></tr>
+<tr><td>`expireSeconds`</td><td>`expireSeconds`</td></tr>
+<tr><td>`caseSensitive`</td><td>`caseSensitive`</td></tr>
+<tr><td>`tolerance`</td><td>`tolerance`</td></tr>
+<tr><td>`noise`</td><td>`noiseCount`</td></tr>
+<tr><td>`interfereLines`</td><td>`interfereCount`</td></tr>
+</table>
+
+<h6>Usage Example</h6>
+<pre><code>
+# application.yml
+jaravel:
+  captcha:
+    enabled: true
+    width: 200
+    height: 60
+    length: 5
+    expire-seconds: 120
+    case-sensitive: true
+    tolerance: 8.0
+    noise: 80
+    interfere-lines: 40
+</code></pre>
+
+<pre><code>
+// 在自定义配置中获取转换后的核心配置
+@Autowired
+private CaptchaProperties springBootProps;
+
+CaptchaProperties coreProps = springBootProps.toCoreProperties();
+// coreProps.getNoiseCount() == 80
+// coreProps.getInterfereCount() == 40
+</code></pre>
+</section>
 <section id="cat-starter">
 <h3>starter — 聚合启动器</h3>
-<p class="module-desc">一键引入全部模块的 starter POM</p>
+<p class="module-desc">引入所有模块的便捷 starter</p>
 <h4>简介</h4>
 <p>&gt; Jaravel-Vendor 的 Spring Boot Starter，一键引入全部 Laravel 风格组件。只需添加一个 Maven 依赖，即可获得中间件、Auth、Validation、Config、Eloquent ORM、迁移、缓存、事件、JBlade 模板引擎全套能力。包名统一为 <code>com.weacsoft.jaravel.vendor.springboot</code>。</p>
 
