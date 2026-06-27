@@ -699,7 +699,8 @@ router.get(<span class="string">"/api/data"</span>, handler).middleware(<span cl
     <li><span class="sig"><span class="ret">BladeTemplate</span> <span class="name">loadTemplate</span><span class="param">(String templateName)</span></span> — 加载（编译+缓存）模板，仅缓存未命中时编译</li>
     <li><span class="sig"><span class="ret">String</span> <span class="name">getSuffix</span><span class="param">()</span></span> — 获取模板文件后缀（默认 <code>.blade.java</code>）</li>
     <li><span class="sig"><span class="ret">CacheStore</span> <span class="name">getCacheStore</span><span class="param">()</span></span> — 获取二级缓存 store（可能为 null）</li>
-    <li><span class="sig"><span class="ret">void</span> <span class="name">clearCache</span><span class="param">()</span></span> — 清除所有缓存（一级+二级+实例）</li>
+    <li><span class="sig"><span class="ret">void</span> <span class="name">clearCache</span><span class="param">()</span></span> — 清除所有缓存（一级+二级+实例），按 key 逐个 forget，不调用 flush</li>
+    <li><span class="sig"><span class="ret">void</span> <span class="name">clearTemplate</span><span class="param">(String templateName)</span></span> — 清除指定模板的缓存，不影响其他模板</li>
   </ul>
   </div>
 </div>
@@ -877,7 +878,7 @@ router.get(<span class="string">"/admin"</span>, handler).middleware(<span class
 <h2>jwt — JWT 认证</h2>
 <div class="module-card">
   <div class="mc-title"><span class="tag cl">class</span> JwtService <span class="pkg">com.weacsoft.jaravel.vendor.jwt</span></div>
-  <div class="mc-desc">JWT 服务，负责 token 生成、解析、验证。HS256 签名，60min TTL，14 天刷新。</div>
+  <div class="mc-desc">JWT 服务，负责 token 生成、解析、验证。HS256 签名，60min TTL，14 天刷新。支持黑名单（登出踢 token）与宽限期续期。</div>
   <div class="mc-methods">
   <ul>
     <li><span class="sig"><span class="ret">String</span> <span class="name">generate</span><span class="param">(Authenticatable user)</span></span> — 生成 token</li>
@@ -885,6 +886,9 @@ router.get(<span class="string">"/admin"</span>, handler).middleware(<span class
     <li><span class="sig"><span class="ret">Map&lt;String, Object&gt;</span> <span class="name">parse</span><span class="param">(String token)</span></span> — 解析 token</li>
     <li><span class="sig"><span class="ret">boolean</span> <span class="name">verify</span><span class="param">(String token)</span></span> — 验证 token</li>
     <li><span class="sig"><span class="ret">String</span> <span class="name">refresh</span><span class="param">(String token)</span></span> — 刷新 token</li>
+    <li><span class="sig"><span class="ret">void</span> <span class="name">blacklist</span><span class="param">(String token)</span></span> — 加入黑名单（登出踢 token，需 blacklistEnabled=true）</li>
+    <li><span class="sig"><span class="ret">boolean</span> <span class="name">isBlacklisted</span><span class="param">(String token)</span></span> — 判断是否在黑名单中</li>
+    <li><span class="sig"><span class="ret">void</span> <span class="name">removeFromBlacklist</span><span class="param">(String token)</span></span> — 从黑名单移除（误杀恢复）</li>
   </ul>
   </div>
 </div>
@@ -1439,6 +1443,8 @@ queueDriver.clear(<span class="string">"default"</span>);                    <sp
   <ul>
     <li><span class="sig"><span class="ret">String</span> <span class="name">getToken</span><span class="param">(String appId, String secret)</span></span> — 获取 access_token（带缓存）</li>
     <li><span class="sig"><span class="ret">String</span> <span class="name">refreshToken</span><span class="param">(String appId, String secret)</span></span> — 强制刷新 token</li>
+    <li><span class="sig"><span class="ret">void</span> <span class="name">invalidateToken</span><span class="param">(String appId)</span></span> — 清除指定应用的 token 缓存</li>
+    <li><span class="sig"><span class="ret">void</span> <span class="name">invalidateAllTokens</span><span class="param">()</span></span> — 清除所有 token 缓存（调用 flush，谨慎使用）</li>
   </ul>
   </div>
 </div>
