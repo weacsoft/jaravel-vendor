@@ -1,6 +1,7 @@
 package com.weacsoft.jaravel.vendor.route;
 
 import com.weacsoft.jaravel.vendor.controller.Controllers;
+import com.weacsoft.jaravel.vendor.http.staticresource.StaticResourceRoute;
 import com.weacsoft.jaravel.vendor.middleware.Middleware;
 import lombok.Getter;
 import lombok.Setter;
@@ -57,6 +58,55 @@ public class Router {
 
     public Router all(String uri, Controllers.Runner action) {
         return addMultiRoute(new String[]{"GET", "POST", "PUT", "DELETE", "PATCH"}, uri, action);
+    }
+
+    /**
+     * 注册静态资源目录。
+     * <p>
+     * 匹配 {@code urlPrefix} 前缀的 GET 请求会从指定目录加载静态文件。
+     * <p>
+     * 示例：
+     * <pre>
+     * router.serveStatic("/static", "classpath:/static/", 3600);
+     * // 访问 /static/css/app.css → classpath:/static/css/app.css
+     * </pre>
+     *
+     * @param urlPrefix   URL 前缀（如 {@code /static}）
+     * @param location    资源目录（如 {@code classpath:/static/} 或 {@code file:./public/}）
+     * @param cacheMaxAge 缓存时间（秒）
+     * @return 静态资源路由实例
+     */
+    public StaticResourceRoute serveStatic(String urlPrefix, String location, int cacheMaxAge) {
+        StaticResourceRoute route = new StaticResourceRoute(urlPrefix, location, cacheMaxAge);
+        Route r = addRoute("GET", urlPrefix + "/{path}", route);
+        r.name("static:" + urlPrefix);
+        return route;
+    }
+
+    /**
+     * 注册静态资源目录（默认缓存 1 小时）。
+     *
+     * @param urlPrefix URL 前缀
+     * @param location  资源目录
+     * @return 静态资源路由实例
+     */
+    public StaticResourceRoute serveStatic(String urlPrefix, String location) {
+        return serveStatic(urlPrefix, location, 3600);
+    }
+
+    /**
+     * 注册多目录静态资源（按顺序回退查找）。
+     *
+     * @param urlPrefix   URL 前缀
+     * @param locations   资源目录列表
+     * @param cacheMaxAge 缓存时间（秒）
+     * @return 静态资源路由实例
+     */
+    public StaticResourceRoute serveStatic(String urlPrefix, java.util.List<String> locations, int cacheMaxAge) {
+        StaticResourceRoute route = new StaticResourceRoute(urlPrefix, locations, cacheMaxAge);
+        Route r = addRoute("GET", urlPrefix + "/{path}", route);
+        r.name("static:" + urlPrefix);
+        return route;
     }
 
     public Route addRoute(String method, String uri, Controllers.Runner action) {

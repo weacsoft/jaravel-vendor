@@ -414,6 +414,11 @@ public class BladeCompiler {
                     case "endforeach":
                         code.append("        }\n");
                         break;
+                    case "asset":
+                        // @asset('css/app.css') → 生成静态资源 URL
+                        String assetPath = args.trim().replace("'", "").replace("\"", "");
+                        code.append("        write(writer, BladeAssetHelper.url(\"").append(escapeJava(assetPath)).append("\"));\n");
+                        break;
                     case "component":
                     case "endcomponent":
                     case "slot":

@@ -128,6 +128,42 @@ public class ResponseBuilder {
         };
     }
 
+    /**
+     * 构建静态资源响应（inline 显示，带缓存头和 MIME 类型）。
+     * <p>
+     * 与 {@link #file} 不同，此方法用于服务静态资源文件（css/js/图片等），
+     * 设置正确的 Content-Type 和 Cache-Control 头，浏览器直接渲染而非下载。
+     *
+     * @param data        文件内容
+     * @param mimeType    MIME 类型（如 {@code text/css}）
+     * @param cacheMaxAge 缓存时间（秒）
+     * @return 静态资源响应
+     */
+    public static Response staticFile(byte[] data, String mimeType, int cacheMaxAge) {
+        return new AbstractResponse() {
+            {
+                addHeader("Content-Type", mimeType);
+                addHeader("Cache-Control", "public, max-age=" + cacheMaxAge);
+                addHeader("Content-Length", String.valueOf(data.length));
+            }
+
+            @Override
+            public int getStatus() {
+                return 200;
+            }
+
+            @Override
+            public String getContent() {
+                return null;
+            }
+
+            @Override
+            public byte[] getBytes() {
+                return data;
+            }
+        };
+    }
+
     public static Response unauthorized(String message) {
         return error(401, message);
     }
