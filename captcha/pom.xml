@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.lijialong1313</groupId>
+        <artifactId>jaravel-vendor</artifactId>
+        <version>0.1.0</version>
+    </parent>
+
+    <artifactId>captcha</artifactId>
+    <name>captcha</name>
+    <description>验证码模块：图片数字、算术、滑动、旋转验证码，核心层无 SpringBoot 依赖，可独立使用</description>
+
+    <dependencies>
+        <!-- cache 模块为可选依赖：有则用 CacheStore 做跨进程存储，无则用内存存储 -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>cache</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- SpringBoot 自动装配（兼容层，optional） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- 测试 -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

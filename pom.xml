@@ -78,6 +78,8 @@
         <module>plugin-jar-remote-client</module>
         <!-- 微信 SDK（公众号 / 小程序 API，对齐 overtrue/laravel-wechat） -->
         <module>wechat-sdk</module>
+        <!-- 验证码模块（图片数字/算术/滑动/旋转，核心层无 SpringBoot 依赖） -->
+        <module>captcha</module>
     </modules>
 
     <parent>
@@ -231,6 +233,11 @@
             <dependency>
                 <groupId>io.github.lijialong1313</groupId>
                 <artifactId>wechat-sdk</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>captcha</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
