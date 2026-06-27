@@ -259,6 +259,26 @@ public class JwtService {
         return blacklistStore.has(blacklistKey(token));
     }
 
+    /**
+     * 从黑名单中移除 token（误杀恢复）。
+     * <p>
+     * 当 {@code blacklistEnabled=false} 时为空操作。
+     * <p>
+     * 适用于误将 token 加入黑名单后需要恢复的场景：移除黑名单条目后，
+     * 该 token 在有效期内可再次通过 {@link #validate} 校验。
+     *
+     * @param token 需要从黑名单移除的 token
+     */
+    public void removeFromBlacklist(String token) {
+        if (!config.isBlacklistEnabled() || blacklistStore == null) {
+            return;
+        }
+        if (token == null || token.isEmpty()) {
+            return;
+        }
+        blacklistStore.forget(blacklistKey(token));
+    }
+
     /** 计算黑名单缓存键 */
     private String blacklistKey(String token) {
         return config.getBlacklistPrefix() + token;

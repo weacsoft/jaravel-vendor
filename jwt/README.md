@@ -429,6 +429,16 @@ public void blacklist(String token)
 public boolean isBlacklisted(String token)
 ```
 
+```java
+/**
+ * 从黑名单中移除 token（误杀恢复）。
+ * 当 blacklistEnabled=false 时为空操作。
+ */
+public void removeFromBlacklist(String token)
+```
+
+`removeFromBlacklist()` 调用 `blacklistStore.forget(key)` 移除黑名单条目，适用于误将 token 加入黑名单后需要恢复的场景。移除后该 token 在有效期内可再次通过 `validate()` 校验。
+
 `blacklist()` 的逻辑：
 
 ```

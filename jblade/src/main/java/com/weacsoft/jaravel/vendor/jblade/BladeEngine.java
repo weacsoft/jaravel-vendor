@@ -304,15 +304,35 @@ public class BladeEngine {
 
     /**
      * 清除所有缓存（一级+二级+实例缓存）。
+     * <p>
+     * <b>安全清理</b>：仅清除本引擎管理的模板缓存键（前缀 {@code jblade:template:}），
+     * 不会调用 {@code CacheStore.flush()} 清空整个 store，避免影响其他模块的缓存。
      */
     public void clearCache() {
-        templateClassCache.clear();
+        // 清除一级缓存中所有模板的二级缓存条目（按 key 逐个 forget）
         if (useCacheStore) {
-            // 清除以 jblade:template: 为前缀的缓存
-            // CacheStore 没有 prefix flush，这里清除全部（与之前行为一致）
-            cacheStore.flush();
+            for (String templateName : templateClassCache.keySet()) {
+                cacheStore.forget(CACHE_KEY_PREFIX + templateName);
+            }
         }
+        templateClassCache.clear();
         clearTemplateInstanceCache();
+    }
+
+    /**
+     * 清除指定模板的所有缓存（一级 Class + 二级 CacheStore + 实例缓存）。
+     * <p>
+     * 适用于模板文件更新后仅刷新该模板的场景，不影响其他已编译模板。
+     *
+     * @param templateName 模板名
+     */
+    public void clearTemplate(String templateName) {
+        templateName = templateName.replace("'", "").replace("\"", "");
+        templateClassCache.remove(templateName);
+        templateInstanceCache.remove(templateName);
+        if (useCacheStore) {
+            cacheStore.forget(CACHE_KEY_PREFIX + templateName);
+        }
     }
 
     /**

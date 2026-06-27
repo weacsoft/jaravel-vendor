@@ -34,6 +34,8 @@ wechat-sdk 模块提供了微信开发平台 API 封装，支持公众号（Offi
 |--------|-----------|--------|-------------|
 | `getToken` | `String appId, String secret` | `String` | 获取 access_token；缓存命中（key `wechat:access_token:{appId}`）则直接返回，未命中则请求微信 API 并写入缓存（TTL = expires_in - 300） |
 | `refreshToken` | `String appId, String secret` | `String` | 强制刷新 access_token（忽略缓存，重新请求微信 API 并回填缓存） |
+| `invalidateToken` | `String appId` | `void` | 清除指定应用的 access_token 缓存（按 key `forget`），下次 `getToken` 会重新请求微信 API |
+| `invalidateAllTokens` | 无 | `void` | 清除所有应用的 access_token 缓存。**注意**：调用 `flush()` 会清空当前 store 下所有缓存（包括其他模块），仅在独立 store 或全局重置时使用 |
 | `resolveStore`（private static） | `CacheManager cacheManager, String preferredStore` | `CacheStore` | 解析缓存仓库：`preferredStore` 为空时默认 `redis`；优先 `cacheManager.store(preferredStore)`，抛 `IllegalStateException`（store 未注册）时回退 `cacheManager.store("array")`；`cacheManager` 为 null 时返回独立的 `DefaultCacheStore(ArrayCacheDriver)` 保证 SDK 可用 |
 
 #### Usage Example

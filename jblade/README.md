@@ -148,7 +148,8 @@ com.weacsoft.jaravel.vendor
 | `String render(String templateName, Map<String, Object> variables)` | 渲染模板，注入变量，返回 HTML 字符串 |
 | `String render(String templateName)` | 渲染模板（无变量） |
 | `BladeTemplate loadTemplate(String templateName)` | 加载（编译 + 缓存）模板，返回 `BladeTemplate` 实例。内部按"查一级 → 查二级 → 编译 → 回填缓存"流程执行 |
-| `void clearCache()` | 清除所有缓存：一级缓存（`Class<?>`）+ 二级缓存（`CacheStore.flush()`）+ 模板实例缓存 |
+| `void clearCache()` | 清除所有缓存：一级缓存 + 二级缓存（按 key 逐个 `forget`，不调用 `flush()`）+ 模板实例缓存 |
+| `void clearTemplate(String templateName)` | 清除指定模板的所有缓存（一级 Class + 二级 CacheStore + 实例），不影响其他模板 |
 | `void clearTemplateInstanceCache()` | 仅清除模板实例缓存 |
 | `MemoryClassLoader getMemoryClassLoader()` | 获取内存类加载器 |
 | `CacheStore getCacheStore()` | 获取二级缓存 store（可能为 `null`） |
@@ -276,10 +277,12 @@ loadTemplate(templateName)
 `clearCache()` 同时清除三类缓存：
 
 1. **一级缓存**：`templateClassCache.clear()`
-2. **二级缓存**：`cacheStore.flush()`（清除该 store 下所有缓存）
+2. **二级缓存**：遍历已缓存的模板名，逐个调用 `cacheStore.forget(key)`（**不调用 `flush()`**，避免清空其他模块的缓存）
 3. **模板实例缓存**：`templateInstanceCache` 重置并清空
 
 仅清除模板实例缓存可使用 `clearTemplateInstanceCache()`。
+
+清除单个模板缓存可使用 `clearTemplate(templateName)`，仅影响该模板，其他已编译模板不受影响。
 
 #### CompiledTemplateData 内部类
 

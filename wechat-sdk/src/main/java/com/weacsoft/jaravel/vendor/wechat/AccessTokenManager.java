@@ -141,6 +141,29 @@ public class AccessTokenManager {
     }
 
     /**
+     * 清除指定应用的 access_token 缓存，下次调用 {@link #getToken} 会重新从微信 API 获取。
+     * <p>
+     * 适用于 token 被微信端失效（如修改密码、解绑等）后主动清除本地缓存的场景。
+     *
+     * @param appId 微信 AppID
+     */
+    public void invalidateToken(String appId) {
+        cacheStore.forget(CACHE_KEY_PREFIX + appId);
+        logger.info("[wechat] 清除 AccessToken 缓存: appId={}", appId);
+    }
+
+    /**
+     * 清除所有应用的 access_token 缓存。
+     * <p>
+     * <b>注意</b>：此方法调用 {@code flush()} 会清空当前 store 下所有缓存（包括其他模块），
+     * 仅在独立 store 或需要全局重置时使用。
+     */
+    public void invalidateAllTokens() {
+        cacheStore.flush();
+        logger.info("[wechat] 清除所有 AccessToken 缓存");
+    }
+
+    /**
      * 调用微信 API 获取 access_token 并写入缓存。
      *
      * @param appId  微信 AppID

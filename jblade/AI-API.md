@@ -26,7 +26,8 @@ jblade 模块是 Laravel Blade 风格的 Java 模板引擎。它将 `.blade.java
 | `render` | `String templateName, Map<String, Object> variables` | `String` | 渲染模板，传入变量，返回渲染结果字符串 |
 | `render` | `String templateName` | `String` | 渲染模板（无变量） |
 | `loadTemplate` | `String templateName` | `BladeTemplate` | 加载（编译 + 缓存）模板，返回模板实例。流程：查一级缓存 → 查二级缓存 → 编译 → 回填缓存 |
-| `clearCache` | 无 | `void` | 清除所有缓存：一级缓存（Class）+ 二级缓存（`CacheStore.flush()`）+ 实例缓存 |
+| `clearCache` | 无 | `void` | 清除所有缓存：一级缓存（Class）+ 二级缓存（按 key 逐个 `forget`）+ 实例缓存。不会调用 `flush()` 清空整个 store，避免影响其他模块 |
+| `clearTemplate` | `String templateName` | `void` | 清除指定模板的所有缓存（一级 Class + 二级 CacheStore + 实例），不影响其他模板 |
 | `clearTemplateInstanceCache` | 无 | `void` | 仅清除模板实例缓存 |
 | `getMemoryClassLoader` | 无 | `MemoryClassLoader` | 获取内存类加载器 |
 | `getCacheStore` | 无 | `CacheStore` | 获取二级缓存 store（可能为 `null`） |

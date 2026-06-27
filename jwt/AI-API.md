@@ -40,6 +40,7 @@ jwt 模块是 JWT 认证插件，对齐 Laravel tymon/jwt-auth。提供 JwtServi
 | `isInGracePeriod` | `String token` | `boolean` | 判断 token 是否处于宽限期内（已过期但未超 gracePeriodSeconds）；`gracePeriodSeconds<=0` 时返回 false |
 | `blacklist` | `String token` | `void` | 将 token 加入黑名单（登出或宽限期使用后调用）；`blacklistEnabled=false` 时为空操作 |
 | `isBlacklisted` | `String token` | `boolean` | 判断 token 是否在黑名单中；`blacklistEnabled=false` 时始终返回 false |
+| `removeFromBlacklist` | `String token` | `void` | 从黑名单移除 token（误杀恢复）；`blacklistEnabled=false` 时为空操作。移除后 token 在有效期内可再次通过 `validate` 校验 |
 
 #### Method Details
 

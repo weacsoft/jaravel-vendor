@@ -281,6 +281,7 @@ Map<String, Object> result = miniProgramService.sendTemplateMessage(
 2. **缓存键**：`wechat:access_token:{appId}`（jsapi_ticket 缓存键为 `wechat:jsapi_ticket:{appId}`）
 3. **TTL 缓冲**：缓存 TTL = `expires_in - 300`（提前 5 分钟过期），防止临界点 token 失效
 4. **强制刷新**：可通过 `refreshToken(appId, secret)` 忽略缓存强制刷新
+5. **缓存清理**：`invalidateToken(appId)` 清除指定应用的 token 缓存（按 key `forget`）；`invalidateAllTokens()` 清除所有（调用 `flush()`，会清空整个 store，谨慎使用）
 
 > 微信 access_token 每天获取限额 2000 次，务必使用缓存避免超限。
 >
