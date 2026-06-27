@@ -104,20 +104,323 @@ java -jar app.jar --artisan list
 ### ArtisanAutoConfiguration
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.artisan`
-- **Annotations**: `@AutoConfiguration`, `@ConditionalOnClass(ArtisanApplication.class)`, `@ConditionalOnProperty(prefix = "jaravel.artisan", name = "enabled", havingValue = "true", matchIfMissing = true)`
-- **Description**: Artisan 自动装配。创建 `ArtisanApplication` 和 `ArtisanRunner` Bean，并自动收集所有 `ArtisanCommand` 类型的 Bean 注册到 `ArtisanApplication`。
+- **Annotations**: `@AutoConfiguration`, `@ConditionalOnClass(ArtisanApplication.class)`
+- **Description**: Artisan 自动装配。创建 `ArtisanApplication` Bean（`@ConditionalOnMissingBean`，便于业务方覆盖），并注册 `MakeCodeProperties` 配置 Bean（绑定 `jaravel.artisan.make.*`）以及 8 个 `make:xxx` 代码生成命令 Bean（`make:controller` / `make:middleware` / `make:model` / `make:migration` / `make:command` / `make:event` / `make:listener` / `make:all`）。命令在首次调用 `call()` / `all()` / `listCommands()` 时惰性从 Spring 容器扫描所有 `ArtisanCommand` Bean 并注册。
 
 #### Methods
 
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
-| `artisanApplication` | `List<ArtisanCommand> commands` | `ArtisanApplication` | 创建 Artisan 应用 Bean，自动注入所有命令（`@Bean`, `@ConditionalOnMissingBean`） |
-| `artisanRunner` | `ArtisanApplication artisanApplication` | `ArtisanRunner` | 创建 Artisan 运行器 Bean（`@Bean`, `@ConditionalOnMissingBean`） |
+| `artisanApplication` | `ApplicationContext applicationContext` | `ArtisanApplication` | 创建 Artisan 应用 Bean（`@Bean`, `@ConditionalOnMissingBean`） |
+| `makeCodeProperties` | - | `MakeCodeProperties` | 创建代码生成配置 Bean，绑定 `jaravel.artisan.make.*`（`@Bean`, `@ConfigurationProperties`） |
+| `makeControllerCommand` | `MakeCodeProperties properties` | `MakeControllerCommand` | 创建 `make:controller` 命令 Bean（`@Bean`） |
+| `makeMiddlewareCommand` | `MakeCodeProperties properties` | `MakeMiddlewareCommand` | 创建 `make:middleware` 命令 Bean（`@Bean`） |
+| `makeModelCommand` | `MakeCodeProperties properties` | `MakeModelCommand` | 创建 `make:model` 命令 Bean（`@Bean`） |
+| `makeMigrationCommand` | `MakeCodeProperties properties` | `MakeMigrationCommand` | 创建 `make:migration` 命令 Bean（`@Bean`） |
+| `makeCommandCommand` | `MakeCodeProperties properties` | `MakeCommandCommand` | 创建 `make:command` 命令 Bean（`@Bean`） |
+| `makeEventCommand` | `MakeCodeProperties properties` | `MakeEventCommand` | 创建 `make:event` 命令 Bean（`@Bean`） |
+| `makeListenerCommand` | `MakeCodeProperties properties` | `MakeListenerCommand` | 创建 `make:listener` 命令 Bean（`@Bean`） |
+| `makeAllCommand` | `MakeCodeProperties properties` | `MakeAllCommand` | 创建 `make:all` 命令 Bean（`@Bean`） |
 
 #### Usage Example
 ```yaml
 # application.yml
 jaravel:
   artisan:
-    enabled: true
+    make:
+      base-package: com.example.app
+      output-dir: src/main/java
+      migration-dir: migrations
+```
+
+---
+
+## 代码生成（make 包）
+
+### MakeCodeProperties
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.artisan.make`
+- **Annotations**: `@ConfigurationProperties(prefix = "jaravel.artisan.make")`（由 `ArtisanAutoConfiguration` 注册）
+- **Description**: 代码生成配置属性，前缀 `jaravel.artisan.make`。控制 `make:xxx` 系列命令生成文件的基包名、输出目录和迁移目录。对齐 Laravel 的目录约定，Controller/Middleware/Model/Migration/Command/Event/Listener 均在 `base-package` 下创建子包。
+
+#### Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `basePackage` | `String` | `com.weacsoft.jaravel` | 基包名（生成类的根包） |
+| `outputDir` | `String` | `src/main/java` | 输出根目录（Java 源码根目录） |
+| `migrationDir` | `String` | `migrations` | 迁移文件目录（相对路径，不带包名前缀） |
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `getBasePackage` | - | `String` | 获取基包名 |
+| `setBasePackage` | `String basePackage` | `void` | 设置基包名 |
+| `getOutputDir` | - | `String` | 获取输出根目录 |
+| `setOutputDir` | `String outputDir` | `void` | 设置输出根目录 |
+| `getMigrationDir` | - | `String` | 获取迁移文件目录 |
+| `setMigrationDir` | `String migrationDir` | `void` | 设置迁移文件目录 |
+
+#### Usage Example
+```yaml
+# application.yml
+jaravel:
+  artisan:
+    make:
+      base-package: com.example.app
+      output-dir: src/main/java
+      migration-dir: migrations
+```
+
+```java
+// 通过依赖注入获取配置
+@Autowired
+private MakeCodeProperties properties;
+
+// 或手动构建
+MakeCodeProperties properties = new MakeCodeProperties();
+properties.setBasePackage("com.example.app");
+properties.setOutputDir("/tmp/generated");
+```
+
+### MakeGenerator
+- **Type**: final class（工具类，不可实例化）
+- **Package**: `com.weacsoft.jaravel.vendor.artisan.make`
+- **Description**: 代码生成器核心，对齐 Laravel `php artisan make:xxx`。根据 `MakeCodeProperties` 配置的基包和输出目录，生成 Controller、Middleware、Model、Migration、Command、Event、Listener 的 Java 源文件，并自动放到对应包目录下。类名自动转为 PascalCase，缺失后缀时自动补全；文件已存在时抛出 `IllegalStateException`，除非 `force=true`。所有生成方法均为 `static`。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `generateController` | `MakeCodeProperties properties, String name, boolean force` | `String` | 生成 Controller 类（`implements Controllers.Runner`），返回文件绝对路径 |
+| `generateMiddleware` | `MakeCodeProperties properties, String name, boolean force` | `String` | 生成 Middleware 类（`implements Middleware`），返回文件绝对路径 |
+| `generateModel` | `MakeCodeProperties properties, String name, boolean force` | `String` | 生成 Model 类（含 id/createdAt/updatedAt 字段），返回文件绝对路径 |
+| `generateMigration` | `MakeCodeProperties properties, String name, boolean force` | `String` | 生成 Migration 类（类名 `Migration_YYYY_MM_DD_Name`，`implements Migration`），返回文件绝对路径 |
+| `generateCommand` | `MakeCodeProperties properties, String name, boolean force` | `String` | 生成 ArtisanCommand 子类（`extends ArtisanCommand`），返回文件绝对路径 |
+| `generateEvent` | `MakeCodeProperties properties, String name, boolean force` | `String` | 生成 Event 类（`implements Event`），返回文件绝对路径 |
+| `generateListener` | `MakeCodeProperties properties, String name, String eventName, boolean force` | `String` | 生成 Listener 类（`implements Listener<EventType>`），`eventName` 指定监听的事件类型，返回文件绝对路径 |
+| `ensureSuffix` | `String name, String suffix` | `String` | （包级可见，static）确保类名以指定后缀结尾，自动转 PascalCase |
+| `toPascalCase` | `String input` | `String` | （包级可见，static）将任意字符串转换为 PascalCase |
+| `toSnakeCase` | `String input` | `String` | （包级可见，static）将 PascalCase 转换为 snake_case |
+
+> 以上方法均声明 `throws IOException`。`generateListener` 的 `eventName` 为 null/空时使用占位类型 `YourEvent`。
+
+#### Usage Example
+```java
+MakeCodeProperties properties = new MakeCodeProperties();
+properties.setBasePackage("com.example.app");
+properties.setOutputDir("src/main/java");
+
+// 生成 Controller（自动补全 Controller 后缀）
+String path = MakeGenerator.generateController(properties, "User", false);
+// => src/main/java/com/example/app/controller/UserController.java
+
+// 生成 Migration（自动加日期前缀）
+path = MakeGenerator.generateMigration(properties, "create_users_table", false);
+// => .../migration/Migration_2024_01_01_CreateUsersTable.java
+
+// 生成 Listener（关联指定事件）
+path = MakeGenerator.generateListener(properties, "SendWelcomeEmail", "UserRegisteredEvent", false);
+// => .../listener/SendWelcomeEmailListener.java
+
+// 强制覆盖已存在文件
+path = MakeGenerator.generateController(properties, "User", true);
+```
+
+### MakeControllerCommand
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.artisan.make`
+- **Extends**: `ArtisanCommand`
+- **Signature**: `make:controller {name} {--force}`
+- **Description**: 生成 Controller 类（对齐 Laravel `php artisan make:controller`）。调用 `MakeGenerator.generateController()` 生成源文件，文件已存在时返回错误码 1，加 `--force` 强制覆盖。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `signature` | - | `String` | 返回 `make:controller {name} {--force}` |
+| `description` | - | `String` | 返回命令描述 |
+| `setProperties` | `MakeCodeProperties properties` | `void` | 注入代码生成配置 |
+| `handle` | - | `int` | 读取 `name` 参数与 `--force` 选项，调用生成器，返回退出码 |
+
+#### Usage Example
+```bash
+java -jar app.jar artisan make:controller UserController
+java -jar app.jar artisan make:controller User --force
+```
+
+### MakeMiddlewareCommand
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.artisan.make`
+- **Extends**: `ArtisanCommand`
+- **Signature**: `make:middleware {name} {--force}`
+- **Description**: 生成 Middleware 类（对齐 Laravel `php artisan make:middleware`）。调用 `MakeGenerator.generateMiddleware()` 生成源文件。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `signature` | - | `String` | 返回 `make:middleware {name} {--force}` |
+| `description` | - | `String` | 返回命令描述 |
+| `setProperties` | `MakeCodeProperties properties` | `void` | 注入代码生成配置 |
+| `handle` | - | `int` | 读取 `name` 参数与 `--force` 选项，调用生成器，返回退出码 |
+
+#### Usage Example
+```bash
+java -jar app.jar artisan make:middleware AuthMiddleware
+java -jar app.jar artisan make:middleware Auth --force
+```
+
+### MakeModelCommand
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.artisan.make`
+- **Extends**: `ArtisanCommand`
+- **Signature**: `make:model {name} {--force}`
+- **Description**: 生成 Model 类（对齐 Laravel `php artisan make:model`）。调用 `MakeGenerator.generateModel()` 生成源文件。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `signature` | - | `String` | 返回 `make:model {name} {--force}` |
+| `description` | - | `String` | 返回命令描述 |
+| `setProperties` | `MakeCodeProperties properties` | `void` | 注入代码生成配置 |
+| `handle` | - | `int` | 读取 `name` 参数与 `--force` 选项，调用生成器，返回退出码 |
+
+#### Usage Example
+```bash
+java -jar app.jar artisan make:model User
+java -jar app.jar artisan make:model UserModel --force
+```
+
+### MakeMigrationCommand
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.artisan.make`
+- **Extends**: `ArtisanCommand`
+- **Signature**: `make:migration {name} {--force}`
+- **Description**: 生成 Migration 类（对齐 Laravel `php artisan make:migration`）。调用 `MakeGenerator.generateMigration()` 生成源文件，类名自动加当天日期前缀 `Migration_YYYY_MM_DD_Name`。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `signature` | - | `String` | 返回 `make:migration {name} {--force}` |
+| `description` | - | `String` | 返回命令描述 |
+| `setProperties` | `MakeCodeProperties properties` | `void` | 注入代码生成配置 |
+| `handle` | - | `int` | 读取 `name` 参数与 `--force` 选项，调用生成器，返回退出码 |
+
+#### Usage Example
+```bash
+java -jar app.jar artisan make:migration create_users_table
+java -jar app.jar artisan make:migration add_status_to_users_table --force
+```
+
+### MakeCommandCommand
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.artisan.make`
+- **Extends**: `ArtisanCommand`
+- **Signature**: `make:command {name} {--force}`
+- **Description**: 生成 ArtisanCommand 子类（对齐 Laravel `php artisan make:command`）。调用 `MakeGenerator.generateCommand()` 生成源文件，生成的类 `extends ArtisanCommand` 并包含 `signature()`/`description()`/`handle()` 模板。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `signature` | - | `String` | 返回 `make:command {name} {--force}` |
+| `description` | - | `String` | 返回命令描述 |
+| `setProperties` | `MakeCodeProperties properties` | `void` | 注入代码生成配置 |
+| `handle` | - | `int` | 读取 `name` 参数与 `--force` 选项，调用生成器，返回退出码 |
+
+#### Usage Example
+```bash
+java -jar app.jar artisan make:command SyncData
+java -jar app.jar artisan make:command SyncDataCommand --force
+```
+
+### MakeEventCommand
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.artisan.make`
+- **Extends**: `ArtisanCommand`
+- **Signature**: `make:event {name} {--force}`
+- **Description**: 生成 Event 类（对齐 Laravel `php artisan make:event`）。调用 `MakeGenerator.generateEvent()` 生成源文件，生成的类 `implements Event`。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `signature` | - | `String` | 返回 `make:event {name} {--force}` |
+| `description` | - | `String` | 返回命令描述 |
+| `setProperties` | `MakeCodeProperties properties` | `void` | 注入代码生成配置 |
+| `handle` | - | `int` | 读取 `name` 参数与 `--force` 选项，调用生成器，返回退出码 |
+
+#### Usage Example
+```bash
+java -jar app.jar artisan make:event UserRegistered
+java -jar app.jar artisan make:event UserRegisteredEvent --force
+```
+
+### MakeListenerCommand
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.artisan.make`
+- **Extends**: `ArtisanCommand`
+- **Signature**: `make:listener {name} {--event=} {--force}`
+- **Description**: 生成 Listener 类（对齐 Laravel `php artisan make:listener`）。调用 `MakeGenerator.generateListener()` 生成源文件，生成的类 `implements Listener<EventType>`。通过 `--event=` 选项指定监听的事件类型，未指定时使用占位类型 `YourEvent` 并输出提示。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `signature` | - | `String` | 返回 `make:listener {name} {--event=} {--force}` |
+| `description` | - | `String` | 返回命令描述 |
+| `setProperties` | `MakeCodeProperties properties` | `void` | 注入代码生成配置 |
+| `handle` | - | `int` | 读取 `name`/`--event`/`--force`，调用生成器，返回退出码 |
+
+#### Usage Example
+```bash
+# 关联指定事件
+java -jar app.jar artisan make:listener SendWelcomeEmail --event=UserRegisteredEvent
+
+# 不指定事件（使用占位类型）
+java -jar app.jar artisan make:listener SendWelcomeEmail
+
+# 强制覆盖
+java -jar app.jar artisan make:listener SendWelcomeEmail --event=UserRegisteredEvent --force
+```
+
+### MakeAllCommand
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.artisan.make`
+- **Extends**: `ArtisanCommand`
+- **Signature**: `make:all {name} {--force}`
+- **Description**: 一键生成全部（Controller + Middleware + Model + Migration + Command + Event + Listener），对齐 Laravel 批量生成场景。对每个子生成任务独立处理：单个文件已存在时记为「跳过」并继续后续生成，不中断整体流程；带 `--force` 时全部覆盖。Listener 自动关联到本次生成的同名 Event。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `signature` | - | `String` | 返回 `make:all {name} {--force}` |
+| `description` | - | `String` | 返回命令描述 |
+| `setProperties` | `MakeCodeProperties properties` | `void` | 注入代码生成配置 |
+| `handle` | - | `int` | 读取 `name`/`--force`，依次调用 7 个生成方法，输出统计结果，有跳过返回 1 否则 0 |
+
+#### Usage Example
+```bash
+java -jar app.jar artisan make:all User
+java -jar app.jar artisan make:all User --force
+```
+
+输出示例：
+```
+===== make:all User =====
+
+  [+] Controller created: com/example/app/controller/UserController.java
+  [+] Middleware created: com/example/app/middleware/UserMiddleware.java
+  [+] Model created: com/example/app/model/UserModel.java
+  [+] Migration created: com/example/app/migration/Migration_2024_01_01_User.java
+  [+] Command created: com/example/app/command/UserCommand.java
+  [+] Event created: com/example/app/event/UserEvent.java
+  [+] Listener created: com/example/app/listener/UserListener.java
+
+===== 完成: 7 成功, 0 跳过 =====
 ```

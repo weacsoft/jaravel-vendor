@@ -44,18 +44,44 @@ public class MyRpcController {
 ### RemotePluginServer
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.plugin.jar.remote.server`
-- **Description**: 远程插件执行 TCP 服务端。监听 TCP 端口，接收来自客户端的方法执行请求，在本地通过 `HotPluginManagerRef` 获取插件 Bean 并反射调用目标方法，返回执行结果。使用独立缓存线程池（守护线程）处理每个客户端连接，支持并发请求。安全设计：不暴露 HTTP 接口、支持 authToken 握手认证（可选）、请求体大小限制 50MB。方法级隔离：每次调用独立，隔离度由插件 ClassLoader 保证。
+- **Description**: 远程插件执行 TCP 服务端。监听 TCP 端口，接收来自客户端的方法执行请求，在本地通过 `HotPluginManagerRef` 获取插件 Bean 并反射调用目标方法，返回执行结果。使用独立缓存线程池（守护线程）处理每个客户端连接，支持并发请求。安全设计：不暴露 HTTP 接口、支持 authToken 握手认证（可选）、请求体大小限制 50MB。方法级隔离：每次调用独立，隔离度由插件 ClassLoader 保证。支持树形中继转发：当 `relayEnabled=true` 时，本地无此插件可轮询转发给已注册的子节点，通过 `visitedNodes`/`maxHops` 防环。
 
 #### Methods
 
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
 | `RemotePluginServer` | `int port, String authToken, Application.HotPluginManagerRef managerRef` | - | 构造远程插件执行服务端，指定监听端口、认证令牌（null 表示不认证）和插件管理器引用 |
+| `RemotePluginServer` | `int port, String authToken, Application.HotPluginManagerRef managerRef, String nodeId, boolean relayEnabled` | - | 构造远程插件执行服务端（树形模式），额外指定本节点 ID 与是否启用中继转发 |
 | `start` | - | `void` | 启动 TCP 服务端，创建线程池并开启接收循环（已运行则跳过） |
 | `stop` | - | `void` | 停止 TCP 服务端，关闭 ServerSocket 与所有活跃连接，关闭线程池 |
 | `isRunning` | - | `boolean` | 返回服务端是否正在运行 |
 | `getPort` | - | `int` | 返回监听端口 |
 | `getActiveConnectionCount` | - | `int` | 返回当前活跃连接数 |
+| `registerChildNode` | `String id, String host, int port, String authToken` | `void` | 注册子节点（中继转发目标），含认证令牌 |
+| `registerChildNode` | `String id, String host, int port` | `void` | 注册子节点（无认证） |
+| `unregisterChildNode` | `String id` | `boolean` | 注销子节点，不存在返回 false |
+| `getChildNodes` | - | `List<ChildNodeInfo>` | 获取所有已注册的子节点 |
+| `getOnlineChildNodes` | - | `List<ChildNodeInfo>` | 获取所有在线的子节点 |
+| `setRelayEnabled` | `boolean relayEnabled` | `void` | 设置是否启用中继转发（默认 false） |
+| `isRelayEnabled` | - | `boolean` | 返回是否启用中继转发 |
+| `setMaxHops` | `int maxHops` | `void` | 设置最大跳数限制 |
+| `getNodeId` | - | `String` | 返回本节点 ID |
+| `setNodeId` | `String nodeId` | `void` | 设置本节点 ID |
+
+#### Internal Methods（树形中继核心，private）
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `executeWithRelay` | `ExecuteRequest request` | `ExecuteResponse` | 执行请求（带中继转发）：防环检查 → 跳数检查 → 本地执行 → 中继转发子节点 → 无中继能力返回错误 |
+| `tryLocalExecute` | `ExecuteRequest request` | `ExecuteResponse` | 尝试本地执行，返回 null 表示本地无此插件（可继续转发） |
+| `relayToChildren` | `ExecuteRequest request` | `ExecuteResponse` | 中继转发到子节点（轮询负载均衡），标记本节点已访问并递增跳数，最多尝试 3 个子节点 |
+| `forwardToChild` | `ChildNodeInfo child, ExecuteRequest request` | `ExecuteResponse` | 通过 TCP 转发请求到子节点（握手 → 发送 MSG_RELAY_REQUEST → 读取响应） |
+
+#### Inner Class: ChildNodeInfo
+- **Type**: public static class
+- **Description**: 子节点信息（轻量级，不依赖 client 模块的 `SubServerInfo`）。封装子节点的连接信息与在线状态。
+- **Fields**: `id`（String, final）、`host`（String, final）、`port`（int, final）、`authToken`（String, final）、`online`（volatile boolean, 默认 true）
+- **Constructor**: `ChildNodeInfo(String id, String host, int port, String authToken)`
 
 #### Usage Example
 ```java
@@ -63,6 +89,16 @@ public class MyRpcController {
 Application.HotPluginManagerRef ref = pluginManager; // manager 实现了该接口
 RemotePluginServer server = new RemotePluginServer(9700, "secret-token", ref);
 server.start();
+
+// 树形中继模式：启用中继并注册子节点
+RemotePluginServer relayServer = new RemotePluginServer(9701, "secret", ref, "node-root", true);
+relayServer.registerChildNode("node-A", "192.168.1.10", 9702, "child-token");
+relayServer.registerChildNode("node-B", "192.168.1.11", 9703);
+relayServer.setMaxHops(5);
+relayServer.start();
+
+// 查看在线子节点
+List<RemotePluginServer.ChildNodeInfo> online = relayServer.getOnlineChildNodes();
 
 // 停止服务端
 server.stop();
@@ -84,7 +120,15 @@ server.stop();
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.plugin.jar.remote.server`
 - **Annotations**: `@ConfigurationProperties(prefix = "jaravel.plugin-jar.remote.server")`
-- **Description**: 远程插件服务端配置属性，前缀 `jaravel.plugin-jar.remote.server`。TCP 模式通过 `enabled=true` 自动启动；HTTP 模式不自动注册端点，用户需自行创建控制器并调用 `HttpRpcHandler.processRequest` 静态方法。
+- **Description**: 远程插件服务端配置属性，前缀 `jaravel.plugin-jar.remote.server`。TCP 模式通过 `enabled=true` 自动启动；HTTP 模式不自动注册端点，用户需自行创建控制器并调用 `HttpRpcHandler.processRequest` 静态方法。支持树形中继配置（`nodeId`/`relayEnabled`/`maxHops`），`relayEnabled` 默认 false 保持向后兼容。
+
+#### Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `nodeId` | `String` | `null` | 本节点 ID（树形拓扑中唯一标识，默认自动生成） |
+| `relayEnabled` | `boolean` | `false` | 是否启用中继转发（本地无插件时转发给子节点，默认 false 保持向后兼容） |
+| `maxHops` | `int` | `5` | 请求最大跳数（防环，默认 5） |
 
 #### Methods
 
@@ -96,6 +140,12 @@ server.stop();
 | `setPort` | `int port` | `void` | 设置 TCP 监听端口 |
 | `getAuthToken` | - | `String` | 获取认证令牌（null 或空表示不认证） |
 | `setAuthToken` | `String authToken` | `void` | 设置认证令牌 |
+| `getNodeId` | - | `String` | 获取本节点 ID（树形拓扑中唯一标识） |
+| `setNodeId` | `String nodeId` | `void` | 设置本节点 ID |
+| `isRelayEnabled` | - | `boolean` | 获取是否启用中继转发，默认 false |
+| `setRelayEnabled` | `boolean relayEnabled` | `void` | 设置是否启用中继转发 |
+| `getMaxHops` | - | `int` | 获取请求最大跳数，默认 5 |
+| `setMaxHops` | `int maxHops` | `void` | 设置请求最大跳数 |
 
 #### Usage Example
 ```yaml
@@ -107,12 +157,25 @@ jaravel:
         enabled: true
         port: 9700
         auth-token: "secret-token"
+        # 树形中继配置
+        node-id: "node-root"
+        relay-enabled: true
+        max-hops: 5
 ```
 
 ### ExecuteRequest
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol`
-- **Description**: 远程方法执行请求。由客户端发送给服务端，请求在服务端本地执行指定的插件方法。隔离度：方法级，每次执行都是独立的，不共享调用间状态。
+- **Description**: 远程方法执行请求。由客户端发送给服务端，请求在服务端本地执行指定的插件方法。隔离度：方法级，每次执行都是独立的，不共享调用间状态。支持树形路由元数据（`sourceNodeId`/`visitedNodes`/`maxHops`/`currentHop`），用于树形拓扑下的防环和跳数控制；扁平模式下这些字段保持默认值，不影响原有逻辑。
+
+#### Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `sourceNodeId` | `String` | `null` | 发起请求的节点 ID（树形模式下用于追溯） |
+| `visitedNodes` | `List<String>` | `[]` | 已访问的节点 ID 列表（防环） |
+| `maxHops` | `int` | `5` | 最大跳数限制（超过则拒绝转发） |
+| `currentHop` | `int` | `0` | 当前跳数（每转发一次 +1） |
 
 #### Methods
 
@@ -132,6 +195,16 @@ jaravel:
 | `setArgs` | `List<String> args` | `void` | 设置参数值列表 |
 | `getArgTypes` | - | `List<String>` | 获取参数类型列表（全限定类名，用于反射查找方法） |
 | `setArgTypes` | `List<String> argTypes` | `void` | 设置参数类型列表 |
+| `getSourceNodeId` | - | `String` | 获取发起请求的节点 ID |
+| `setSourceNodeId` | `String sourceNodeId` | `void` | 设置发起请求的节点 ID |
+| `getVisitedNodes` | - | `List<String>` | 获取已访问的节点 ID 列表（null 返回空列表） |
+| `setVisitedNodes` | `List<String> visitedNodes` | `void` | 设置已访问的节点 ID 列表 |
+| `getMaxHops` | - | `int` | 获取最大跳数限制（默认 5） |
+| `setMaxHops` | `int maxHops` | `void` | 设置最大跳数限制 |
+| `getCurrentHop` | - | `int` | 获取当前跳数（默认 0） |
+| `setCurrentHop` | `int currentHop` | `void` | 设置当前跳数 |
+| `canRelay` | `String nodeId` | `boolean` | 检查是否可以继续转发：当前跳数未超过 maxHops 且 nodeId 不在 visitedNodes 中时返回 true |
+| `markVisited` | `String nodeId` | `ExecuteRequest` | 标记当前节点已访问并递增跳数，返回用于转发的新请求副本（原对象不变，副本携带更新后的 visitedNodes 与 currentHop） |
 
 #### Usage Example
 ```java
@@ -143,6 +216,14 @@ ExecuteRequest request = new ExecuteRequest(
         List.of("{\"page\":1}"),
         List.of("java.lang.Integer")
 );
+
+// 树形转发前检查与标记
+if (request.canRelay("node-A")) {
+    ExecuteRequest relayRequest = request.markVisited("node-A");
+    // relayRequest.getVisitedNodes() 包含 "node-A"
+    // relayRequest.getCurrentHop() = 1
+    // 转发 relayRequest 到子节点
+}
 ```
 
 ### ExecuteResponse
@@ -207,7 +288,7 @@ outputStream.flush();
 ### RemoteProtocol
 - **Type**: class (final)
 - **Package**: `com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol`
-- **Description**: 远程插件执行协议常量。定义二进制帧格式（大端序）：`magic(4 bytes) + msgType(4 bytes) + bodyLen(4 bytes) + body(N bytes)`。其中 magic 固定为 `0x4A52504D`（"JRPM" = Jaravel Remote Plugin Protocol），body 为 UTF-8 编码的 JSON 消息体。构造方法为 private，不可实例化。
+- **Description**: 远程插件执行协议常量。定义二进制帧格式（大端序）：`magic(4 bytes) + msgType(4 bytes) + bodyLen(4 bytes) + body(N bytes)`。其中 magic 固定为 `0x4A52504D`（"JRPM" = Jaravel Remote Plugin Protocol），body 为 UTF-8 编码的 JSON 消息体。除基础消息类型（握手/心跳/执行请求响应）外，还定义了树形拓扑专用的节点注册/同步/中继消息类型。构造方法为 private，不可实例化。
 
 #### Constants
 
@@ -220,6 +301,12 @@ outputStream.flush();
 | `MSG_EXECUTE_REQUEST` | `int` | `4` | 消息类型：执行请求 |
 | `MSG_EXECUTE_RESPONSE` | `int` | `5` | 消息类型：执行响应 |
 | `MSG_ERROR` | `int` | `6` | 消息类型：错误 |
+| `MSG_NODE_REGISTER` | `int` | `10` | 消息类型：子节点注册（子节点向父节点注册自己） |
+| `MSG_NODE_REGISTER_ACK` | `int` | `11` | 消息类型：节点注册确认 |
+| `MSG_NODE_SYNC` | `int` | `12` | 消息类型：节点树状态同步（心跳时携带子树状态） |
+| `MSG_NODE_UNREGISTER` | `int` | `13` | 消息类型：节点注销 |
+| `MSG_RELAY_REQUEST` | `int` | `14` | 消息类型：中继执行请求（树形转发，携带路由元数据） |
+| `MSG_RELAY_RESPONSE` | `int` | `15` | 消息类型：中继执行响应 |
 | `HEADER_LENGTH` | `int` | `12` | 帧头长度（magic + msgType + bodyLen） |
 
 ### RemoteTransport
