@@ -218,7 +218,7 @@ td code { font-size: 0.82em; }
     <a href="#redis" class="group">redis Redis 集成</a>
     <a href="#artisan" class="group">artisan CLI</a>
     <a href="#schedule" class="group">schedule 定时任务</a>
-    <a href="#queue" class="group">queue-database 队列</a>
+    <a href="#queue" class="group">queue-database 队列(redis/db)</a>
     <a href="#wechat" class="group">wechat-sdk 微信</a>
     <a href="#model-cache" class="group">model-cache 模型缓存</a>
     <a href="#plugin" class="group">plugin 插件系统</a>
@@ -287,7 +287,7 @@ td code { font-size: 0.82em; }
 <tr><td>session-redis</td><td>jaravel-session-redis</td><td>Redis Session 多机同步</td><td>RedisSessionGuard, RedisSessionStore</td></tr>
 <tr><td>artisan</td><td>jaravel-artisan</td><td>CLI 命令框架</td><td>ArtisanApplication, ArtisanCommand</td></tr>
 <tr><td>schedule</td><td>jaravel-schedule</td><td>定时任务 + 分布式锁</td><td>Schedule, ScheduledTask</td></tr>
-<tr><td>queue-database</td><td>jaravel-queue-database</td><td>数据库持久化队列</td><td>DatabaseQueueDriver, QueueDriver</td></tr>
+<tr><td>queue-database</td><td>jaravel-queue-database</td><td>队列（database/redis驱动+失败队列）</td><td>QueueDriver, DatabaseQueueDriver, RedisQueueDriver, DatabaseQueueDispatcher</td></tr>
 <tr><td>springboot</td><td>jaravel-springboot</td><td>SpringBoot 路由桥接</td><td>SpringBootRouteAutoConfiguration</td></tr>
 <tr><td>wechat-sdk</td><td>jaravel-wechat-sdk</td><td>微信公众号/小程序 SDK</td><td>OfficialAccountService, AccessTokenManager</td></tr>
 <tr><td>model-cache</td><td>jaravel-model-cache</td><td>模型查询缓存（@CachableModel 注解按需开启）</td><td>ModelCacheService, ModelCache, CachableModel</td></tr>
@@ -692,13 +692,14 @@ router.get(<span class="string">"/api/data"</span>, handler).middleware(<span cl
 
 <div class="module-card">
   <div class="mc-title"><span class="tag cl">class</span> BladeEngine <span class="pkg">com.weacsoft.jaravel.vendor.jblade</span></div>
-  <div class="mc-desc">Blade 模板引擎，负责编译和渲染 Blade 模板。默认后缀 <code>.blade.java</code>，支持自定义后缀。</div>
+  <div class="mc-desc">Blade 模板引擎，负责编译和渲染 Blade 模板。默认后缀 <code>.blade.java</code>，支持自定义后缀。采用两级缓存（内存 ConcurrentHashMap + 可选 CacheStore），避免每次渲染重复编译。</div>
   <div class="mc-methods">
   <ul>
     <li><span class="sig"><span class="ret">String</span> <span class="name">render</span><span class="param">(String templateName, Map&lt;String, Object&gt; variables)</span></span> — 渲染模板，返回 HTML</li>
-    <li><span class="sig"><span class="ret">BladeTemplate</span> <span class="name">loadTemplate</span><span class="param">(String templateName)</span></span> — 加载（编译+缓存）模板</li>
+    <li><span class="sig"><span class="ret">BladeTemplate</span> <span class="name">loadTemplate</span><span class="param">(String templateName)</span></span> — 加载（编译+缓存）模板，仅缓存未命中时编译</li>
     <li><span class="sig"><span class="ret">String</span> <span class="name">getSuffix</span><span class="param">()</span></span> — 获取模板文件后缀（默认 <code>.blade.java</code>）</li>
-    <li><span class="sig"><span class="ret">void</span> <span class="name">clearCache</span><span class="param">()</span></span> — 清除模板缓存</li>
+    <li><span class="sig"><span class="ret">CacheStore</span> <span class="name">getCacheStore</span><span class="param">()</span></span> — 获取二级缓存 store（可能为 null）</li>
+    <li><span class="sig"><span class="ret">void</span> <span class="name">clearCache</span><span class="param">()</span></span> — 清除所有缓存（一级+二级+实例）</li>
   </ul>
   </div>
 </div>
@@ -1351,12 +1352,12 @@ redis.del(lockKey);
 
 <!-- ==================== queue ==================== -->
 <section id="queue">
-<h2>queue-database — 数据库队列</h2>
-<p>基于数据库的持久化队列，支持多实例消费、延迟执行、自动重试。</p>
+<h2>queue-database — 队列（database/redis + 失败队列）</h2>
+<p>持久化队列，支持 database 和 redis 两种驱动，多实例消费、延迟执行、自动重试、失败任务归档（对齐 Laravel failed_jobs）。</p>
 
 <div class="module-card">
   <div class="mc-title"><span class="tag if">interface</span> QueueDriver <span class="pkg">com.weacsoft.jaravel.vendor.queue.database</span></div>
-  <div class="mc-desc">队列驱动契约。</div>
+  <div class="mc-desc">队列驱动契约，支持 database 和 redis 两种实现。</div>
   <div class="mc-methods">
   <ul>
     <li><span class="sig"><span class="ret">long</span> <span class="name">push</span><span class="param">(String queue, String payload)</span></span> — 推送任务</li>
@@ -1365,12 +1366,20 @@ redis.del(lockKey);
     <li><span class="sig"><span class="ret">void</span> <span class="name">delete</span><span class="param">(long jobId)</span></span> — 删除任务</li>
     <li><span class="sig"><span class="ret">void</span> <span class="name">release</span><span class="param">(long jobId, long delayMs)</span></span> — 释放（重新入队）</li>
     <li><span class="sig"><span class="ret">int</span> <span class="name">size</span><span class="param">(String queue)</span></span> — 队列大小</li>
-    <li><span class="sig"><span class="ret">void</span> <span class="name">clear</span><span class="param">(String queue)</span></span> — 清空队列</li>
+    <li><span class="sig"><span class="ret">void</span> <span class="name">fail</span><span class="param">(long jobId, String queue, String payload, int attempts, String exception)</span></span> — 归档到失败队列</li>
+    <li><span class="sig"><span class="ret">List&lt;QueuedJob&gt;</span> <span class="name">getFailedJobs</span><span class="param">()</span></span> — 查询失败任务</li>
+    <li><span class="sig"><span class="ret">void</span> <span class="name">retryFailedJob</span><span class="param">(long failedJobId)</span></span> — 重试失败任务</li>
+    <li><span class="sig"><span class="ret">void</span> <span class="name">clearFailedJobs</span><span class="param">()</span></span> — 清空失败任务</li>
   </ul>
   </div>
 </div>
 <div class="callout">
-  <strong>实现：</strong>DatabaseQueueDriver 使用 <code>SELECT ... FOR UPDATE SKIP LOCKED</code> 实现多实例消费，乐观锁机制确保任务不被重复执行。
+  <strong>驱动：</strong>
+  <ul>
+    <li><code>DatabaseQueueDriver</code>：基于数据库表（jobs + failed_jobs），乐观锁多实例消费</li>
+    <li><code>RedisQueueDriver</code>：基于 Redis List + ZSET，RPOP 原子抢占，支持多实例</li>
+  </ul>
+  <strong>自动回退：</strong>配置 <code>driver=redis</code> 但未引入 redis-config 模块时，自动回退到 database 驱动。
 </div>
 
 <pre><code><span class="comment">// 数据库队列使用示例</span>
