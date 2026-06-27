@@ -10,45 +10,91 @@ jblade 模块是 Laravel Blade 风格的 Java 模板引擎。它将 `.blade.java
 ### BladeEngine
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.jblade`
-- **Description**: Blade 模板引擎，负责模板编译、缓存和渲染。支持可选的 Cache 驱动进行模板类缓存，支持模板继承（父模板自动加载并合并 section）。
+- **Description**: Blade 模板引擎，负责模板编译、缓存和渲染。采用两级缓存机制：一级为内存 `ConcurrentHashMap`（缓存 `Class<?>`，始终启用），二级为可选的 `CacheStore`（缓存编译后字节码 `byte[]`，跨进程共享）。仅在一二级缓存均未命中时才执行 `BladeCompiler.compile()`，避免重复编译。支持模板继承（父模板自动加载并合并 section）。
 
 #### Methods
 
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
-| `BladeEngine` | `String templateDir` | 构造方法 | 指定模板目录，默认后缀 `.blade.java`，无缓存 |
+| `BladeEngine` | `String templateDir` | 构造方法 | 指定模板目录，默认后缀 `.blade.java`，无二级缓存 |
 | `BladeEngine` | `String templateDir, String suffix` | 构造方法 | 指定模板目录和文件后缀 |
-| `BladeEngine` | `String templateDir, Cache cache` | 构造方法 | 指定模板目录和缓存驱动，默认后缀 `.blade.java` |
+| `BladeEngine` | `String templateDir, CacheStore cacheStore` | 构造方法 | 指定模板目录和二级缓存 store，默认后缀 `.blade.java` |
 | `BladeEngine` | `String templateDir, MemoryClassLoader classLoader` | 构造方法 | 指定模板目录和类加载器，默认后缀 `.blade.java` |
-| `BladeEngine` | `String templateDir, String suffix, Cache cache` | 构造方法 | 指定模板目录、文件后缀和缓存驱动 |
-| `BladeEngine` | `String templateDir, Cache cache, MemoryClassLoader classLoader` | 构造方法 | 指定模板目录、缓存驱动和类加载器，默认后缀 `.blade.java` |
-| `BladeEngine` | `String templateDir, String suffix, Cache cache, MemoryClassLoader classLoader` | 构造方法 | 完整参数构造 |
+| `BladeEngine` | `String templateDir, String suffix, CacheStore cacheStore` | 构造方法 | 指定模板目录、文件后缀和二级缓存 store |
+| `BladeEngine` | `String templateDir, CacheStore cacheStore, MemoryClassLoader classLoader` | 构造方法 | 指定模板目录、二级缓存 store 和类加载器，默认后缀 `.blade.java` |
+| `BladeEngine` | `String templateDir, String suffix, CacheStore cacheStore, MemoryClassLoader classLoader` | 构造方法 | 完整参数构造（全参构造器，其余重载均委托到此） |
 | `render` | `String templateName, Map<String, Object> variables` | `String` | 渲染模板，传入变量，返回渲染结果字符串 |
 | `render` | `String templateName` | `String` | 渲染模板（无变量） |
-| `loadTemplate` | `String templateName` | `BladeTemplate` | 编译并加载模板，返回模板实例 |
-| `clearCache` | 无 | `void` | 清除模板类缓存和实例缓存 |
-| `clearTemplateInstanceCache` | 无 | `void` | 清除模板实例缓存 |
+| `loadTemplate` | `String templateName` | `BladeTemplate` | 加载（编译 + 缓存）模板，返回模板实例。流程：查一级缓存 → 查二级缓存 → 编译 → 回填缓存 |
+| `clearCache` | 无 | `void` | 清除所有缓存：一级缓存（Class）+ 二级缓存（`CacheStore.flush()`）+ 实例缓存 |
+| `clearTemplateInstanceCache` | 无 | `void` | 仅清除模板实例缓存 |
 | `getMemoryClassLoader` | 无 | `MemoryClassLoader` | 获取内存类加载器 |
-| `getCache` | 无 | `Cache` | 获取缓存驱动 |
-| `isUseCache` | 无 | `boolean` | 是否启用缓存 |
+| `getCacheStore` | 无 | `CacheStore` | 获取二级缓存 store（可能为 `null`） |
+| `isUseCacheStore` | 无 | `boolean` | 是否启用了二级缓存（`CacheStore` 非 null 时为 true） |
 | `getTemplateInstanceCacheSize` | 无 | `int` | 获取模板实例缓存大小 |
+| `getClassCacheSize` | 无 | `int` | 获取一级缓存中的模板数量（`Class<?>` 缓存大小） |
 | `getSuffix` | 无 | `String` | 获取模板文件后缀（默认 `.blade.java`） |
 
 #### Usage Example
 ```java
-// 基本用法
+// 基本用法（仅一级内存缓存）
 BladeEngine engine = new BladeEngine("templates");
 String html = engine.render("user.profile", Map.of(
     "user", user,
     "title", "用户资料"
 ));
 
-// 带缓存
-BladeEngine engine = new BladeEngine("templates", cacheDriver);
+// 启用二级缓存（CacheStore，跨进程共享字节码）
+// 通过 CacheManager 按名称解析 store
+CacheStore cacheStore = cacheManager.store("redis");
+BladeEngine engine = new BladeEngine("templates", ".blade.java", cacheStore);
 String html = engine.render("welcome", Map.of("name", "Alice"));
+
+// 判断是否启用二级缓存、查看一级缓存大小
+if (engine.isUseCacheStore()) {
+    System.out.println("二级缓存 store: " + engine.getCacheStore());
+}
+System.out.println("一级缓存模板数: " + engine.getClassCacheSize());
 
 // 在控制器中使用（配合 ResponseBuilder）
 return ResponseBuilder.view("user.profile", Map.of("user", user));
+```
+
+---
+
+### BladeEngine.CompiledTemplateData
+- **Type**: static nested class
+- **Package**: `com.weacsoft.jaravel.vendor.jblade`
+- **Implements**: `java.io.Serializable`
+- **Description**: 编译模板数据的序列化包装类，用于在 `CacheStore` 二级缓存中存储编译后的模板字节码与类名。`BladeEngine` 编译模板后将 `className` 与 `byte[]` 包装为本对象存入二级缓存；加载时从缓存读取并还原字节码到 `MemoryClassLoader`。
+
+#### Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `className` | `String` | 编译后的类全名 |
+| `bytecode` | `byte[]` | 编译后的字节码 |
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `CompiledTemplateData` | `String className, byte[] bytecode` | 构造方法 | 创建包装对象 |
+| `getClassName` | 无 | `String` | 获取类全名 |
+| `getBytecode` | 无 | `byte[]` | 获取字节码 |
+
+#### Usage Example
+```java
+// BladeEngine 内部使用方式（通常无需手动调用）
+CompiledTemplateData data = new CompiledTemplateData(className, bytecode);
+cacheStore.put("jblade:template:users.list", data, 0);  // 0 表示永不过期
+
+// 加载时
+Object cached = cacheStore.get("jblade:template:users.list");
+if (cached instanceof CompiledTemplateData) {
+    CompiledTemplateData d = (CompiledTemplateData) cached;
+    memoryClassLoader.getCompiledClasses().put(d.getClassName(), d.getBytecode());
+}
 ```
 
 ---

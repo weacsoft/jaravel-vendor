@@ -111,7 +111,7 @@ public class OfficialAccountService {
         this.properties = properties;
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
-        this.cacheStore = resolveStore(cacheManager);
+        this.cacheStore = resolveStore(cacheManager, properties != null ? properties.getCacheStore() : "redis");
     }
 
     // ==================== 用户管理 ====================
@@ -861,15 +861,18 @@ public class OfficialAccountService {
      * @param cacheManager 缓存管理器，可为 null
      * @return 解析出的缓存仓库
      */
-    private static CacheStore resolveStore(CacheManager cacheManager) {
+    private static CacheStore resolveStore(CacheManager cacheManager, String preferredStore) {
         if (cacheManager == null) {
             logger.warn("[wechat] CacheManager 未注入，jsapi_ticket 使用本地内存缓存");
             return new DefaultCacheStore(new ArrayCacheDriver(), "");
         }
+        if (preferredStore == null || preferredStore.isEmpty()) {
+            preferredStore = "redis";
+        }
         try {
-            return cacheManager.store("redis");
+            return cacheManager.store(preferredStore);
         } catch (IllegalStateException e) {
-            logger.debug("[wechat] Redis 缓存未注册，jsapi_ticket 回退到 array 内存缓存: {}", e.getMessage());
+            logger.debug("[wechat] 缓存 store '{}' 未注册，jsapi_ticket 回退到 array 内存缓存: {}", preferredStore, e.getMessage());
             return cacheManager.store("array");
         }
     }

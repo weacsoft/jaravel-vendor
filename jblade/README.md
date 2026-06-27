@@ -10,6 +10,7 @@
 - [2. 依赖信息](#2-依赖信息)
 - [3. 类总览](#3-类总览)
 - [4. BladeEngine —— 模板引擎](#4-bladeengine--模板引擎)
+  - [4.1 模板缓存机制](#41-模板缓存机制)
 - [5. BladeCompiler —— 模板编译器](#5-bladecompiler--模板编译器)
   - [5.1 表达式编译引擎](#51-表达式编译引擎)
 - [6. BladeTemplate —— 模板基类](#6-bladetemplate--模板基类)
@@ -35,18 +36,31 @@
 | 模板变量上下文 | `BladeContext` | 变量、Section、组件等执行上下文 |
 | `view()` 辅助函数 | `ResponseBuilder.view()` | HTTP 模块中的视图响应 |
 
+### 缓存机制
+
+`BladeEngine` 采用**两级缓存**避免每次渲染都重新编译模板（JavaC 编译开销较大）：
+
+- **一级缓存（内存）**：`ConcurrentHashMap` 缓存编译后的 `Class<?>` 对象，进程内有效，始终启用。这是主缓存，解决"每用一次就编译一次"的核心问题。
+- **二级缓存（可选）**：通过 cache 模块的 `CacheStore`（实例接口）缓存编译后的字节码（`byte[]`），支持跨进程/跨实例共享（如 Redis）。引入 cache 模块后自动启用，未引入时仅使用一级缓存。
+
+> 关键修复：早期版本每次 `render()` 都会调用 `compiler.compile()`（含 JavaC 编译），现在仅在一二级缓存均未命中时才编译。详见 [4.1 模板缓存机制](#41-模板缓存机制)。
+
 ### 工作原理
 
 ```
 BladeEngine.render("users.list", variables)
         │
         ▼
-BladeCompiler.compile("users.list")
+loadTemplate("users.list")  -- 查一级缓存 → 查二级缓存 → 编译
         │
-        ├── 1. 读取模板文件（classpath: templateDir/users/list.blade.java）
-        ├── 2. 将 Blade 指令编译为 Java 源码
-        ├── 3. 使用 javax.tools.JavaCompiler 内存编译
-        └── 4. 返回编译后的类全名
+        ├── 1. 查一级缓存（ConcurrentHashMap），命中直接返回 Class
+        ├── 2. 查二级缓存（CacheStore），命中则加载字节码
+        ├── 3. 缓存未命中 → BladeCompiler.compile()
+        │       ├── 读取模板文件（classpath: templateDir/users/list.blade.java）
+        │       ├── 将 Blade 指令编译为 Java 源码
+        │       └── 使用 javax.tools.JavaCompiler 内存编译
+        ├── 4. 编译后字节码写入二级缓存、Class 写入一级缓存
+        └── 5. 返回类全名
         │
         ▼
 MemoryClassLoader.loadClass(className)
@@ -76,7 +90,7 @@ template.render() -> 输出 HTML 字符串
 
 | 依赖 | 用途 |
 | --- | --- |
-| `com.weacsoft:cache` | 可选依赖，用于模板类缓存（`optional = true`） |
+| `com.weacsoft:cache` | 可选依赖，提供 `CacheStore` 接口用于二级缓存（跨进程共享字节码，`optional = true`） |
 | `org.springframework:spring-core` | `ClassPathResource` 读取 classpath 模板文件 |
 
 > 运行环境要求：JDK 17+（需使用 JDK 而非 JRE，因为依赖 `javax.tools.JavaCompiler`），Spring Boot 3.2.5（Spring 6.x）。
@@ -88,7 +102,7 @@ template.render() -> 输出 HTML 字符串
 ```
 com.weacsoft.jaravel.vendor
 ├── jblade
-│   ├── BladeEngine              // 模板引擎（入口）
+│   ├── BladeEngine              // 模板引擎（入口，含 CompiledTemplateData 内部类）
 │   ├── BladeCompiler            // 模板编译器（Blade -> Java 源码 -> 字节码，含表达式编译引擎）
 │   ├── BladeTemplate            // 编译后模板的抽象基类（含 PHP 辅助函数）
 │   └── BladeContext             // 执行上下文（变量/Section/组件）
@@ -107,7 +121,7 @@ com.weacsoft.jaravel.vendor
 
 `com.weacsoft.jaravel.vendor.jblade.BladeEngine`
 
-模板引擎入口，负责加载、缓存、渲染模板。支持模板继承（`@extends`）与组件（`@component`）。
+模板引擎入口，负责加载、缓存、渲染模板。支持模板继承（`@extends`）与组件（`@component`）。采用两级缓存（一级内存 `ConcurrentHashMap` + 二级 `CacheStore`），仅在一二级缓存均未命中时才执行编译，避免重复编译开销。
 
 ### 构造器
 
@@ -115,13 +129,15 @@ com.weacsoft.jaravel.vendor
 
 | 构造器签名 | 说明 |
 | --- | --- |
-| `BladeEngine(String templateDir)` | 指定模板目录，默认后缀 `.blade.java`，无缓存 |
+| `BladeEngine(String templateDir)` | 指定模板目录，默认后缀 `.blade.java`，无二级缓存 |
 | `BladeEngine(String templateDir, String suffix)` | 指定模板目录与后缀 |
-| `BladeEngine(String templateDir, Cache cache)` | 指定模板目录与缓存，默认后缀 `.blade.java` |
+| `BladeEngine(String templateDir, CacheStore cacheStore)` | 指定模板目录与二级缓存 store，默认后缀 `.blade.java` |
 | `BladeEngine(String templateDir, MemoryClassLoader classLoader)` | 指定模板目录与类加载器，默认后缀 `.blade.java` |
-| `BladeEngine(String templateDir, String suffix, Cache cache)` | 指定模板目录、后缀与缓存 |
-| `BladeEngine(String templateDir, Cache cache, MemoryClassLoader classLoader)` | 指定模板目录、缓存与类加载器，默认后缀 `.blade.java` |
-| `BladeEngine(String templateDir, String suffix, Cache cache, MemoryClassLoader classLoader)` | 全参构造器 |
+| `BladeEngine(String templateDir, String suffix, CacheStore cacheStore)` | 指定模板目录、后缀与二级缓存 store |
+| `BladeEngine(String templateDir, CacheStore cacheStore, MemoryClassLoader classLoader)` | 指定模板目录、二级缓存 store 与类加载器，默认后缀 `.blade.java` |
+| `BladeEngine(String templateDir, String suffix, CacheStore cacheStore, MemoryClassLoader classLoader)` | 全参构造器 |
+
+> **缓存说明**：`cacheStore` 参数为 `CacheStore`（cache 模块的实例接口），可为 `null`。为 `null` 时仅使用一级内存缓存，不影响功能。引入 cache 模块后传入 `CacheStore` 实例即可启用二级缓存（跨进程共享字节码）。
 
 > **后缀说明**：默认使用 `.blade.java` 后缀。采用该后缀可使常见 IDE（如 IntelliJ IDEA）将模板文件识别为 Java 相关文件，从而在模板内提供部分代码提示与语法高亮。
 
@@ -131,13 +147,14 @@ com.weacsoft.jaravel.vendor
 | --- | --- |
 | `String render(String templateName, Map<String, Object> variables)` | 渲染模板，注入变量，返回 HTML 字符串 |
 | `String render(String templateName)` | 渲染模板（无变量） |
-| `BladeTemplate loadTemplate(String templateName)` | 加载（编译 + 缓存）模板，返回 `BladeTemplate` 实例 |
-| `void clearCache()` | 清除模板类缓存与实例缓存 |
+| `BladeTemplate loadTemplate(String templateName)` | 加载（编译 + 缓存）模板，返回 `BladeTemplate` 实例。内部按"查一级 → 查二级 → 编译 → 回填缓存"流程执行 |
+| `void clearCache()` | 清除所有缓存：一级缓存（`Class<?>`）+ 二级缓存（`CacheStore.flush()`）+ 模板实例缓存 |
 | `void clearTemplateInstanceCache()` | 仅清除模板实例缓存 |
 | `MemoryClassLoader getMemoryClassLoader()` | 获取内存类加载器 |
-| `Cache getCache()` | 获取缓存（可能为 null） |
-| `boolean isUseCache()` | 是否启用缓存 |
+| `CacheStore getCacheStore()` | 获取二级缓存 store（可能为 `null`） |
+| `boolean isUseCacheStore()` | 是否启用了二级缓存（`CacheStore` 非 null 时为 true） |
 | `int getTemplateInstanceCacheSize()` | 获取模板实例缓存大小 |
+| `int getClassCacheSize()` | 获取一级缓存中的模板数量（`Class<?>` 缓存大小） |
 | `String getSuffix()` | 获取模板文件后缀（默认 `.blade.java`） |
 
 ### 渲染流程
@@ -148,9 +165,11 @@ render(templateName, variables)
         ▼
 loadTemplate(templateName)
         │
-        ├── compiler.compile(templateName)  -- 编译模板，返回类全名
-        ├── 从缓存或 MemoryClassLoader 加载 Class
-        └── 从实例缓存或反射创建 BladeTemplate 实例
+        ├── 1. 查一级缓存（ConcurrentHashMap）—— 命中直接返回 Class
+        ├── 2. 查二级缓存（CacheStore）—— 命中则加载字节码到 MemoryClassLoader
+        ├── 3. 缓存未命中 → compiler.compile()  -- 编译模板，返回类全名
+        ├── 4. 编译后字节码写入二级缓存、Class 写入一级缓存
+        └── 5. 从实例缓存或反射创建 BladeTemplate 实例
         │
         ▼
 template.resetContext()  -- 重置上下文
@@ -188,16 +207,91 @@ System.out.println(html);
 带缓存的引擎：
 
 ```java
-// 使用 Cache 模块缓存编译后的模板类
-Cache cache = Cache.store();  // 从容器获取
-BladeEngine engine = new BladeEngine("templates", ".blade.java", cache);
+// 使用 cache 模块的 CacheStore 缓存编译后的模板字节码（跨进程共享）
+// 通过 CacheManager 按名称解析 store（如 redis、array）
+CacheStore cacheStore = cacheManager.store("redis");
+BladeEngine engine = new BladeEngine("templates", ".blade.java", cacheStore);
 
-// 首次渲染会编译模板，后续渲染从缓存加载
+// 首次渲染会编译模板，后续渲染优先从一级缓存（内存 Class）加载；
+// 进程重启后从二级缓存（CacheStore）加载字节码，避免重复编译
 String html = engine.render("users.list", vars);
 
-// 清除缓存（开发模式热更新）
+// 清除所有缓存（一级 + 二级 + 实例缓存），开发模式热更新
 engine.clearCache();
 ```
+
+> 若不传入 `CacheStore`，`BladeEngine` 仍会启用一级内存缓存（`ConcurrentHashMap`），仅无法跨进程共享字节码。
+
+### 4.1 模板缓存机制
+
+`BladeEngine` 采用两级缓存机制，避免每次渲染都重新编译模板（`BladeCompiler.compile()` 含 JavaC 编译，开销较大）。早期版本存在"每次 `render()` 都调用 `compile()`"的缺陷，现已修复：仅在一二级缓存均未命中时才编译。
+
+#### 一级缓存（内存，始终启用）
+
+- **存储结构**：`ConcurrentHashMap<String, Class<?>> templateClassCache`，模板名 → 编译后的 `Class<?>` 对象。
+- **生命周期**：进程内有效，随 JVM 退出而失效。
+- **用途**：解决"每用一次就编译一次"的核心问题。进程内重复渲染同一模板直接返回已加载的 `Class`，无任何编译开销。
+- **查询方法**：`getClassCacheSize()` 返回一级缓存中的模板数量。
+
+#### 二级缓存（可选，跨进程共享）
+
+- **存储结构**：`CacheStore`（cache 模块的实例接口），缓存键为 `jblade:template:{templateName}`，值为 `CompiledTemplateData`（包含类名与字节码）。
+- **生命周期**：由 `CacheStore` 实现决定（如 Redis 跨进程持久化、array 进程级）。
+- **用途**：进程重启后从二级缓存加载字节码到 `MemoryClassLoader`，避免重新编译。引入 cache 模块并传入 `CacheStore` 实例后自动启用。
+- **查询方法**：`getCacheStore()` 返回二级缓存 store（可能为 `null`）；`isUseCacheStore()` 判断是否启用。
+
+#### 缓存流程
+
+```
+loadTemplate(templateName)
+        │
+        ▼
+1. 查一级缓存（ConcurrentHashMap）
+        ├── 命中 ──────────────────────────────┐
+        │                                       │
+        ▼ (未命中，加锁 double-checked)         │
+2. 查二级缓存（CacheStore）                      │
+        ├── 命中 -> 加载字节码到 MemoryClassLoader，得到 Class
+        │                                       │
+        ▼ (未命中)                              │
+3. compiler.compile(templateName)  -- JavaC 编译，返回类全名
+        │                                       │
+        ▼                                       │
+4. 从 MemoryClassLoader 加载 Class              │
+        │                                       │
+        ▼                                       │
+5. 字节码写入二级缓存（CompiledTemplateData）     │
+        │                                       │
+        ▼                                       │
+6. Class 写入一级缓存 <─────────────────────────┘
+        │
+        ▼
+7. 从实例缓存或反射创建 BladeTemplate 实例并返回
+```
+
+> **降级策略**：二级缓存的读/写失败均会被捕获并降级（读失败重新编译，写失败不影响功能），确保缓存异常不会阻断渲染流程。
+
+#### clearCache()
+
+`clearCache()` 同时清除三类缓存：
+
+1. **一级缓存**：`templateClassCache.clear()`
+2. **二级缓存**：`cacheStore.flush()`（清除该 store 下所有缓存）
+3. **模板实例缓存**：`templateInstanceCache` 重置并清空
+
+仅清除模板实例缓存可使用 `clearTemplateInstanceCache()`。
+
+#### CompiledTemplateData 内部类
+
+`BladeEngine.CompiledTemplateData` 是二级缓存的序列化包装类，实现 `java.io.Serializable`，用于在 `CacheStore` 中存储编译后的模板数据。
+
+| 字段/方法 | 类型 | 说明 |
+| --- | --- | --- |
+| `className` | `String`（字段） | 编译后的类全名 |
+| `bytecode` | `byte[]`（字段） | 编译后的字节码 |
+| `CompiledTemplateData(String className, byte[] bytecode)` | 构造器 | 创建包装对象 |
+| `getClassName()` | `String` | 获取类全名 |
+| `getBytecode()` | `byte[]` | 获取字节码 |
 
 ---
 

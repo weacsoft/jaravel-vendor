@@ -4,188 +4,295 @@
 
 ## Overview
 
-queue-database 模块提供了基于数据库的任务队列实现。`DatabaseQueueDriver` 将任务以 JSON 序列化存储到数据库表 `jaravel_jobs`，支持延迟执行、重试次数限制和失败任务归档。`DatabaseQueueWorker` 在后台线程中轮询数据库，取出可用任务并通过反射调用 Job 处理类。适用于不需要引入 Redis/RabbitMQ 等中间件的轻量级异步任务场景。
+queue-database 模块提供持久化任务队列，对齐 Laravel `Illuminate\Queue`。支持 **database** 与 **redis** 两种驱动，将任务以 JSON 序列化持久化存储，支持多实例消费、延迟执行、重试机制与失败队列（`failed_jobs`）。`DatabaseQueueWorker` 在后台线程中轮询队列取出任务并执行；`DatabaseQueueDispatcher` 桥接 event 模块，将 `ShouldQueue` 事件分发到队列。
 
 ## Classes & Interfaces
 
 ### QueueDriver
 - **Type**: interface
 - **Package**: `com.weacsoft.jaravel.vendor.queue.database`
-- **Description**: 队列驱动接口，定义任务入队、出队、释放和统计的标准方法。
+- **Description**: 队列驱动接口，对齐 Laravel `Illuminate\Contracts\Queue\Queue`。定义任务入队、出队、释放、统计与失败队列操作的标准方法。所有驱动实现都必须支持失败队列。
 
 #### Methods
 
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
-| `push` | `String queue, String job, Object payload, long delaySeconds` | `String` | 将任务推入指定队列，返回任务 ID |
-| `pop` | `String queue` | `QueuedJob` | 从队列取出一个可用任务，无任务返回 null |
-| `size` | `String queue` | `long` | 获取队列中待处理任务数量 |
-| `release` | `String queue, QueuedJob job, long delaySeconds` | `void` | 将任务重新放回队列（重试场景） |
-| `delete` | `String queue, String jobId` | `void` | 从队列中删除指定任务 |
-| `clear` | `String queue` | `void` | 清空指定队列的所有任务 |
+| `push` | `String queueName, String payload` | `long` | 推送任务到队列立即执行，返回任务 ID |
+| `push` | `String queueName, String payload, long delayMs` | `long` | 延迟推送任务（毫秒），返回任务 ID |
+| `pop` | `String queueName` | `QueuedJob` | 弹出一个到期任务（多实例竞争），无任务返回 null |
+| `delete` | `long jobId` | `void` | 标记成功，删除任务 |
+| `release` | `long jobId` | `void` | 标记失败，释放锁以便重试 |
+| `release` | `long jobId, long delayMs` | `void` | 标记失败，释放锁并设置重试延迟 |
+| `size` | `String queueName` | `int` | 获取队列中待处理任务数 |
+| `clear` | `String queueName` | `void` | 清空指定队列的所有任务 |
+| `fail` | `long jobId, String queue, String payload, int attempts, String exception` | `void` | 归档任务到失败队列（对齐 `failed_jobs`） |
+| `getFailedJobs` | - | `List<QueuedJob>` | 查询失败任务（最新失败在前，`getId()` 为失败任务 ID） |
+| `retryFailedJob` | `long failedJobId` | `void` | 重试失败任务（对齐 `queue:retry`） |
+| `deleteFailedJob` | `long failedJobId` | `void` | 删除失败任务（对齐 `queue:forget`） |
+| `clearFailedJobs` | - | `void` | 清空所有失败任务（对齐 `queue:flush`） |
 
 #### Usage Example
 ```java
-QueueDriver driver = new DatabaseQueueDriver(jdbcTemplate, objectMapper);
-String jobId = driver.push("emails", "SendEmailJob", emailPayload, 0);
+QueueDriver driver = ...;  // 注入 DatabaseQueueDriver 或 RedisQueueDriver
+long jobId = driver.push("emails", payloadJson);
 QueuedJob job = driver.pop("emails");
 ```
 
 ### DatabaseQueueDriver
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.queue.database`
-- **Implements**: `com.weacsoft.jaravel.vendor.queue.database.QueueDriver`
-- **Description**: 基于数据库的队列驱动实现。使用 `JdbcTemplate` 操作 `jaravel_jobs` 表，任务 payload 通过 Jackson `ObjectMapper` 序列化为 JSON。`pop` 使用 `SELECT ... FOR UPDATE SKIP LOCKED`（MySQL）或 `SELECT ... FOR UPDATE` 实现并发安全的任务取出。
+- **Implements**: `QueueDriver`
+- **Description**: 数据库队列驱动，对齐 Laravel `Illuminate\Queue\DatabaseQueue`。使用 `JdbcTemplate` 操作 `jobs` / `failed_jobs` 表，基于 `reserved_at` 乐观锁实现多实例抢占式消费。**构造时自动建表**（`CREATE TABLE IF NOT EXISTS`）。
 
-#### Methods
+#### Constructors
+
+| Constructor | Parameters | Description |
+|-------------|-----------|-------------|
+| `DatabaseQueueDriver` | `DataSource dataSource, String table, long retryAfterSeconds` | 构造（失败任务保留 7 天） |
+| `DatabaseQueueDriver` | `DataSource dataSource, String table, long retryAfterSeconds, int failedJobRetentionDays` | 构造（指定保留天数） |
+| `DatabaseQueueDriver` | `DataSource dataSource, String table, String failedTable, long retryAfterSeconds, int failedJobRetentionDays` | 全参数构造 |
+
+#### Additional Methods
 
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
-| `DatabaseQueueDriver` | `JdbcTemplate jdbcTemplate, ObjectMapper objectMapper` | - | 构造数据库队列驱动 |
-| `push` | `String queue, String job, Object payload, long delaySeconds` | `String` | 插入任务记录，available_at = now + delay |
-| `pop` | `String queue` | `QueuedJob` | 取出最早可用任务并标记为 reserved |
-| `size` | `String queue` | `long` | 统计队列中 available 状态任务数 |
-| `release` | `String queue, QueuedJob job, long delaySeconds` | `void` | 重置任务为 available 状态，增加 attempts |
-| `delete` | `String queue, String jobId` | `void` | 删除任务记录 |
-| `clear` | `String queue` | `void` | 删除队列中所有任务 |
-| `getFailedJobs` | `String queue, int limit` | `List<QueuedJob>` | 获取失败任务列表（attempts 超过最大重试次数） |
-| `retry` | `String queue, String jobId` | `void` | 重试失败任务，重置 attempts 为 0 |
+| `purgeOldFailedJobs` | - | `void` | 清理超过保留天数的失败任务（对齐 `queue:prune-failed-jobs`） |
 
 #### Usage Example
 ```java
-DatabaseQueueDriver driver = new DatabaseQueueDriver(jdbcTemplate, objectMapper);
+DatabaseQueueDriver driver = new DatabaseQueueDriver(dataSource, "jobs", 1800, 7);
 
 // 推入即时任务
-String jobId = driver.push("default", "ProcessOrderJob", orderData, 0);
+long jobId = driver.push("default", payloadJson);
 
 // 推入延迟任务（60 秒后执行）
-String delayedId = driver.push("default", "SendReminderJob", reminderData, 60);
+long delayedId = driver.push("default", payloadJson, 60 * 1000L);
 
 // 取出并处理
 QueuedJob job = driver.pop("default");
 if (job != null) {
     try {
         processJob(job);
-        driver.delete("default", job.getId());
+        driver.delete(job.getId());
     } catch (Exception e) {
-        driver.release("default", job, 30);  // 30 秒后重试
+        if (job.getAttempts() < 3) {
+            driver.release(job.getId(), 30 * 1000L);  // 30 秒后重试
+        } else {
+            driver.fail(job.getId(), job.getQueue(), job.getPayload(), job.getAttempts(), e.toString());
+        }
     }
 }
 ```
 
-### DatabaseQueueWorker
+### RedisQueueDriver
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.queue.database`
-- **Description**: 数据库队列消费者。在独立线程中循环调用 `DatabaseQueueDriver.pop()` 取出任务，通过反射实例化 Job 类并调用 `handle(Object payload)` 方法处理。支持最大重试次数、异常捕获和失败任务归档。
+- **Implements**: `QueueDriver`
+- **Description**: Redis 队列驱动，对齐 Laravel `Illuminate\Queue\RedisQueue`。基于 Redis List / ZSET 实现队列存储，通过 `RedisManager.sync()` 获取 `RedisCommands`。多实例通过 RPOP 原子操作 + ZREM 返回值抢占。依赖 `redis-config` 模块。
 
-#### Methods
+#### Constructors
+
+| Constructor | Parameters | Description |
+|-------------|-----------|-------------|
+| `RedisQueueDriver` | `RedisManager redisManager, String connectionName, long retryAfterSeconds, int failedJobRetentionDays` | 构造（connectionName 为 null/空使用默认连接） |
+
+#### Redis Data Structures
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `jaravel:queue:{queueName}` | List | 就绪队列（LPUSH/RPOP，FIFO） |
+| `jaravel:queue:{queueName}:delayed` | ZSET | 延迟队列（score=到期时间戳） |
+| `jaravel:queue:{queueName}:reserved` | ZSET | 预约队列（score=预约超时时间戳） |
+| `jaravel:queue:failed` | List | 失败队列（LPUSH，最新失败在前） |
+| `jaravel:queue:seq` | String | 任务 ID 序列（INCR） |
+| `jaravel:queue:failed:seq` | String | 失败任务 ID 序列（INCR） |
+| `jaravel:queue:index` | Hash | jobId -> queueName 索引 |
+
+#### Additional Methods
 
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
-| `DatabaseQueueWorker` | `DatabaseQueueDriver driver, String queue, int maxAttempts` | - | 构造队列消费者 |
-| `start` | - | `void` | 启动消费线程 |
-| `stop` | - | `void` | 停止消费线程 |
-| `isRunning` | - | `boolean` | 检查消费者是否正在运行 |
-| `getProcessedCount` | - | `long` | 获取已处理任务总数 |
-| `getFailedCount` | - | `long` | 获取失败任务总数 |
-| `setSleepInterval` | `long millis` | `void` | 设置无任务时的休眠间隔，默认 1000ms |
+| `purgeOldFailedJobs` | - | `void` | 清理超过保留天数的失败任务 |
 
 #### Usage Example
 ```java
-DatabaseQueueWorker worker = new DatabaseQueueWorker(driver, "emails", 3);
-worker.setSleepInterval(500);
-worker.start();
-
-// ... 运行中
-
-worker.stop();
-System.out.println("Processed: " + worker.getProcessedCount());
+RedisQueueDriver driver = new RedisQueueDriver(redisManager, null, 1800, 7);
+long jobId = driver.push("default", payloadJson);
+QueuedJob job = driver.pop("default");
 ```
 
 ### QueuedJob
-- **Type**: class
+- **Type**: class (immutable)
 - **Package**: `com.weacsoft.jaravel.vendor.queue.database`
-- **Description**: 队列任务实体，封装任务 ID、队列名、Job 类名、payload（JSON）、尝试次数、可用时间和保留时间。
+- **Description**: 队列任务实体，对齐 Laravel `Illuminate\Queue\Jobs\DatabaseJob`。失败任务也包装为本类，此时 `getException()` 携带失败异常信息，`getId()` 为失败任务 ID。
+
+#### Constructors
+
+| Constructor | Parameters | Description |
+|-------------|-----------|-------------|
+| `QueuedJob` | `long id, String queue, String payload, int attempts, long reservedAt, long availableAt, long createdAt` | 构造（exception=null） |
+| `QueuedJob` | `long id, String queue, String payload, int attempts, long reservedAt, long availableAt, long createdAt, String exception` | 构造（含异常信息） |
 
 #### Methods
 
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
-| `getId` | - | `String` | 获取任务 ID |
-| `getQueue` | - | `String` | 获取队列名 |
-| `getJob` | - | `String` | 获取 Job 处理类全限定名 |
-| `getPayload` | - | `String` | 获取 payload JSON 字符串 |
-| `getPayload` | `Class<T> type` | `T` | 反序列化 payload 为指定类型 |
-| `getAttempts` | - | `int` | 获取尝试次数 |
-| `getAvailableAt` | - | `long` | 获取可用时间戳（毫秒） |
-| `getReservedAt` | - | `long` | 获取保留时间戳（毫秒） |
-| `setId` | `String id` | `void` | 设置任务 ID |
-| `setQueue` | `String queue` | `void` | 设置队列名 |
-| `setJob` | `String job` | `void` | 设置 Job 类名 |
-| `setPayload` | `String payload` | `void` | 设置 payload JSON |
-| `setAttempts` | `int attempts` | `void` | 设置尝试次数 |
-| `setAvailableAt` | `long availableAt` | `void` | 设置可用时间 |
-| `setReservedAt` | `long reservedAt` | `void` | 设置保留时间 |
+| `getId` | - | `long` | 任务 ID（失败任务场景为失败任务 ID） |
+| `getQueue` | - | `String` | 队列名 |
+| `getPayload` | - | `String` | 任务负载 JSON 字符串 |
+| `getAttempts` | - | `int` | 尝试次数 |
+| `getReservedAt` | - | `long` | 预约时间（毫秒时间戳，0=未预约） |
+| `getAvailableAt` | - | `long` | 可用时间（失败任务场景为失败时间） |
+| `getCreatedAt` | - | `long` | 创建时间（毫秒时间戳） |
+| `getException` | - | `String` | 失败异常信息（仅失败任务非 null） |
+
+### DatabaseQueueWorker
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.queue.database`
+- **Description**: 队列工作线程，对齐 Laravel `php artisan queue:work`。持续轮询队列取出任务并执行。适用于任何 `QueueDriver` 实现。任务执行失败超过最大重试次数时归档到失败队列（`driver.fail()`）。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `DatabaseQueueWorker` | `QueueDriver driver, ApplicationContext applicationContext, List<String> queues, int maxAttempts, long retryDelayMs, long pollIntervalMs, int workerThreads` | - | 构造 |
+| `start` | - | `void` | 启动工作线程 |
+| `stop` | - | `void` | 停止工作线程（`@PreDestroy`） |
 
 #### Usage Example
 ```java
-QueuedJob job = driver.pop("default");
-if (job != null) {
-    OrderData data = job.getPayload(OrderData.class);
-    System.out.println("Processing job: " + job.getId() + ", attempts: " + job.getAttempts());
-}
+DatabaseQueueWorker worker = new DatabaseQueueWorker(driver, applicationContext,
+        List.of("default"), 3, 5000L, 1000L, 1);
+worker.start();
+// ... 运行中
+worker.stop();
 ```
+
+### DatabaseQueueDispatcher
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.queue.database`
+- **Implements**: `com.weacsoft.jaravel.vendor.event.QueueDispatcher`
+- **Description**: 持久化队列分发器，对齐 Laravel `Illuminate\Queue\Queue::push`。桥接 event 模块，将 `ShouldQueue` 事件分发到 `QueueDriver`。由 `EventDispatcher` 通过 `ObjectProvider<QueueDispatcher>` 自动注入。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `DatabaseQueueDispatcher` | `QueueDriver driver, ApplicationContext applicationContext` | - | 构造 |
+| `dispatch` | `String queueName, Object listener, Event event, long delayMs` | `void` | 分发事件到队列（序列化 listener + event 为 payload JSON） |
+| `isAvailable` | - | `boolean` | 队列分发器是否可用 |
+| `getDriver` | - | `QueueDriver` | 获取底层队列驱动 |
+| `push` | `String queueName, Listener<?> listener, Event event` | `long` | 便捷推送方法（立即执行） |
+
+#### Payload Format
+任务负载为 JSON，由 `DatabaseQueueWorker` 反序列化执行：
+- `listenerClass`：监听器全限定类名
+- `listenerBeanName`：监听器 Spring bean 名（可选，优先用于获取 bean）
+- `eventClass`：事件全限定类名（用于反序列化）
+- `eventData`：事件数据（JSON 对象）
+
+### QueueProperties
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.queue.database`
+- **Annotations**: `@ConfigurationProperties(prefix = "jaravel.queue")`
+- **Description**: 队列全局配置属性，前缀 `jaravel.queue`，对齐 Laravel `config/queue.php` 顶层配置。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `getDriver` | - | `String` | 队列驱动（`database` 或 `redis`），默认 `database` |
+| `setDriver` | `String driver` | `void` | 设置驱动 |
+| `getRedisConnection` | - | `String` | Redis 驱动连接名，空=默认连接 |
+| `setRedisConnection` | `String redisConnection` | `void` | 设置连接名 |
+| `getFailedJobRetentionDays` | - | `int` | 失败任务保留天数，默认 7 |
+| `setFailedJobRetentionDays` | `int failedJobRetentionDays` | `void` | 设置保留天数 |
 
 ### QueueDatabaseProperties
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.queue.database`
 - **Annotations**: `@ConfigurationProperties(prefix = "jaravel.queue.database")`
-- **Description**: 数据库队列配置属性，前缀 `jaravel.queue.database`。
+- **Description**: 数据库队列细分配置属性，前缀 `jaravel.queue.database`。
 
 #### Methods
 
-| Method | Parameters | Return | Description |
-|--------|-----------|--------|-------------|
-| `isEnabled` | - | `boolean` | 是否启用数据库队列，默认 true |
-| `setEnabled` | `boolean enabled` | `void` | 设置是否启用 |
-| `getTable` | - | `String` | 获取队列表名，默认 `jaravel_jobs` |
-| `setTable` | `String table` | `void` | 设置队列表名 |
-| `getDefaultQueue` | - | `String` | 获取默认队列名，默认 `default` |
-| `setDefaultQueue` | `String defaultQueue` | `void` | 设置默认队列名 |
-| `getMaxAttempts` | - | `int` | 获取最大重试次数，默认 3 |
-| `setMaxAttempts` | `int maxAttempts` | `void` | 设置最大重试次数 |
-| `getSleepInterval` | - | `long` | 获取休眠间隔（毫秒），默认 1000 |
-| `setSleepInterval` | `long sleepInterval` | `void` | 设置休眠间隔 |
-
-#### Usage Example
-```yaml
-# application.yml
-jaravel:
-  queue:
-    database:
-      enabled: true
-      table: jaravel_jobs
-      default-queue: default
-      max-attempts: 5
-      sleep-interval: 500
-```
+| Method | Return | Description |
+|--------|--------|-------------|
+| `getTable` | `String` | 任务表名，默认 `jobs` |
+| `getRetryAfter` | `long` | 重试超时秒数，默认 1800 |
+| `getMaxAttempts` | `int` | 最大重试次数，默认 3 |
+| `getRetryDelayMs` | `long` | 重试延迟毫秒，默认 1000 |
+| `getPollIntervalMs` | `long` | 轮询间隔毫秒，默认 1000 |
+| `getWorkerThreads` | `int` | 每队列工作线程数，默认 1 |
+| `getQueues` | `List<String>` | 要消费的队列名列表，默认 `["default"]` |
+| `isAutoStart` | `boolean` | 是否自动启动 worker，默认 false |
 
 ### QueueDatabaseAutoConfiguration
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.queue.database`
-- **Annotations**: `@AutoConfiguration`, `@ConditionalOnClass({DatabaseQueueDriver, JdbcTemplate})`, `@ConditionalOnBean(JdbcTemplate)`, `@ConditionalOnProperty(prefix = "jaravel.queue.database", name = "enabled", havingValue = "true", matchIfMissing = true)`
-- **Description**: 数据库队列自动装配。当 `JdbcTemplate` 存在时，创建 `DatabaseQueueDriver` 和 `DatabaseQueueWorker` Bean，并注册 `database` 驱动到 `QueueManager`。
+- **Annotations**: `@AutoConfiguration`, `@ConditionalOnClass(QueueDriver.class)`, `@EnableConfigurationProperties({QueueProperties.class, QueueDatabaseProperties.class})`
+- **Description**: 队列自动装配（database 驱动 + 通用 worker / dispatcher）。database 驱动为默认驱动，亦是 redis 不可用时的回退驱动。
 
-#### Methods
+#### Beans
 
-| Method | Parameters | Return | Description |
-|--------|-----------|--------|-------------|
-| `databaseQueueDriver` | `JdbcTemplate jdbcTemplate, QueueDatabaseProperties properties` | `DatabaseQueueDriver` | 创建数据库队列驱动 Bean（`@Bean`, `@ConditionalOnMissingBean`） |
-| `databaseQueueWorker` | `DatabaseQueueDriver driver, QueueDatabaseProperties properties` | `DatabaseQueueWorker` | 创建队列消费者 Bean（`@Bean`, `@ConditionalOnMissingBean`） |
+| Method | Return | Description |
+|--------|--------|-------------|
+| `databaseQueueDriver` | `DatabaseQueueDriver` | database 驱动 bean（`@ConditionalOnMissingBean(QueueDriver.class)`, `@ConditionalOnBean(DataSource.class)`），redis 不可用时回退并打印告警 |
+| `databaseQueueWorker` | `DatabaseQueueWorker` | 队列工作线程 bean（适用于任何 `QueueDriver`），`auto-start=true` 时自动启动 |
+| `databaseQueueDispatcher` | `DatabaseQueueDispatcher` | 持久化队列分发器 bean（`@ConditionalOnMissingBean(QueueDispatcher.class)`），桥接 event 模块 |
 
-#### Usage Example
-```java
-// 自动装配后，通过 Queue facade 使用
-Queue::push("SendEmailJob", emailData, "emails");
-Queue::later(60, "SendReminderJob", reminderData, "default");
+### RedisQueueAutoConfiguration
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.queue.database`
+- **Annotations**: `@AutoConfiguration(before = QueueDatabaseAutoConfiguration.class)`, `@ConditionalOnClass(RedisManager.class)`, `@ConditionalOnBean(RedisManager.class)`, `@ConditionalOnProperty(prefix = "jaravel.queue", name = "driver", havingValue = "redis")`
+- **Description**: Redis 队列驱动自动装配。仅当 `redis-config` 在类路径、存在 `RedisManager` bean 且 `driver=redis` 时启用，先于 database 装配处理。
+
+#### Beans
+
+| Method | Return | Description |
+|--------|--------|-------------|
+| `redisQueueDriver` | `RedisQueueDriver` | Redis 驱动 bean（`@ConditionalOnMissingBean(QueueDriver.class)`） |
+
+## Configuration
+
+```yaml
+jaravel:
+  queue:
+    driver: database                # database | redis
+    redis-connection: ""            # redis 驱动连接名，空 = 默认连接
+    failed-job-retention-days: 7    # 失败任务保留天数
+    database:
+      enabled: true                 # 是否启用 database 驱动（默认 true）
+      table: jobs                   # 任务表名
+      retry-after: 1800             # 重试超时秒数
+      max-attempts: 3               # 最大重试次数
+      retry-delay-ms: 1000          # 重试延迟毫秒
+      poll-interval-ms: 1000        # 轮询间隔毫秒
+      worker-threads: 1             # 每队列工作线程数
+      queues:                       # 消费队列列表
+        - default
+      auto-start: false             # 是否自动启动 worker
+```
+
+## Auto-Fallback Behavior
+
+| 场景 | 结果 |
+|------|------|
+| `driver=database`（默认） | 使用 `DatabaseQueueDriver`（需 `DataSource`） |
+| `driver=redis` + `redis-config` 已引入 + `RedisManager` 存在 | 使用 `RedisQueueDriver` |
+| `driver=redis` + `redis-config` 未引入 / 无 `RedisManager` | 自动回退 `DatabaseQueueDriver`，打印告警 |
+| `driver=redis` + 无 `DataSource` + 无 `RedisManager` | 无 `QueueDriver` bean，worker / dispatcher 不创建 |
+
+## Module Dependencies
+
+```
+event (QueueDispatcher interface)
+  │
+  ├── DatabaseQueueDispatcher (implements QueueDispatcher, bridges to QueueDriver)
+  │
+  └── QueueDriver (interface)
+        ├── DatabaseQueueDriver (requires DataSource)
+        └── RedisQueueDriver (requires RedisManager, optional dependency)
+              │
+              └── DatabaseQueueWorker (consumes QueueDriver)
 ```

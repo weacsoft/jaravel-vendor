@@ -88,9 +88,11 @@ public class WechatAutoConfiguration {
     @ConditionalOnMissingBean
     public AccessTokenManager accessTokenManager(OkHttpClient wechatHttpClient,
                                                   ObjectMapper objectMapper,
+                                                  WechatProperties properties,
                                                   ObjectProvider<CacheManager> cacheManagerProvider) {
-        logger.info("[wechat] 初始化 AccessTokenManager");
-        return new AccessTokenManager(wechatHttpClient, objectMapper, cacheManagerProvider.getIfAvailable());
+        logger.info("[wechat] 初始化 AccessTokenManager, 首选缓存 store: {}", properties.getCacheStore());
+        return new AccessTokenManager(wechatHttpClient, objectMapper,
+                cacheManagerProvider.getIfAvailable(), properties.getCacheStore());
     }
 
     /**

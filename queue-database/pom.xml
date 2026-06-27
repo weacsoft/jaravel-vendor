@@ -39,6 +39,12 @@
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
         </dependency>
+        <!-- redis 驱动按需依赖：未引入 redis-config 时自动回退到 database 驱动 -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>redis-config</artifactId>
+            <optional>true</optional>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-configuration-processor</artifactId>

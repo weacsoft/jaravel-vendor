@@ -215,7 +215,12 @@ public class ModelCacheService {
      * 解析配置的缓存 store。
      */
     private CacheStore resolveStore() {
-        return cacheManager.store(properties.getStore());
+        try {
+            return cacheManager.store(properties.getStore());
+        } catch (IllegalStateException e) {
+            // 配置的 store 未注册时回退到默认 store，与 jwt/wechat-sdk 保持一致
+            return cacheManager.store();
+        }
     }
 
     /**

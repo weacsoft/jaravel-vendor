@@ -173,7 +173,9 @@ public class DatabaseQueueWorker {
 
             if (listener == null) {
                 logger.error("[queue-worker] 找不到监听器: beanName={}, class={}", listenerBeanName, listenerClassName);
-                driver.delete(job.getId());
+                // 监听器缺失为永久性错误，直接归档到失败队列（不重试）
+                driver.fail(job.getId(), job.getQueue(), job.getPayload(), job.getAttempts(),
+                        "找不到监听器: beanName=" + listenerBeanName + ", class=" + listenerClassName);
                 return;
             }
 
@@ -202,13 +204,14 @@ public class DatabaseQueueWorker {
 
         } catch (Exception e) {
             logger.error("[queue-worker] 任务执行失败: {} - {}", job, e.getMessage(), e);
-            // 重试或删除
+            // 重试或归档到失败队列
             if (job.getAttempts() < maxAttempts) {
                 driver.release(job.getId(), retryDelayMs);
                 logger.info("[queue-worker] 任务重试: {}, attempts={}/{}", job, job.getAttempts(), maxAttempts);
             } else {
-                driver.delete(job.getId());
-                logger.warn("[queue-worker] 任务超过最大重试次数，已删除: {}, attempts={}", job, job.getAttempts());
+                // 超过最大重试次数，归档到失败队列（对齐 Laravel failed_jobs）
+                driver.fail(job.getId(), job.getQueue(), job.getPayload(), job.getAttempts(), e.toString());
+                logger.warn("[queue-worker] 任务超过最大重试次数，已归档到失败队列: {}, attempts={}", job, job.getAttempts());
             }
         }
     }

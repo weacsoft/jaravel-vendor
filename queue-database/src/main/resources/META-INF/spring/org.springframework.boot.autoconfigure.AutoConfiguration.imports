@@ -1,1 +1,2 @@
+com.weacsoft.jaravel.vendor.queue.database.RedisQueueAutoConfiguration
 com.weacsoft.jaravel.vendor.queue.database.QueueDatabaseAutoConfiguration

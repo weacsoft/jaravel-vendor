@@ -62,7 +62,7 @@ public class AccessTokenManager {
     /** Jackson JSON 解析器（线程安全） */
     private final ObjectMapper objectMapper;
 
-    /** 缓存仓库（优先 redis，未注册时回退 array） */
+    /** 缓存仓库（优先配置的 store，未注册时回退 array） */
     private final CacheStore cacheStore;
 
     /**
@@ -78,9 +78,24 @@ public class AccessTokenManager {
     public AccessTokenManager(OkHttpClient httpClient,
                               ObjectMapper objectMapper,
                               CacheManager cacheManager) {
+        this(httpClient, objectMapper, cacheManager, "redis");
+    }
+
+    /**
+     * 构造 Access Token 管理器，指定首选缓存 store。
+     *
+     * @param httpClient       OkHttp 客户端
+     * @param objectMapper     Jackson JSON 解析器
+     * @param cacheManager     缓存管理器（可为 null）
+     * @param preferredStore   首选缓存 store 名称（如 "redis"、"array"）
+     */
+    public AccessTokenManager(OkHttpClient httpClient,
+                              ObjectMapper objectMapper,
+                              CacheManager cacheManager,
+                              String preferredStore) {
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
-        this.cacheStore = resolveStore(cacheManager);
+        this.cacheStore = resolveStore(cacheManager, preferredStore);
     }
 
     /**
@@ -200,15 +215,18 @@ public class AccessTokenManager {
      * @param cacheManager 缓存管理器，可为 null
      * @return 解析出的缓存仓库
      */
-    private static CacheStore resolveStore(CacheManager cacheManager) {
+    private static CacheStore resolveStore(CacheManager cacheManager, String preferredStore) {
         if (cacheManager == null) {
             logger.warn("[wechat] CacheManager 未注入，AccessToken 使用本地内存缓存");
             return new DefaultCacheStore(new ArrayCacheDriver(), "");
         }
+        if (preferredStore == null || preferredStore.isEmpty()) {
+            preferredStore = "redis";
+        }
         try {
-            return cacheManager.store("redis");
+            return cacheManager.store(preferredStore);
         } catch (IllegalStateException e) {
-            logger.debug("[wechat] Redis 缓存未注册，AccessToken 回退到 array 内存缓存: {}", e.getMessage());
+            logger.debug("[wechat] 缓存 store '{}' 未注册，AccessToken 回退到 array 内存缓存: {}", preferredStore, e.getMessage());
             return cacheManager.store("array");
         }
     }

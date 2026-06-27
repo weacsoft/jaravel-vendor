@@ -69,6 +69,14 @@ public class WechatProperties {
     /** 是否启用微信 SDK，默认 true */
     private boolean enabled = true;
 
+    /**
+     * 缓存 store 名称，用于 access_token / jsapi_ticket 缓存。
+     * <p>
+     * 优先使用此 store，未注册时回退到默认 store（array）。
+     * 默认 "redis"（多实例共享），单机可设为 "array"。
+     */
+    private String cacheStore = "redis";
+
     /** 公众号配置映射，key 为配置名（如 default、snsapi_userinfo），对齐 PHP official_account 段 */
     private Map<String, OfficialAccountConfig> officialAccounts = new LinkedHashMap<>();
 
@@ -84,6 +92,14 @@ public class WechatProperties {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    public String getCacheStore() {
+        return cacheStore;
+    }
+
+    public void setCacheStore(String cacheStore) {
+        this.cacheStore = cacheStore;
     }
 
     public Map<String, OfficialAccountConfig> getOfficialAccounts() {
