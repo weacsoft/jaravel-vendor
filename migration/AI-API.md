@@ -3,7 +3,7 @@
 > Module: `migration` | Package: `com.weacsoft.jaravel.vendor.migration` | Version: 0.1.0
 
 ## Overview
-migration 模块提供 Laravel 风格的数据库迁移系统，包含 Blueprint（流式建表蓝图）、Schema（DDL 执行器，支持 MySQL/SQLite/H2/SQL Server 多方言）、Migrator（迁移引擎，支持 migrate/rollback/reset/refresh/status）、MigrationScanner（三种迁移源加载：DIRECTORY 内存编译/JAR 加载/CLASSPATH 扫描）、MigrationRepository（迁移记录仓库）和 MigrationRunner（命令行运行器）。迁移文件通过 @MigrationAnnotation 标记，运行时编译/加载、反射实例化、执行后自动释放。
+migration 模块提供 Laravel 风格的数据库迁移系统，包含 Blueprint（流式建表蓝图）、Schema（DDL 执行器，支持 MySQL/SQLite/H2/SQL Server 多方言）、Migrator（迁移引擎，支持 migrate/rollback/reset/refresh/status）、MigrationScanner（三种迁移源加载：DIRECTORY 内存编译/JAR 加载/CLASSPATH 扫描）、MigrationRepository（迁移记录仓库）、MigrationExecutor（核心执行器，无 SpringBoot 依赖）、MigrationCLI（独立命令行入口）、JdbcExecutor（轻量 JDBC 执行器，替代 JdbcTemplate）和 MigrationRunner（SpringBoot 适配器）。迁移文件通过 @MigrationAnnotation 标记，运行时编译/加载、反射实例化、执行后自动释放。核心逻辑完全独立于 SpringBoot，可通过 MigrationCLI 在纯 Java 环境中运行。
 
 ## Classes & Interfaces
 
@@ -336,7 +336,7 @@ migrator.finish();                 // 释放资源
 ### MigrationRunner
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.migration`
-- **Description**: 迁移命令运行器，对齐 Laravel artisan migrate 系列命令。实现 CommandLineRunner，通过启动参数触发迁移操作。
+- **Description**: SpringBoot 命令行运行器适配层。实现 CommandLineRunner，内部委托给 MigrationExecutor。仅此类需要 SpringBoot 依赖。
 - **Implements**: `org.springframework.boot.CommandLineRunner`
 
 #### Supported Commands
@@ -372,13 +372,14 @@ java -jar app.jar --jaravel.migration-status
 ### MigrationAutoConfiguration
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.migration`
-- **Description**: 迁移模块自动装配，注册 MigrationRunner Bean。
-- **Annotations**: `@AutoConfiguration`, `@AutoConfigureAfter(DataSourceAutoConfiguration.class)`, `@ConditionalOnClass(Migrator.class)`, `@ConditionalOnBean(DataSource.class)`, `@ConditionalOnProperty(prefix = "jaravel.migration", name = "enabled", havingValue = "true", matchIfMissing = true)`, `@EnableConfigurationProperties(MigrationProperties.class)`
+- **Description**: 迁移模块自动装配（SpringBoot 适配层）。通过 @Bean @ConfigurationProperties 绑定配置，注册 MigrationRunner Bean。核心逻辑（MigrationExecutor）已独立于 SpringBoot。
+- **Annotations**: `@AutoConfiguration`, `@AutoConfigureAfter(DataSourceAutoConfiguration.class)`, `@ConditionalOnClass(MigrationExecutor.class)`, `@ConditionalOnBean(DataSource.class)`, `@ConditionalOnProperty(prefix = "jaravel.migration", name = "enabled", havingValue = "true", matchIfMissing = true)`
 
 #### Bean Methods
 
 | Bean | Parameters | Return | Description |
 |------|-----------|--------|-------------|
+| `jaravelMigrationProperties` | 无 | `MigrationProperties` | 创建迁移配置（@Bean, @ConfigurationProperties, @ConditionalOnMissingBean） |
 | `jaravelMigrationRunner` | `DataSource dataSource, MigrationProperties properties` | `MigrationRunner` | 创建迁移运行器（@Bean, @ConditionalOnMissingBean, @Order(HIGHEST_PRECEDENCE)） |
 
 ---
@@ -386,8 +387,7 @@ java -jar app.jar --jaravel.migration-status
 ### MigrationProperties
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.migration`
-- **Description**: 迁移配置属性，前缀 `jaravel.migration`。
-- **Annotations**: `@ConfigurationProperties(prefix = "jaravel.migration")`
+- **Description**: 迁移配置属性，前缀 `jaravel.migration`。纯 POJO，无 Spring 注解。在 SpringBoot 中通过 MigrationAutoConfiguration 的 @Bean @ConfigurationProperties 绑定；独立运行时手动设置。
 
 #### Properties
 
@@ -422,3 +422,84 @@ jaravel:
     source: CLASSPATH
     auto-run: true
 ```
+
+---
+
+### MigrationExecutor
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.migration`
+- **Description**: 迁移执行器，核心逻辑无 SpringBoot 依赖。根据 MigrationProperties 配置的源模式加载迁移，执行 migrate/rollback/reset/refresh/status 命令。可被 MigrationRunner（SpringBoot）或 MigrationCLI（独立）调用。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `MigrationExecutor` | `DataSource dataSource, MigrationProperties properties` | 构造方法 | 创建执行器 |
+| `execute` | `String... args` | `void` | 执行迁移命令（migrate/rollback/reset/refresh/status） |
+
+#### Usage Example
+```java
+MigrationProperties properties = new MigrationProperties();
+properties.setEnabled(true);
+properties.setSource(MigrationSource.DIRECTORY);
+properties.setDirectory("/path/to/migrations");
+
+DataSource dataSource = ...;
+MigrationExecutor executor = new MigrationExecutor(dataSource, properties);
+executor.execute("migrate");
+```
+
+---
+
+### MigrationCLI
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.migration`
+- **Description**: 独立命令行入口，使 migration 可在无 SpringBoot 环境下通过 main() 直接运行。内置 SimpleDataSource（基于 DriverManager），支持 --db-url/--db-user/--db-password 参数。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `main` | `String[] args` | `void` | 主入口，解析参数并执行迁移 |
+
+#### CLI Parameters
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `--db-url=<url>` | 是 | - | 数据库 JDBC URL |
+| `--db-user=<user>` | 是 | - | 数据库用户名 |
+| `--db-password=<pwd>` | 否 | 空 | 数据库密码 |
+| `--source=<type>` | 否 | DIRECTORY | 迁移源：DIRECTORY/JAR/CLASSPATH |
+| `--directory=<path>` | 否 | migrations | 迁移文件目录（DIRECTORY） |
+| `--jar-path=<path>` | 否 | 空 | JAR 路径（JAR） |
+| `--table=<name>` | 否 | migrations | 迁移记录表名 |
+
+#### Usage Example
+```bash
+java -cp migration.jar:utils.jar:mysql-connector.jar \
+  com.weacsoft.jaravel.vendor.migration.MigrationCLI \
+  --db-url=jdbc:mysql://localhost:3306/mydb \
+  --db-user=root \
+  --db-password=secret \
+  --source=DIRECTORY \
+  --directory=/path/to/migrations \
+  migrate
+```
+
+---
+
+### JdbcExecutor
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.migration`
+- **Description**: 轻量级 JDBC 执行器，替代 Spring JdbcTemplate，使 migration 模块可独立于 SpringBoot 运行。封装 execute（DDL）、update（DML）、queryForObject（单值）、queryForList（列表）、queryForMapList（多列结果集）操作。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `JdbcExecutor` | `DataSource dataSource` | 构造方法 | 创建执行器 |
+| `execute` | `String sql` | `void` | 执行 DDL 语句 |
+| `update` | `String sql, Object... args` | `int` | 执行参数化 UPDATE/INSERT/DELETE |
+| `queryForObject` | `String sql, Class<T> requiredType, Object... args` | `<T> T` | 查询单个值 |
+| `queryForList` | `String sql, Class<T> elementType, Object... args` | `<T> List<T>` | 查询单列值列表 |
+| `queryForMapList` | `String sql, Object... args` | `List<Map<String, Object>>` | 查询多列结果集 |

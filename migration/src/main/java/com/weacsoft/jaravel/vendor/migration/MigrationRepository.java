@@ -2,9 +2,10 @@ package com.weacsoft.jaravel.vendor.migration;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 import javax.sql.DataSource;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -17,12 +18,12 @@ public class MigrationRepository {
 
     private static final Logger log = LoggerFactory.getLogger(MigrationRepository.class);
 
-    private final JdbcTemplate jdbcTemplate;
+    private final JdbcExecutor jdbc;
     private final String table;
     private final String databaseProductName;
 
     public MigrationRepository(DataSource dataSource, String table) {
-        this.jdbcTemplate = new JdbcTemplate(dataSource);
+        this.jdbc = new JdbcExecutor(dataSource);
         this.table = table;
         this.databaseProductName = detectProductName(dataSource);
     }
@@ -76,7 +77,7 @@ public class MigrationRepository {
         } else if (isSqlServer()) {
             // SQL Server: IDENTITY(1,1)，无 IF NOT EXISTS 语法（旧版），用方括号引用
             // 先检查表是否存在，不存在则创建
-            Integer cnt = jdbcTemplate.queryForObject(
+            Integer cnt = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM sys.tables WHERE name = ?", Integer.class, table);
             if (cnt != null && cnt > 0) {
                 log.info("[migration] 迁移记录表已存在: {}", table);
@@ -96,12 +97,12 @@ public class MigrationRepository {
                 + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
         }
         log.info("[migration] 创建迁移记录表: {}", sql);
-        jdbcTemplate.execute(sql);
+        jdbc.execute(sql);
     }
 
     /** 获取已执行的迁移名称列表（按时间正序） */
     public List<String> getRan() {
-        return jdbcTemplate.queryForList(
+        return jdbc.queryForList(
             "SELECT migration FROM " + quote(table) + " ORDER BY id ASC", String.class);
     }
 
@@ -109,21 +110,21 @@ public class MigrationRepository {
     public List<String> getLast() {
         Integer lastBatch = getLastBatchNumber();
         if (lastBatch == null) {
-            return List.of();
+            return Collections.emptyList();
         }
-        return jdbcTemplate.queryForList(
+        return jdbc.queryForList(
             "SELECT migration FROM " + quote(table) + " WHERE batch = ? ORDER BY id DESC", String.class, lastBatch);
     }
 
     /** 记录一条已执行迁移 */
     public void log(String migration, int batch) {
-        jdbcTemplate.update(
+        jdbc.update(
             "INSERT INTO " + quote(table) + " (migration, batch) VALUES (?, ?)", migration, batch);
     }
 
     /** 删除一条迁移记录（回滚时） */
     public void delete(String migration) {
-        jdbcTemplate.update(
+        jdbc.update(
             "DELETE FROM " + quote(table) + " WHERE migration = ?", migration);
     }
 
@@ -135,7 +136,7 @@ public class MigrationRepository {
 
     private Integer getLastBatchNumber() {
         try {
-            return jdbcTemplate.queryForObject("SELECT MAX(batch) FROM " + quote(table), Integer.class);
+            return jdbc.queryForObject("SELECT MAX(batch) FROM " + quote(table), Integer.class);
         } catch (Exception e) {
             return null;
         }

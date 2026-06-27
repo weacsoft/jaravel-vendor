@@ -2,7 +2,6 @@ package com.weacsoft.jaravel.vendor.migration;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 import javax.sql.DataSource;
 import java.util.ArrayList;
@@ -39,12 +38,12 @@ public class Schema {
 
     private static final Logger log = LoggerFactory.getLogger(Schema.class);
 
-    private final JdbcTemplate jdbcTemplate;
+    private final JdbcExecutor jdbc;
     /** 数据库产品名（小写），用于方言判断 */
     private final String databaseProductName;
 
     public Schema(DataSource dataSource) {
-        this.jdbcTemplate = new JdbcTemplate(dataSource);
+        this.jdbc = new JdbcExecutor(dataSource);
         this.databaseProductName = detectProductName(dataSource);
     }
 
@@ -104,14 +103,14 @@ public class Schema {
         definition.accept(blueprint);
         String sql = blueprint.toCreateSql();
         log.info("[migration] CREATE TABLE: {}", sql);
-        jdbcTemplate.execute(sql);
+        jdbc.execute(sql);
         for (String indexSql : blueprint.toIndexSql()) {
             log.info("[migration] INDEX: {}", indexSql);
-            jdbcTemplate.execute(indexSql);
+            jdbc.execute(indexSql);
         }
         for (String fkSql : blueprint.toForeignKeySql()) {
             log.info("[migration] FOREIGN KEY: {}", fkSql);
-            jdbcTemplate.execute(fkSql);
+            jdbc.execute(fkSql);
         }
     }
 
@@ -153,7 +152,7 @@ public class Schema {
         for (ColumnDefinition c : addColumns) {
             String sql = "ALTER TABLE " + quote(table) + " ADD " + c.toSql();
             log.info("[migration] ADD COLUMN: {}", sql);
-            jdbcTemplate.execute(sql);
+            jdbc.execute(sql);
         }
 
         // 2. 修改字段：按方言处理
@@ -175,7 +174,7 @@ public class Schema {
                         sql = "ALTER TABLE " + quote(table) + " MODIFY " + c.toModifyColumnFragment();
                     }
                     log.info("[migration] MODIFY COLUMN: {}", sql);
-                    jdbcTemplate.execute(sql);
+                    jdbc.execute(sql);
                 }
             }
         }
@@ -183,17 +182,17 @@ public class Schema {
         // 3. 索引
         for (String indexSql : blueprint.toIndexSql()) {
             log.info("[migration] INDEX: {}", indexSql);
-            jdbcTemplate.execute(indexSql);
+            jdbc.execute(indexSql);
         }
         // 4. 外键
         for (String fkSql : blueprint.toForeignKeySql()) {
             log.info("[migration] FOREIGN KEY: {}", fkSql);
-            jdbcTemplate.execute(fkSql);
+            jdbc.execute(fkSql);
         }
         // 5. 其它 ALTER（dropColumn / renameColumn / dropIndex）
         for (String alterSql : blueprint.toAlterSql()) {
             log.info("[migration] ALTER: {}", alterSql);
-            jdbcTemplate.execute(alterSql);
+            jdbc.execute(alterSql);
         }
     }
 
@@ -216,7 +215,7 @@ public class Schema {
      */
     private void sqliteRecreateTableForModify(String table, Blueprint blueprint, List<ColumnDefinition> modifyColumns) {
         log.info("[migration] SQLite 重建表以修改字段: {}", table);
-        List<Map<String, Object>> existingCols = jdbcTemplate.queryForList("PRAGMA table_info(" + quote(table) + ")");
+        List<Map<String, Object>> existingCols = jdbc.queryForMapList("PRAGMA table_info(" + quote(table) + ")");
 
         String tempTable = table + "_jaravel_temp";
         StringBuilder createSql = new StringBuilder("CREATE TABLE " + quote(tempTable) + " (");
@@ -268,20 +267,20 @@ public class Schema {
 
         createSql.append(String.join(", ", colDefs)).append(")");
         log.info("[migration] SQLite 重建临时表: {}", createSql);
-        jdbcTemplate.execute(createSql.toString());
+        jdbc.execute(createSql.toString());
 
         String cols = colNames.stream().map(this::quote).collect(Collectors.joining(", "));
         String copySql = "INSERT INTO " + quote(tempTable) + " (" + cols + ") SELECT " + cols + " FROM " + quote(table);
         log.info("[migration] SQLite 复制数据: {}", copySql);
-        jdbcTemplate.execute(copySql);
+        jdbc.execute(copySql);
 
         String dropSql = "DROP TABLE " + quote(table);
         log.info("[migration] SQLite 删除原表: {}", dropSql);
-        jdbcTemplate.execute(dropSql);
+        jdbc.execute(dropSql);
 
         String renameSql = "ALTER TABLE " + quote(tempTable) + " RENAME TO " + quote(table);
         log.info("[migration] SQLite 重命名临时表: {}", renameSql);
-        jdbcTemplate.execute(renameSql);
+        jdbc.execute(renameSql);
     }
 
     /**
@@ -294,14 +293,14 @@ public class Schema {
     public void dropIfExists(String table) {
         String sql = "DROP TABLE IF EXISTS " + quote(table);
         log.info("[migration] DROP: {}", sql);
-        jdbcTemplate.execute(sql);
+        jdbc.execute(sql);
     }
 
     /** 删除表，对齐 Laravel Schema::drop */
     public void drop(String table) {
         String sql = "DROP TABLE " + quote(table);
         log.info("[migration] DROP: {}", sql);
-        jdbcTemplate.execute(sql);
+        jdbc.execute(sql);
     }
 
     /**
@@ -325,7 +324,7 @@ public class Schema {
             sql = "RENAME TABLE " + quote(from) + " TO " + quote(to);
         }
         log.info("[migration] RENAME: {}", sql);
-        jdbcTemplate.execute(sql);
+        jdbc.execute(sql);
     }
 
     /**
@@ -340,22 +339,22 @@ public class Schema {
     public boolean hasTable(String table) {
         try {
             if (isSqlite()) {
-                Integer count = jdbcTemplate.queryForObject(
+                Integer count = jdbc.queryForObject(
                     "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
                     Integer.class, table);
                 return count != null && count > 0;
             } else if (isH2()) {
-                Integer count = jdbcTemplate.queryForObject(
+                Integer count = jdbc.queryForObject(
                     "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = UPPER(?)",
                     Integer.class, table);
                 return count != null && count > 0;
             } else if (isSqlServer()) {
-                Integer count = jdbcTemplate.queryForObject(
+                Integer count = jdbc.queryForObject(
                     "SELECT COUNT(*) FROM sys.tables WHERE name = ?",
                     Integer.class, table);
                 return count != null && count > 0;
             } else {
-                Integer count = jdbcTemplate.queryForObject(
+                Integer count = jdbc.queryForObject(
                     "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?",
                     Integer.class, table);
                 return count != null && count > 0;
@@ -377,23 +376,23 @@ public class Schema {
     public boolean hasColumn(String table, String column) {
         try {
             if (isSqlite()) {
-                List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                List<Map<String, Object>> rows = jdbc.queryForMapList(
                     "PRAGMA table_info(" + quote(table) + ")");
                 return rows.stream()
                     .map(row -> String.valueOf(row.get("name")))
                     .anyMatch(c -> c.equalsIgnoreCase(column));
             } else if (isH2()) {
-                Integer count = jdbcTemplate.queryForObject(
+                Integer count = jdbc.queryForObject(
                     "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = UPPER(?) AND COLUMN_NAME = UPPER(?)",
                     Integer.class, table, column);
                 return count != null && count > 0;
             } else if (isSqlServer()) {
-                Integer count = jdbcTemplate.queryForObject(
+                Integer count = jdbc.queryForObject(
                     "SELECT COUNT(*) FROM sys.columns c JOIN sys.tables t ON c.object_id = t.object_id WHERE t.name = ? AND c.name = ?",
                     Integer.class, table, column);
                 return count != null && count > 0;
             } else {
-                Integer count = jdbcTemplate.queryForObject(
+                Integer count = jdbc.queryForObject(
                     "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = ? AND column_name = ?",
                     Integer.class, table, column);
                 return count != null && count > 0;
@@ -403,7 +402,7 @@ public class Schema {
         }
     }
 
-    JdbcTemplate getJdbcTemplate() {
-        return jdbcTemplate;
+    JdbcExecutor getJdbcExecutor() {
+        return jdbc;
     }
 }

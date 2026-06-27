@@ -1,6 +1,6 @@
 # migration 模块
 
-> Jaravel-Vendor 的数据库迁移模块，提供 Laravel 风格的 Blueprint 流式建表、`up()` / `down()` 迁移引擎、`migrate` / `rollback` / `reset` / `refresh` / `status` 命令，以及 MySQL、SQLite、H2、SQL Server 多数据库方言自动适配。支持 DIRECTORY / JAR / CLASSPATH 三种迁移源模式，适配开发与生产部署。包名统一为 `com.weacsoft.jaravel.vendor.migration`。
+> Jaravel-Vendor 的数据库迁移模块，提供 Laravel 风格的 Blueprint 流式建表、`up()` / `down()` 迁移引擎、`migrate` / `rollback` / `reset` / `refresh` / `status` 命令，以及 MySQL、SQLite、H2、SQL Server 多数据库方言自动适配。支持 DIRECTORY / JAR / CLASSPATH 三种迁移源模式，适配开发与生产部署。**核心逻辑独立于 SpringBoot，可通过 `MigrationCLI` 在纯 Java 环境中运行**。包名统一为 `com.weacsoft.jaravel.vendor.migration`。
 
 ---
 
@@ -11,20 +11,24 @@
 - [3. 类总览](#3-类总览)
 - [4. 迁移源模式](#4-迁移源模式)
 - [5. JDK/JRE 构建配置](#5-jdkjre-构建配置)
-- [6. Migration —— 迁移接口](#6-migration--迁移接口)
-- [7. MigrationAnnotation —— 迁移标记注解](#7-migrationannotation--迁移标记注解)
-- [8. MigrationScanner —— 迁移源扫描器](#8-migrationscanner--迁移源扫描器)
-- [9. MigrationGenerator —— 迁移类源码生成器](#9-migrationgenerator--迁移类源码生成器)
-- [10. Schema —— 表结构构建器](#10-schema--表结构构建器)
-- [11. Blueprint —— 表结构蓝图](#11-blueprint--表结构蓝图)
-- [12. ColumnDefinition —— 列定义](#12-columndefinition--列定义)
-- [13. ForeignKeyDefinition —— 外键定义](#13-foreignkeydefinition--外键定义)
-- [14. Migrator —— 迁移引擎](#14-migrator--迁移引擎)
-- [15. MigrationRepository —— 迁移记录仓库](#15-migrationrepository--迁移记录仓库)
-- [16. MigrationRunner —— 命令行运行器](#16-migrationrunner--命令行运行器)
-- [17. MigrationAutoConfiguration —— 自动装配](#17-migrationautoconfiguration--自动装配)
-- [18. 配置选项](#18-配置选项)
-- [19. 线程安全说明](#19-线程安全说明)
+- [6. 独立运行（无 SpringBoot）](#6-独立运行无-springboot)
+- [7. Migration —— 迁移接口](#7-migration--迁移接口)
+- [8. MigrationAnnotation —— 迁移标记注解](#8-migrationannotation--迁移标记注解)
+- [9. MigrationScanner —— 迁移源扫描器](#9-migrationscanner--迁移源扫描器)
+- [10. MigrationGenerator —— 迁移类源码生成器](#10-migrationgenerator--迁移类源码生成器)
+- [11. Schema —— 表结构构建器](#11-schema--表结构构建器)
+- [12. Blueprint —— 表结构蓝图](#12-blueprint--表结构蓝图)
+- [13. ColumnDefinition —— 列定义](#13-columndefinition--列定义)
+- [14. ForeignKeyDefinition —— 外键定义](#14-foreignkeydefinition--外键定义)
+- [15. Migrator —— 迁移引擎](#15-migrator--迁移引擎)
+- [16. MigrationRepository —— 迁移记录仓库](#16-migrationrepository--迁移记录仓库)
+- [17. MigrationExecutor —— 迁移执行器](#17-migrationexecutor--迁移执行器)
+- [18. MigrationRunner —— SpringBoot 适配器](#18-migrationrunner--springboot-适配器)
+- [19. MigrationCLI —— 独立命令行入口](#19-migrationcli--独立命令行入口)
+- [20. JdbcExecutor —— 轻量 JDBC 执行器](#20-jdbcexecutor--轻量-jdbc-执行器)
+- [21. MigrationAutoConfiguration —— 自动装配](#21-migrationautoconfiguration--自动装配)
+- [22. 配置选项](#22-配置选项)
+- [23. 线程安全说明](#23-线程安全说明)
 
 ---
 
@@ -264,7 +268,92 @@ mvn clean package -Djre-only
 
 ---
 
-## 6. Migration —— 迁移接口
+## 6. 独立运行（无 SpringBoot）
+
+migration 模块的核心逻辑完全独立于 SpringBoot，可在纯 Java 环境中运行。
+
+### 架构分层
+
+```
+┌─────────────────────────────────────────────┐
+│         MigrationCLI (独立入口)               │  ← 无 SpringBoot
+│         MigrationExecutor (核心执行器)         │  ← 无 SpringBoot
+├─────────────────────────────────────────────┤
+│  Migrator / Schema / MigrationRepository    │  ← 无 SpringBoot
+│  MigrationScanner / Blueprint / JdbcExecutor │  ← 无 SpringBoot
+├─────────────────────────────────────────────┤
+│         MigrationRunner (SpringBoot 适配器)   │  ← 仅此类需要 SpringBoot
+│         MigrationAutoConfiguration            │
+└─────────────────────────────────────────────┘
+```
+
+### SpringBoot 环境（默认）
+
+SpringBoot 应用中通过 `application.yml` 配置，启动时自动执行迁移：
+
+```yaml
+jaravel:
+  migration:
+    enabled: true
+    source: DIRECTORY          # DIRECTORY / JAR / CLASSPATH
+    directory: migrations
+    table: migrations
+    auto-run: true
+```
+
+### 独立运行（CI/CD 或无 SpringBoot 环境）
+
+通过 `MigrationCLI` 直接执行迁移，只需 migration.jar + utils.jar + slf4j + JDBC 驱动：
+
+```bash
+# 编译迁移模块
+mvn clean package -pl migration,utils -am
+
+# 执行迁移
+java -cp migration/target/migration-0.1.0.jar:utils/target/utils-0.1.0.jar:mysql-connector.jar \
+  com.weacsoft.jaravel.vendor.migration.MigrationCLI \
+  --db-url=jdbc:mysql://localhost:3306/mydb \
+  --db-user=root \
+  --db-password=secret \
+  --source=DIRECTORY \
+  --directory=/path/to/migrations \
+  migrate
+```
+
+### 编程式调用
+
+```java
+// 创建配置
+MigrationProperties properties = new MigrationProperties();
+properties.setEnabled(true);
+properties.setSource(MigrationSource.DIRECTORY);
+properties.setDirectory("/path/to/migrations");
+properties.setTable("migrations");
+
+// 创建数据源（任意 DataSource 实现）
+DataSource dataSource = ...; // HikariDataSource, DriverManagerDataSource, etc.
+
+// 执行迁移
+MigrationExecutor executor = new MigrationExecutor(dataSource, properties);
+executor.execute("migrate");           // 执行迁移
+executor.execute("rollback=5");        // 回滚 5 批
+executor.execute("status");            // 查看状态
+```
+
+### pom.xml 依赖说明
+
+| 依赖 | 类型 | 说明 |
+| --- | --- | --- |
+| `utils` | 必须 | MemoryClassLoader（JDK 编译迁移类） |
+| `slf4j-api` | 必须 | 日志接口 |
+| `spring-boot-autoconfigure` | **optional** | 仅 MigrationAutoConfiguration/MigrationRunner 需要 |
+| `spring-boot-configuration-processor` | **optional** | 配置元数据生成 |
+
+独立运行时只需引入 `utils` + `slf4j-api` + JDBC 驱动，不需要 SpringBoot。
+
+---
+
+## 7. Migration —— 迁移接口
 
 `com.weacsoft.jaravel.vendor.migration.Migration`
 

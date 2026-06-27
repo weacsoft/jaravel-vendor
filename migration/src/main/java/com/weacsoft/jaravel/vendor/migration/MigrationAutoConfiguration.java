@@ -9,7 +9,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -17,43 +17,51 @@ import org.springframework.core.annotation.Order;
 import javax.sql.DataSource;
 
 /**
- * 迁移模块自动装配。
+ * 迁移模块自动装配（SpringBoot 适配层）。
  * <p>
- * <b>重要变更</b>：不再注入 {@code List<Migration>}，也不再注册 {@link Schema}、
- * {@link MigrationRepository}、{@link Migrator} 为 Bean。
- * 迁移文件不再是 Spring 组件，而是通过 {@link MigrationScanner} 在运行时
- * 加载（DIRECTORY 内存编译 / JAR 加载 / CLASSPATH 扫描）、反射实例化、执行后自动释放。
+ * <b>设计说明</b>：迁移核心逻辑（{@link MigrationExecutor}、{@link Migrator}、
+ * {@link Schema}、{@link MigrationRepository}、{@link MigrationScanner}）已完全独立于 SpringBoot，
+ * 可通过 {@link MigrationCLI} 在纯 Java 环境中运行。本类仅作为 SpringBoot 适配层，
+ * 将 {@link DataSource} 和配置注入到 {@link MigrationExecutor}。
  * <p>
- * 本类仅注册 {@link MigrationRunner} 一个 Bean，注入 {@link DataSource} 与
- * {@link MigrationProperties}。{@link MigrationRunner} 在运行时创建
- * {@link MigrationScanner}、{@link Schema}、{@link MigrationRepository}、
- * {@link Migrator}，执行完毕后调用 {@link MigrationScanner#finish()} 释放资源。
+ * 本类注册两个 Bean：
+ * <ul>
+ *   <li>{@link MigrationProperties}：通过 {@code @ConfigurationProperties} 绑定 {@code jaravel.migration.*} 配置</li>
+ *   <li>{@link MigrationRunner}：实现 {@code CommandLineRunner}，启动时根据命令参数执行迁移</li>
+ * </ul>
  * <p>
  * 通过 {@link AutoConfigureAfter} 显式声明在 {@link DataSourceAutoConfiguration} 之后装配，
  * 确保 {@code @ConditionalOnBean(DataSource.class)} 能正确匹配到已注册的数据源。
  */
 @AutoConfiguration
 @AutoConfigureAfter(DataSourceAutoConfiguration.class)
-@ConditionalOnClass(Migrator.class)
+@ConditionalOnClass(MigrationExecutor.class)
 @ConditionalOnBean(DataSource.class)
 @ConditionalOnProperty(prefix = "jaravel.migration", name = "enabled", havingValue = "true", matchIfMissing = true)
-@EnableConfigurationProperties(MigrationProperties.class)
 public class MigrationAutoConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(MigrationAutoConfiguration.class);
 
     /**
-     * 注册迁移命令行运行器。
+     * 迁移配置 Bean，绑定 {@code jaravel.migration.*} 配置。
      * <p>
-     * 仅注入 {@link DataSource} 与 {@link MigrationProperties}，
-     * 在运行时由 {@link MigrationRunner} 创建 {@link MigrationScanner} 等组件。
+     * {@link MigrationProperties} 本身为纯 POJO（无 Spring 注解），
+     * 通过此 {@code @Bean} 方法上的 {@code @ConfigurationProperties} 完成属性绑定。
+     *
+     * @return 迁移配置
+     */
+    @Bean
+    @ConfigurationProperties(prefix = "jaravel.migration")
+    @ConditionalOnMissingBean
+    public MigrationProperties jaravelMigrationProperties() {
+        return new MigrationProperties();
+    }
+
+    /**
+     * 注册迁移命令行运行器（SpringBoot 适配）。
      * <p>
-     * 根据配置的 {@link MigrationSource} 选择迁移加载方式：
-     * <ul>
-     *   <li>{@link MigrationSource#DIRECTORY}：目录模式，运行时内存编译（需要 JDK）</li>
-     *   <li>{@link MigrationSource#JAR}：JAR 模式，加载预编译迁移类（只需要 JRE）</li>
-     *   <li>{@link MigrationSource#CLASSPATH}：Classpath 模式，扫描内置迁移（只需要 JRE）</li>
-     * </ul>
+     * 内部委托给 {@link MigrationExecutor}，仅实现 {@code CommandLineRunner}
+     * 以便在 SpringBoot 启动后自动执行迁移。
      *
      * @param dataSource 数据源
      * @param properties 迁移配置

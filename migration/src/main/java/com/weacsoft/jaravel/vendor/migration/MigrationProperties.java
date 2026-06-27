@@ -1,9 +1,12 @@
 package com.weacsoft.jaravel.vendor.migration;
 
-import org.springframework.boot.context.properties.ConfigurationProperties;
-
 /**
  * 迁移配置，前缀 {@code jaravel.migration}。
+ * <p>
+ * <b>独立于 SpringBoot</b>：此类为纯 POJO，不依赖任何 Spring 注解。
+ * 在 SpringBoot 环境中通过 {@link MigrationAutoConfiguration} 的
+ * {@code @Bean @ConfigurationProperties} 方法绑定配置；
+ * 在独立运行时通过 {@link MigrationCLI} 手动设置。
  * <p>
  * 支持三种迁移源模式：
  * <pre>
@@ -37,7 +40,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *
  * @see MigrationSource
  */
-@ConfigurationProperties(prefix = "jaravel.migration")
 public class MigrationProperties {
 
     /** 是否启用迁移模块 */
