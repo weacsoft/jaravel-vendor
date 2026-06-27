@@ -103,7 +103,7 @@ if (cached instanceof CompiledTemplateData) {
 ### BladeCompiler
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.jblade`
-- **Description**: Blade 模板编译器，将 `.blade.java` 模板文件编译为 Java 源代码并通过内存编译器加载。支持 Blade 语法：@extends、@section/@endsection、@yield、@if/@elseif/@else/@endif、@foreach/@endforeach、@for/@endfor、@component/@endcomponent、@slot/@endslot、{{ }} 变量输出、{{-- --}} 注释。
+- **Description**: Blade 模板编译器，将 `.blade.java` 模板文件编译为 Java 源代码并通过内存编译器加载。支持 Blade 语法：@extends、@section/@endsection、@yield、@if/@elseif/@else/@endif、@foreach/@endforeach、@for/@endfor、@component/@endcomponent、@slot/@endslot、@asset（静态资源 URL 生成，运行时委托 `BladeAssetHelper.url()`）、{{ }} 变量输出、{{-- --}} 注释。
 
 #### Methods
 
@@ -131,6 +131,7 @@ if (cached instanceof CompiledTemplateData) {
 - `@for(init; cond; update)` / `@endfor` - for 循环
 - `@component('name', [params])` / `@endcomponent` - 组件
 - `@slot('name')` / `@endslot` - 组件插槽
+- `@asset('css/app.css')` - 静态资源 URL 生成，编译为 `BladeAssetHelper.url("css/app.css")`
 - `$var->method()` - 对象方法调用
 - `$var->property` - 对象属性访问
 - `$var['key']` - 数组/Map 访问
@@ -272,3 +273,54 @@ String camel = StringUtils.underlineToCamelCase("user_name"); // "userName"
 String underline = StringUtils.camelCaseToUnderline("userName"); // "user_name"
 String pascal = StringUtils.underlineToPascalCase("user_name"); // "UserName"
 ```
+
+---
+
+### BladeAssetHelper
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.jblade`
+- **Description**: Blade 模板静态资源辅助类，`@asset` 指令的运行时实现。通过静态字段持有 URL 前缀，将资源相对路径拼接为完整 URL。模板中 `@asset('css/app.css')` 经 `BladeCompiler` 编译后调用 `BladeAssetHelper.url("css/app.css")`，输出 `/static/css/app.css`。对齐 Laravel 的 `asset()` 辅助函数。
+
+#### Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `urlPrefix` | `String`（private static） | 静态资源 URL 前缀，默认值 `/static` |
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `setUrlPrefix` | `String prefix` | `void` | 设置 URL 前缀，自动确保以 `/` 开头且不以 `/` 结尾；传入 null 或空字符串时保持原值 |
+| `getUrlPrefix` | 无 | `String` | 获取当前 URL 前缀（默认 `/static`） |
+| `url` | `String path` | `String` | 生成静态资源 URL，将资源相对路径拼接到前缀后（如 `url("css/app.css")` → `/static/css/app.css`）；path 开头的 `/` 会被自动去除；path 为 null/空时返回前缀本身 |
+
+#### Usage Example
+```java
+import com.weacsoft.jaravel.vendor.jblade.BladeAssetHelper;
+
+// 应用启动时配置 URL 前缀
+BladeAssetHelper.setUrlPrefix("/static");
+
+// 生成资源 URL
+BladeAssetHelper.url("css/app.css");    // "/static/css/app.css"
+BladeAssetHelper.url("/js/app.js");     // "/static/js/app.js"
+```
+
+Blade 模板中使用 `@asset` 指令：
+
+```blade
+<link rel="stylesheet" href="@asset('css/app.css')">
+<script src="@asset('js/app.js')"></script>
+<img src="@asset('images/logo.png')">
+```
+
+渲染结果（前缀为 `/static`）：
+
+```html
+<link rel="stylesheet" href="/static/css/app.css">
+<script src="/static/js/app.js"></script>
+<img src="/static/images/logo.png">
+```
+
+> 配合 HTTP 模块的 `StaticResourceRoute` 使用：`BladeAssetHelper` 的 URL 前缀须与 `StaticResourceRoute` 的 `urlPrefix` 一致，`@asset` 生成的 URL 才能被静态资源路由命中并返回对应文件。

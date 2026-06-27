@@ -21,6 +21,7 @@
 - [10. 支持的指令](#10-支持的指令)
 - [11. 使用示例](#11-使用示例)
 - [12. 线程安全说明](#12-线程安全说明)
+- [13. 静态资源 URL 生成（@asset）](#13-静态资源-url-生成asset)
 
 ---
 
@@ -912,3 +913,116 @@ public Object listUsers() {
 | `StringUtils` | 线程安全 | 无状态静态方法 |
 
 > **重要提示**：`BladeEngine.render()` 方法在渲染前会调用 `template.resetContext()` 重置上下文，因此多个请求**串行**调用 `render()` 是安全的。但**并发**调用同一 `BladeEngine` 实例的 `render()` 方法可能导致上下文状态混乱，建议在高并发场景下为每个请求创建独立的 `BladeEngine` 实例，或使用外部同步机制。
+
+---
+
+## 13. 静态资源 URL 生成（@asset）
+
+`jblade` 提供 `@asset` 指令，用于在 Blade 模板中生成静态资源 URL，对齐 Laravel 的 `asset()` 辅助函数。该指令由 `BladeAssetHelper` 类提供运行时实现，将资源相对路径拼接为带 URL 前缀的完整路径，常用于引用 CSS、JS、图片等静态文件。
+
+### 功能说明
+
+| 项 | 说明 |
+| --- | --- |
+| 对齐 Laravel | `asset('css/app.css')` 辅助函数 |
+| 指令语法 | `@asset('css/app.css')` |
+| 运行时实现 | `BladeAssetHelper.url("css/app.css")` |
+| 默认 URL 前缀 | `/static`（可通过 `BladeAssetHelper.setUrlPrefix()` 修改） |
+| 编译产物 | `write(writer, BladeAssetHelper.url("css/app.css"))` |
+
+模板中写 `@asset('css/app.css')` 时，`BladeCompiler` 在 `processRenderDirectives` 方法的 switch 语句中识别 `asset` case，将其编译为对 `BladeAssetHelper.url("css/app.css")` 的调用，运行时输出形如 `/static/css/app.css` 的 URL。
+
+### 使用示例
+
+Blade 模板（如 `templates/layout.blade.java`）：
+
+```blade
+<!DOCTYPE html>
+<html>
+<head>
+    <title>@yield('title', 'Default')</title>
+    <link rel="stylesheet" href="@asset('css/app.css')">
+    <script src="@asset('js/app.js')"></script>
+</head>
+<body>
+    <img src="@asset('images/logo.png')" alt="logo">
+    @yield('content')
+</body>
+</html>
+```
+
+### 渲染结果示例
+
+假设 URL 前缀为 `/static`，上述模板渲染结果：
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Default</title>
+    <link rel="stylesheet" href="/static/css/app.css">
+    <script src="/static/js/app.js"></script>
+</head>
+<body>
+    <img src="/static/images/logo.png" alt="logo">
+</body>
+</html>
+```
+
+### BladeAssetHelper 配置说明
+
+`BladeAssetHelper`（`com.weacsoft.jaravel.vendor.jblade.BladeAssetHelper`）是一个静态工具类，通过静态字段持有当前 URL 前缀。应在应用启动时（通常由自动装配完成）调用 `setUrlPrefix()` 配置前缀：
+
+```java
+import com.weacsoft.jaravel.vendor.jblade.BladeAssetHelper;
+
+// 设置 URL 前缀（自动补齐首部 / 并去除尾部 /）
+BladeAssetHelper.setUrlPrefix("/static");
+
+// 生成资源 URL
+String cssUrl = BladeAssetHelper.url("css/app.css");  // "/static/css/app.css"
+String jsUrl  = BladeAssetHelper.url("/js/app.js");   // "/static/js/app.js"（开头的 / 会被去除）
+```
+
+| 方法签名 | 说明 |
+| --- | --- |
+| `static void setUrlPrefix(String prefix)` | 设置 URL 前缀，自动确保以 `/` 开头、不以 `/` 结尾；传入 null 或空字符串时保持原值 |
+| `static String getUrlPrefix()` | 获取当前 URL 前缀（默认 `/static`） |
+| `static String url(String path)` | 将资源相对路径拼接为完整 URL（如 `url("css/app.css")` → `/static/css/app.css`）；path 开头的 `/` 会被自动去除 |
+
+> **默认前缀**：未调用 `setUrlPrefix()` 时，`BladeAssetHelper` 使用默认前缀 `/static`。
+
+### 与路由模块 StaticResourceRoute 的配合使用
+
+`@asset` 指令生成的 URL 需要由 HTTP 模块的 `StaticResourceRoute`（`com.weacsoft.jaravel.vendor.http.staticresource.StaticResourceRoute`）实际响应静态文件。两者通过**相同的 URL 前缀**对接：
+
+1. **路由侧**：通过 `router.serveStatic()` 注册静态资源路由，指定 URL 前缀与资源目录。
+2. **模板侧**：通过 `BladeAssetHelper.setUrlPrefix()` 设置相同的前缀。
+3. **对接**：模板中 `@asset('css/app.css')` 生成 `/static/css/app.css`，请求到达后被 `StaticResourceRoute` 拦截，从资源目录加载 `css/app.css` 文件返回。
+
+```java
+import com.weacsoft.jaravel.vendor.jblade.BladeAssetHelper;
+
+// 1. 路由侧：注册静态资源路由，URL 前缀为 /static
+router.serveStatic("/static", "classpath:/static/", 3600);
+
+// 2. 模板侧：设置相同的 URL 前缀（应与上面 serveStatic 的前缀一致）
+BladeAssetHelper.setUrlPrefix("/static");
+
+// 3. 模板中使用 @asset('css/app.css') → /static/css/app.css
+//    请求 /static/css/app.css 由 StaticResourceRoute 处理，返回 classpath:/static/css/app.css
+```
+
+或通过配置自动注册（HTTP 模块）：
+
+```yaml
+jaravel:
+  http:
+    static-resource:
+      enabled: true
+      url-prefix: /static
+      default-location: classpath:/static/
+      cache-max-age: 3600
+```
+
+> **关键点**：`BladeAssetHelper` 的 URL 前缀必须与 `StaticResourceRoute` 的 `urlPrefix` 保持一致，否则 `@asset` 生成的 URL 将无法被静态资源路由命中。`StaticResourceRoute` 支持多目录回退查找（按顺序匹配第一个命中的文件）。

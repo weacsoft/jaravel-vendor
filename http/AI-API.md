@@ -3,7 +3,7 @@
 > Module: `http` | Package: `com.weacsoft.jaravel.vendor` | Version: 0.1.0
 
 ## Overview
-http 模块提供 Laravel 风格的 HTTP 处理层，包含中间件管道（Middleware）、请求（Request）与响应（Response）抽象、路由系统（Route/Router）、控制器接口（Controllers）以及一组内置中间件（VerifyCsrfToken、TrustProxies、EncryptCookies、TrimStrings、ConvertEmptyStringsToNull）。它将 Servlet API 封装为对齐 Laravel 的 Request/Response 对象，支持链式中间件管道和路由分组。
+http 模块提供 Laravel 风格的 HTTP 处理层，包含中间件管道（Middleware）、请求（Request）与响应（Response）抽象、路由系统（Route/Router）、控制器接口（Controllers）、静态资源目录服务（StaticResource）以及一组内置中间件（VerifyCsrfToken、TrustProxies、EncryptCookies、TrimStrings、ConvertEmptyStringsToNull）。它将 Servlet API 封装为对齐 Laravel 的 Request/Response 对象，支持链式中间件管道、路由分组，并通过 `Router.serveStatic()` 提供对齐 Laravel `public` 目录与 `asset()` 辅助函数的静态资源服务。
 
 ## Classes & Interfaces
 
@@ -82,7 +82,7 @@ route.name("users.show").middleware(authMiddleware);
 ### Router
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.route`
-- **Description**: 路由器，管理路由集合和子路由器。支持 HTTP 动词方法（get/post/put/delete/patch/all）、路由分组（group）和中间件链。
+- **Description**: 路由器，管理路由集合和子路由器。支持 HTTP 动词方法（get/post/put/delete/patch/all）、路由分组（group）、中间件链，以及静态资源目录服务（serveStatic，对齐 Laravel `public` 目录）。
 - **Annotations**: Lombok `@Getter`/`@Setter`
 
 #### Methods
@@ -99,6 +99,9 @@ route.name("users.show").middleware(authMiddleware);
 | `addRoute` | `String method, String uri, Controllers.Runner action` | `Route` | 添加单条路由 |
 | `addMultiRoute` | `String[] method, String uri, Controllers.Runner action` | `Router` | 添加多方法路由 |
 | `group` | `Map<Route.Group, String> params, Consumer<Router> router` | `Router` | 创建路由分组（设置 namespace/prefix/name） |
+| `serveStatic` | `String urlPrefix, String location, int cacheMaxAge` | `StaticResourceRoute` | 注册静态资源目录（指定缓存时间），注册 GET `{urlPrefix}/{path}` 路由 |
+| `serveStatic` | `String urlPrefix, String location` | `StaticResourceRoute` | 注册静态资源目录（默认缓存 1 小时） |
+| `serveStatic` | `String urlPrefix, List<String> locations, int cacheMaxAge` | `StaticResourceRoute` | 注册多目录静态资源（按顺序回退查找） |
 | `getAllRoutes` | 无 | `List<Route>` | 获取所有路由（含子路由器的） |
 | `getAllMiddlewares` | 无 | `List<Middleware>` | 获取所有中间件（含父路由器的） |
 
@@ -253,7 +256,7 @@ Request current = RequestFactory.getCurrentRequest();
 ### ResponseBuilder
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.http.response`
-- **Description**: 响应构建器，提供静态工厂方法创建各类响应（JSON、视图、文本、文件下载、错误、重定向等）。
+- **Description**: 响应构建器，提供静态工厂方法创建各类响应（JSON、视图、文本、文件下载、静态文件、错误、重定向等）。
 
 #### Methods
 
@@ -265,6 +268,7 @@ Request current = RequestFactory.getCurrentRequest();
 | `json` | `Object data` | `Response` | 创建 JSON 响应 |
 | `content` | `String content` | `Response` | 创建纯文本响应 |
 | `file` | `byte[] data, String filename` | `Response` | 创建文件下载响应 |
+| `staticFile` | `byte[] data, String mimeType, int cacheMaxAge` | `Response` | 创建静态文件响应（设置 Content-Type / Cache-Control / Content-Length，供静态资源服务使用） |
 | `unauthorized` | `String message` | `Response` | 创建 401 未授权响应 |
 | `forbidden` | `String message` | `Response` | 创建 403 禁止访问响应 |
 | `error` | `int status, String message` | `Response` | 创建错误响应 |
@@ -415,3 +419,112 @@ Controllers.Runner handler = request -> {
 | `ConvertEmptyStringsToNull` | 无 | 构造方法 | 默认排除 password/password_confirmation/current_password |
 | `ConvertEmptyStringsToNull` | `String... except` | 构造方法 | 指定排除字段 |
 | `handle` | `Request request, NextFunction next` | `Response` | 转换空字符串为 null |
+
+---
+
+### StaticResourceProperties
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.http.staticresource`
+- **Description**: 静态资源配置属性，对齐 Laravel 的 `public` 目录和 `asset()` 辅助函数。通过 `jaravel.http.static-resource` 前缀在 `application.yml` 中配置。
+
+#### Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | `true` | 是否启用静态资源服务 |
+| `urlPrefix` | `String` | `/static` | URL 前缀（对齐 Laravel mix） |
+| `defaultLocation` | `String` | `classpath:/static/` | 默认资源目录（classpath 或文件系统） |
+| `cacheMaxAge` | `int` | `3600` | 缓存时间（秒），写入 `Cache-Control: max-age=N` |
+| `directoryListing` | `boolean` | `false` | 是否允许目录列表（默认关闭） |
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `isEnabled` / `setEnabled` | `boolean enabled` | `boolean` / `void` | 启用状态 |
+| `getUrlPrefix` / `setUrlPrefix` | `String urlPrefix` | `String` / `void` | URL 前缀 |
+| `getDefaultLocation` / `setDefaultLocation` | `String defaultLocation` | `String` / `void` | 默认资源目录 |
+| `getCacheMaxAge` / `setCacheMaxAge` | `int cacheMaxAge` | `int` / `void` | 缓存时间（秒） |
+| `isDirectoryListing` / `setDirectoryListing` | `boolean directoryListing` | `boolean` / `void` | 目录列表开关 |
+
+#### Usage Example
+```yaml
+jaravel:
+  http:
+    static-resource:
+      enabled: true
+      url-prefix: /static
+      default-location: classpath:/static/
+      cache-max-age: 3600
+      directory-listing: false
+```
+
+---
+
+### StaticResourceHandler
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.http.staticresource`
+- **Description**: 静态资源处理器，负责从 classpath 或文件系统读取静态文件，自动推断 MIME 类型，设置缓存头，并防范路径穿越攻击。支持 `classpath:`（打包在 JAR 内）和 `file:`（外部文件系统）两种资源位置前缀。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `StaticResourceHandler` | `String location, int cacheMaxAge` | 构造方法 | 创建处理器（location 如 `classpath:/static/` 或 `file:./public/`，自动补全尾部 `/`） |
+| `load` | `String relativePath` | `ResourceResult` | 加载资源；不存在或路径不安全返回 `null` |
+| `sanitizePath` (static) | `String path` | `String` | 路径安全处理，拒绝包含 `..` 或 `\` 的路径穿越，规范化多余 `/`；不安全返回 `null` |
+| `guessMimeType` (static) | `String path` | `String` | 根据文件扩展名推断 MIME 类型，未知返回 `application/octet-stream` |
+| `getLocation` | 无 | `String` | 返回资源位置（用于日志和调试） |
+
+#### Nested Types
+- **StaticResourceHandler.ResourceResult** (class): 静态资源加载结果
+  - `byte[] getContent()` — 资源字节内容
+  - `String getMimeType()` — MIME 类型
+  - `int getCacheMaxAge()` — 缓存时间（秒）
+  - `int getContentLength()` — 内容长度（字节）
+
+#### Usage Example
+```java
+StaticResourceHandler handler = new StaticResourceHandler("classpath:/static/", 3600);
+StaticResourceHandler.ResourceResult result = handler.load("css/app.css");
+if (result != null) {
+    byte[] content = result.getContent();        // 文件字节
+    String mime    = result.getMimeType();       // text/css; charset=utf-8
+    int maxAge     = result.getCacheMaxAge();    // 3600
+}
+
+// 静态方法
+String mime = StaticResourceHandler.guessMimeType("app.css");   // text/css; charset=utf-8
+String safe = StaticResourceHandler.sanitizePath("../etc/passwd"); // null（路径穿越被拦截）
+```
+
+---
+
+### StaticResourceRoute
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.http.staticresource`
+- **Description**: 静态资源路由处理器。注册到 Router 后，匹配 URL 前缀的 GET 请求会被此处理器拦截，从配置的资源目录加载文件并返回。支持多目录按顺序回退查找，全部未命中返回 404。
+- **Implements**: `Controllers.Runner`
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `StaticResourceRoute` | `String urlPrefix, String location, int cacheMaxAge` | 构造方法 | 单目录静态资源路由 |
+| `StaticResourceRoute` | `String urlPrefix, List<String> locations, int cacheMaxAge` | 构造方法 | 多目录静态资源路由（按顺序回退查找） |
+| `handle` | `Request request` | `Response` | 从 `routeParam("path")` 提取相对路径，按目录顺序查找；命中返回 `ResponseBuilder.staticFile(...)`，未命中返回 404 |
+| `getUrlPrefix` | 无 | `String` | 返回 URL 前缀 |
+
+#### Usage Example
+```java
+// 单目录
+StaticResourceRoute route = new StaticResourceRoute("/static", "classpath:/static/", 3600);
+
+// 多目录回退（先文件系统，再 classpath）
+StaticResourceRoute route2 = new StaticResourceRoute("/static",
+        List.of("file:./public/", "classpath:/static/"), 3600);
+
+// 通常通过 Router.serveStatic() 注册，无需手动构造
+router.serveStatic("/static", "classpath:/static/", 3600);
+router.serveStatic("/static", List.of("file:./public/", "classpath:/static/"), 3600);
+```

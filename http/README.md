@@ -22,6 +22,14 @@
 - [8. 控制器契约（Controllers）](#8-控制器契约controllers)
 - [9. 配置选项](#9-配置选项)
 - [10. 线程安全说明](#10-线程安全说明)
+- [11. 静态资源目录（StaticResource）](#11-静态资源目录staticresource)
+  - [11.1 架构](#111-架构)
+  - [11.2 使用示例](#112-使用示例)
+  - [11.3 多目录回退查找](#113-多目录回退查找)
+  - [11.4 配置（StaticResourceProperties）](#114-配置staticresourceproperties)
+  - [11.5 MIME 类型](#115-mime-类型)
+  - [11.6 路径安全](#116-路径安全)
+  - [11.7 Blade 模板 @asset 指令](#117-blade-模板-asset-指令)
 
 ---
 
@@ -40,6 +48,7 @@
 | `Request` | `Request` / `RequestFactory` | Laravel 风格请求对象 |
 | `Response` | `Response` / `ResponseBuilder` | 链式响应构建 |
 | 路由 | `Router` / `Route` / `RouteService` | 路由注册与分组 |
+| `public` 目录 / `asset()` | `StaticResourceHandler` / `StaticResourceRoute` / `Router.serveStatic()` | 静态资源目录服务，对齐 Laravel `public` 与 `asset()` |
 
 **重要设计原则**：所有内置中间件均为 `@Component`、无状态（stateless）、不可变（immutable）——所有字段为 `final`，构造后不可修改，无 setter。因此它们可被 Spring 容器作为单例管理，并安全地在并发请求间复用。
 
@@ -86,10 +95,14 @@ com.weacsoft.jaravel.vendor
 │   ├── request
 │   │   ├── Request                    // Laravel 风格请求对象
 │   │   └── RequestFactory             // 请求构建工厂
-│   └── response
-│       ├── Response                   // 响应接口
-│       ├── ResponseBuilder            // 响应构建器（静态工厂）
-│       └── JSONResponseResolver       // JSON 响应工具
+│   ├── response
+│   │   ├── Response                   // 响应接口
+│   │   ├── ResponseBuilder            // 响应构建器（静态工厂）
+│   │   └── JSONResponseResolver       // JSON 响应工具
+│   └── staticresource
+│       ├── StaticResourceProperties   // 静态资源配置属性
+│       ├── StaticResourceHandler      // 静态资源处理器（MIME 推断/路径安全/双模式加载）
+│       └── StaticResourceRoute        // 静态资源路由（实现 Controllers.Runner）
 ├── route
 │   ├── Router                         // 路由器（注册与分组）
 │   ├── Route                          // 单条路由
@@ -484,6 +497,7 @@ Request current = RequestFactory.getCurrentRequest();
 | `static Response content(String content)` | 200 状态，纯文本，Content-Type: text/plain |
 | `static Response view(String templateName, Map<String,Object> data)` | 200 状态，渲染 Blade 模板，Content-Type: text/html |
 | `static Response file(byte[] data, String filename)` | 200 状态，文件下载，Content-Type: application/octet-stream |
+| `static Response staticFile(byte[] data, String mimeType, int cacheMaxAge)` | 200 状态，静态文件响应，设置 Content-Type / Cache-Control / Content-Length |
 | `static Response redirect(String url)` | 302 重定向，设置 Location 头 |
 | `static Response unauthorized(String message)` | 401 未授权 |
 | `static Response forbidden(String message)` | 403 禁止访问 |
@@ -554,6 +568,9 @@ Map<String, Object> err = JSONResponseResolver.createErrorResponse("参数错误
 | `Route addRoute(String method, String uri, Controllers.Runner action)` | 注册指定方法路由 |
 | `Router addMultiRoute(String[] methods, String uri, Controllers.Runner action)` | 注册多方法路由组 |
 | `Router group(Map<Route.Group,String> params, Consumer<Router> router)` | 路由分组（namespace/prefix/name） |
+| `StaticResourceRoute serveStatic(String urlPrefix, String location, int cacheMaxAge)` | 注册静态资源目录（指定缓存时间），对齐 Laravel `public` |
+| `StaticResourceRoute serveStatic(String urlPrefix, String location)` | 注册静态资源目录（默认缓存 1 小时） |
+| `StaticResourceRoute serveStatic(String urlPrefix, List<String> locations, int cacheMaxAge)` | 注册多目录静态资源（按顺序回退查找） |
 | `List<Route> getAllRoutes()` | 递归获取所有路由（含子路由器） |
 | `List<Middleware> getAllMiddlewares()` | 获取本路由器及父级链的中间件 |
 | `String getName()` / `setName(String)` | 路由器名称 |
@@ -685,4 +702,170 @@ router.get("/users", userController::index);
 | `JSONResponseResolver` | 线程安全 | 静态方法，`ObjectMapper` 为静态 final |
 | `Router` / `Route` | 启动期安全 | 内部使用 `CopyOnWriteArrayList`，适合启动阶段注册、运行时只读。运行时动态增删路由虽线程安全但开销较大 |
 | `RouteService` | 线程安全 | 纯静态无状态方法 |
+| `StaticResourceHandler` | 线程安全 | 字段 `final`（location/cacheMaxAge），MIME 表为静态 final 只读 Map，多请求只读复用 |
+| `StaticResourceRoute` | 启动期安全 | 通过 `Router.serveStatic()` 在启动阶段构造，handlers 列表构造后只读；运行时仅读 |
+| `StaticResourceProperties` | 线程安全 | 配置 POJO，启动阶段注入后只读 |
 | `Controllers.Runner` | 取决于实现 | 函数式接口，线程安全性取决于具体 action 实现 |
+
+---
+
+## 11. 静态资源目录（StaticResource）
+
+`com.weacsoft.jaravel.vendor.http.staticresource`
+
+`http` 模块新增静态资源目录功能，对齐 Laravel 的 `public` 目录与 `asset()` 辅助函数。开发者通过 `Router.serveStatic()` 注册一个或多个资源目录，框架自动处理 MIME 推断、缓存头与路径穿越防护，将 GET 请求映射到 classpath 或文件系统中的静态文件。
+
+涉及类：
+
+| 类 | 职责 |
+| --- | --- |
+| `StaticResourceProperties` | 配置属性（前缀 `jaravel.http.static-resource`） |
+| `StaticResourceHandler` | 核心处理器：MIME 推断、路径安全、classpath/文件系统双模式加载 |
+| `StaticResourceRoute` | 路由处理器（实现 `Controllers.Runner`），多目录回退查找并返回响应 |
+
+### 11.1 架构
+
+```
+GET /static/css/app.css
+        │
+        ▼
+Router.serveStatic("/static", "classpath:/static/", 3600)
+   注册路由 GET /static/{path} → StaticResourceRoute
+        │
+        ▼
+StaticResourceRoute.handle(Request)
+   从 routeParam("path") 提取相对路径 css/app.css
+        │
+        ▼
+StaticResourceHandler.load("css/app.css")
+   ├── sanitizePath()   路径穿越防护（拒绝 .. 与反斜杠 \）
+   ├── guessMimeType()  推断 text/css; charset=utf-8
+   └── 双模式加载
+        ├── classpath:/static/  → ClassLoader.getResource() 读取（JAR 内）
+        └── file:./public/      → Files.readAllBytes() 读取（外部目录）
+        │
+        ▼
+ResourceResult(content / mimeType / cacheMaxAge)
+        │
+        ▼
+ResponseBuilder.staticFile(bytes, mimeType, cacheMaxAge)
+   设置 Content-Type / Cache-Control / Content-Length
+        │
+        ▼
+200 OK 响应
+```
+
+### 11.2 使用示例
+
+```java
+Router router = new Router();
+
+// 基本用法：单目录 + 缓存 1 小时
+router.serveStatic("/static", "classpath:/static/", 3600);
+// 访问 /static/css/app.css → classpath:/static/css/app.css
+
+// 默认缓存 1 小时（cacheMaxAge 默认 3600）
+router.serveStatic("/static", "classpath:/static/");
+
+// 使用文件系统目录（部署在 JAR 外部，便于热更新）
+router.serveStatic("/assets", "file:./public/", 7200);
+// 访问 /assets/js/app.js → ./public/js/app.js
+```
+
+> `serveStatic` 有 3 个重载：单目录带缓存时间、单目录默认缓存、多目录带缓存时间。位置前缀支持 `classpath:`（打包在 JAR 内）与 `file:`（外部文件系统）。
+
+### 11.3 多目录回退查找
+
+当同一 URL 前缀需要从多个目录查找资源时，可传入目录列表。`StaticResourceRoute` 会按列表顺序逐个尝试，第一个命中的目录返回结果，全部未命中则返回 404：
+
+```java
+Router router = new Router();
+
+// 先在文件系统 public 目录查找，找不到再回退到 classpath
+router.serveStatic("/static", List.of(
+    "file:./public/",         // 优先：外部目录（可热更新）
+    "classpath:/static/"      // 回退：打包在 JAR 内的默认资源
+), 3600);
+
+// 访问 /static/img/logo.png
+//   1. 尝试 ./public/img/logo.png          → 命中则返回
+//   2. 尝试 classpath:/static/img/logo.png  → 命中则返回
+//   3. 均未命中 → 404 Not Found
+```
+
+### 11.4 配置（StaticResourceProperties）
+
+通过 `application.yml` 以 `jaravel.http.static-resource` 前缀配置：
+
+```yaml
+jaravel:
+  http:
+    static-resource:
+      enabled: true
+      url-prefix: /static
+      default-location: classpath:/static/
+      cache-max-age: 3600
+      directory-listing: false
+```
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `enabled` | `boolean` | `true` | 是否启用静态资源服务 |
+| `urlPrefix` | `String` | `/static` | URL 前缀，对齐 Laravel `mix()`（如 `/static`） |
+| `defaultLocation` | `String` | `classpath:/static/` | 默认资源目录（`classpath:` 或 `file:` 前缀） |
+| `cacheMaxAge` | `int` | `3600` | 缓存时间（秒），写入 `Cache-Control: max-age=N` |
+| `directoryListing` | `boolean` | `false` | 是否允许目录列表（默认关闭，对齐生产安全实践） |
+
+### 11.5 MIME 类型
+
+`StaticResourceHandler` 内置常见文件扩展名到 MIME 的映射表，未匹配的扩展名回退为 `application/octet-stream`：
+
+| 扩展名 | MIME 类型 |
+| --- | --- |
+| `.css` | `text/css; charset=utf-8` |
+| `.js` / `.mjs` | `application/javascript; charset=utf-8` |
+| `.html` / `.htm` | `text/html; charset=utf-8` |
+| `.json` | `application/json; charset=utf-8` |
+| `.xml` | `application/xml; charset=utf-8` |
+| `.txt` | `text/plain; charset=utf-8` |
+| `.csv` | `text/csv; charset=utf-8` |
+| `.png` | `image/png` |
+| `.jpg` / `.jpeg` | `image/jpeg` |
+| `.gif` | `image/gif` |
+| `.svg` | `image/svg+xml` |
+| `.ico` | `image/x-icon` |
+| `.webp` | `image/webp` |
+| `.pdf` | `application/pdf` |
+| `.woff` / `.woff2` | `font/woff` / `font/woff2` |
+| `.mp4` | `video/mp4` |
+| `.wasm` | `application/wasm` |
+
+### 11.6 路径安全
+
+为防止路径穿越攻击（Path Traversal），`StaticResourceHandler` 在加载前对请求路径进行两层防护：
+
+1. **`sanitizePath()` 字符级检查**：拒绝包含 `..` 或反斜杠 `\` 的路径，并规范化多余的 `/`，不安全时返回 `null`。
+2. **文件系统路径越界检查**：对 `file:` 前缀的资源，将解析后的绝对路径与基础目录比较（`path.startsWith(baseDir)`），确保最终文件落在允许的根目录内。
+
+```text
+以下请求会被拦截，返回 404：
+  /static/../../etc/passwd   → sanitizePath 检测到 .. 直接拒绝
+  /static/..%2f..%2fsecret   → 解析后路径越界，startsWith 校验失败
+```
+
+### 11.7 Blade 模板 @asset 指令
+
+在 Blade 模板中使用 `@asset` 指令生成静态资源 URL，对齐 Laravel `asset()` 辅助函数：
+
+```blade
+{{-- 生成 /static/css/app.css --}}
+<link rel="stylesheet" href="@asset('css/app.css')">
+
+{{-- 生成 /static/js/app.js --}}
+<script src="@asset('js/app.js')"></script>
+
+{{-- 生成 /static/img/logo.png --}}
+<img src="@asset('img/logo.png')" alt="logo">
+```
+
+`@asset('相对路径')` 会拼接配置的 `urlPrefix`（默认 `/static`），渲染为完整 URL。资源目录与 URL 前缀保持一致即可正确服务模板引用的资源。
