@@ -75,6 +75,9 @@ public class ArithmeticCaptcha extends AbstractCaptcha {
             g.dispose();
         }
 
+        // 应用水印
+        applyWatermark(image);
+
         CaptchaResult resultObj = new CaptchaResult();
         resultObj.setImageBase64(toBase64(image));
         return resultObj;

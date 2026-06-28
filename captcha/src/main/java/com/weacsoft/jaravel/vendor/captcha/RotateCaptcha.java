@@ -54,18 +54,32 @@ public class RotateCaptcha extends AbstractCaptcha {
         int size = Math.max(p.getWidth(), 200);
         int angle = random.nextInt(360);
 
-        // 1. 绘制带明显朝向的原图（渐变背景 + 向上箭头）
-        BufferedImage src = createImage(size, size);
-        Graphics2D g = src.createGraphics();
-        try {
-            drawRandomBackground(g, size, size, random);
-            drawDirectionMarker(g, size, random);
-        } finally {
-            g.dispose();
+        // 1. 绘制带明显朝向的原图：优先使用自定义背景图，无则随机生成
+        BufferedImage src = loadBackgroundImage(size, size);
+        if (src == null) {
+            src = createImage(size, size);
+            Graphics2D g = src.createGraphics();
+            try {
+                drawRandomBackground(g, size, size, random);
+                drawDirectionMarker(g, size, random);
+            } finally {
+                g.dispose();
+            }
+        } else {
+            // 自定义背景图也需要绘制朝向标记
+            Graphics2D g = src.createGraphics();
+            try {
+                drawDirectionMarker(g, size, random);
+            } finally {
+                g.dispose();
+            }
         }
 
         // 2. 旋转生成展示图
         BufferedImage rotated = rotateImage(src, angle);
+
+        // 3. 应用水印（在旋转后的展示图上叠加）
+        applyWatermark(rotated);
 
         context.setAnswer(String.valueOf(angle));
 

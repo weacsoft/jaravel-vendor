@@ -3,12 +3,16 @@ package com.weacsoft.jaravel.vendor.captcha;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Font;
+import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.GradientPaint;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Random;
@@ -331,6 +335,210 @@ public abstract class AbstractCaptcha implements Captcha {
             java.awt.geom.QuadCurve2D curve = new java.awt.geom.QuadCurve2D.Float(x1, y1, ctrlX, ctrlY, x2, y2);
             g.draw(curve);
         }
+    }
+
+    /**
+     * 加载自定义背景图。
+     * <p>
+     * 优先从 {@code backgroundImageBase64} 加载，其次从 {@code backgroundImagePath} 加载（支持文件路径和 classpath 资源）。
+     * 图片会被缩放到指定的 width x height。
+     *
+     * @param width  目标宽度
+     * @param height 目标高度
+     * @return 背景图，加载失败返回 null
+     */
+    protected BufferedImage loadBackgroundImage(int width, int height) {
+        if (properties == null) {
+            return null;
+        }
+
+        BufferedImage src = null;
+
+        // 优先从 base64 加载
+        String b64 = properties.getBackgroundImageBase64();
+        if (b64 != null && !b64.isBlank()) {
+            try {
+                byte[] bytes = decodeBase64Image(b64);
+                src = ImageIO.read(new ByteArrayInputStream(bytes));
+            } catch (Exception e) {
+                // 加载失败静默处理，后续回退到随机背景
+            }
+        }
+
+        // 其次从文件路径加载
+        if (src == null) {
+            String path = properties.getBackgroundImagePath();
+            if (path != null && !path.isBlank()) {
+                try {
+                    File file = new File(path);
+                    if (file.exists()) {
+                        src = ImageIO.read(file);
+                    } else {
+                        // 尝试 classpath
+                        try (InputStream is = getClass().getClassLoader().getResourceAsStream(path)) {
+                            if (is != null) {
+                                src = ImageIO.read(is);
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    // 加载失败静默处理
+                }
+            }
+        }
+
+        if (src == null) {
+            return null;
+        }
+
+        // 缩放到目标尺寸
+        BufferedImage scaled = createImage(width, height);
+        Graphics2D g = scaled.createGraphics();
+        try {
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.drawImage(src, 0, 0, width, height, null);
+        } finally {
+            g.dispose();
+        }
+        return scaled;
+    }
+
+    /**
+     * 在图片上绘制文字水印和图片水印。
+     * <p>
+     * 根据 {@link CaptchaProperties} 的水印配置，在图片上叠加文字水印和/或图片水印。
+     * 应在验证码内容绘制完成后调用。
+     *
+     * @param image 目标图片
+     */
+    protected void applyWatermark(BufferedImage image) {
+        if (properties == null) {
+            return;
+        }
+        int width = image.getWidth();
+        int height = image.getHeight();
+
+        // 文字水印
+        String text = properties.getWatermarkText();
+        if (text != null && !text.isBlank()) {
+            drawTextWatermark(image, text, width, height);
+        }
+
+        // 图片水印
+        String imgB64 = properties.getWatermarkImageBase64();
+        if (imgB64 != null && !imgB64.isBlank()) {
+            drawImageWatermark(image, imgB64, width, height);
+        }
+    }
+
+    /**
+     * 绘制文字水印。
+     */
+    private void drawTextWatermark(BufferedImage image, String text, int width, int height) {
+        Graphics2D g = image.createGraphics();
+        try {
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+
+            String family = properties.getWatermarkFontFamily() != null
+                    ? properties.getWatermarkFontFamily() : "Arial";
+            int fontSize = properties.getWatermarkFontSize();
+            g.setFont(new Font(family, Font.PLAIN, fontSize));
+
+            // 计算文字尺寸
+            FontMetrics fm = g.getFontMetrics();
+            int textWidth = fm.stringWidth(text);
+            int textHeight = fm.getHeight();
+
+            // 计算位置
+            int[] pos = calculateWatermarkPosition(properties.getWatermarkPosition(),
+                    width, height, textWidth, textHeight);
+            int x = pos[0];
+            int y = pos[1] + fm.getAscent();
+
+            // 旋转
+            if (properties.getWatermarkRotation() != 0) {
+                g.rotate(Math.toRadians(properties.getWatermarkRotation()), x + textWidth / 2.0, y - textHeight / 2.0);
+            }
+
+            // 设置半透明颜色
+            int colorVal = properties.getWatermarkColor();
+            g.setColor(new Color(colorVal, true));
+            g.drawString(text, x, y);
+        } finally {
+            g.dispose();
+        }
+    }
+
+    /**
+     * 绘制图片水印。
+     */
+    private void drawImageWatermark(BufferedImage image, String imgBase64, int width, int height) {
+        try {
+            byte[] bytes = decodeBase64Image(imgBase64);
+            BufferedImage watermark = ImageIO.read(new ByteArrayInputStream(bytes));
+            if (watermark == null) {
+                return;
+            }
+
+            // 缩放水印
+            int wmWidth = (int) (width * properties.getWatermarkScale());
+            int wmHeight = (int) (wmWidth * ((double) watermark.getHeight() / watermark.getWidth()));
+            if (wmWidth <= 0 || wmHeight <= 0) {
+                return;
+            }
+
+            // 计算位置（居中）
+            int x = (width - wmWidth) / 2;
+            int y = (height - wmHeight) / 2;
+
+            Graphics2D g = image.createGraphics();
+            try {
+                g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                g.setComposite(java.awt.AlphaComposite.getInstance(
+                        java.awt.AlphaComposite.SRC_OVER, properties.getWatermarkOpacity()));
+                g.drawImage(watermark, x, y, wmWidth, wmHeight, null);
+            } finally {
+                g.dispose();
+            }
+        } catch (Exception e) {
+            // 图片水印加载失败静默处理
+        }
+    }
+
+    /**
+     * 根据位置字符串计算水印坐标。
+     */
+    private int[] calculateWatermarkPosition(String position, int canvasW, int canvasH, int contentW, int contentH) {
+        int margin = 5;
+        if (position == null) position = "bottom-right";
+        switch (position.toLowerCase()) {
+            case "top-left":
+                return new int[]{margin, margin};
+            case "top-right":
+                return new int[]{canvasW - contentW - margin, margin};
+            case "bottom-left":
+                return new int[]{margin, canvasH - contentH - margin};
+            case "center":
+                return new int[]{(canvasW - contentW) / 2, (canvasH - contentH) / 2};
+            case "bottom-right":
+            default:
+                return new int[]{canvasW - contentW - margin, canvasH - contentH - margin};
+        }
+    }
+
+    /**
+     * 解码 base64 图片数据（支持带前缀和不带前缀两种格式）。
+     */
+    private byte[] decodeBase64Image(String base64) {
+        String data = base64;
+        if (data.startsWith("data:")) {
+            int idx = data.indexOf(",");
+            if (idx > 0) {
+                data = data.substring(idx + 1);
+            }
+        }
+        return Base64.getDecoder().decode(data);
     }
 
     /**

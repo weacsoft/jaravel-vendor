@@ -65,13 +65,16 @@ public class SliderCaptcha extends AbstractCaptcha {
         int gapX = minX + random.nextInt(maxX - minX);
         int gapY = random.nextInt(Math.max(1, height - blockSize));
 
-        // 1. 背景图
-        BufferedImage bg = createImage(width, height);
-        Graphics2D g = bg.createGraphics();
-        try {
-            drawRandomBackground(g, width, height, random);
-        } finally {
-            g.dispose();
+        // 1. 背景图：优先使用自定义背景图，无则随机生成
+        BufferedImage bg = loadBackgroundImage(width, height);
+        if (bg == null) {
+            bg = createImage(width, height);
+            Graphics2D g = bg.createGraphics();
+            try {
+                drawRandomBackground(g, width, height, random);
+            } finally {
+                g.dispose();
+            }
         }
 
         // 2. 滑块拼图小块（先于绘制缺口拷贝像素，保证小块内容与背景一致）
@@ -101,6 +104,9 @@ public class SliderCaptcha extends AbstractCaptcha {
         } finally {
             g2.dispose();
         }
+
+        // 4. 应用水印
+        applyWatermark(bg);
 
         context.setAnswer(String.valueOf(gapX));
 

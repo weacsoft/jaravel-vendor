@@ -82,6 +82,21 @@ public class CaptchaProperties {
     private long maxTrajectoryDurationMs = 30000;
     private double maxJumpDistance = 80;
 
+    // 自定义背景图配置
+    private String backgroundImagePath = null;
+    private String backgroundImageBase64 = null;
+
+    // 水印配置
+    private String watermarkText = null;
+    private String watermarkFontFamily = "Arial";
+    private int watermarkFontSize = 12;
+    private int watermarkColor = 0x80666666;
+    private String watermarkPosition = "bottom-right";
+    private int watermarkRotation = 0;
+    private String watermarkImageBase64 = null;
+    private float watermarkOpacity = 0.3f;
+    private float watermarkScale = 0.2f;
+
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
 
@@ -148,6 +163,39 @@ public class CaptchaProperties {
     public double getMaxJumpDistance() { return maxJumpDistance; }
     public void setMaxJumpDistance(double maxJumpDistance) { this.maxJumpDistance = maxJumpDistance; }
 
+    public String getBackgroundImagePath() { return backgroundImagePath; }
+    public void setBackgroundImagePath(String backgroundImagePath) { this.backgroundImagePath = backgroundImagePath; }
+
+    public String getBackgroundImageBase64() { return backgroundImageBase64; }
+    public void setBackgroundImageBase64(String backgroundImageBase64) { this.backgroundImageBase64 = backgroundImageBase64; }
+
+    public String getWatermarkText() { return watermarkText; }
+    public void setWatermarkText(String watermarkText) { this.watermarkText = watermarkText; }
+
+    public String getWatermarkFontFamily() { return watermarkFontFamily; }
+    public void setWatermarkFontFamily(String watermarkFontFamily) { this.watermarkFontFamily = watermarkFontFamily; }
+
+    public int getWatermarkFontSize() { return watermarkFontSize; }
+    public void setWatermarkFontSize(int watermarkFontSize) { this.watermarkFontSize = watermarkFontSize; }
+
+    public int getWatermarkColor() { return watermarkColor; }
+    public void setWatermarkColor(int watermarkColor) { this.watermarkColor = watermarkColor; }
+
+    public String getWatermarkPosition() { return watermarkPosition; }
+    public void setWatermarkPosition(String watermarkPosition) { this.watermarkPosition = watermarkPosition; }
+
+    public int getWatermarkRotation() { return watermarkRotation; }
+    public void setWatermarkRotation(int watermarkRotation) { this.watermarkRotation = watermarkRotation; }
+
+    public String getWatermarkImageBase64() { return watermarkImageBase64; }
+    public void setWatermarkImageBase64(String watermarkImageBase64) { this.watermarkImageBase64 = watermarkImageBase64; }
+
+    public float getWatermarkOpacity() { return watermarkOpacity; }
+    public void setWatermarkOpacity(float watermarkOpacity) { this.watermarkOpacity = watermarkOpacity; }
+
+    public float getWatermarkScale() { return watermarkScale; }
+    public void setWatermarkScale(float watermarkScale) { this.watermarkScale = watermarkScale; }
+
     /**
      * 转为核心层配置对象。
      */
@@ -175,6 +223,17 @@ public class CaptchaProperties {
         core.setMinTrajectoryDurationMs(minTrajectoryDurationMs);
         core.setMaxTrajectoryDurationMs(maxTrajectoryDurationMs);
         core.setMaxJumpDistance(maxJumpDistance);
+        core.setBackgroundImagePath(backgroundImagePath);
+        core.setBackgroundImageBase64(backgroundImageBase64);
+        core.setWatermarkText(watermarkText);
+        core.setWatermarkFontFamily(watermarkFontFamily);
+        core.setWatermarkFontSize(watermarkFontSize);
+        core.setWatermarkColor(watermarkColor);
+        core.setWatermarkPosition(watermarkPosition);
+        core.setWatermarkRotation(watermarkRotation);
+        core.setWatermarkImageBase64(watermarkImageBase64);
+        core.setWatermarkOpacity(watermarkOpacity);
+        core.setWatermarkScale(watermarkScale);
         return core;
     }
 }

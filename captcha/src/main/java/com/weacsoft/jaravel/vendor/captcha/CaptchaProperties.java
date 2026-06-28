@@ -106,6 +106,43 @@ public class CaptchaProperties {
     /** 相邻轨迹点最大跳变距离（超过此值判定为非连续操作） */
     private double maxJumpDistance = 80;
 
+    // ==================== 自定义背景图配置 ====================
+
+    /** 滑动/旋转验证码的自定义背景图路径（文件路径或 classpath 资源路径），null 表示使用随机生成 */
+    private String backgroundImagePath = null;
+
+    /** 自定义背景图的 base64 数据（优先级高于 backgroundImagePath），null 表示不使用 */
+    private String backgroundImageBase64 = null;
+
+    // ==================== 水印配置 ====================
+
+    /** 文字水印内容（null 表示不添加文字水印） */
+    private String watermarkText = null;
+
+    /** 文字水印字体名称 */
+    private String watermarkFontFamily = "Arial";
+
+    /** 文字水印字体大小 */
+    private int watermarkFontSize = 12;
+
+    /** 文字水印颜色（ARGB 格式，如 0x80808080 表示半透明灰色） */
+    private int watermarkColor = 0x80666666;
+
+    /** 文字水印位置：top-left, top-right, bottom-left, bottom-right, center */
+    private String watermarkPosition = "bottom-right";
+
+    /** 文字水印旋转角度 */
+    private int watermarkRotation = 0;
+
+    /** 图片水印的 base64 数据（null 表示不添加图片水印） */
+    private String watermarkImageBase64 = null;
+
+    /** 图片水印透明度（0.0~1.0） */
+    private float watermarkOpacity = 0.3f;
+
+    /** 图片水印缩放比例（0.0~1.0，相对于画布宽度） */
+    private float watermarkScale = 0.2f;
+
     // ==================== getter / setter ====================
 
     public int getWidth() {
@@ -274,6 +311,94 @@ public class CaptchaProperties {
 
     public void setMaxJumpDistance(double maxJumpDistance) {
         this.maxJumpDistance = maxJumpDistance;
+    }
+
+    public String getBackgroundImagePath() {
+        return backgroundImagePath;
+    }
+
+    public void setBackgroundImagePath(String backgroundImagePath) {
+        this.backgroundImagePath = backgroundImagePath;
+    }
+
+    public String getBackgroundImageBase64() {
+        return backgroundImageBase64;
+    }
+
+    public void setBackgroundImageBase64(String backgroundImageBase64) {
+        this.backgroundImageBase64 = backgroundImageBase64;
+    }
+
+    public String getWatermarkText() {
+        return watermarkText;
+    }
+
+    public void setWatermarkText(String watermarkText) {
+        this.watermarkText = watermarkText;
+    }
+
+    public String getWatermarkFontFamily() {
+        return watermarkFontFamily;
+    }
+
+    public void setWatermarkFontFamily(String watermarkFontFamily) {
+        this.watermarkFontFamily = watermarkFontFamily;
+    }
+
+    public int getWatermarkFontSize() {
+        return watermarkFontSize;
+    }
+
+    public void setWatermarkFontSize(int watermarkFontSize) {
+        this.watermarkFontSize = watermarkFontSize;
+    }
+
+    public int getWatermarkColor() {
+        return watermarkColor;
+    }
+
+    public void setWatermarkColor(int watermarkColor) {
+        this.watermarkColor = watermarkColor;
+    }
+
+    public String getWatermarkPosition() {
+        return watermarkPosition;
+    }
+
+    public void setWatermarkPosition(String watermarkPosition) {
+        this.watermarkPosition = watermarkPosition;
+    }
+
+    public int getWatermarkRotation() {
+        return watermarkRotation;
+    }
+
+    public void setWatermarkRotation(int watermarkRotation) {
+        this.watermarkRotation = watermarkRotation;
+    }
+
+    public String getWatermarkImageBase64() {
+        return watermarkImageBase64;
+    }
+
+    public void setWatermarkImageBase64(String watermarkImageBase64) {
+        this.watermarkImageBase64 = watermarkImageBase64;
+    }
+
+    public float getWatermarkOpacity() {
+        return watermarkOpacity;
+    }
+
+    public void setWatermarkOpacity(float watermarkOpacity) {
+        this.watermarkOpacity = watermarkOpacity;
+    }
+
+    public float getWatermarkScale() {
+        return watermarkScale;
+    }
+
+    public void setWatermarkScale(float watermarkScale) {
+        this.watermarkScale = watermarkScale;
     }
 
     /**

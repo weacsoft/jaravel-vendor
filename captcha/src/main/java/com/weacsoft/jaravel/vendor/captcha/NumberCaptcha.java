@@ -49,6 +49,9 @@ public class NumberCaptcha extends AbstractCaptcha {
             g.dispose();
         }
 
+        // 应用水印
+        applyWatermark(image);
+
         CaptchaResult result = new CaptchaResult();
         result.setImageBase64(toBase64(image));
         return result;
