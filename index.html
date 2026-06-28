@@ -21133,8 +21133,10 @@ private MiniProgramService miniService;
 <li><a href="#7-配置说明">7. 配置说明</a></li>
 <li><a href="#8-轨迹验证">8. 轨迹验证</a></li>
 <li><a href="#9-可配置性">9. 可配置性</a></li>
-<li><a href="#10-存储选择">10. 存储选择</a></li>
-<li><a href="#11-自定义验证码类型">11. 自定义验证码类型</a></li>
+<li><a href="#10-自定义背景图">10. 自定义背景图</a></li>
+<li><a href="#11-水印">11. 水印</a></li>
+<li><a href="#12-存储选择">12. 存储选择</a></li>
+<li><a href="#13-自定义验证码类型">13. 自定义验证码类型</a></li>
 
 <p>---</p>
 
@@ -21150,6 +21152,8 @@ private MiniProgramService miniService;
 <li><strong>统一管理器</strong>：<code>CaptchaManager</code> 维护 <code>type -&gt; Captcha</code> 映射，提供按类型生成/验证的统一入口，<code>createDefault()</code> 开箱注册四种验证码</li>
 <li><strong>SpringBoot 3 自动装配</strong>：引入依赖即自动创建 <code>CaptchaManager</code> Bean，并根据是否引入 cache 模块智能选择存储</li>
 <li><strong>视觉高度可配置</strong>：字体名称/样式/大小、字符旋转角度、自定义字符集、弧线干扰（比直线更难被 OCR 识别）等均可通过配置项调整</li>
+<li><strong>自定义背景图</strong>：滑动与旋转验证码支持自定义背景图，可通过文件路径 / classpath 资源或 base64 数据指定，未配置时使用随机生成的渐变背景</li>
+<li><strong>文字/图片水印</strong>：四种验证码均支持叠加文字水印（可配置内容、字体、颜色、位置、旋转角度）与图片水印（可配置透明度、缩放比例），水印在验证码内容绘制完成后叠加</li>
 
 <p>---</p>
 
@@ -21400,7 +21404,7 @@ boolean ok = manager.verify(&quot;arithmetic&quot;, key, &quot;17&quot;);
 
 <h6>5.3 滑动验证码（`slider`）</h6>
 
-<p>在背景图上随机位置抠出缺口，前端拖动滑块拼回缺口。启用轨迹验证时还需校验拖动轨迹的人类行为特征。</p>
+<p>在背景图上随机位置抠出缺口，前端拖动滑块拼回缺口。启用轨迹验证时还需校验拖动轨迹的人类行为特征。支持<a href="#10-自定义背景图">自定义背景图</a>与<a href="#11-水印">水印</a>。</p>
 
 <table>
 <tr><th>项</th><th>说明</th></tr>
@@ -21429,7 +21433,7 @@ boolean ok2 = manager.verify(&quot;slider&quot;, key, &quot;123&quot;);
 
 <h6>5.4 旋转验证码（`rotate`）</h6>
 
-<p>将一张带明显朝向（向上箭头）的图片随机旋转，前端拖动将其转回正方向。启用轨迹验证时还需校验旋转轨迹的人类行为特征。</p>
+<p>将一张带明显朝向（向上箭头）的图片随机旋转，前端拖动将其转回正方向。启用轨迹验证时还需校验旋转轨迹的人类行为特征。支持<a href="#10-自定义背景图">自定义背景图</a>与<a href="#11-水印">水印</a>。</p>
 
 <table>
 <tr><th>项</th><th>说明</th></tr>
@@ -21535,6 +21539,19 @@ jaravel:
     min-trajectory-duration-ms: 500    # 轨迹最短持续时间（毫秒）
     max-trajectory-duration-ms: 30000  # 轨迹最长持续时间（毫秒）
     max-jump-distance: 80              # 相邻轨迹点最大跳变距离
+    # 自定义背景图配置（滑动/旋转验证码）
+    background-image-path: null         # 背景图路径（文件路径或 classpath 资源）
+    background-image-base64: null       # 背景图 base64 数据（优先级高于 path）
+    # 水印配置
+    watermark-text: null                # 文字水印内容（null=不添加文字水印）
+    watermark-font-family: Arial        # 文字水印字体名称
+    watermark-font-size: 12             # 文字水印字体大小
+    watermark-color: 0x80666666         # 文字水印颜色（ARGB，0x80666666=半透明灰色）
+    watermark-position: bottom-right    # 文字水印位置（top-left/top-right/bottom-left/bottom-right/center）
+    watermark-rotation: 0               # 文字水印旋转角度
+    watermark-image-base64: null        # 图片水印 base64 数据（null=不添加图片水印）
+    watermark-opacity: 0.3              # 图片水印透明度（0.0~1.0）
+    watermark-scale: 0.2                # 图片水印缩放比例（0.0~1.0，相对于画布宽度）
 </code></pre>
 
 <h6>配置项说明</h6>
@@ -21579,7 +21596,30 @@ jaravel:
 <tr><td>`jaravel.captcha.max-jump-distance`</td><td>`double`</td><td>`80`</td><td>相邻轨迹点最大跳变距离（超过此值判定为非连续操作）</td></tr>
 </table>
 
-<p>&gt; <strong>注意</strong>：SpringBoot 配置类（<code>springboot.CaptchaProperties</code>）的字段名 <code>noise</code> / <code>interfereLines</code> 与核心层配置类（<code>CaptchaProperties</code>）的字段名 <code>noiseCount</code> / <code>interfereCount</code> 不同。自动装配时通过 <code>toCoreProperties()</code> 方法完成映射转换。其余视觉与轨迹字段在两层中名称一致。</p>
+<h6>自定义背景图配置</h6>
+
+<table>
+<tr><th>属性</th><th>类型</th><th>默认值</th><th>说明</th></tr>
+<tr><td>`jaravel.captcha.background-image-path`</td><td>`String`</td><td>`null`</td><td>滑动/旋转验证码的自定义背景图路径（文件路径或 classpath 资源路径），`null` 表示不使用</td></tr>
+<tr><td>`jaravel.captcha.background-image-base64`</td><td>`String`</td><td>`null`</td><td>自定义背景图的 base64 数据（支持带 `data:image/...;base64,` 前缀），优先级高于 `background-image-path`</td></tr>
+</table>
+
+<h6>水印配置</h6>
+
+<table>
+<tr><th>属性</th><th>类型</th><th>默认值</th><th>说明</th></tr>
+<tr><td>`jaravel.captcha.watermark-text`</td><td>`String`</td><td>`null`</td><td>文字水印内容（`null` 表示不添加文字水印）</td></tr>
+<tr><td>`jaravel.captcha.watermark-font-family`</td><td>`String`</td><td>`"Arial"`</td><td>文字水印字体名称</td></tr>
+<tr><td>`jaravel.captcha.watermark-font-size`</td><td>`int`</td><td>`12`</td><td>文字水印字体大小</td></tr>
+<tr><td>`jaravel.captcha.watermark-color`</td><td>`int`</td><td>`0x80666666`</td><td>文字水印颜色（ARGB 格式，如 `0x80808080` 表示半透明灰色）</td></tr>
+<tr><td>`jaravel.captcha.watermark-position`</td><td>`String`</td><td>`"bottom-right"`</td><td>文字水印位置：`top-left`、`top-right`、`bottom-left`、`bottom-right`、`center`</td></tr>
+<tr><td>`jaravel.captcha.watermark-rotation`</td><td>`int`</td><td>`0`</td><td>文字水印旋转角度（度）</td></tr>
+<tr><td>`jaravel.captcha.watermark-image-base64`</td><td>`String`</td><td>`null`</td><td>图片水印的 base64 数据（`null` 表示不添加图片水印）</td></tr>
+<tr><td>`jaravel.captcha.watermark-opacity`</td><td>`float`</td><td>`0.3`</td><td>图片水印透明度（0.0~1.0）</td></tr>
+<tr><td>`jaravel.captcha.watermark-scale`</td><td>`float`</td><td>`0.2`</td><td>图片水印缩放比例（0.0~1.0，相对于画布宽度）</td></tr>
+</table>
+
+<p>&gt; <strong>注意</strong>：SpringBoot 配置类（<code>springboot.CaptchaProperties</code>）的字段名 <code>noise</code> / <code>interfereLines</code> 与核心层配置类（<code>CaptchaProperties</code>）的字段名 <code>noiseCount</code> / <code>interfereCount</code> 不同。自动装配时通过 <code>toCoreProperties()</code> 方法完成映射转换。其余视觉、轨迹、背景图与水印字段在两层中名称一致。</p>
 
 <h6>核心层配置（独立使用）</h6>
 
@@ -21610,6 +21650,19 @@ properties.setMinTrajectoryPoints(5);
 properties.setMinTrajectoryDurationMs(500);
 properties.setMaxTrajectoryDurationMs(30000);
 properties.setMaxJumpDistance(80);
+// 自定义背景图配置（滑动/旋转验证码）
+properties.setBackgroundImagePath(&quot;backgrounds/bg1.png&quot;);  // 文件路径或 classpath 资源
+properties.setBackgroundImageBase64(null);                  // base64 数据（优先级更高）
+// 水印配置
+properties.setWatermarkText(&quot;MyWatermark&quot;);                // 文字水印内容
+properties.setWatermarkFontFamily(&quot;Arial&quot;);
+properties.setWatermarkFontSize(12);
+properties.setWatermarkColor(0x80666666);                   // ARGB，半透明灰色
+properties.setWatermarkPosition(&quot;bottom-right&quot;);            // 位置
+properties.setWatermarkRotation(0);                         // 旋转角度
+properties.setWatermarkImageBase64(null);                   // 图片水印 base64
+properties.setWatermarkOpacity(0.3f);                       // 图片水印透明度
+properties.setWatermarkScale(0.2f);                         // 图片水印缩放比例
 </code></pre>
 
 <table>
@@ -21635,6 +21688,17 @@ properties.setMaxJumpDistance(80);
 <tr><td>`minTrajectoryDurationMs`</td><td>`long`</td><td>`500`</td><td>轨迹最短持续时间（毫秒）</td></tr>
 <tr><td>`maxTrajectoryDurationMs`</td><td>`long`</td><td>`30000`</td><td>轨迹最长持续时间（毫秒）</td></tr>
 <tr><td>`maxJumpDistance`</td><td>`double`</td><td>`80`</td><td>相邻轨迹点最大跳变距离</td></tr>
+<tr><td>`backgroundImagePath`</td><td>`String`</td><td>`null`</td><td>滑动/旋转验证码的自定义背景图路径（文件路径或 classpath 资源），`null` 表示不使用</td></tr>
+<tr><td>`backgroundImageBase64`</td><td>`String`</td><td>`null`</td><td>自定义背景图的 base64 数据（优先级高于 `backgroundImagePath`）</td></tr>
+<tr><td>`watermarkText`</td><td>`String`</td><td>`null`</td><td>文字水印内容（`null` 表示不添加文字水印）</td></tr>
+<tr><td>`watermarkFontFamily`</td><td>`String`</td><td>`"Arial"`</td><td>文字水印字体名称</td></tr>
+<tr><td>`watermarkFontSize`</td><td>`int`</td><td>`12`</td><td>文字水印字体大小</td></tr>
+<tr><td>`watermarkColor`</td><td>`int`</td><td>`0x80666666`</td><td>文字水印颜色（ARGB 格式）</td></tr>
+<tr><td>`watermarkPosition`</td><td>`String`</td><td>`"bottom-right"`</td><td>文字水印位置（`top-left`/`top-right`/`bottom-left`/`bottom-right`/`center`）</td></tr>
+<tr><td>`watermarkRotation`</td><td>`int`</td><td>`0`</td><td>文字水印旋转角度（度）</td></tr>
+<tr><td>`watermarkImageBase64`</td><td>`String`</td><td>`null`</td><td>图片水印的 base64 数据（`null` 表示不添加图片水印）</td></tr>
+<tr><td>`watermarkOpacity`</td><td>`float`</td><td>`0.3`</td><td>图片水印透明度（0.0~1.0）</td></tr>
+<tr><td>`watermarkScale`</td><td>`float`</td><td>`0.2`</td><td>图片水印缩放比例（0.0~1.0，相对于画布宽度）</td></tr>
 </table>
 
 <p>&gt; 核心层 <code>CaptchaProperties</code> 还提供 <code>getEffectiveChars()</code> 方法：当 <code>charSet</code> 为空时返回默认字符集 <code>ABCDEFGHJKMNPQRSTUVWXYZ23456789</code>，否则返回自定义字符集的字符数组。默认字符集常量 <code>DEFAULT_CHARS</code> 也定义在本类中（包级可见）。</p>
@@ -21851,11 +21915,189 @@ jaravel:
 
 <p>---</p>
 
-<h5>10. 存储选择</h5>
+<h5>10. 自定义背景图</h5>
+
+<p>滑动（<code>slider</code>）与旋转（<code>rotate</code>）验证码支持自定义背景图，替换默认的随机渐变背景，使验证码视觉更贴合业务场景（如使用品牌图片、风景图等作为底图）。</p>
+
+<h6>10.1 支持的验证码类型</h6>
+
+<table>
+<tr><th>验证码</th><th>支持自定义背景图</th><th>说明</th></tr>
+<tr><td>数字（`number`）</td><td>否</td><td>使用白色背景 + 噪点 / 干扰线</td></tr>
+<tr><td>算术（`arithmetic`）</td><td>否</td><td>使用白色背景 + 噪点 / 干扰线</td></tr>
+<tr><td>滑动（`slider`）</td><td>是</td><td>背景图上抠缺口，滑块拼回</td></tr>
+<tr><td>旋转（`rotate`）</td><td>是</td><td>背景图旋转，前端拖动转回正方向</td></tr>
+</table>
+
+<h6>10.2 两种配置方式</h6>
+
+<p>自定义背景图支持两种配置方式，<code>backgroundImageBase64</code> 优先级高于 <code>backgroundImagePath</code>：</p>
+
+<table>
+<tr><th>配置项</th><th>说明</th><th>适用场景</th></tr>
+<tr><td>`background-image-path`</td><td>文件路径或 classpath 资源路径。先按文件路径查找，找不到则尝试 classpath 加载</td><td>静态图片资源，部署时随包发布</td></tr>
+<tr><td>`background-image-base64`</td><td>base64 编码的图片数据（支持带 `data:image/...;base64,` 前缀或不带前缀）</td><td>动态生成 / 运行时指定的图片，如从数据库 / 对象存储读取</td></tr>
+</table>
+
+<p>&gt; <strong>未配置时</strong>：当 <code>backgroundImagePath</code> 与 <code>backgroundImageBase64</code> 均为 <code>null</code> 时，滑动 / 旋转验证码会使用 <code>AbstractCaptcha.drawRandomBackground()</code> 随机生成的渐变背景 + 色块纹理。</p>
+
+<p>&gt; <strong>加载失败时</strong>：若配置的图片加载失败（文件不存在、base64 解码失败等），会静默回退到随机生成的渐变背景，不会抛出异常。</p>
+
+<p>&gt; <strong>尺寸缩放</strong>：加载的背景图会按双线性插值缩放到验证码画布尺寸（滑动为 <code>width x height</code>，旋转为 <code>max(width, 200)</code> 的正方形）。</p>
+
+<h6>10.3 配置示例</h6>
+
+<p><strong>SpringBoot 配置（<code>application.yml</code>）</strong>：</p>
+
+<pre><code>
+jaravel:
+  captcha:
+    # 方式一：使用 classpath 资源路径
+    background-image-path: &quot;captcha/backgrounds/scene1.jpg&quot;
+    # 方式二：使用 base64 数据（优先级更高，会覆盖 path）
+    # background-image-base64: &quot;data:image/png;base64,iVBORw0KGgoAAAANSUhEUg...&quot;
+</code></pre>
+
+<p><strong>核心层配置（独立使用）</strong>：</p>
+
+<pre><code>
+CaptchaProperties props = CaptchaProperties.createDefault();
+
+// 方式一：文件路径 / classpath 资源
+props.setBackgroundImagePath(&quot;captcha/backgrounds/scene1.jpg&quot;);
+
+// 方式二：base64 数据（优先级更高）
+// String base64 = &quot;data:image/png;base64,iVBORw0KGgoAAAANSUhEUg...&quot;;
+// props.setBackgroundImageBase64(base64);
+
+SliderCaptcha slider = new SliderCaptcha(new MemoryCaptchaStore(), props);
+CaptchaResult result = slider.generate(&quot;my-key&quot;);  // 使用自定义背景图
+</code></pre>
+
+<h6>10.4 base64 图片构造示例</h6>
+
+<p>可通过 <code>BufferedImage</code> 动态生成图片并转为 base64：</p>
+
+<pre><code>
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.util.Base64;
+import javax.imageio.ImageIO;
+
+private String toBase64Image(int width, int height) {
+    BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+    Graphics2D g = img.createGraphics();
+    g.setColor(Color.BLUE);
+    g.fillRect(0, 0, width, height);
+    g.dispose();
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    try {
+        ImageIO.write(img, &quot;png&quot;, baos);
+        return &quot;data:image/png;base64,&quot; + Base64.getEncoder().encodeToString(baos.toByteArray());
+    } catch (Exception e) {
+        throw new RuntimeException(e);
+    }
+}
+
+// 使用
+props.setBackgroundImageBase64(toBase64Image(160, 50));
+</code></pre>
+
+<p>---</p>
+
+<h5>11. 水印</h5>
+
+<p>四种验证码（数字、算术、滑动、旋转）均支持叠加<strong>文字水印</strong>和<strong>图片水印</strong>，用于版权标识、品牌曝光或防伪。水印由 <code>AbstractCaptcha.applyWatermark()</code> 统一处理，在验证码内容（字符、缺口、朝向标记等）绘制完成后叠加，不影响验证逻辑。</p>
+
+<h6>11.1 文字水印</h6>
+
+<p>文字水印支持配置内容、字体、大小、颜色（ARGB 含透明度）、位置和旋转角度。</p>
+
+<table>
+<tr><th>配置项</th><th>说明</th></tr>
+<tr><td>`watermark-text`</td><td>文字水印内容（`null` 表示不添加文字水印）</td></tr>
+<tr><td>`watermark-font-family`</td><td>字体名称，如 `Arial`、`Microsoft YaHei`</td></tr>
+<tr><td>`watermark-font-size`</td><td>字体大小（像素）</td></tr>
+<tr><td>`watermark-color`</td><td>颜色（ARGB 格式，如 `0x80666666` 表示半透明灰色，`0x80` 为 alpha 通道）</td></tr>
+<tr><td>`watermark-position`</td><td>位置：`top-left`、`top-right`、`bottom-left`、`bottom-right`、`center`</td></tr>
+<tr><td>`watermark-rotation`</td><td>旋转角度（度，绕文字中心旋转）</td></tr>
+</table>
+
+<pre><code>
+jaravel:
+  captcha:
+    watermark-text: &quot;© MyCorp&quot;
+    watermark-font-family: &quot;Arial&quot;
+    watermark-font-size: 12
+    watermark-color: 0x80666666      # 半透明灰色
+    watermark-position: &quot;bottom-right&quot;
+    watermark-rotation: 0
+</code></pre>
+
+<h6>11.2 图片水印</h6>
+
+<p>图片水印支持配置 base64 数据、透明度和缩放比例，默认居中显示。</p>
+
+<table>
+<tr><th>配置项</th><th>说明</th></tr>
+<tr><td>`watermark-image-base64`</td><td>图片水印的 base64 数据（`null` 表示不添加图片水印，支持带 `data:image/...;base64,` 前缀）</td></tr>
+<tr><td>`watermark-opacity`</td><td>透明度（0.0~1.0，默认 `0.3`）</td></tr>
+<tr><td>`watermark-scale`</td><td>缩放比例（0.0~1.0，相对于画布宽度，默认 `0.2`）</td></tr>
+</table>
+
+<pre><code>
+jaravel:
+  captcha:
+    watermark-image-base64: &quot;data:image/png;base64,iVBORw0KGgoAAAANSUhEUg...&quot;
+    watermark-opacity: 0.3
+    watermark-scale: 0.2
+</code></pre>
+
+<h6>11.3 水印叠加顺序</h6>
+
+<p>当同时配置了文字水印和图片水印时，<code>applyWatermark()</code> 会<strong>先绘制文字水印，再绘制图片水印</strong>，即图片水印叠加在文字水印之上。两种水印可独立配置，互不影响。</p>
+
+<h6>11.4 适用范围</h6>
+
+<table>
+<tr><th>验证码</th><th>文字水印</th><th>图片水印</th></tr>
+<tr><td>数字（`number`）</td><td>支持</td><td>支持</td></tr>
+<tr><td>算术（`arithmetic`）</td><td>支持</td><td>支持</td></tr>
+<tr><td>滑动（`slider`）</td><td>支持</td><td>支持</td></tr>
+<tr><td>旋转（`rotate`）</td><td>支持（叠加在旋转后的展示图上）</td><td>支持（叠加在旋转后的展示图上）</td></tr>
+</table>
+
+<h6>11.5 配置示例</h6>
+
+<pre><code>
+CaptchaProperties props = CaptchaProperties.createDefault();
+
+// 文字水印
+props.setWatermarkText(&quot;© MyCorp&quot;);
+props.setWatermarkFontFamily(&quot;Microsoft YaHei&quot;);
+props.setWatermarkFontSize(12);
+props.setWatermarkColor(0x80666666);       // 半透明灰色
+props.setWatermarkPosition(&quot;bottom-right&quot;);
+props.setWatermarkRotation(0);
+
+// 图片水印（与文字水印可共存）
+props.setWatermarkImageBase64(toBase64Image(60, 30));
+props.setWatermarkOpacity(0.3f);
+props.setWatermarkScale(0.2f);
+
+NumberCaptcha captcha = new NumberCaptcha(new MemoryCaptchaStore(), props);
+CaptchaResult result = captcha.generate(&quot;my-key&quot;);  // 图片同时含文字水印与图片水印
+</code></pre>
+
+<p>---</p>
+
+<h5>12. 存储选择</h5>
 
 <p>验证码答案的存储通过 <code>CaptchaStore</code> 接口抽象，内置两种实现：</p>
 
-<h6>10.1 MemoryCaptchaStore（默认）</h6>
+<h6>12.1 MemoryCaptchaStore（默认）</h6>
 
 <table>
 <tr><th>项</th><th>说明</th></tr>
@@ -21867,7 +22109,7 @@ jaravel:
 <tr><td>跨进程</td><td>不支持（进程重启即失）</td></tr>
 </table>
 
-<h6>10.2 CacheStoreCaptchaStore（跨进程）</h6>
+<h6>12.2 CacheStoreCaptchaStore（跨进程）</h6>
 
 <table>
 <tr><th>项</th><th>说明</th></tr>
@@ -21956,7 +22198,7 @@ public class RedisCaptchaStore implements CaptchaStore {
 
 <p>---</p>
 
-<h5>11. 自定义验证码类型</h5>
+<h5>13. 自定义验证码类型</h5>
 
 <p>通过继承 <code>AbstractCaptcha</code> 实现自定义验证码，只需实现两个钩子方法：</p>
 
@@ -22082,14 +22324,14 @@ verify(captchaKey, userInput)
   └─ 3. 调用 doVerify(answer, userInput)  ← 子类实现
 </code></pre>
 
-<p>&gt; <code>AbstractCaptcha</code> 还提供丰富的图像工具方法供子类复用：<code>createImage</code>、<code>createArgbImage</code>、<code>randomColor</code>、<code>drawRandomBackground</code>、<code>addNoise</code>、<code>addInterfereLines</code>、<code>addArcInterference</code>（弧线干扰）、<code>drawText</code>（支持配置化字体/大小/旋转）、<code>toBase64</code>、<code>randomString</code>（支持自定义字符集）等。各方法签名详见 <a href="AI-API.md">AI-API.md</a>。</p>
+<p>&gt; <code>AbstractCaptcha</code> 还提供丰富的图像工具方法供子类复用：<code>createImage</code>、<code>createArgbImage</code>、<code>randomColor</code>、<code>drawRandomBackground</code>、<code>loadBackgroundImage</code>（加载自定义背景图）、<code>addNoise</code>、<code>addInterfereLines</code>、<code>addArcInterference</code>（弧线干扰）、<code>drawText</code>（支持配置化字体/大小/旋转）、<code>applyWatermark</code>（叠加文字 / 图片水印）、<code>toBase64</code>、<code>randomString</code>（支持自定义字符集）等。各方法签名详见 <a href="AI-API.md">AI-API.md</a>。</p>
 <h4>类和方法</h4>
 <p>&gt; Module: <code>captcha</code> | Package: <code>com.weacsoft.jaravel.vendor.captcha</code> | Version: 0.1.0</p>
 
 <h5>Overview</h5>
 <p>captcha 模块提供四种验证码（图片数字 <code>number</code>、算术 <code>arithmetic</code>、滑动 <code>slider</code>、旋转 <code>rotate</code>），核心层为纯 Java 实现（基于 <code>java.awt</code> 与 <code>java.util.Base64</code>），无 SpringBoot 依赖，可独立使用。采用模板方法模式：<code>AbstractCaptcha</code> 封装生成/验证流程，子类只需实现 <code>doGenerate</code> 与 <code>doVerify</code>。存储通过 <code>CaptchaStore</code> SPI 解耦，内置 <code>MemoryCaptchaStore</code>（内存）与 <code>CacheStoreCaptchaStore</code>（适配 jaravel cache 模块）。<code>CaptchaManager</code> 统一管理多类型注册与调用，并提供无状态 token 验证能力。SpringBoot 3 适配层提供自动装配与 <code>@ConfigurationProperties</code> 绑定。</p>
 
-<p>滑动与旋转验证码支持<strong>轨迹行为分析</strong>：通过 <code>TrajectoryValidator</code> 校验用户拖动轨迹的人类行为特征（点数、时长、连续性、非匀速、加速度多样性），防范自动化脚本直接提交最终值。视觉呈现（字体、字符集、旋转角度、弧线干扰等）高度可配置，配置项集中在 <code>CaptchaProperties</code>。</p>
+<p>滑动与旋转验证码支持<strong>轨迹行为分析</strong>：通过 <code>TrajectoryValidator</code> 校验用户拖动轨迹的人类行为特征（点数、时长、连续性、非匀速、加速度多样性），防范自动化脚本直接提交最终值。视觉呈现（字体、字符集、旋转角度、弧线干扰等）高度可配置，配置项集中在 <code>CaptchaProperties</code>。滑动与旋转验证码支持<strong>自定义背景图</strong>（通过文件路径或 base64 数据指定），四种验证码均支持叠加<strong>文字水印与图片水印</strong>（可配置内容、字体、颜色、位置、旋转角度、透明度、缩放比例），水印在验证码内容绘制完成后由 <code>AbstractCaptcha.applyWatermark()</code> 统一叠加。</p>
 
 <h5>Classes & Interfaces</h5>
 
@@ -22187,6 +22429,8 @@ protected CaptchaResult doGenerate(CaptchaContext context) {
 <tr><td>`createArgbImage`</td><td>`int width, int height`</td><td>`BufferedImage`（protected）</td><td>创建透明背景的 ARGB 图片（用于滑块等需要透明通道的场景）</td></tr>
 <tr><td>`randomColor`</td><td>`Random random`</td><td>`Color`（protected）</td><td>生成随机颜色（限制亮度避免过白）</td></tr>
 <tr><td>`drawRandomBackground`</td><td>`Graphics2D g, int width, int height, Random random`</td><td>`void`（protected）</td><td>绘制随机渐变背景 + 色块（滑动/旋转验证码底图纹理）</td></tr>
+<tr><td>`loadBackgroundImage`</td><td>`int width, int height`</td><td>`BufferedImage`（protected）</td><td>加载自定义背景图。优先从 `backgroundImageBase64` 加载，其次从 `backgroundImagePath` 加载（支持文件路径和 classpath 资源）。图片按双线性插值缩放到 `width x height`。加载失败返回 `null`（静默回退，不抛异常）</td></tr>
+<tr><td>`applyWatermark`</td><td>`BufferedImage image`</td><td>`void`（protected）</td><td>在图片上叠加文字水印和/或图片水印。根据 `CaptchaProperties` 的水印配置，先绘制文字水印（`watermarkText`），再绘制图片水印（`watermarkImageBase64`）。应在验证码内容绘制完成后调用</td></tr>
 <tr><td>`addNoise`</td><td>`Graphics2D g, int width, int height, int count, Random random`</td><td>`void`（protected）</td><td>添加噪点</td></tr>
 <tr><td>`addInterfereLines`</td><td>`Graphics2D g, int width, int height, int count, Random random`</td><td>`void`（protected）</td><td>添加干扰线</td></tr>
 <tr><td>`addArcInterference`</td><td>`Graphics2D g, int width, int height, int count, Random random`</td><td>`void`（protected）</td><td>添加弧线干扰（二次贝塞尔曲线，比直线更难被 OCR 识别）。使用 `java.awt.geom.QuadCurve2D` 绘制</td></tr>
@@ -22457,6 +22701,29 @@ captchaStore.remove(&quot;my-key&quot;);
 <tr><td>`maxJumpDistance`</td><td>`double`</td><td>`80`</td><td>相邻轨迹点最大跳变距离（超过此值判定为非连续操作）</td></tr>
 </table>
 
+<h6>自定义背景图配置</h6>
+
+<table>
+<tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr>
+<tr><td>`backgroundImagePath`</td><td>`String`</td><td>`null`</td><td>滑动/旋转验证码的自定义背景图路径（文件路径或 classpath 资源路径），`null` 表示不使用</td></tr>
+<tr><td>`backgroundImageBase64`</td><td>`String`</td><td>`null`</td><td>自定义背景图的 base64 数据（支持带 `data:image/...;base64,` 前缀），优先级高于 `backgroundImagePath`</td></tr>
+</table>
+
+<h6>水印配置</h6>
+
+<table>
+<tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr>
+<tr><td>`watermarkText`</td><td>`String`</td><td>`null`</td><td>文字水印内容（`null` 表示不添加文字水印）</td></tr>
+<tr><td>`watermarkFontFamily`</td><td>`String`</td><td>`"Arial"`</td><td>文字水印字体名称</td></tr>
+<tr><td>`watermarkFontSize`</td><td>`int`</td><td>`12`</td><td>文字水印字体大小</td></tr>
+<tr><td>`watermarkColor`</td><td>`int`</td><td>`0x80666666`</td><td>文字水印颜色（ARGB 格式，如 `0x80666666` 表示半透明灰色，`0x80` 为 alpha 通道）</td></tr>
+<tr><td>`watermarkPosition`</td><td>`String`</td><td>`"bottom-right"`</td><td>文字水印位置：`top-left`、`top-right`、`bottom-left`、`bottom-right`、`center`</td></tr>
+<tr><td>`watermarkRotation`</td><td>`int`</td><td>`0`</td><td>文字水印旋转角度（度，绕文字中心旋转）</td></tr>
+<tr><td>`watermarkImageBase64`</td><td>`String`</td><td>`null`</td><td>图片水印的 base64 数据（`null` 表示不添加图片水印，支持带 `data:image/...;base64,` 前缀）</td></tr>
+<tr><td>`watermarkOpacity`</td><td>`float`</td><td>`0.3`</td><td>图片水印透明度（0.0~1.0）</td></tr>
+<tr><td>`watermarkScale`</td><td>`float`</td><td>`0.2`</td><td>图片水印缩放比例（0.0~1.0，相对于画布宽度）</td></tr>
+</table>
+
 <h6>Static Methods</h6>
 
 <table>
@@ -22510,6 +22777,19 @@ properties.setMinTrajectoryPoints(6);
 properties.setMinTrajectoryDurationMs(600);
 properties.setMaxTrajectoryDurationMs(20000);
 properties.setMaxJumpDistance(60);
+
+// 自定义背景图配置（滑动/旋转验证码）
+properties.setBackgroundImagePath(&quot;captcha/backgrounds/scene1.jpg&quot;);
+// properties.setBackgroundImageBase64(&quot;data:image/png;base64,...&quot;);  // 优先级更高
+
+// 水印配置
+properties.setWatermarkText(&quot;© MyCorp&quot;);          // 文字水印
+properties.setWatermarkColor(0x80666666);          // ARGB 半透明灰色
+properties.setWatermarkPosition(&quot;bottom-right&quot;);
+properties.setWatermarkRotation(0);
+// properties.setWatermarkImageBase64(&quot;data:image/png;base64,...&quot;);  // 图片水印
+properties.setWatermarkOpacity(0.3f);
+properties.setWatermarkScale(0.2f);
 
 // 获取有效字符集（charSet 为空时返回 DEFAULT_CHARS）
 char[] chars = properties.getEffectiveChars();
@@ -22580,7 +22860,7 @@ custom.register(new NumberCaptcha(custom.getStore(), custom.getProperties()));
 <h6>NumberCaptcha</h6>
 <li><strong>Type</strong>: class</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.captcha</code></li>
-<li><strong>Description</strong>: 图片数字验证码：随机字母 + 数字字符串。类型名 <code>&quot;number&quot;</code>。在 <code>AbstractCaptcha</code> 提供的图像工具之上绘制带噪点、干扰线、随机旋转的字符图片。验证时按 <code>CaptchaProperties.isCaseSensitive()</code> 决定是否区分大小写。字符集排除易混淆字符 0/O/1/I/L。</li>
+<li><strong>Description</strong>: 图片数字验证码：随机字母 + 数字字符串。类型名 <code>&quot;number&quot;</code>。在 <code>AbstractCaptcha</code> 提供的图像工具之上绘制带噪点、干扰线、随机旋转的字符图片。验证时按 <code>CaptchaProperties.isCaseSensitive()</code> 决定是否区分大小写。字符集排除易混淆字符 0/O/1/I/L。支持水印（<code>applyWatermark()</code> 在字符绘制完成后叠加，配置详见 <code>CaptchaProperties</code> 水印配置）。</li>
 <li><strong>Extends</strong>: <code>AbstractCaptcha</code></li>
 <li><strong>Type Name</strong>: <code>&quot;number&quot;</code></li>
 
@@ -22617,7 +22897,7 @@ boolean ok = captcha.verify(&quot;my-key&quot;, &quot;AB23&quot;);
 <h6>ArithmeticCaptcha</h6>
 <li><strong>Type</strong>: class</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.captcha</code></li>
-<li><strong>Description</strong>: 算术验证码：随机生成 <code>a op b = ?</code> 形式的算式，答案为运算结果。类型名 <code>&quot;arithmetic&quot;</code>。支持加、减、乘三种运算，减法保证结果非负，乘法限制操作数在 1~9 之间避免结果过大。验证时按字符串相等比对（去除空格）。</li>
+<li><strong>Description</strong>: 算术验证码：随机生成 <code>a op b = ?</code> 形式的算式，答案为运算结果。类型名 <code>&quot;arithmetic&quot;</code>。支持加、减、乘三种运算，减法保证结果非负，乘法限制操作数在 1~9 之间避免结果过大。验证时按字符串相等比对（去除空格）。支持水印（<code>applyWatermark()</code> 在算式文本绘制完成后叠加，配置详见 <code>CaptchaProperties</code> 水印配置）。</li>
 <li><strong>Extends</strong>: <code>AbstractCaptcha</code></li>
 <li><strong>Type Name</strong>: <code>&quot;arithmetic&quot;</code></li>
 
@@ -22732,7 +23012,7 @@ List&lt;TrajectoryValidator.Point&gt; legacyTraj = TrajectoryValidator.extractTr
 <h6>SliderCaptcha</h6>
 <li><strong>Type</strong>: class</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.captcha</code></li>
-<li><strong>Description</strong>: 滑动验证码：在背景图上随机位置抠出缺口，前端拖动滑块拼回缺口。类型名 <code>&quot;slider&quot;</code>。答案为缺口横坐标 <code>gapX</code>。<code>doVerify</code> 通过 <code>TrajectoryValidator.extractValue()</code> 提取用户提交的最终值进行位置校验（<code>CaptchaProperties.getTolerance()</code> 像素容差）；若 <code>CaptchaProperties.isTrajectoryEnabled()</code> 为 <code>true</code>，还会通过 <code>TrajectoryValidator.validate()</code> 校验拖动轨迹的人类行为特征（点数、时长、连续性、非匀速、加速度多样性）。支持 JSON 格式输入（含 <code>value</code> 与 <code>trajectory</code>），未启用轨迹验证时也兼容纯数字字符串输入。</li>
+<li><strong>Description</strong>: 滑动验证码：在背景图上随机位置抠出缺口，前端拖动滑块拼回缺口。类型名 <code>&quot;slider&quot;</code>。答案为缺口横坐标 <code>gapX</code>。<code>doVerify</code> 通过 <code>TrajectoryValidator.extractValue()</code> 提取用户提交的最终值进行位置校验（<code>CaptchaProperties.getTolerance()</code> 像素容差）；若 <code>CaptchaProperties.isTrajectoryEnabled()</code> 为 <code>true</code>，还会通过 <code>TrajectoryValidator.validate()</code> 校验拖动轨迹的人类行为特征（点数、时长、连续性、非匀速、加速度多样性）。支持 JSON 格式输入（含 <code>value</code> 与 <code>trajectory</code>），未启用轨迹验证时也兼容纯数字字符串输入。支持自定义背景图（通过 <code>CaptchaProperties.backgroundImagePath</code> / <code>backgroundImageBase64</code> 配置，优先使用自定义图，未配置或加载失败时回退到 <code>drawRandomBackground()</code> 随机渐变背景）与水印（<code>applyWatermark()</code> 在缺口绘制后叠加）。</li>
 <li><strong>Extends</strong>: <code>AbstractCaptcha</code></li>
 <li><strong>Type Name</strong>: <code>&quot;slider&quot;</code></li>
 
@@ -22763,7 +23043,7 @@ List&lt;TrajectoryValidator.Point&gt; legacyTraj = TrajectoryValidator.extractTr
 <tr><td>答案</td><td>缺口横坐标 `gapX`（像素，字符串）</td></tr>
 <tr><td>用户输入</td><td>滑块拖动的 x 坐标。启用轨迹验证时需提交 JSON（含 `value` 与 `trajectory`）</td></tr>
 <tr><td>验证规则</td><td>1. 位置校验：`Math.abs(gapX - value) <= tolerance`；2. 轨迹校验（`trajectoryEnabled=true` 时）：`TrajectoryValidator.validate(points, properties)`。任一校验失败返回 `false`，解析失败返回 `false`</td></tr>
-<tr><td>`imageBase64`</td><td>带缺口的背景图（base64 PNG）</td></tr>
+<tr><td>`imageBase64`</td><td>带缺口的背景图（base64 PNG）。背景图来源：优先使用 `loadBackgroundImage()` 加载自定义背景图（`backgroundImageBase64` > `backgroundImagePath`），未配置或加载失败时使用 `drawRandomBackground()` 随机渐变背景</td></tr>
 <tr><td>`extra.sliderImage`</td><td>滑块拼图小块（带透明通道的 PNG base64）</td></tr>
 <tr><td>`extra.gapY`</td><td>缺口纵坐标（前端固定滑块纵坐标用）</td></tr>
 <tr><td>`extra.blockSize`</td><td>滑块边长（`Math.max(20, height / 2)`）</td></tr>
@@ -22794,7 +23074,7 @@ boolean ok2 = captcha.verify(&quot;my-key&quot;, &quot;123&quot;);
 <h6>RotateCaptcha</h6>
 <li><strong>Type</strong>: class</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.captcha</code></li>
-<li><strong>Description</strong>: 旋转验证码：将一张带明显朝向（向上箭头）的图片随机旋转，前端拖动将其转回正方向。类型名 <code>&quot;rotate&quot;</code>。答案为旋转角度（0~359）。<code>doVerify</code> 通过 <code>TrajectoryValidator.extractValue()</code> 提取用户提交的最终角度进行角度校验（<code>CaptchaProperties.getTolerance()</code> 角度容差，双向最短角差）；若 <code>CaptchaProperties.isTrajectoryEnabled()</code> 为 <code>true</code>，还会通过 <code>TrajectoryValidator.validate()</code> 校验旋转轨迹的人类行为特征（点数、时长、连续性、非匀速、加速度多样性）。支持 JSON 格式输入（含 <code>value</code> 与 <code>trajectory</code>），未启用轨迹验证时也兼容纯数字字符串输入。使用正方形画布（<code>Math.max(width, 200)</code>）。</li>
+<li><strong>Description</strong>: 旋转验证码：将一张带明显朝向（向上箭头）的图片随机旋转，前端拖动将其转回正方向。类型名 <code>&quot;rotate&quot;</code>。答案为旋转角度（0~359）。<code>doVerify</code> 通过 <code>TrajectoryValidator.extractValue()</code> 提取用户提交的最终角度进行角度校验（<code>CaptchaProperties.getTolerance()</code> 角度容差，双向最短角差）；若 <code>CaptchaProperties.isTrajectoryEnabled()</code> 为 <code>true</code>，还会通过 <code>TrajectoryValidator.validate()</code> 校验旋转轨迹的人类行为特征（点数、时长、连续性、非匀速、加速度多样性）。支持 JSON 格式输入（含 <code>value</code> 与 <code>trajectory</code>），未启用轨迹验证时也兼容纯数字字符串输入。使用正方形画布（<code>Math.max(width, 200)</code>）。支持自定义背景图（通过 <code>CaptchaProperties.backgroundImagePath</code> / <code>backgroundImageBase64</code> 配置，优先使用自定义图作为底图并叠加朝向标记，未配置或加载失败时使用 <code>drawRandomBackground()</code> 随机渐变背景）与水印（<code>applyWatermark()</code> 在旋转后的展示图上叠加）。</li>
 <li><strong>Extends</strong>: <code>AbstractCaptcha</code></li>
 <li><strong>Type Name</strong>: <code>&quot;rotate&quot;</code></li>
 
@@ -22825,7 +23105,7 @@ boolean ok2 = captcha.verify(&quot;my-key&quot;, &quot;123&quot;);
 <tr><td>答案</td><td>旋转角度（0~359，字符串）</td></tr>
 <tr><td>用户输入</td><td>用户旋转的角度。启用轨迹验证时需提交 JSON（含 `value` 与 `trajectory`）</td></tr>
 <tr><td>验证规则</td><td>1. 角度校验：双向最短角差 `diff <= tolerance`；2. 轨迹校验（`trajectoryEnabled=true` 时）：`TrajectoryValidator.validate(points, properties)`。任一校验失败返回 `false`，解析失败返回 `false`</td></tr>
-<tr><td>`imageBase64`</td><td>旋转后的图片（正方形 base64 PNG）</td></tr>
+<tr><td>`imageBase64`</td><td>旋转后的图片（正方形 base64 PNG）。底图来源：优先使用 `loadBackgroundImage()` 加载自定义背景图（`backgroundImageBase64` > `backgroundImagePath`）并叠加朝向标记，未配置或加载失败时使用 `drawRandomBackground()` 随机渐变背景 + 朝向标记</td></tr>
 <tr><td>`extra.size`</td><td>图片边长（`Math.max(width, 200)`）</td></tr>
 <tr><td>`extra.trajectoryEnabled`</td><td>是否启用了轨迹验证（`boolean`，前端可据此决定提交格式）</td></tr>
 <tr><td>朝向标记</td><td>顶部居中向上箭头（白色杆 + 蓝色三角头部），便于用户判断正方向</td></tr>
@@ -22946,6 +23226,29 @@ jaravel:
 <tr><td>`maxJumpDistance`</td><td>`double`</td><td>`80`</td><td>相邻轨迹点最大跳变距离</td></tr>
 </table>
 
+<h6>自定义背景图配置</h6>
+
+<table>
+<tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr>
+<tr><td>`backgroundImagePath`</td><td>`String`</td><td>`null`</td><td>滑动/旋转验证码的自定义背景图路径（文件路径或 classpath 资源路径），`null` 表示不使用</td></tr>
+<tr><td>`backgroundImageBase64`</td><td>`String`</td><td>`null`</td><td>自定义背景图的 base64 数据（优先级高于 `backgroundImagePath`）</td></tr>
+</table>
+
+<h6>水印配置</h6>
+
+<table>
+<tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr>
+<tr><td>`watermarkText`</td><td>`String`</td><td>`null`</td><td>文字水印内容（`null` 表示不添加文字水印）</td></tr>
+<tr><td>`watermarkFontFamily`</td><td>`String`</td><td>`"Arial"`</td><td>文字水印字体名称</td></tr>
+<tr><td>`watermarkFontSize`</td><td>`int`</td><td>`12`</td><td>文字水印字体大小</td></tr>
+<tr><td>`watermarkColor`</td><td>`int`</td><td>`0x80666666`</td><td>文字水印颜色（ARGB 格式）</td></tr>
+<tr><td>`watermarkPosition`</td><td>`String`</td><td>`"bottom-right"`</td><td>文字水印位置（`top-left`/`top-right`/`bottom-left`/`bottom-right`/`center`）</td></tr>
+<tr><td>`watermarkRotation`</td><td>`int`</td><td>`0`</td><td>文字水印旋转角度（度）</td></tr>
+<tr><td>`watermarkImageBase64`</td><td>`String`</td><td>`null`</td><td>图片水印的 base64 数据（`null` 表示不添加图片水印）</td></tr>
+<tr><td>`watermarkOpacity`</td><td>`float`</td><td>`0.3`</td><td>图片水印透明度（0.0~1.0）</td></tr>
+<tr><td>`watermarkScale`</td><td>`float`</td><td>`0.2`</td><td>图片水印缩放比例（0.0~1.0，相对于画布宽度）</td></tr>
+</table>
+
 <h6>Methods</h6>
 
 <table>
@@ -22979,6 +23282,17 @@ jaravel:
 <tr><td>`minTrajectoryDurationMs`</td><td>`minTrajectoryDurationMs`</td><td>同名直传</td></tr>
 <tr><td>`maxTrajectoryDurationMs`</td><td>`maxTrajectoryDurationMs`</td><td>同名直传</td></tr>
 <tr><td>`maxJumpDistance`</td><td>`maxJumpDistance`</td><td>同名直传</td></tr>
+<tr><td>`backgroundImagePath`</td><td>`backgroundImagePath`</td><td>同名直传</td></tr>
+<tr><td>`backgroundImageBase64`</td><td>`backgroundImageBase64`</td><td>同名直传</td></tr>
+<tr><td>`watermarkText`</td><td>`watermarkText`</td><td>同名直传</td></tr>
+<tr><td>`watermarkFontFamily`</td><td>`watermarkFontFamily`</td><td>同名直传</td></tr>
+<tr><td>`watermarkFontSize`</td><td>`watermarkFontSize`</td><td>同名直传</td></tr>
+<tr><td>`watermarkColor`</td><td>`watermarkColor`</td><td>同名直传</td></tr>
+<tr><td>`watermarkPosition`</td><td>`watermarkPosition`</td><td>同名直传</td></tr>
+<tr><td>`watermarkRotation`</td><td>`watermarkRotation`</td><td>同名直传</td></tr>
+<tr><td>`watermarkImageBase64`</td><td>`watermarkImageBase64`</td><td>同名直传</td></tr>
+<tr><td>`watermarkOpacity`</td><td>`watermarkOpacity`</td><td>同名直传</td></tr>
+<tr><td>`watermarkScale`</td><td>`watermarkScale`</td><td>同名直传</td></tr>
 </table>
 
 <h6>Usage Example</h6>
@@ -23010,6 +23324,19 @@ jaravel:
     min-trajectory-duration-ms: 600
     max-trajectory-duration-ms: 20000
     max-jump-distance: 60
+    # 自定义背景图配置（滑动/旋转验证码）
+    background-image-path: &quot;captcha/backgrounds/scene1.jpg&quot;
+    # background-image-base64: &quot;data:image/png;base64,...&quot;
+    # 水印配置
+    watermark-text: &quot;© MyCorp&quot;
+    watermark-font-family: Arial
+    watermark-font-size: 12
+    watermark-color: 0x80666666
+    watermark-position: bottom-right
+    watermark-rotation: 0
+    # watermark-image-base64: &quot;data:image/png;base64,...&quot;
+    watermark-opacity: 0.3
+    watermark-scale: 0.2
 </code></pre>
 
 <pre><code>
@@ -23022,6 +23349,9 @@ CaptchaProperties coreProps = springBootProps.toCoreProperties();
 // coreProps.getInterfereCount() == 40
 // coreProps.getFontFamily() == &quot;Microsoft YaHei&quot;
 // coreProps.getTrajectoryEnabled() == true
+// coreProps.getBackgroundImagePath() == &quot;captcha/backgrounds/scene1.jpg&quot;
+// coreProps.getWatermarkText() == &quot;© MyCorp&quot;
+// coreProps.getWatermarkPosition() == &quot;bottom-right&quot;
 </code></pre>
 </section>
 <section id="cat-starter">
