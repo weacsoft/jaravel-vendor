@@ -32,7 +32,7 @@ import java.util.List;
  * 当 {@code treeRoutingEnabled=true} 时，协调器按树形层级路由：
  * <ol>
  *   <li>优先转发给根子服务器（直接子节点）</li>
- *   <li>根子服务器本地执行不了时，由其 {@link RemotePluginServer} 中继转发给孙节点</li>
+ *   <li>根子服务器本地执行不了时，由其 {@link SubServerRegistry} 中继转发给孙节点</li>
  *   <li>请求中携带路由元数据（sourceNodeId/visitedNodes/maxHops）防止环路</li>
  * </ol>
  * 扁平模式下 {@code treeRoutingEnabled=false}，行为与原来完全一致。

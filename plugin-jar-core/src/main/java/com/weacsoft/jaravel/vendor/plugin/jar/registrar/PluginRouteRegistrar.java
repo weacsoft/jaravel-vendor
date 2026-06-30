@@ -28,7 +28,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * 注册流程：
  * <ol>
  *   <li>构造 {@link RequestMappingInfo}（HTTP 方法 + 路径）。</li>
- *   <li>将 {@link PluginRouteHandler#handleRequest} 包装为 {@link HandlerMethod} 注册到 handlerMapping。</li>
+ *   <li>将 {@link PluginRouteHandler#handleRequest} 包装为 {@link Method} 注册到 handlerMapping。</li>
  *   <li>同时将 {@link RouteInfo} 注册到 {@link PluginRouteHandler} 的路由表。</li>
  * </ol>
  * <p>

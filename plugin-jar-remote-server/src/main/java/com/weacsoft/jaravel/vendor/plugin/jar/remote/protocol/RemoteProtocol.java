@@ -12,7 +12,7 @@ package com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol;
  * </pre>
  * <ul>
  *   <li>magic: 固定 0x4A52504D ("JRPM" = Jaravel Remote Plugin Protocol)</li>
- *   <li>msgType: 消息类型，见 {@link MessageType}</li>
+ *   <li>msgType: 消息类型，见 {@link RemoteProtocol}</li>
  *   <li>bodyLen: body 字节数（JSON 编码的 UTF-8 字节）</li>
  *   <li>body: JSON 消息体</li>
  * </ul>

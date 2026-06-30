@@ -4,7 +4,7 @@ import java.util.Map;
 
 /**
  * 内置校验规则集合，对齐 Laravel 常用规则。
- * 通过 {@link Rules#get(String)} 按名称获取规则实例。
+ * 通过 {@link Rules#get(String, String[])} 按名称获取规则实例。
  */
 public final class Rules {
 

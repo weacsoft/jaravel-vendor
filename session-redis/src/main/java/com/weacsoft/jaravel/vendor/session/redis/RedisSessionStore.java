@@ -33,7 +33,6 @@ import java.util.UUID;
  *
  * <h3>线程安全</h3>
  * Redis 命令本身是原子的，多线程并发读写同一 Session 时通过 Redis 保证一致性。
- * 本类的 {@link #getSessionId()} 在请求级别缓存 Session ID，避免重复生成。
  */
 public class RedisSessionStore {
 
