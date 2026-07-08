@@ -99,6 +99,13 @@
         <slf4j.version>1.7.36</slf4j.version>
         <asm.version>9.7</asm.version>
         <okhttp.version>4.12.0</okhttp.version>
+
+        <!-- 覆盖 Spring Boot 管理的依赖版本（安全补丁） -->
+        <jackson-bom.version>2.18.2</jackson-bom.version>
+        <logback.version>1.5.18</logback.version>
+        <assertj.version>3.27.3</assertj.version>
+        <xmlunit2.version>2.10.0</xmlunit2.version>
+        <json-smart.version>2.5.2</json-smart.version>
     </properties>
 
     <repositories>
