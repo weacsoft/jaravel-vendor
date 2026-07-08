@@ -211,7 +211,7 @@ public class HotPluginManager implements Application.HotPluginManagerRef {
                 targetJar = pluginDir.resolve(jarFile.getFileName());
                 Files.copy(jarFile, targetJar, StandardCopyOption.REPLACE_EXISTING);
             }
-            PluginInfo info = new PluginInfo(pluginId, "0.1.1", targetJar.toString());
+            PluginInfo info = new PluginInfo(pluginId, "unknown", targetJar.toString());
             info.setPersisted(persist);
             info.setState(PluginInfo.State.UPLOADED);
             plugins.put(pluginId, info);
@@ -245,7 +245,7 @@ public class HotPluginManager implements Application.HotPluginManagerRef {
             Path tempFile = Files.createTempFile("plugin-" + pluginId + "-", ".jar");
             Files.write(tempFile, jarBytes);
             tempFile.toFile().deleteOnExit();
-            PluginInfo info = new PluginInfo(pluginId, "0.1.1", tempFile.toString());
+            PluginInfo info = new PluginInfo(pluginId, "unknown", tempFile.toString());
             info.setPersisted(false);
             info.setState(PluginInfo.State.UPLOADED);
             plugins.put(pluginId, info);
@@ -295,7 +295,7 @@ public class HotPluginManager implements Application.HotPluginManagerRef {
 
                 // 更新插件信息
                 info.setJarPath(tempFile.toString());
-                info.setVersion("0.1.1");
+                info.setVersion("unknown");
                 info.setPersisted(false);
                 info.setState(PluginInfo.State.UPLOADED);
                 info.setErrorMessage(null);

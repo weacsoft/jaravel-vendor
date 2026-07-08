@@ -143,7 +143,7 @@ public class PluginJarAutoConfiguration {
         if (coreJarPath != null) {
             manager.setCoreJarPath(coreJarPath);
             // 初始化共享 ClassLoader（仅含 core JAR，integration 提供的额外 JAR 由 initSharedClassLoader 处理）
-            manager.initSharedClassLoader(coreJarPath, "0.1.1");
+            manager.initSharedClassLoader(coreJarPath, resolveFrameworkVersion());
         } else {
             log.warn("无法定位核心 JAR 路径，插件注解类可能无法被插件加载");
         }
@@ -221,5 +221,24 @@ public class PluginJarAutoConfiguration {
             log.warn("定位核心 JAR 路径失败", e);
             return null;
         }
+    }
+
+    /**
+     * 动态获取框架版本号。
+     * <p>
+     * 从 JAR 包元数据（MANIFEST.MF 的 Implementation-Version）读取，
+     * 开发模式（exploded classes）或读取失败时返回 {@code "dev"}。
+     *
+     * @return 框架版本号
+     */
+    private String resolveFrameworkVersion() {
+        Package pkg = HotPluginManager.class.getPackage();
+        if (pkg != null) {
+            String version = pkg.getImplementationVersion();
+            if (version != null && !version.isEmpty()) {
+                return version;
+            }
+        }
+        return "dev";
     }
 }

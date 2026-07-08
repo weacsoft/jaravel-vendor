@@ -128,7 +128,7 @@ public class MultiTenantAutoConfiguration {
         Path coreJarPath = locateCoreJarPath();
         if (coreJarPath != null) {
             manager.setCoreJarPath(coreJarPath);
-            manager.initSharedClassLoader(coreJarPath, "0.1.1");
+            manager.initSharedClassLoader(coreJarPath, resolveFrameworkVersion());
             log.info("多租户插件管理器初始化: separator={}, coreJar={}", mtProperties.getSeparator(), coreJarPath);
         } else {
             log.warn("无法定位核心 JAR 路径，插件注解类可能无法被插件加载");
@@ -194,5 +194,24 @@ public class MultiTenantAutoConfiguration {
             log.warn("定位核心 JAR 路径失败", e);
             return null;
         }
+    }
+
+    /**
+     * 动态获取框架版本号。
+     * <p>
+     * 从 JAR 包元数据（MANIFEST.MF 的 Implementation-Version）读取，
+     * 开发模式（exploded classes）或读取失败时返回 {@code "dev"}。
+     *
+     * @return 框架版本号
+     */
+    private String resolveFrameworkVersion() {
+        Package pkg = TenantAwareHotPluginManager.class.getPackage();
+        if (pkg != null) {
+            String version = pkg.getImplementationVersion();
+            if (version != null && !version.isEmpty()) {
+                return version;
+            }
+        }
+        return "dev";
     }
 }

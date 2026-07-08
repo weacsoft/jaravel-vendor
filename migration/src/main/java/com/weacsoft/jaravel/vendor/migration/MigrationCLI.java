@@ -55,7 +55,7 @@ import javax.sql.DataSource;
  * mvn clean package -pl migration,utils -am
  *
  * # 执行迁移
- * java -jar migration/target/migration-0.1.1.jar \
+ * java -jar migration/target/migration-*.jar \
  *   --db-url=jdbc:mysql://prod-db:3306/app \
  *   --db-user=deploy \
  *   --db-password=xxx \
