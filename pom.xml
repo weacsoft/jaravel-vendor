@@ -96,6 +96,9 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <gaarason.database.version>7.0.15</gaarason.database.version>
         <jjwt.version>0.11.5</jjwt.version>
+        <slf4j.version>1.7.36</slf4j.version>
+        <asm.version>9.7</asm.version>
+        <okhttp.version>4.12.0</okhttp.version>
     </properties>
 
     <repositories>
@@ -276,6 +279,27 @@
                 <groupId>io.jsonwebtoken</groupId>
                 <artifactId>jjwt-jackson</artifactId>
                 <version>${jjwt.version}</version>
+            </dependency>
+
+            <!-- SLF4J（plugin-jar-core/plugin-java-core 兼容 SB2.7，使用 1.7.x） -->
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>${slf4j.version}</version>
+            </dependency>
+
+            <!-- ASM 字节码扫描（plugin-jar-core） -->
+            <dependency>
+                <groupId>org.ow2.asm</groupId>
+                <artifactId>asm</artifactId>
+                <version>${asm.version}</version>
+            </dependency>
+
+            <!-- OkHttp（wechat-sdk） -->
+            <dependency>
+                <groupId>com.squareup.okhttp3</groupId>
+                <artifactId>okhttp</artifactId>
+                <version>${okhttp.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
