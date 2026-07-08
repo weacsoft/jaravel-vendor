@@ -365,7 +365,7 @@ public class WireResponse {
     public Map<String, Object> toMap() {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("sections", sections);
-        map.put("snapshot", snapshot);
+        map.put("snapshot", snapshot != null ? snapshot : "");
         map.put("effects", effects);
         return map;
     }
