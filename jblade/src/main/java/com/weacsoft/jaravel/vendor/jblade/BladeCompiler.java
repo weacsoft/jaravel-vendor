@@ -17,8 +17,8 @@ public class BladeCompiler {
     private static final Pattern COMMENT_PATTERN = Pattern.compile("\\{\\{--.*?--\\}\\}", Pattern.DOTALL);
     //输出
     private static final Pattern ECHO_PATTERN = Pattern.compile("\\{\\{\\s*([^{}]+?)\\s*\\}\\}");
-    //命令
-    private static final Pattern DIRECTIVE_PATTERN = Pattern.compile("@(\\w+)\\s*(?:\\((.*?)\\))?");
+    //命令 — 指令名必须以字母开头，避免误匹配 URL 中的 @2、@3 等
+    private static final Pattern DIRECTIVE_PATTERN = Pattern.compile("@([a-zA-Z]\\w*)\\s*(?:\\((.*?)\\))?");
     //参数
     private static final Pattern VAR_PATTERN = Pattern.compile("\\$(\\w+)");
 
@@ -293,6 +293,11 @@ public class BladeCompiler {
                             }
                         }
                         break;
+                    default:
+                        // 未知指令作为普通内容输出
+                        processLineWithEcho(code, line, localVars);
+                        code.append("        write(writer, \"\\n\");\n");
+                        break;
                 }
             } else {
                 processLineWithEcho(code, line, localVars);
@@ -326,8 +331,17 @@ public class BladeCompiler {
                         if (args.contains(",")) {
                             String[] parts = args.split(",", 2);
                             String sectionName = parts[0].trim().replace("'", "").replace("\"", "");
-                            String sectionValue = parts[1].trim().replace("'", "").replace("\"", "");
-                            code.append("            ctx.setSection(\"").append(sectionName).append("\", \"").append(escapeJava(sectionValue)).append("\");\n");
+                            String sectionValue = parts[1].trim();
+                            // 判断值是字符串字面量（引号包裹）还是表达式（如 $title）
+                            if (sectionValue.startsWith("'") || sectionValue.startsWith("\"")) {
+                                // 字符串字面量：去引号后直接使用
+                                sectionValue = sectionValue.replaceAll("^['\"]|['\"]$", "");
+                                code.append("            ctx.setSection(\"").append(sectionName).append("\", \"").append(escapeJava(sectionValue)).append("\");\n");
+                            } else {
+                                // 表达式（如 $title, $title ?? 'default'）：编译为 Blade 表达式
+                                String compiledExpr = compileExpression(sectionValue, new HashSet<>());
+                                code.append("            ctx.setSection(\"").append(sectionName).append("\", String.valueOf(").append(compiledExpr).append("));\n");
+                            }
                         } else {
                             inSection = true;
                             currentSection = args.replace("'", "").replace("\"", "");
@@ -423,6 +437,10 @@ public class BladeCompiler {
                     case "endcomponent":
                     case "slot":
                     case "endslot":
+                        break;
+                    default:
+                        // 未知指令（如 CSS @media、@keyframes 等）作为普通内容输出
+                        processLineWithEcho(code, line, localVars);
                         break;
                 }
             } else {

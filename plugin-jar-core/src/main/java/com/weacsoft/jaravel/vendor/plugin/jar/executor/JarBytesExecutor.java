@@ -2,29 +2,38 @@ package com.weacsoft.jaravel.vendor.plugin.jar.executor;
 
 import java.io.ByteArrayInputStream;
 import java.io.Closeable;
+import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.jar.JarEntry;
 import java.util.jar.JarInputStream;
 
 /**
- * Jar 字节码内存执行器。
+ * Jar 执行器，支持两种加载方式。
  * <p>
- * 提供一站式「jar 字节数组 → 内存加载 → 反射调用」能力，
- * 全程不落盘（无临时文件 I/O）。
- * <p>
- * 内部使用自定义 {@link InMemoryJarClassLoader}，通过 {@link JarInputStream} +
- * {@link ByteArrayInputStream} 从 byte[] 逐个读取 .class entry 并 {@code defineClass}，
- * 不依赖 {@code URLClassLoader} 的文件 URL 约束。
+ * 提供一站式「jar → 加载 → 反射调用」能力。
+ * <ul>
+ *   <li>{@code inMemory=true}（默认）：从 byte[] 加载，使用 {@link InMemoryJarClassLoader}
+ *       （JarInputStream + ByteArrayInputStream），不落盘</li>
+ *   <li>{@code inMemory=false}：从文件路径加载，使用 {@link URLClassLoader}，
+ *       保留传统的文件方式</li>
+ * </ul>
  *
  * <h3>使用示例</h3>
  * <pre>{@code
+ * // 纯内存加载
  * byte[] jarBytes = Files.readAllBytes(Path.of("my-plugin.jar"));
  * Map<String, Object> result = JarBytesExecutor.execute(jarBytes, "com.example.MyPlugin", "run");
- * System.out.println(result.get("output"));
+ *
+ * // 文件加载
+ * Map<String, Object> result = JarBytesExecutor.execute(Path.of("my-plugin.jar"), "com.example.MyPlugin", "run");
  * }</pre>
  */
 public final class JarBytesExecutor {
@@ -32,20 +41,15 @@ public final class JarBytesExecutor {
     private JarBytesExecutor() {
     }
 
+    // ==================== 纯内存加载入口 ====================
+
     /**
      * 从内存中的 jar 字节数组加载并执行指定方法（纯内存，不落盘）。
      *
      * @param jarBytes  jar 文件的字节数组
      * @param mainClass 要调用的主类全限定名
      * @param method    要调用的方法名（null 或空则默认 "run"）
-     * @return 执行结果 Map，包含以下字段：
-     *         <ul>
-     *           <li>success: 是否成功</li>
-     *           <li>output: 执行输出（成功时）</li>
-     *           <li>error: 错误信息（失败时）</li>
-     *           <li>main_class: 主类名</li>
-     *           <li>method: 方法名</li>
-     *         </ul>
+     * @return 执行结果 Map
      */
     public static Map<String, Object> execute(byte[] jarBytes, String mainClass, String method) {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -65,30 +69,17 @@ public final class JarBytesExecutor {
         }
         result.put("main_class", mainClass);
         result.put("method", method);
+        result.put("in_memory", true);
 
         InMemoryJarClassLoader classLoader = null;
         try {
-            // 1. 从内存加载 jar 中的所有 class
             classLoader = new InMemoryJarClassLoader(
                     jarBytes, JarBytesExecutor.class.getClassLoader());
-
-            // 2. 加载目标类
             Class<?> clazz = classLoader.loadClass(mainClass);
-
-            // 3. 反射调用方法
-            Method m = clazz.getMethod(method);
-            Object output = Modifier.isStatic(m.getModifiers())
-                    ? m.invoke(null)
-                    : m.invoke(clazz.getDeclaredConstructor().newInstance());
-
-            result.put("success", true);
-            result.put("output", output != null ? output.toString() : "null");
+            invokeAndSetResult(result, clazz);
         } catch (ClassNotFoundException e) {
             result.put("success", false);
             result.put("error", "类不存在: " + mainClass);
-        } catch (NoSuchMethodException e) {
-            result.put("success", false);
-            result.put("error", "方法不存在: " + method);
         } catch (Exception e) {
             result.put("success", false);
             result.put("error", "执行异常: " + e.getMessage());
@@ -100,6 +91,97 @@ public final class JarBytesExecutor {
 
         return result;
     }
+
+    // ==================== 文件加载入口 ====================
+
+    /**
+     * 从文件路径加载 jar 并执行指定方法（文件加载方式）。
+     *
+     * @param jarPath   jar 文件路径
+     * @param mainClass 要调用的主类全限定名
+     * @param method    要调用的方法名（null 或空则默认 "run"）
+     * @return 执行结果 Map
+     */
+    public static Map<String, Object> execute(Path jarPath, String mainClass, String method) {
+        return execute(jarPath.toFile(), mainClass, method);
+    }
+
+    /**
+     * 从文件加载 jar 并执行指定方法（文件加载方式）。
+     * 使用 URLClassLoader 基于文件 URL 加载。
+     *
+     * @param jarFile   jar 文件
+     * @param mainClass 要调用的主类全限定名
+     * @param method    要调用的方法名（null 或空则默认 "run"）
+     * @return 执行结果 Map
+     */
+    public static Map<String, Object> execute(File jarFile, String mainClass, String method) {
+        Map<String, Object> result = new LinkedHashMap<>();
+
+        if (jarFile == null || !jarFile.exists()) {
+            result.put("success", false);
+            result.put("error", "Jar 文件不存在");
+            return result;
+        }
+        if (mainClass == null || mainClass.isEmpty()) {
+            result.put("success", false);
+            result.put("error", "缺少 main_class 参数");
+            return result;
+        }
+        if (method == null || method.isEmpty()) {
+            method = "run";
+        }
+        result.put("main_class", mainClass);
+        result.put("method", method);
+        result.put("in_memory", false);
+
+        URLClassLoader classLoader = null;
+        try {
+            classLoader = new URLClassLoader(new URL[]{jarFile.toURI().toURL()},
+                    JarBytesExecutor.class.getClassLoader());
+            Class<?> clazz = classLoader.loadClass(mainClass);
+            invokeAndSetResult(result, clazz);
+        } catch (ClassNotFoundException e) {
+            result.put("success", false);
+            result.put("error", "类不存在: " + mainClass);
+        } catch (Exception e) {
+            result.put("success", false);
+            result.put("error", "执行异常: " + e.getMessage());
+        } finally {
+            if (classLoader != null) {
+                try { classLoader.close(); } catch (Exception ignored) { }
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * 统一入口：根据 inMemory 参数选择加载方式。
+     *
+     * @param jarFile   jar 文件
+     * @param mainClass 要调用的主类全限定名
+     * @param method    要调用的方法名
+     * @param inMemory  true=纯内存加载，false=文件加载
+     * @return 执行结果 Map
+     */
+    public static Map<String, Object> execute(File jarFile, String mainClass, String method, boolean inMemory) {
+        if (inMemory) {
+            try {
+                byte[] jarBytes = Files.readAllBytes(jarFile.toPath());
+                return execute(jarBytes, mainClass, method);
+            } catch (IOException e) {
+                Map<String, Object> result = new LinkedHashMap<>();
+                result.put("success", false);
+                result.put("error", "读取 Jar 文件失败: " + e.getMessage());
+                return result;
+            }
+        } else {
+            return execute(jarFile, mainClass, method);
+        }
+    }
+
+    // ==================== 扫描工具 ====================
 
     /**
      * 从 jar 字节数组中提取所有 class 的全限定名（不加载，仅扫描）。
@@ -124,6 +206,65 @@ public final class JarBytesExecutor {
             // 忽略
         }
         return classNames;
+    }
+
+    /**
+     * 从 jar 文件中提取所有 class 的全限定名（不加载，仅扫描）。
+     *
+     * @param jarFile jar 文件
+     * @return class 全限定名列表
+     */
+    public static java.util.List<String> listClasses(File jarFile) {
+        if (jarFile == null || !jarFile.exists()) {
+            return new java.util.ArrayList<>();
+        }
+        try {
+            return listClasses(Files.readAllBytes(jarFile.toPath()));
+        } catch (IOException e) {
+            return new java.util.ArrayList<>();
+        }
+    }
+
+    // ==================== 内部工具 ====================
+
+    /**
+     * 反射调用 run() 或 main() 方法并设置结果。
+     */
+    private static void invokeAndSetResult(Map<String, Object> result, Class<?> clazz) throws Exception {
+        Object output = null;
+        boolean invoked = false;
+
+        try {
+            Method runMethod = clazz.getMethod("run");
+            output = Modifier.isStatic(runMethod.getModifiers())
+                    ? runMethod.invoke(null)
+                    : runMethod.invoke(clazz.getDeclaredConstructor().newInstance());
+            invoked = true;
+        } catch (NoSuchMethodException e) {
+            // 没有 run() 方法，尝试 main()
+        }
+
+        if (!invoked) {
+            try {
+                Method mainMethod = clazz.getMethod("main", String[].class);
+                if (Modifier.isStatic(mainMethod.getModifiers())) {
+                    mainMethod.invoke(null, (Object) new String[]{});
+                    output = "main() 方法已执行";
+                    invoked = true;
+                }
+            } catch (NoSuchMethodException e) {
+                // 没有 main() 方法
+            }
+        }
+
+        if (!invoked) {
+            result.put("success", false);
+            result.put("error", "未找到 run() 或 main() 方法");
+            return;
+        }
+
+        result.put("success", true);
+        result.put("output", output != null ? output.toString() : "null");
     }
 
     // ==================== 内部类 ====================
@@ -151,7 +292,6 @@ public final class JarBytesExecutor {
                     String className = entry.getName()
                             .replace('/', '.')
                             .replace(".class", "");
-                    // 读取 entry 的全部字节
                     byte[] bytes = readAllBytes(jis);
                     classBytes.put(className, bytes);
                 }

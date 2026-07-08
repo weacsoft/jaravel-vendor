@@ -10,7 +10,8 @@ public class RouteService {
                 .replaceAll("\\s+", "")
                 .replaceAll("/+", "/")
                 .replaceAll("^(?!/)", "/");
-        if (uri.endsWith("/")) {
+        // 仅当 URI 长度 > 1 时才去除尾部斜杠，保留根路径 "/"
+        if (uri.length() > 1 && uri.endsWith("/")) {
             uri = uri.substring(0, uri.length() - 1);
         }
         return uri;

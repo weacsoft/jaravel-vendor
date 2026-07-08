@@ -1,6 +1,7 @@
 package com.weacsoft.jaravel.vendor.utils.memory;
 
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 自定义类加载器，从内存读取 class 字节码。
@@ -24,6 +25,15 @@ public class MemoryClassLoader extends ClassLoader {
 
     /** 类名 -> 字节码 */
     private final Map<String, byte[]> classBytes;
+
+    /**
+     * 默认构造器，创建空的字节码映射。
+     * 用于 jblade 等模块在编译后通过 {@link #getCompiledClasses()} 获取映射并填充。
+     */
+    public MemoryClassLoader() {
+        super();
+        this.classBytes = new ConcurrentHashMap<>();
+    }
 
     /**
      * 构造内存类加载器。
@@ -53,5 +63,16 @@ public class MemoryClassLoader extends ClassLoader {
             return defineClass(name, bytes, 0, bytes.length);
         }
         return super.findClass(name);
+    }
+
+    /**
+     * 获取字节码映射表（类名 -> 字节码）。
+     * <p>
+     * jblade 的 BladeCompiler 在编译后通过此方法获取编译产物。
+     *
+     * @return 字节码映射表
+     */
+    public Map<String, byte[]> getCompiledClasses() {
+        return classBytes;
     }
 }
