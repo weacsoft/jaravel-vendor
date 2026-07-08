@@ -376,6 +376,8 @@ public class BladeCompiler {
             if (directiveMatcher.find()) {
                 String directive = directiveMatcher.group(1);
                 String args = directiveMatcher.group(2) != null ? directiveMatcher.group(2) : "";
+                int dirStart = directiveMatcher.start();
+                int dirEnd = directiveMatcher.end();
 
                 switch (directive) {
                     case "extends":
@@ -383,6 +385,10 @@ public class BladeCompiler {
                     case "endsection":
                         break;
                     case "yield":
+                        // 输出指令前的文本（如 <title>）
+                        if (dirStart > 0) {
+                            processLineWithEcho(code, trimmedLine.substring(0, dirStart), localVars);
+                        }
                         // 解析 @yield('name') 或 @yield('name', 'default value')
                         String[] yieldParts = args.split(",", 2);
                         String yieldName = yieldParts[0].trim().replace("'", "").replace("\"", "");
@@ -402,6 +408,10 @@ public class BladeCompiler {
                         code.append("                }\n");
                         code.append("            }\n");
                         code.append("        }\n");
+                        // 输出指令后的文本（如 </title>）
+                        if (dirEnd < trimmedLine.length()) {
+                            processLineWithEcho(code, trimmedLine.substring(dirEnd), localVars);
+                        }
                         break;
                     case "foreach":
                         String[] foreachParts = args.split(" as ");
@@ -429,9 +439,17 @@ public class BladeCompiler {
                         code.append("        }\n");
                         break;
                     case "asset":
+                        // 输出指令前的文本
+                        if (dirStart > 0) {
+                            processLineWithEcho(code, trimmedLine.substring(0, dirStart), localVars);
+                        }
                         // @asset('css/app.css') → 生成静态资源 URL
                         String assetPath = args.trim().replace("'", "").replace("\"", "");
                         code.append("        write(writer, BladeAssetHelper.url(\"").append(escapeJava(assetPath)).append("\"));\n");
+                        // 输出指令后的文本
+                        if (dirEnd < trimmedLine.length()) {
+                            processLineWithEcho(code, trimmedLine.substring(dirEnd), localVars);
+                        }
                         break;
                     case "component":
                     case "endcomponent":
