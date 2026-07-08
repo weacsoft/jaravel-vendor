@@ -57,8 +57,8 @@ public class JwtService {
     public String generate(String subject, Map<String, Object> claims, long ttl) {
         Date now = new Date();
         return Jwts.builder()
+                .claims(claims)
                 .subject(subject)
-                .addClaims(claims)
                 .issuer(config.getIssuer())
                 .issuedAt(now)
                 .expiration(new Date(now.getTime() + ttl))

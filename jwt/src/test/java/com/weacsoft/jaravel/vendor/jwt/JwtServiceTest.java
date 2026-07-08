@@ -111,14 +111,14 @@ class JwtServiceTest {
 
     @Test
     void testShouldRefreshAfterHalfway() throws InterruptedException {
-        // TTL = 2000ms，过半时间 = 1000ms
-        String token = jwtService.generate("user:1010", Map.of(), 2000L);
+        // TTL = 10000ms，过半时间 = 5000ms，留足裕量避免 CI 环境抖动
+        String token = jwtService.generate("user:1010", Map.of(), 10_000L);
 
         // 刚签发，未过半
         assertFalse(jwtService.shouldRefresh(token), "未过半不应刷新");
 
-        // 等待超过一半
-        Thread.sleep(1100);
+        // 等待超过一半（5.5秒 > 5秒过半点，且远未到 10 秒过期）
+        Thread.sleep(5_500);
         assertTrue(jwtService.shouldRefresh(token), "过半后应刷新");
     }
 
