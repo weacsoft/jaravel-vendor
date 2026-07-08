@@ -5,7 +5,6 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 
 import javax.crypto.SecretKey;
@@ -58,12 +57,12 @@ public class JwtService {
     public String generate(String subject, Map<String, Object> claims, long ttl) {
         Date now = new Date();
         return Jwts.builder()
-                .setSubject(subject)
+                .subject(subject)
                 .addClaims(claims)
-                .setIssuer(config.getIssuer())
-                .setIssuedAt(now)
-                .setExpiration(new Date(now.getTime() + ttl))
-                .signWith(key, SignatureAlgorithm.HS256)
+                .issuer(config.getIssuer())
+                .issuedAt(now)
+                .expiration(new Date(now.getTime() + ttl))
+                .signWith(key, Jwts.SIG.HS256)
                 .compact();
     }
 
@@ -74,8 +73,8 @@ public class JwtService {
 
     /** 解析 token，返回 Claims。token 过期时抛出 {@link ExpiredJwtException} */
     public Claims parse(String token) {
-        Jws<Claims> jws = Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token);
-        return jws.getBody();
+        Jws<Claims> jws = Jwts.parser().verifyWith(key).build().parseSignedClaims(token);
+        return jws.getPayload();
     }
 
     /**
