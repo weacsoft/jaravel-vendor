@@ -10,7 +10,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Set;
 
 /**
  * Redis 缓存驱动，对齐 Laravel {@code RedisStore}（{@code Illuminate\Cache\RedisStore}）。

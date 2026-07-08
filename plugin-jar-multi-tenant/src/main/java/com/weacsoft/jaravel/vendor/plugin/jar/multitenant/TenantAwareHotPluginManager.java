@@ -3,7 +3,6 @@ package com.weacsoft.jaravel.vendor.plugin.jar.multitenant;
 import com.weacsoft.jaravel.vendor.plugin.jar.integration.PluginIntegration;
 import com.weacsoft.jaravel.vendor.plugin.jar.manager.HotPluginManager;
 import com.weacsoft.jaravel.vendor.plugin.jar.model.PluginInfo;
-import com.weacsoft.jaravel.vendor.plugin.jar.model.RouteInfo;
 import com.weacsoft.jaravel.vendor.plugin.jar.persistence.MetadataPersistence;
 import com.weacsoft.jaravel.vendor.plugin.jar.registrar.PluginBeanRegistrar;
 import com.weacsoft.jaravel.vendor.plugin.jar.registrar.PluginRouteRegistrar;

@@ -10,7 +10,6 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -104,7 +103,7 @@ public class TenantAwarePluginRouteRegistrar extends PluginRouteRegistrar {
         if (routes != null && !routes.isEmpty()) {
             PluginRouteHandler handler = getRouteHandler();
             for (RouteInfo route : routes) {
-                handler.unregisterRouteInfo(route);
+                handler.unregisterRouteInfo(route.getMethod().name(), route.getPath());
             }
             log.debug("租户路由清理: pluginId={}, count={}", pluginId, routes.size());
         }

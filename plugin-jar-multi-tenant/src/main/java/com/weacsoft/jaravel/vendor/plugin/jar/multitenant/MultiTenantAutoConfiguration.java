@@ -8,7 +8,6 @@ import com.weacsoft.jaravel.vendor.plugin.jar.registrar.PluginBeanRegistrar;
 import com.weacsoft.jaravel.vendor.plugin.jar.registrar.PluginRouteRegistrar;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureBefore;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
