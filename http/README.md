@@ -17,7 +17,7 @@
   - [4.5 TrustProxies](#45-trustproxies)
   - [4.6 VerifyCsrfToken](#46-verifycsrftoken)
 - [5. 请求（Request / RequestFactory）](#5-请求request--requestfactory)
-- [6. 响应（Response / ResponseBuilder / JSONResponseResolver）](#6-响应response--responsebuilder--jsonresponseesolver)
+- [6. 响应（Response / ResponseBuilder / RawResponse / JSONResponseResolver）](#6-响应response--responsebuilder--rawresponse--jsonresponseresolver)
 - [7. 路由系统（Router / Route / RouteService）](#7-路由系统router--route--routeservice)
 - [8. 控制器契约（Controllers）](#8-控制器契约controllers)
 - [9. 配置选项](#9-配置选项)
@@ -463,7 +463,7 @@ Request current = RequestFactory.getCurrentRequest();
 
 ---
 
-## 6. 响应（Response / ResponseBuilder / JSONResponseResolver）
+## 6. 响应（Response / ResponseBuilder / RawResponse / JSONResponseResolver）
 
 ### 6.1 Response 接口
 
@@ -481,8 +481,10 @@ Request current = RequestFactory.getCurrentRequest();
 | `void addCookie(String name, String value)` | 追加 Cookie（名值） |
 | `String getContent()` | 获取文本内容 |
 | `default byte[] getBytes()` | 获取二进制内容（默认 null） |
-| `default String getContentType()` | 从响应头提取 Content-Type |
+| `default String getContentType()` | 从响应头提取 Content-Type；若未设置，返回默认值 `text/plain;charset=utf-8`（兜底机制） |
 | `default Object getBody()` | 获取响应体（默认返回 getContent） |
+
+> **Content-Type 兜底机制**：如果 `Response` 没有设置 `Content-Type` 响应头，框架在写入 HTTP 响应时会通过 `getContentType()` 兜底为 `text/plain;charset=utf-8`。`raw()` 构建的空响应若不显式设置 Content-Type 即走此兜底逻辑。
 
 ### 6.2 ResponseBuilder
 
@@ -495,6 +497,7 @@ Request current = RequestFactory.getCurrentRequest();
 | `static Response ok()` | 200 状态，内容 `"ok"` |
 | `static Response json(Object data)` | 200 状态，JSON 序列化，Content-Type: application/json |
 | `static Response content(String content)` | 200 状态，纯文本，Content-Type: text/plain |
+| `static Response html(String html)` | 200 状态，HTML 响应，Content-Type: text/html |
 | `static Response view(String templateName, Map<String,Object> data)` | 200 状态，渲染 Blade 模板，Content-Type: text/html |
 | `static Response file(byte[] data, String filename)` | 200 状态，文件下载，Content-Type: application/octet-stream |
 | `static Response staticFile(byte[] data, String mimeType, int cacheMaxAge)` | 200 状态，静态文件响应，设置 Content-Type / Cache-Control / Content-Length |
@@ -502,6 +505,7 @@ Request current = RequestFactory.getCurrentRequest();
 | `static Response unauthorized(String message)` | 401 未授权 |
 | `static Response forbidden(String message)` | 403 禁止访问 |
 | `static Response error(int status, String message)` | 自定义错误状态，JSON 格式 `{"message": "..."}` |
+| `static RawResponse raw()` | 创建空的 `RawResponse` 构建器，不预设任何 header / status，开发者自由组织（见 6.3） |
 | `static String toJson(Object data)` | 将对象序列化为 JSON 字符串 |
 | `static void setBladeEngine(Object engine)` | 注入 Blade 模板引擎实例（用于 `view`） |
 
@@ -512,20 +516,63 @@ Response r1 = ResponseBuilder.json(Map.of("id", 1, "name", "Alice"));
 // 视图响应（需先注入 BladeEngine）
 Response r2 = ResponseBuilder.view("user.profile", Map.of("user", user));
 
+// HTML 响应
+Response r3 = ResponseBuilder.html("<h1>Hello</h1>");
+
 // 文件下载
-Response r3 = ResponseBuilder.file(fileBytes, "report.pdf");
+Response r4 = ResponseBuilder.file(fileBytes, "report.pdf");
 
 // 重定向
-Response r4 = ResponseBuilder.redirect("/login");
+Response r5 = ResponseBuilder.redirect("/login");
 
 // 错误响应
-Response r5 = ResponseBuilder.error(404, "资源不存在");
-Response r6 = ResponseBuilder.unauthorized("请先登录");
+Response r6 = ResponseBuilder.error(404, "资源不存在");
+Response r7 = ResponseBuilder.unauthorized("请先登录");
+
+// Raw 模式：自定义 XML 响应
+Response r8 = ResponseBuilder.raw()
+    .status(200)
+    .header("Content-Type", "application/xml;charset=utf-8")
+    .header("X-Custom-Header", "hello")
+    .body("<xml><name>test</name></xml>");
 ```
 
 > `view` 方法依赖 jblade 模块。若未通过 `setBladeEngine` 注入引擎，调用时会抛 `RuntimeException("jblade 模块未引入")`。
 
-### 6.3 JSONResponseResolver
+### 6.3 RawResponse
+
+`com.weacsoft.jaravel.vendor.http.response.ResponseBuilder.RawResponse`
+
+`ResponseBuilder.raw()` 返回的 Raw 响应构建器，实现 `Response` 接口。不预设任何 Content-Type 或状态码，全部由开发者通过链式方法决定。
+
+| 方法签名 | 说明 |
+| --- | --- |
+| `RawResponse status(int status)` | 设置 HTTP 状态码（默认 200） |
+| `RawResponse header(String name, String value)` | 追加响应头（同名可多次添加） |
+| `RawResponse contentType(String contentType)` | 设置 Content-Type（覆盖已有值） |
+| `RawResponse cookie(Cookie cookie)` | 追加 Cookie 对象 |
+| `RawResponse cookie(String name, String value)` | 追加 Cookie（名值） |
+| `Response body(String content)` | 设置文本响应体 |
+| `Response body(byte[] bytes)` | 设置二进制响应体 |
+
+同时实现 `Response` 接口的全部方法：`getStatus` / `getHeaders` / `addHeader` / `getCookies` / `addCookie(Cookie)` / `addCookie(String,String)` / `getContent` / `getBytes` / `getContentType` / `getBody`。
+
+> `body(...)` 方法返回 `Response` 类型（而非 `RawResponse`），调用后即结束链式构建。若未通过 `header` 或 `contentType` 设置 Content-Type，框架在写入 HTTP 响应时兜底为 `text/plain;charset=utf-8`。
+
+```java
+// 自定义二进制响应（如图片）
+return ResponseBuilder.raw()
+    .status(200)
+    .header("Content-Type", "image/png")
+    .body(imageBytes);
+
+// 不设 Content-Type，框架兜底为 text/plain;charset=utf-8
+return ResponseBuilder.raw()
+    .status(204)
+    .body("");
+```
+
+### 6.4 JSONResponseResolver
 
 `com.weacsoft.jaravel.vendor.http.response.JSONResponseResolver`
 

@@ -31,6 +31,11 @@ public class SpringBootResponseMVCResolver implements ResponseBodyAdvice<Object>
 
             jaravelResponse.getHeaders().forEach((key, value) -> response.getHeaders().addAll(key, value));
 
+            // 兜底 Content-Type：如果 Response 没有设置，使用默认值（text/plain）
+            if (response.getHeaders().getContentType() == null) {
+                response.getHeaders().setContentType(MediaType.parseMediaType(jaravelResponse.getContentType()));
+            }
+
             if (response instanceof ServletServerHttpResponse servletResponse) {
                 Cookie[] cookies = jaravelResponse.getCookies();
                 if (cookies != null) {

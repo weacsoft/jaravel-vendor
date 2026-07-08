@@ -248,7 +248,7 @@ Request current = RequestFactory.getCurrentRequest();
 | `addCookie` | `String name, String value` | `void` | 添加 Cookie（名值对） |
 | `getContent` | 无 | `String` | 获取响应内容 |
 | `getBytes` | 无 | `byte[]` | 获取字节响应体（default null） |
-| `getContentType` | 无 | `String` | 从响应头提取 Content-Type（default 方法） |
+| `getContentType` | 无 | `String` | 从响应头提取 Content-Type（default 方法）；若未设置则返回默认值 `text/plain;charset=utf-8` |
 | `getBody` | 无 | `Object` | 获取响应体（default 返回 getContent） |
 
 ---
@@ -267,12 +267,14 @@ Request current = RequestFactory.getCurrentRequest();
 | `view` | `String templateName, Map<String, Object> data` | `Response` | 渲染 Blade 模板返回 HTML 响应 |
 | `json` | `Object data` | `Response` | 创建 JSON 响应 |
 | `content` | `String content` | `Response` | 创建纯文本响应 |
+| `html` | `String html` | `Response` | HTML 响应（Content-Type: text/html） |
 | `file` | `byte[] data, String filename` | `Response` | 创建文件下载响应 |
 | `staticFile` | `byte[] data, String mimeType, int cacheMaxAge` | `Response` | 创建静态文件响应（设置 Content-Type / Cache-Control / Content-Length，供静态资源服务使用） |
 | `unauthorized` | `String message` | `Response` | 创建 401 未授权响应 |
 | `forbidden` | `String message` | `Response` | 创建 403 禁止访问响应 |
 | `error` | `int status, String message` | `Response` | 创建错误响应 |
 | `redirect` | `String url` | `Response` | 创建 302 重定向响应 |
+| `raw` | 无 | `RawResponse` | 创建空响应构建器（不预设 header/status） |
 | `toJson` | `Object data` | `String` | 将对象序列化为 JSON 字符串 |
 
 #### Usage Example
@@ -283,6 +285,9 @@ return ResponseBuilder.json(Map.of("code", 200, "data", users));
 // 视图响应
 return ResponseBuilder.view("user.profile", Map.of("user", user));
 
+// HTML 响应
+return ResponseBuilder.html("<h1>Hello</h1>");
+
 // 错误响应
 return ResponseBuilder.unauthorized("请先登录");
 
@@ -291,6 +296,71 @@ return ResponseBuilder.file(fileBytes, "report.pdf");
 
 // 重定向
 return ResponseBuilder.redirect("/login");
+
+// Raw 模式：自定义响应
+return ResponseBuilder.raw()
+    .status(200)
+    .header("Content-Type", "application/xml;charset=utf-8")
+    .body("<xml><name>test</name></xml>");
+```
+
+#### Nested Types
+- **ResponseBuilder.RawResponse** (class, public static): Raw 响应构建器，由 `ResponseBuilder.raw()` 创建，详见下方独立章节。
+
+---
+
+### ResponseBuilder.RawResponse
+- **Type**: public static class (`ResponseBuilder.RawResponse`)
+- **Package**: `com.weacsoft.jaravel.vendor.http.response`
+- **Description**: Raw 响应构建器，由 `ResponseBuilder.raw()` 创建。不预设任何 Content-Type 或状态码，开发者通过链式方法自由组织响应头、状态码、Cookie 与响应体。若最终未设置 Content-Type，框架在写入 HTTP 响应时兜底为 `text/plain;charset=utf-8`。
+- **Implements**: `Response`
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `status` | `int status` | `RawResponse` | 设置 HTTP 状态码（默认 200） |
+| `header` | `String name, String value` | `RawResponse` | 追加响应头（同名可多次添加） |
+| `contentType` | `String contentType` | `RawResponse` | 设置 Content-Type（覆盖已有值） |
+| `cookie` | `Cookie cookie` | `RawResponse` | 追加 Cookie 对象 |
+| `cookie` | `String name, String value` | `RawResponse` | 追加 Cookie（名值对） |
+| `body` | `String content` | `Response` | 设置文本响应体（结束链式构建） |
+| `body` | `byte[] bytes` | `Response` | 设置二进制响应体（结束链式构建） |
+
+#### Response 接口实现方法
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `getStatus` | 无 | `int` | 获取状态码 |
+| `getHeaders` | 无 | `Map<String, List<String>>` | 获取响应头（返回副本） |
+| `addHeader` | `String name, String value` | `void` | 追加响应头 |
+| `getCookies` | 无 | `Cookie[]` | 获取 Cookie 数组 |
+| `addCookie` | `Cookie cookie` | `void` | 追加 Cookie |
+| `addCookie` | `String name, String value` | `void` | 追加 Cookie（名值对） |
+| `getContent` | 无 | `String` | 获取文本响应体 |
+| `getBytes` | 无 | `byte[]` | 获取二进制响应体 |
+| `getContentType` | 无 | `String` | 从响应头提取 Content-Type；未设置返回 `text/plain;charset=utf-8` |
+| `getBody` | 无 | `Object` | 获取响应体（默认返回 getContent） |
+
+#### Usage Example
+```java
+// 自定义 XML 响应
+return ResponseBuilder.raw()
+    .status(200)
+    .header("Content-Type", "application/xml;charset=utf-8")
+    .header("X-Custom", "hello")
+    .body("<xml><name>test</name></xml>");
+
+// 自定义二进制响应（如图片）
+return ResponseBuilder.raw()
+    .status(200)
+    .header("Content-Type", "image/png")
+    .body(imageBytes);
+
+// 不设 Content-Type，框架兜底为 text/plain;charset=utf-8
+return ResponseBuilder.raw()
+    .status(204)
+    .body("");
 ```
 
 ---

@@ -49,6 +49,11 @@
             <groupId>io.github.lijialong1313</groupId>
             <artifactId>jblade</artifactId>
         </dependency>
+        <!-- Wire 部分更新模块（Laravel Livewire 风格，支持自定义 update URL 和 @section 无感更新） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>wire</artifactId>
+        </dependency>
         <dependency>
             <groupId>io.github.lijialong1313</groupId>
             <artifactId>event</artifactId>

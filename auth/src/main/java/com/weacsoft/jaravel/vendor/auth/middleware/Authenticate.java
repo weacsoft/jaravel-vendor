@@ -14,7 +14,13 @@ import com.weacsoft.jaravel.vendor.http.response.ResponseBuilder;
  * router.get("/admin", handler).middleware(new Authenticate("web"))
  * router.get("/api/profile", handler).middleware(new Authenticate("api"))
  * </pre>
- * 未登录时：API 请求返回 401 JSON，其它请求重定向到登录页。
+ * 未登录时分三种情况处理：
+ * <ul>
+ *   <li>Wire 请求（X-Wire-Request 头）：返回 401 JSON，包含 {@code redirect} 字段指向登录页，
+ *       前端 wire.js 自动跳转，实现无感重定向</li>
+ *   <li>API 请求：返回 401 JSON</li>
+ *   <li>其它请求：302 重定向到登录页</li>
+ * </ul>
  */
 public class Authenticate implements Middleware {
 
@@ -47,6 +53,15 @@ public class Authenticate implements Middleware {
         if (authenticated) {
             return next.apply(request);
         }
+
+        // 检测 Wire 请求：通过自定义头 X-Wire-Request 判断
+        String wireHeader = request.header("X-Wire-Request");
+        if ("true".equalsIgnoreCase(wireHeader)) {
+            // Wire 请求未认证：返回 401 JSON，包含 redirect 字段
+            // wire.js 收到后会自动重定向到登录页，用户无感知
+            return ResponseBuilder.error(401, "Unauthorized", loginPath);
+        }
+
         String accept = request.header("Accept");
         String contentType = request.getRequest() != null ? request.getRequest().getContentType() : null;
         String path = request.getRequest() != null ? request.getRequest().getRequestURI() : null;

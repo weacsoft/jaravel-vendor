@@ -4,9 +4,15 @@ import com.weacsoft.jaravel.vendor.cache.CacheStore;
 import com.weacsoft.jaravel.vendor.utils.memory.MemoryClassLoader;
 
 import java.io.IOException;
+import java.io.StringWriter;
+import java.io.Writer;
 import java.lang.reflect.InvocationTargetException;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 /**
  * Blade 模板引擎，负责编译和渲染 Blade 模板。
@@ -191,6 +197,120 @@ public class BladeEngine {
 
     public String render(String templateName) throws Exception {
         return render(templateName, null);
+    }
+
+    // ===== Wire section 渲染方法 =====
+
+    /**
+     * 渲染指定 section 的内容（不渲染完整页面，不含布局）。
+     * <p>
+     * 加载子模板并调用 init() 注册 section renderer，
+     * 然后只执行指定 section 的 renderer，不渲染完整页面。
+     * 适用于 Wire 部分更新场景。
+     *
+     * @param templateName 模板名
+     * @param sectionName  section 名
+     * @param variables    模板变量
+     * @return section 的 HTML 内容
+     */
+    public String renderSection(String templateName, String sectionName, Map<String, Object> variables) throws Exception {
+        BladeTemplate template = loadTemplate(templateName);
+        template.setEngine(this);
+        template.resetContext();
+        BladeContext context = template.getContext();
+
+        if (variables != null) {
+            for (Map.Entry<String, Object> entry : variables.entrySet()) {
+                context.setVariable(entry.getKey(), entry.getValue());
+            }
+        }
+
+        if (!template.isInitialized()) {
+            synchronized (template) {
+                if (!template.isInitialized()) {
+                    template.init();
+                    template.setInitialized(true);
+                }
+            }
+        }
+
+        Consumer<Writer> renderer = context.getSectionRenderer(sectionName);
+        if (renderer == null) {
+            String sectionContent = context.getSection(sectionName);
+            return sectionContent != null ? sectionContent : "";
+        }
+
+        StringWriter writer = new StringWriter();
+        renderer.accept(writer);
+        return writer.toString();
+    }
+
+    /**
+     * 批量渲染多个 section（高效：只加载和初始化模板一次）。
+     *
+     * @param templateName 模板名
+     * @param sectionNames 需要渲染的 section 名列表
+     * @param variables    模板变量
+     * @return section 名 → HTML 内容
+     */
+    public Map<String, String> renderSections(String templateName, List<String> sectionNames, Map<String, Object> variables) throws Exception {
+        BladeTemplate template = loadTemplate(templateName);
+        template.setEngine(this);
+        template.resetContext();
+        BladeContext context = template.getContext();
+
+        if (variables != null) {
+            for (Map.Entry<String, Object> entry : variables.entrySet()) {
+                context.setVariable(entry.getKey(), entry.getValue());
+            }
+        }
+
+        if (!template.isInitialized()) {
+            synchronized (template) {
+                if (!template.isInitialized()) {
+                    template.init();
+                    template.setInitialized(true);
+                }
+            }
+        }
+
+        Map<String, String> result = new LinkedHashMap<>();
+        for (String sectionName : sectionNames) {
+            Consumer<Writer> renderer = context.getSectionRenderer(sectionName);
+            if (renderer != null) {
+                StringWriter writer = new StringWriter();
+                renderer.accept(writer);
+                result.put(sectionName, writer.toString());
+            } else {
+                String sectionContent = context.getSection(sectionName);
+                result.put(sectionName, sectionContent != null ? sectionContent : "");
+            }
+        }
+        return result;
+    }
+
+    /**
+     * 获取模板中所有已注册的 section 名。
+     *
+     * @param templateName 模板名
+     * @return section 名列表
+     */
+    public List<String> getSectionNames(String templateName) throws Exception {
+        BladeTemplate template = loadTemplate(templateName);
+        template.setEngine(this);
+        template.resetContext();
+        BladeContext context = template.getContext();
+
+        if (!template.isInitialized()) {
+            synchronized (template) {
+                if (!template.isInitialized()) {
+                    template.init();
+                    template.setInitialized(true);
+                }
+            }
+        }
+
+        return new ArrayList<>(context.getSectionRenderers().keySet());
     }
 
     /**

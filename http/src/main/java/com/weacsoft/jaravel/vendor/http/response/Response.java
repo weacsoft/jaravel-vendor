@@ -24,10 +24,13 @@ public interface Response {
         return null;
     }
 
-    /** 从响应头中提取 Content-Type */
+    /**
+     * 从响应头中提取 Content-Type。
+     * 如果未设置，返回默认值 {@code text/plain;charset=utf-8}。
+     */
     default String getContentType() {
         List<String> values = getHeaders().get("Content-Type");
-        return values != null && !values.isEmpty() ? values.get(0) : null;
+        return (values != null && !values.isEmpty()) ? values.get(0) : "text/plain;charset=utf-8";
     }
 
     /** 响应体，默认返回 getContent() */

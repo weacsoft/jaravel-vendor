@@ -128,6 +128,11 @@ public class SpringBootRouteAutoConfiguration {
             builder.header(key, value.toArray(new String[0]));
         });
 
+        // 兜底 Content-Type：如果 Response 没有设置，使用 getContentType() 的默认值（text/plain）
+        if (response.getHeaders().get("Content-Type") == null) {
+            builder.header("Content-Type", response.getContentType());
+        }
+
         // 写入 Cookie
         if (response.getCookies() != null) {
             for (jakarta.servlet.http.Cookie cookie : response.getCookies()) {

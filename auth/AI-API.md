@@ -235,7 +235,7 @@ Auth.logout("api");
 ### Authenticate
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.auth.middleware`
-- **Description**: 认证中间件，对齐 Laravel auth 中间件。支持指定守卫名称（对齐 auth:api 语法）。未登录时 API 请求返回 401 JSON，其它请求重定向到登录页。
+- **Description**: 认证中间件，对齐 Laravel auth 中间件。支持指定守卫名称（对齐 auth:api 语法）。未登录时分三种情况处理：Wire 请求（X-Wire-Request 头）返回 401 JSON（含 redirect 字段，前端 wire.js 自动跳转实现无感重定向）/ API 请求返回 401 JSON / 其它请求 302 重定向到登录页。构造方法支持通过 loginPath 参数自定义登录页路径。
 - **Implements**: `Middleware`
 
 #### Methods
@@ -245,14 +245,23 @@ Auth.logout("api");
 | `Authenticate` | 无 | 构造方法 | 默认守卫，登录页 /login |
 | `Authenticate` | `String guard` | 构造方法 | 指定守卫 |
 | `Authenticate` | `String guard, String loginPath` | 构造方法 | 指定守卫和登录页 |
-| `handle` | `Request request, NextFunction next` | `Response` | 执行认证检查 |
+| `handle` | `Request request, NextFunction next` | `Response` | 执行认证检查：已认证则放行；未认证时 Wire 请求（X-Wire-Request 头）返回 401 JSON（含 redirect 字段，供前端 wire.js 无感重定向），API 请求返回 401 JSON，其它请求 302 重定向到登录页 |
 
 #### Usage Example
 ```java
 // 路由中使用
 router.get("/admin", handler).middleware(new Authenticate("web"));
 router.get("/api/profile", handler).middleware(new Authenticate("api"));
+
+// Wire 请求路由：前端 wire.js 通过 X-Wire-Request 头发起请求
+// 未认证时中间件返回 401 JSON（含 redirect 字段），wire.js 自动跳转登录页
+router.post("/api/wire/demo", handler).middleware(new Authenticate());
+
+// 自定义登录页路径（loginPath 同时影响 302 重定向目标与 Wire 响应中的 redirect 字段值）
+router.get("/portal", handler).middleware(new Authenticate("web", "/portal/login"));
 ```
+
+> **说明**：Authenticate 构造方法支持通过 `loginPath` 参数自定义登录页路径。该路径同时作用于两种场景：普通请求未认证时 302 重定向的目标地址，以及 Wire 请求未认证时返回 JSON 中 `redirect` 字段的取值。默认值为 `/login`。
 
 ---
 

@@ -591,7 +591,7 @@ String token = Auth.token("api"); // 获取签发的 access token
 
 ### Authenticate
 
-认证中间件，对齐 Laravel 的 `auth` 中间件。支持指定守卫名称，对齐 Laravel 的 `auth:api`、`auth:web` 语法。
+认证中间件，对齐 Laravel 的 `auth` 中间件。支持指定守卫名称，对齐 Laravel 的 `auth:api`、`auth:web` 语法。未登录时分三种情况处理：Wire 请求返回 401 JSON（含 `redirect` 字段）/ API 请求返回 401 JSON / 其它请求 302 重定向到登录页。
 
 #### 构造器
 
@@ -615,11 +615,15 @@ router.get("/api/profile", handler).middleware(new Authenticate("api"));
 
 // 自定义登录页
 router.get("/portal", handler).middleware(new Authenticate("web", "/portal/login"));
+
+// Wire 请求路由（前端 wire.js 通过 X-Wire-Request 头发起请求）
+// 未认证时中间件返回 401 JSON（含 redirect 字段），wire.js 自动跳转登录页
+router.post("/api/wire/demo", handler).middleware(new Authenticate());
 ```
 
 #### 未登录处理逻辑
 
-中间件根据请求类型决定响应方式：
+中间件根据请求类型分三种情况决定响应方式：
 
 ```
 未登录时：
@@ -627,11 +631,33 @@ router.get("/portal", handler).middleware(new Authenticate("web", "/portal/login
   └── 未指定？     → Auth.check()
   ├── 已认证 → next.apply(request)
   └── 未认证
+        ├── Wire 请求（X-Wire-Request: true）
+        │     → 返回 401 JSON: {"code":401, "message":"Unauthorized", "redirect":"/login"}
         ├── API 请求（Accept/Content-Type 含 application/json，或路径以 /api 开头）
         │     → 返回 401 JSON: {"code":401, "message":"Unauthorized"}
         └── 其它请求
-              → 重定向到登录页（默认 /login）
+              → 302 重定向到登录页（默认 /login）
 ```
+
+#### Wire 请求认证过期无感重定向
+
+当用户在浏览页面期间认证过期（如 Session 失效），传统做法下后续的 AJAX 请求会收到 401，前端通常只能整体刷新页面跳转登录，出现白屏。Authenticate 中间件对 **Wire 请求**做了特殊处理，配合前端 `wire.js` 实现「无感重定向」：
+
+- **识别方式**：Wire 请求通过自定义请求头 `X-Wire-Request: true` 标识。前端 `wire.js` 在发起请求时会自动带上该头。
+- **响应内容**：未认证时返回 401 JSON，其中额外包含 `redirect` 字段指向登录页：
+
+  ```json
+  {
+    "code": 401,
+    "message": "Unauthorized",
+    "redirect": "/login"
+  }
+  ```
+
+- **前端跳转**：前端 `wire.js` 收到该响应后，自动跳转到 `/login?redirect=当前页面URL`，将当前页面地址作为回跳参数。
+- **登录后回跳**：用户在登录页完成登录后，根据 `redirect` 参数回到之前的页面，整个过程不出现白屏，体验上接近 SPA 的路由切换。
+
+> Wire 请求响应中的 `redirect` 字段取自 Authenticate 构造方法中配置的 `loginPath`（默认 `/login`）。若通过 `new Authenticate("web", "/portal/login")` 自定义了登录页，则 `redirect` 字段值同步变为 `/portal/login`。
 
 ---
 

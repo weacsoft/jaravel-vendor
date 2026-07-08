@@ -134,7 +134,7 @@ public class BladeCompiler {
     }
 
     private String generateClassName(String templateName) {
-        return "Blade_" + templateName.replace(File.separator, "_").replace("/", "_").replace("\\", "_").replace(".", "_");
+        return "Blade_" + templateName.replace(File.separator, "_").replace("/", "_").replace("\\", "_").replace(".", "_").replace("-", "_");
     }
 
     private String generateJavaCode(String className, String content) {
@@ -426,6 +426,12 @@ public class BladeCompiler {
                         String yieldName = yieldParts[0].trim().replace("'", "").replace("\"", "");
                         String yieldDefault = (yieldParts.length == 2) ? yieldParts[1].trim().replace("'", "").replace("\"", "") : null;
                         code.append("        {\n");
+                        // Wire section 包装：使用 HTML 注释标记边界，不增加额外标签
+                        // 区块 section 用 <div wire:section>（可替换子树），字符串 section 用注释标记（仅替换文本节点）
+                        code.append("            boolean __wireMode = ctx.getVariable(\"__wire_mode\") != null;\n");
+                        code.append("            if (__wireMode) {\n");
+                        code.append("                write(writer, \"<!--wire:section-start:").append(yieldName).append("-->\");\n");
+                        code.append("            }\n");
                         code.append("            Consumer<Writer> renderer = ctx.getSectionRenderer(\"").append(yieldName).append("\");\n");
                         code.append("            if (renderer != null) {\n");
                         code.append("                renderer.accept(writer);\n");
@@ -438,6 +444,9 @@ public class BladeCompiler {
                             code.append("                    write(writer, \"").append(escapeJava(yieldDefault)).append("\");\n");
                         }
                         code.append("                }\n");
+                        code.append("            }\n");
+                        code.append("            if (__wireMode) {\n");
+                        code.append("                write(writer, \"<!--wire:section-end:").append(yieldName).append("-->\");\n");
                         code.append("            }\n");
                         code.append("        }\n");
                         // 输出指令后的文本（如 </title>）
@@ -972,7 +981,11 @@ public class BladeCompiler {
                         // 检查是否是 -> 的一部分（已经被处理过，但以防万一）
                         if (prev == '-' || next == '>') {
                             result.append(c);
+                        } else if (Character.isLetterOrDigit(prev) && Character.isLetter(next)) {
+                            // Java 方法调用/属性访问: ctx.getVariable(...) → 不转换
+                            result.append(c);
                         } else {
+                            // PHP 字符串拼接 . → Java +
                             result.append(" + ");
                         }
                     }

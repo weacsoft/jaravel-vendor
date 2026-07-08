@@ -244,27 +244,75 @@ public abstract class BladeTemplate {
             return null;
         }
         try {
-            // 尝试根据参数类型查找方法
             Class<?>[] paramTypes = new Class<?>[args.length];
             for (int i = 0; i < args.length; i++) {
                 paramTypes[i] = args[i] != null ? args[i].getClass() : Object.class;
             }
-            // 先尝试精确匹配
-            try {
-                return obj.getClass().getMethod(method, paramTypes).invoke(obj, args);
-            } catch (NoSuchMethodException e) {
-                // 尝试无参方法
-                if (args.length == 0) {
-                    return obj.getClass().getMethod(method).invoke(obj);
-                }
+            java.lang.reflect.Method m = findMethod(obj.getClass(), method, paramTypes);
+            if (m == null && args.length == 0) {
+                m = findMethod(obj.getClass(), method, new Class<?>[0]);
+            }
+            if (m == null) {
                 // 尝试 Object 参数类型
                 for (int i = 0; i < paramTypes.length; i++) {
                     paramTypes[i] = Object.class;
                 }
-                return obj.getClass().getMethod(method, paramTypes).invoke(obj, args);
+                m = findMethod(obj.getClass(), method, paramTypes);
             }
+            if (m == null) {
+                return null;
+            }
+            return m.invoke(obj, args);
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    /**
+     * 在类及其所有接口（包括父类接口）中查找方法。
+     * 优先在实现的接口中查找（接口方法不受模块 open 限制），
+     * 然后在类自身和父类中查找。
+     */
+    private java.lang.reflect.Method findMethod(Class<?> clazz, String methodName, Class<?>[] paramTypes) {
+        if (clazz == null) {
+            return null;
+        }
+        // 1. 先在实现的接口中查找（接口方法可以跨模块调用，不受模块 open 限制）
+        for (Class<?> iface : getAllInterfaces(clazz)) {
+            try {
+                java.lang.reflect.Method m = iface.getMethod(methodName, paramTypes);
+                if (m != null) {
+                    return m;
+                }
+            } catch (NoSuchMethodException ignored) {
+            }
+        }
+        // 2. 在类自身查找
+        try {
+            return clazz.getDeclaredMethod(methodName, paramTypes);
+        } catch (NoSuchMethodException ignored) {
+        }
+        // 3. 在父类中查找
+        return findMethod(clazz.getSuperclass(), methodName, paramTypes);
+    }
+
+    /**
+     * 获取类实现的所有接口（包括父类实现的接口）。
+     */
+    private java.util.Set<Class<?>> getAllInterfaces(Class<?> clazz) {
+        java.util.Set<Class<?>> interfaces = new java.util.LinkedHashSet<>();
+        while (clazz != null && clazz != Object.class) {
+            collectInterfaces(clazz, interfaces);
+            clazz = clazz.getSuperclass();
+        }
+        return interfaces;
+    }
+
+    private void collectInterfaces(Class<?> clazz, java.util.Set<Class<?>> result) {
+        for (Class<?> iface : clazz.getInterfaces()) {
+            if (result.add(iface)) {
+                collectInterfaces(iface, result);
+            }
         }
     }
 
