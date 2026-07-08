@@ -610,6 +610,8 @@ public class BladeCompiler {
 
     private void processLineWithEcho(StringBuilder code, String line, Set<String> localVars) {
         if (line == null || line.trim().isEmpty()) {
+            // 空行也输出换行符，保持 HTML 结构（特别是 <script>、<pre> 等标签内的换行）
+            code.append("        write(writer, \"\\n\");\n");
             return;
         }
 
@@ -644,7 +646,10 @@ public class BladeCompiler {
         String after = processed.substring(lastEnd);
         after = COMMENT_PATTERN.matcher(after).replaceAll("");
         if (!after.isEmpty()) {
-            code.append("        write(writer, \"").append(escapeJava(after)).append("\");\n");
+            code.append("        write(writer, \"").append(escapeJava(after)).append("\\n\");\n");
+        } else {
+            // 非空行但末尾无内容时也输出换行符（如只有 {{ }} 表达式的行）
+            code.append("        write(writer, \"\\n\");\n");
         }
     }
 
