@@ -1,4 +1,4 @@
-﻿# utils AI-API Reference
+# utils AI-API Reference
 
 > Module: `utils` | Package: `com.weacsoft.jaravel.vendor.utils` | Version: 0.1.1
 

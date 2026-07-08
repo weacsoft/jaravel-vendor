@@ -1,4 +1,4 @@
-﻿# event AI-API Reference
+# event AI-API Reference
 
 > Module: `event` | Package: `com.weacsoft.jaravel.vendor.event` | Version: 0.1.1
 

@@ -1,4 +1,4 @@
-﻿# auth AI-API Reference
+# auth AI-API Reference
 
 > Module: `auth` | Package: `com.weacsoft.jaravel.vendor.auth` | Version: 0.1.1
 

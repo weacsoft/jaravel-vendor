@@ -1,4 +1,4 @@
-﻿# plugin-jar-remote-server
+# plugin-jar-remote-server
 
 > 包名：com.weacsoft.jaravel.vendor.plugin.jar.remote.server
 > 版本：0.1.1

@@ -1,4 +1,4 @@
-﻿# jblade 模块
+# jblade 模块
 
 > Jaravel-Vendor 的模板引擎模块，提供 Laravel Blade 风格的模板编译与渲染。支持 `{{ }}` 输出、`@if/@foreach/@for/@while` 控制结构、`@extends/@section/@yield` 模板继承、`@component` 组件等特性，通过内存编译（`MemoryClassLoader`）将模板编译为 Java 类后执行。包名统一为 `com.weacsoft.jaravel.vendor.jblade`。
 

@@ -1,4 +1,4 @@
-﻿# http AI-API Reference
+# http AI-API Reference
 
 > Module: `http` | Package: `com.weacsoft.jaravel.vendor` | Version: 0.1.1
 

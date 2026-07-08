@@ -1,4 +1,4 @@
-﻿# plugin-jar-multi-tenant AI-API Reference
+# plugin-jar-multi-tenant AI-API Reference
 
 > Module: `plugin-jar-multi-tenant` | Package: `com.weacsoft.jaravel.vendor.plugin.jar.multitenant` | Version: 0.1.1
 

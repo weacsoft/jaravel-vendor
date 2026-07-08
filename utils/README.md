@@ -1,4 +1,4 @@
-﻿# utils 模块
+# utils 模块
 
 > Jaravel-Vendor 的通用工具模块，提供内存编译基础设施。包含 `MemoryClassLoader`、`MemoryFileManager`、`SourceCodeJavaFileObject` 三个核心类，用于在运行时将 Java 源代码字符串编译为字节码并加载到内存中，无需写入磁盘。包名统一为 `com.weacsoft.jaravel.vendor.utils.memory`。
 

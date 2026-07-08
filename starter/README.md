@@ -1,4 +1,4 @@
-﻿# starter 模块
+# starter 模块
 
 > Jaravel-Vendor 的 Spring Boot Starter，一键引入全部 Laravel 风格组件。只需添加一个 Maven 依赖，即可获得中间件、Auth、Validation、Config、Eloquent ORM、迁移、缓存、事件、JBlade 模板引擎全套能力。包名统一为 `com.weacsoft.jaravel.vendor.springboot`。
 

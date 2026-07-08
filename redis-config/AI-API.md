@@ -1,4 +1,4 @@
-﻿# redis-config AI-API Reference
+# redis-config AI-API Reference
 
 > Module: `redis-config` | Package: `com.weacsoft.jaravel.vendor.redis` | Version: 0.1.1
 

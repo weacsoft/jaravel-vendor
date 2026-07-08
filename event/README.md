@@ -1,4 +1,4 @@
-﻿# event 模块
+# event 模块
 
 > Jaravel-Vendor 的事件模块，提供 Laravel 风格的 Event/Listener 契约、同步与异步事件分发、`ShouldQueue` per-listener 队列决策、`QueueManager` 多队列线程池管理、`@ListensTo` 注解自动注册、`EventFacade` 静态门面。包名统一为 `com.weacsoft.jaravel.vendor.event`。
 

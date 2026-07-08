@@ -1,4 +1,4 @@
-﻿# wechat-sdk 模块（微信 SDK）
+# wechat-sdk 模块（微信 SDK）
 
 > 包名：`com.weacsoft.jaravel.vendor.wechat`
 > 对齐 PHP 扩展包：`overtrue/laravel-wechat`（EasyWeChat）

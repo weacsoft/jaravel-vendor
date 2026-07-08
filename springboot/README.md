@@ -1,4 +1,4 @@
-﻿# springboot 模块
+# springboot 模块
 
 > Jaravel-Vendor 的 Spring Boot 集成模块，将 `http` 模块的 Laravel 风格路由、中间件、Request / Response 与 Spring MVC（`RouterFunction`、`HandlerMethodArgumentResolver`、`HandlerMethodReturnValueHandler`、`ResponseBodyAdvice`）桥接。包名统一为 `com.weacsoft.jaravel.vendor.springboot`。
 

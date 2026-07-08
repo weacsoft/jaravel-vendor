@@ -1,4 +1,4 @@
-﻿# jblade AI-API Reference
+# jblade AI-API Reference
 
 > Module: `jblade` | Package: `com.weacsoft.jaravel.vendor.jblade` | Version: 0.1.1
 

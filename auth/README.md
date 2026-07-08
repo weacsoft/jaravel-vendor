@@ -1,4 +1,4 @@
-﻿# Auth 模块（认证）
+# Auth 模块（认证）
 
 > 包名：`com.weacsoft.jaravel.vendor.auth`
 > 对齐 Laravel 特性：`Illuminate\Auth`（AuthManager、Guard、UserProvider、Auth 门面、auth 中间件）

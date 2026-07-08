@@ -1,4 +1,4 @@
-﻿package com.weacsoft.jaravel.vendor.plugin.jar.manager;
+package com.weacsoft.jaravel.vendor.plugin.jar.manager;
 
 import com.weacsoft.jaravel.vendor.plugin.jar.annotation.Application;
 import com.weacsoft.jaravel.vendor.plugin.jar.annotation.HttpMethod;

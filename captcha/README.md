@@ -1,4 +1,4 @@
-﻿# captcha 模块
+# captcha 模块
 
 > Jaravel-Vendor 的验证码模块，提供图片数字、算术、滑动、旋转四种验证码。核心层为纯 Java 实现（基于 `java.awt` 与 `java.util.Base64`），无 SpringBoot 依赖，可独立使用；同时提供 SpringBoot 3 自动装配适配层，开箱即用。包名统一为 `com.weacsoft.jaravel.vendor.captcha`。
 

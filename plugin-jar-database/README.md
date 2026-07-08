@@ -1,4 +1,4 @@
-﻿# plugin-jar-database
+# plugin-jar-database
 
 > 包名：`com.weacsoft.jaravel.vendor.plugin.jar.database`
 > artifactId：`plugin-jar-database`

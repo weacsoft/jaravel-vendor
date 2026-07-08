@@ -1,4 +1,4 @@
-﻿# artisan AI-API Reference
+# artisan AI-API Reference
 
 > Module: `artisan` | Package: `com.weacsoft.jaravel.vendor.artisan` | Version: 0.1.1
 

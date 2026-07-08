@@ -1,4 +1,4 @@
-﻿# cache AI-API Reference
+# cache AI-API Reference
 
 > Module: `cache` | Package: `com.weacsoft.jaravel.vendor.cache` | Version: 0.1.1
 

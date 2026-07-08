@@ -1,4 +1,4 @@
-﻿# jwt AI-API Reference
+# jwt AI-API Reference
 
 > Module: `jwt` | Package: `com.weacsoft.jaravel.vendor.jwt` | Version: 0.1.1
 

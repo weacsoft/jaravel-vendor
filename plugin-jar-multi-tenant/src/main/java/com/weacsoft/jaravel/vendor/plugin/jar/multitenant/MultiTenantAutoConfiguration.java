@@ -1,4 +1,4 @@
-﻿package com.weacsoft.jaravel.vendor.plugin.jar.multitenant;
+package com.weacsoft.jaravel.vendor.plugin.jar.multitenant;
 
 import com.weacsoft.jaravel.vendor.plugin.jar.autoconfigure.PluginJarProperties;
 import com.weacsoft.jaravel.vendor.plugin.jar.integration.PluginIntegration;

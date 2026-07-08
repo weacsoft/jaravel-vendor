@@ -1,4 +1,4 @@
-﻿# http 模块
+# http 模块
 
 > Jaravel-Vendor 的 HTTP 层模块，提供 Laravel 风格的中间件管道、Request / Response 抽象、路由系统与控制器契约。包名统一为 `com.weacsoft.jaravel.vendor.*`（含 `middleware`、`route`、`http.request`、`http.response`、`controller` 子包）。
 

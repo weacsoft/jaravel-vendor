@@ -1,4 +1,4 @@
-﻿# cache 模块
+# cache 模块
 
 > Jaravel-Vendor 的缓存模块，提供 Laravel 风格的 `Cache` 门面、`CacheStore` 仓库抽象、`ArrayCacheDriver`（内存）、`FileCacheDriver`（文件）、`DatabaseCacheDriver`（数据库）三种驱动，以及 `CacheManager` 多仓库管理。redis 驱动位于独立的 `redis-cache` 模块。包名统一为 `com.weacsoft.jaravel.vendor.cache`。
 

@@ -1,4 +1,4 @@
-﻿package com.weacsoft.jaravel.vendor.plugin.jar.autoconfigure;
+package com.weacsoft.jaravel.vendor.plugin.jar.autoconfigure;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.weacsoft.jaravel.vendor.plugin.jar.integration.DefaultPluginIntegration;

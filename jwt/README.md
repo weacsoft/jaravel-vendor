@@ -1,4 +1,4 @@
-﻿# JWT 模块（JWT 认证插件）
+# JWT 模块（JWT 认证插件）
 
 > 包名：`com.weacsoft.jaravel.vendor.jwt`
 > 对齐 Laravel 特性：`tymon/jwt-auth`（JWT 签发/解析/校验/刷新/黑名单）

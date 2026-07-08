@@ -1,4 +1,4 @@
-﻿# plugin-jar-core AI-API Reference
+# plugin-jar-core AI-API Reference
 
 > Module: `plugin-jar-core` | Package: `com.weacsoft.jaravel.vendor.plugin.jar` | Version: 0.1.1
 

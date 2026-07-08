@@ -1,4 +1,4 @@
-﻿# core AI-API Reference
+# core AI-API Reference
 
 > Module: `core` | Package: `com.weacsoft.jaravel.vendor.core` | Version: 0.1.1
 

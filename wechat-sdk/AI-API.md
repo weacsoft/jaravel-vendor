@@ -1,4 +1,4 @@
-﻿# wechat-sdk AI-API Reference
+# wechat-sdk AI-API Reference
 
 > Module: `wechat-sdk` | Package: `com.weacsoft.jaravel.vendor.wechat` | Version: 0.1.1
 

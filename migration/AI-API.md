@@ -1,4 +1,4 @@
-﻿# migration AI-API Reference
+# migration AI-API Reference
 
 > Module: `migration` | Package: `com.weacsoft.jaravel.vendor.migration` | Version: 0.1.1
 

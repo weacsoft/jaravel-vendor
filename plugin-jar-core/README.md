@@ -1,4 +1,4 @@
-﻿# plugin-jar-core
+# plugin-jar-core
 
 > 包名：`com.weacsoft.jaravel.vendor.plugin.jar`
 > artifactId：`plugin-jar-core`

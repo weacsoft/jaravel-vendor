@@ -1,4 +1,4 @@
-﻿# captcha AI-API Reference
+# captcha AI-API Reference
 
 > Module: `captcha` | Package: `com.weacsoft.jaravel.vendor.captcha` | Version: 0.1.1
 

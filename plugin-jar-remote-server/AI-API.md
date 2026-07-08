@@ -1,4 +1,4 @@
-﻿# plugin-jar-remote-server AI-API Reference
+# plugin-jar-remote-server AI-API Reference
 
 > Module: `plugin-jar-remote-server` | Package: `com.weacsoft.jaravel.vendor.plugin.jar.remote` | Version: 0.1.1
 

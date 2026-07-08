@@ -1,4 +1,4 @@
-﻿# model-cache 模块
+# model-cache 模块
 
 > Jaravel-Vendor 的模型缓存模块（可选），参考 Laravel `laravel-model-caching` 方案，在 Model 类上通过 `@CachableModel` 注解手动开启查询缓存。采用版本号机制实现缓存失效，基于 `cache` 模块的 `CacheStore` / `CacheManager`。包名统一为 `com.weacsoft.jaravel.vendor.modelcache`。
 

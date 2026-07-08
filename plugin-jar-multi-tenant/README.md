@@ -1,4 +1,4 @@
-﻿# plugin-jar-multi-tenant
+# plugin-jar-multi-tenant
 
 > 包名：com.weacsoft.jaravel.vendor.plugin.jar.multitenant
 > 版本：0.1.1

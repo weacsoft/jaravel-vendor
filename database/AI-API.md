@@ -1,4 +1,4 @@
-﻿# database AI-API Reference
+# database AI-API Reference
 
 > Module: `database` | Package: `com.weacsoft.jaravel.vendor.database` | Version: 0.1.1
 

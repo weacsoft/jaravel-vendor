@@ -1,4 +1,4 @@
-﻿# starter AI-API Reference
+# starter AI-API Reference
 
 > Module: `starter` | Package: `com.weacsoft.jaravel.vendor.springboot` | Version: 0.1.1
 

@@ -1,4 +1,4 @@
-﻿# plugin-java-core
+# plugin-java-core
 
 > 轻量级 Java 文件插件系统 —— 无需打包成 JAR，直接加载 `.java` 源文件动态编译执行。
 

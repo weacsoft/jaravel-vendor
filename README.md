@@ -1,4 +1,4 @@
-﻿# Jaravel-Vendor
+# Jaravel-Vendor
 
 Java 版 Laravel 框架核心库，在 Spring Boot 3.2.5 基础上近乎 100% 模拟 Laravel 的开发体验。
 
