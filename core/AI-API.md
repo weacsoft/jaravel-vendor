@@ -1,6 +1,6 @@
-# core AI-API Reference
+﻿# core AI-API Reference
 
-> Module: `core` | Package: `com.weacsoft.jaravel.vendor.core` | Version: 0.1.0
+> Module: `core` | Package: `com.weacsoft.jaravel.vendor.core` | Version: 0.1.1
 
 ## Overview
 core 模块是 jaravel-vendor 框架的基础设施层，提供 Facade 门面机制、Spring 上下文访问、配置仓库（Config）、服务提供者（ServiceProvider）两阶段引导、Laravel 风格的表单校验（Validator/FormRequest/Rules）以及 Str/Arr 字符串与数组工具。它模仿 Laravel 的核心设计理念，在 Spring Boot 之上提供一套静态门面 API。

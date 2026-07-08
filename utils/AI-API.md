@@ -1,6 +1,6 @@
-# utils AI-API Reference
+﻿# utils AI-API Reference
 
-> Module: `utils` | Package: `com.weacsoft.jaravel.vendor.utils` | Version: 0.1.0
+> Module: `utils` | Package: `com.weacsoft.jaravel.vendor.utils` | Version: 0.1.1
 
 ## Overview
 utils 模块提供通用的内存编译工具，包含 MemoryClassLoader、MemoryFileManager 和 SourceCodeJavaFileObject 三个核心类。它们协同工作，将 Java 源代码字符串在内存中编译为 class 字节码并直接加载，无需写入磁盘文件。这套机制被 jblade 模板引擎和 migration 迁移系统等用于动态编译和加载 Java 代码。

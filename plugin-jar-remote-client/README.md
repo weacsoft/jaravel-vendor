@@ -1,7 +1,7 @@
-# plugin-jar-remote-client
+﻿# plugin-jar-remote-client
 
 > 包名：com.weacsoft.jaravel.vendor.plugin.jar.remote.client
-> 版本：0.1.0
+> 版本：0.1.1
 
 JAR 插件远程执行客户端（P2SP 主节点）。管理子服务器注册表，通过 TCP 或 HTTP 将方法调用分派到远程子服务器执行，实现主从业务处理。
 

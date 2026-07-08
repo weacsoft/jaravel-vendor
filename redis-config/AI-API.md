@@ -1,6 +1,6 @@
-# redis-config AI-API Reference
+﻿# redis-config AI-API Reference
 
-> Module: `redis-config` | Package: `com.weacsoft.jaravel.vendor.redis` | Version: 0.1.0
+> Module: `redis-config` | Package: `com.weacsoft.jaravel.vendor.redis` | Version: 0.1.1
 
 ## Overview
 redis-config 模块提供 Laravel 风格的 Redis 连接管理，基于 Lettuce 客户端实现。核心包含 RedisManager（多命名连接管理器，支持 standalone/sentinel/cluster 三种模式）、RedisProperties（配置属性，对齐 Laravel `config/database.php` redis 段）、RedisAutoConfiguration（自动装配）和 RedisLockProviderImpl（基于 Redis 的分布式锁实现）。连接在首次访问时惰性创建，进程生命周期内复用，所有连接线程安全可共享。

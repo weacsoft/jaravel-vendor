@@ -54,12 +54,12 @@ public interface PluginIntegration {
      * 创建插件请求对象。
      * <p>
      * 当 jaravel 可用时，创建并返回 jaravel 的 {@code Request} 对象；
-     * 当 jaravel 不可用时返回 {@code null}，表示使用 {@code HttpServletRequest}。
+     * 当 jaravel 不可用时返回 {@code null}，表示使用 Servlet 原生请求。
      *
-     * @param servletRequest Servlet 请求
+     * @param servletRequest Servlet 请求对象（运行时为 HttpServletRequest，兼容 javax/jakarta）
      * @return jaravel Request 对象，或 null
      */
-    Object createPluginRequest(jakarta.servlet.http.HttpServletRequest servletRequest);
+    Object createPluginRequest(Object servletRequest);
 
     /**
      * 写入插件响应。
@@ -68,11 +68,11 @@ public interface PluginIntegration {
      * 当 jaravel 不可用时返回 {@code false}，由调用方使用默认写入逻辑。
      *
      * @param result          插件方法返回值
-     * @param servletResponse Servlet 响应
+     * @param servletResponse Servlet 响应对象（运行时为 HttpServletResponse，兼容 javax/jakarta）
      * @param produces        Content-Type
      * @return true 表示已处理，false 表示未处理（使用默认逻辑）
      */
-    boolean writePluginResponse(Object result, jakarta.servlet.http.HttpServletResponse servletResponse, String produces);
+    boolean writePluginResponse(Object result, Object servletResponse, String produces);
 
     /**
      * 读取配置值。

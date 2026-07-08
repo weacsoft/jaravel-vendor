@@ -1,6 +1,6 @@
-# http AI-API Reference
+﻿# http AI-API Reference
 
-> Module: `http` | Package: `com.weacsoft.jaravel.vendor` | Version: 0.1.0
+> Module: `http` | Package: `com.weacsoft.jaravel.vendor` | Version: 0.1.1
 
 ## Overview
 http 模块提供 Laravel 风格的 HTTP 处理层，包含中间件管道（Middleware）、请求（Request）与响应（Response）抽象、路由系统（Route/Router）、控制器接口（Controllers）、静态资源目录服务（StaticResource）以及一组内置中间件（VerifyCsrfToken、TrustProxies、EncryptCookies、TrimStrings、ConvertEmptyStringsToNull）。它将 Servlet API 封装为对齐 Laravel 的 Request/Response 对象，支持链式中间件管道、路由分组，并通过 `Router.serveStatic()` 提供对齐 Laravel `public` 目录与 `asset()` 辅助函数的静态资源服务。

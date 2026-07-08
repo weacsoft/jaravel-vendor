@@ -1,4 +1,4 @@
-# plugin-java-core
+﻿# plugin-java-core
 
 > 轻量级 Java 文件插件系统 —— 无需打包成 JAR，直接加载 `.java` 源文件动态编译执行。
 
@@ -49,7 +49,7 @@
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>plugin-java-core</artifactId>
-    <version>0.1.0</version>
+    <version>0.1.1</version>
 </dependency>
 ```
 

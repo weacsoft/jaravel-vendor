@@ -1,4 +1,4 @@
-# plugin-jar-database
+﻿# plugin-jar-database
 
 > 包名：`com.weacsoft.jaravel.vendor.plugin.jar.database`
 > artifactId：`plugin-jar-database`
@@ -42,12 +42,12 @@
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>plugin-jar-core</artifactId>
-    <version>0.1.0</version>
+    <version>0.1.1</version>
 </dependency>
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>plugin-jar-database</artifactId>
-    <version>0.1.0</version>
+    <version>0.1.1</version>
 </dependency>
 ```
 

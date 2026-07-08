@@ -40,7 +40,8 @@ public class JwtTokenResponseFilter extends OncePerRequestFilter {
 
         // 请求处理完成后，检查是否有新 token 需要返回
         try {
-            AuthGuard guard = authManager.guard("jwt");
+            // 使用默认守卫检查是否有新签发的 token（自动续期 / 宽限期续期）
+            AuthGuard guard = authManager.guard();
             if (guard instanceof JwtGuard jwtGuard) {
                 String newToken = jwtGuard.token();
                 if (newToken != null && !newToken.isEmpty()) {

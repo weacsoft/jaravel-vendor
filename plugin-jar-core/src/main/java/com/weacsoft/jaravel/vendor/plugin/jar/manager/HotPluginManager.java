@@ -1,4 +1,4 @@
-package com.weacsoft.jaravel.vendor.plugin.jar.manager;
+﻿package com.weacsoft.jaravel.vendor.plugin.jar.manager;
 
 import com.weacsoft.jaravel.vendor.plugin.jar.annotation.Application;
 import com.weacsoft.jaravel.vendor.plugin.jar.annotation.HttpMethod;
@@ -21,6 +21,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -65,7 +66,7 @@ public class HotPluginManager implements Application.HotPluginManagerRef {
     private static final Logger log = LoggerFactory.getLogger(HotPluginManager.class);
 
     /** 默认共享包前缀：插件注解包必须由共享 ClassLoader 加载 */
-    private static final Set<String> DEFAULT_SHARED_PREFIXES = Set.of(
+    private static final Set<String> DEFAULT_SHARED_PREFIXES = Collections.singleton(
             "com.weacsoft.jaravel.vendor.plugin.jar.annotation."
     );
 
@@ -210,7 +211,7 @@ public class HotPluginManager implements Application.HotPluginManagerRef {
                 targetJar = pluginDir.resolve(jarFile.getFileName());
                 Files.copy(jarFile, targetJar, StandardCopyOption.REPLACE_EXISTING);
             }
-            PluginInfo info = new PluginInfo(pluginId, "0.1.0", targetJar.toString());
+            PluginInfo info = new PluginInfo(pluginId, "0.1.1", targetJar.toString());
             info.setPersisted(persist);
             info.setState(PluginInfo.State.UPLOADED);
             plugins.put(pluginId, info);
@@ -244,7 +245,7 @@ public class HotPluginManager implements Application.HotPluginManagerRef {
             Path tempFile = Files.createTempFile("plugin-" + pluginId + "-", ".jar");
             Files.write(tempFile, jarBytes);
             tempFile.toFile().deleteOnExit();
-            PluginInfo info = new PluginInfo(pluginId, "0.1.0", tempFile.toString());
+            PluginInfo info = new PluginInfo(pluginId, "0.1.1", tempFile.toString());
             info.setPersisted(false);
             info.setState(PluginInfo.State.UPLOADED);
             plugins.put(pluginId, info);
@@ -294,7 +295,7 @@ public class HotPluginManager implements Application.HotPluginManagerRef {
 
                 // 更新插件信息
                 info.setJarPath(tempFile.toString());
-                info.setVersion("0.1.0");
+                info.setVersion("0.1.1");
                 info.setPersisted(false);
                 info.setState(PluginInfo.State.UPLOADED);
                 info.setErrorMessage(null);

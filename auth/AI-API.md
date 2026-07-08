@@ -1,6 +1,6 @@
-# auth AI-API Reference
+﻿# auth AI-API Reference
 
-> Module: `auth` | Package: `com.weacsoft.jaravel.vendor.auth` | Version: 0.1.0
+> Module: `auth` | Package: `com.weacsoft.jaravel.vendor.auth` | Version: 0.1.1
 
 ## Overview
 auth 模块提供 Laravel 风格的认证系统，包含 AuthManager（多守卫管理器）、AuthGuard 契约、SessionGuard（Session 驱动守卫）、UserProvider 契约、Authenticatable 契约、GuardFactory 插件机制、Auth 门面、Authenticate 认证中间件和 AuthLifecycleFilter 生命周期过滤器。支持通过 GuardFactory 插件式扩展新的 Guard 驱动（如 JWT），第三方模块可在不修改 auth 模块的前提下扩展。

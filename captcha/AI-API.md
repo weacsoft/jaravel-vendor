@@ -1,6 +1,6 @@
-# captcha AI-API Reference
+﻿# captcha AI-API Reference
 
-> Module: `captcha` | Package: `com.weacsoft.jaravel.vendor.captcha` | Version: 0.1.0
+> Module: `captcha` | Package: `com.weacsoft.jaravel.vendor.captcha` | Version: 0.1.1
 
 ## Overview
 captcha 模块提供四种验证码（图片数字 `number`、算术 `arithmetic`、滑动 `slider`、旋转 `rotate`），核心层为纯 Java 实现（基于 `java.awt` 与 `java.util.Base64`），无 SpringBoot 依赖，可独立使用。采用模板方法模式：`AbstractCaptcha` 封装生成/验证流程，子类只需实现 `doGenerate` 与 `doVerify`。存储通过 `CaptchaStore` SPI 解耦，内置 `MemoryCaptchaStore`（内存）与 `CacheStoreCaptchaStore`（适配 jaravel cache 模块）。`CaptchaManager` 统一管理多类型注册与调用，并提供无状态 token 验证能力。SpringBoot 3 适配层提供自动装配与 `@ConfigurationProperties` 绑定。

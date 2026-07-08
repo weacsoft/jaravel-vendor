@@ -1,4 +1,4 @@
-# core 模块
+﻿# core 模块
 
 > Jaravel-Vendor 的核心基础模块，提供门面（Facade）、配置仓库（Config）、服务提供者（ServiceProvider）、校验器（Validator）以及 `Str` / `Arr` 字符串与数组工具。所有 vendor 包的基础依赖，包名统一为 `com.weacsoft.jaravel.vendor.core`。
 
@@ -45,7 +45,7 @@
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>core</artifactId>
-    <version>0.1.0</version>
+    <version>0.1.1</version>
 </dependency>
 ```
 

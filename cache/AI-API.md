@@ -1,6 +1,6 @@
-# cache AI-API Reference
+﻿# cache AI-API Reference
 
-> Module: `cache` | Package: `com.weacsoft.jaravel.vendor.cache` | Version: 0.1.0
+> Module: `cache` | Package: `com.weacsoft.jaravel.vendor.cache` | Version: 0.1.1
 
 ## Overview
 cache 模块提供 Laravel 风格的缓存系统，包含 CacheManager（多仓库管理器）、CacheStore（高级缓存操作契约）、CacheDriver（底层存储契约）、DefaultCacheStore（默认仓库实现，带前缀隔离）、ArrayCacheDriver（内存驱动）、FileCacheDriver（文件驱动）、DatabaseCacheDriver（数据库驱动）和 Cache 门面。支持 put/get/has/forget/flush/pull/add/increment/decrement/putMany/getMany/remember/rememberForever 等完整语义，TTL 统一为秒。redis 驱动位于独立的 `redis-cache` 模块。

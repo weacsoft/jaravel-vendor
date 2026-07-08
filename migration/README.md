@@ -1,4 +1,4 @@
-# migration 模块
+﻿# migration 模块
 
 > Jaravel-Vendor 的数据库迁移模块，提供 Laravel 风格的 Blueprint 流式建表、`up()` / `down()` 迁移引擎、`migrate` / `rollback` / `reset` / `refresh` / `status` 命令，以及 MySQL、SQLite、H2、SQL Server 多数据库方言自动适配。支持 DIRECTORY / JAR / CLASSPATH 三种迁移源模式，适配开发与生产部署。**核心逻辑独立于 SpringBoot，可通过 `MigrationCLI` 在纯 Java 环境中运行**。包名统一为 `com.weacsoft.jaravel.vendor.migration`。
 
@@ -90,7 +90,7 @@
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>migration</artifactId>
-    <version>0.1.0</version>
+    <version>0.1.1</version>
 </dependency>
 ```
 
@@ -310,7 +310,7 @@ jaravel:
 mvn clean package -pl migration,utils -am
 
 # 执行迁移
-java -cp migration/target/migration-0.1.0.jar:utils/target/utils-0.1.0.jar:mysql-connector.jar \
+java -cp migration/target/migration-0.1.1.jar:utils/target/utils-0.1.1.jar:mysql-connector.jar \
   com.weacsoft.jaravel.vendor.migration.MigrationCLI \
   --db-url=jdbc:mysql://localhost:3306/mydb \
   --db-user=root \

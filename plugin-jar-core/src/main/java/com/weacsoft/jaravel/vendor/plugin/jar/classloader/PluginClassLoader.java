@@ -5,6 +5,8 @@ import java.io.IOException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Path;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Set;
 
 /**
@@ -49,8 +51,8 @@ public class PluginClassLoader extends URLClassLoader implements Closeable {
         this.pluginId = pluginId;
         this.sharedClassLoader = sharedClassLoader;
         this.sharedPackagePrefixes = sharedPackagePrefixes == null || sharedPackagePrefixes.isEmpty()
-                ? Set.of(DEFAULT_SHARED_PREFIX)
-                : Set.copyOf(sharedPackagePrefixes);
+                ? Collections.singleton(DEFAULT_SHARED_PREFIX)
+                : Collections.unmodifiableSet(new HashSet<>(sharedPackagePrefixes));
     }
 
     private static URL[] toUrls(Path jarPath) {

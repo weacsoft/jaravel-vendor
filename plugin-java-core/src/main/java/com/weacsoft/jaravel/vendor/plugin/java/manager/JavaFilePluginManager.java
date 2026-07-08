@@ -15,10 +15,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -208,14 +210,14 @@ public class JavaFilePluginManager {
     /**
      * 从单个源码字符串注册插件（便捷方法）。
      * <p>
-     * 等价于 {@code registerPluginFromSource(pluginId, Map.of(fileName, sourceCode))}。
+     * 等价于 {@code registerPluginFromSource(pluginId, Collections.singletonMap(fileName, sourceCode))}。
      *
      * @param pluginId   插件 ID
      * @param sourceCode 源码字符串
      * @return 插件 ID
      */
     public String registerPluginFromSource(String pluginId, String sourceCode) {
-        return registerPluginFromSource(pluginId, Map.of("Source.java", sourceCode));
+        return registerPluginFromSource(pluginId, Collections.singletonMap("Source.java", sourceCode));
     }
 
     /**
@@ -277,7 +279,7 @@ public class JavaFilePluginManager {
      * @return 重载成功返回 true
      */
     public boolean reloadPluginFromSource(String pluginId, String sourceCode) {
-        return reloadPluginFromSource(pluginId, Map.of("Source.java", sourceCode));
+        return reloadPluginFromSource(pluginId, Collections.singletonMap("Source.java", sourceCode));
     }
 
     /**
@@ -598,7 +600,7 @@ public class JavaFilePluginManager {
                     .collect(Collectors.toList());
 
             for (Path javaFile : javaFiles) {
-                String content = Files.readString(javaFile);
+                String content = new String(Files.readAllBytes(javaFile), StandardCharsets.UTF_8);
                 String className = parseClassName(content);
                 String fileName = javaFile.getFileName().toString();
 
@@ -634,7 +636,7 @@ public class JavaFilePluginManager {
             String fileName = entry.getKey();
             String content = entry.getValue();
 
-            if (content == null || content.isBlank()) {
+            if (content == null || content.trim().isEmpty()) {
                 log.warn("源码为空: {}", fileName);
                 continue;
             }

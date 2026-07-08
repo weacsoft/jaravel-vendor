@@ -1,6 +1,6 @@
-# jblade AI-API Reference
+﻿# jblade AI-API Reference
 
-> Module: `jblade` | Package: `com.weacsoft.jaravel.vendor.jblade` | Version: 0.1.0
+> Module: `jblade` | Package: `com.weacsoft.jaravel.vendor.jblade` | Version: 0.1.1
 
 ## Overview
 jblade 模块是 Laravel Blade 风格的 Java 模板引擎。它将 `.blade.java` 模板文件编译为 Java 类（通过内存编译器），支持模板继承（@extends/@yield/@section）、组件（@component/@slot）、控制结构（@if/@foreach/@for）、变量输出（{{ }}）以及丰富的 Blade 表达式语法（对象方法/属性访问、数组访问、字符串拼接、空合并运算符等）。编译后的模板类继承 BladeTemplate，运行时通过 BladeEngine 渲染。

@@ -1,6 +1,6 @@
-# schedule AI-API Reference
+﻿# schedule AI-API Reference
 
-> Module: `schedule` | Package: `com.weacsoft.jaravel.vendor.schedule` | Version: 0.1.0
+> Module: `schedule` | Package: `com.weacsoft.jaravel.vendor.schedule` | Version: 0.1.1
 
 ## Overview
 

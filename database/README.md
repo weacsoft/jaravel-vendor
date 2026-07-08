@@ -1,4 +1,4 @@
-# Database 模块（Eloquent ORM）
+﻿# Database 模块（Eloquent ORM）
 
 > 包名：`com.weacsoft.jaravel.vendor.database`
 > 对齐 Laravel 特性：`Illuminate\Database\Eloquent`（Model 基类、多数据源、EloquentUserProvider）
@@ -72,7 +72,7 @@ public class User extends BaseModel<User, Long> {
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>database</artifactId>
-    <version>0.1.0</version>
+    <version>0.1.1</version>
 </dependency>
 ```
 

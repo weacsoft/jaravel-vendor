@@ -1,6 +1,6 @@
-# plugin-jar-remote-client AI-API Reference
+﻿# plugin-jar-remote-client AI-API Reference
 
-> Module: `plugin-jar-remote-client` | Package: `com.weacsoft.jaravel.vendor.plugin.jar.remote.client` | Version: 0.1.0
+> Module: `plugin-jar-remote-client` | Package: `com.weacsoft.jaravel.vendor.plugin.jar.remote.client` | Version: 0.1.1
 
 ## Overview
 

@@ -1,6 +1,6 @@
-# model-cache AI-API Reference
+﻿# model-cache AI-API Reference
 
-> Module: `model-cache` | Package: `com.weacsoft.jaravel.vendor.modelcache` | Version: 0.1.0
+> Module: `model-cache` | Package: `com.weacsoft.jaravel.vendor.modelcache` | Version: 0.1.1
 
 ## Overview
 model-cache 是 Jaravel-Vendor 的可选模型缓存模块，参考 Laravel `laravel-model-caching` 方案。通过 `@CachableModel` 注解在 Model 类上手动开启查询缓存，采用版本号机制实现缓存失效（无需 tag 支持）。核心包含 CachableModel（注解）、ModelCacheProperties（配置）、ModelCacheService（核心服务，版本化缓存读写/失效）、ModelCache（静态门面）和 ModelCacheAutoConfiguration（自动装配）。基于 `cache` 模块的 CacheStore / CacheManager，TTL 统一为秒。

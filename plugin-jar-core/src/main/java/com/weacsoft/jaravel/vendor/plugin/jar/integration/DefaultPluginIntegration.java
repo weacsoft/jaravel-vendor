@@ -46,13 +46,13 @@ public class DefaultPluginIntegration implements PluginIntegration, EnvironmentA
     }
 
     @Override
-    public Object createPluginRequest(jakarta.servlet.http.HttpServletRequest servletRequest) {
-        // jaravel 不可用，返回 null 表示使用 HttpServletRequest
+    public Object createPluginRequest(Object servletRequest) {
+        // jaravel 不可用，返回 null 表示使用 Servlet 原生请求
         return null;
     }
 
     @Override
-    public boolean writePluginResponse(Object result, jakarta.servlet.http.HttpServletResponse servletResponse, String produces) {
+    public boolean writePluginResponse(Object result, Object servletResponse, String produces) {
         // jaravel 不可用，返回 false 表示使用默认写入逻辑
         return false;
     }

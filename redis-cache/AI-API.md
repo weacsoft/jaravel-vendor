@@ -1,6 +1,6 @@
-# redis-cache AI-API Reference
+﻿# redis-cache AI-API Reference
 
-> Module: `redis-cache` | Package: `com.weacsoft.jaravel.vendor.redis.cache` | Version: 0.1.0
+> Module: `redis-cache` | Package: `com.weacsoft.jaravel.vendor.redis.cache` | Version: 0.1.1
 
 ## Overview
 

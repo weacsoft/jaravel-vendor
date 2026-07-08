@@ -1,4 +1,4 @@
-# wechat-sdk 模块（微信 SDK）
+﻿# wechat-sdk 模块（微信 SDK）
 
 > 包名：`com.weacsoft.jaravel.vendor.wechat`
 > 对齐 PHP 扩展包：`overtrue/laravel-wechat`（EasyWeChat）
@@ -32,7 +32,7 @@
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>wechat-sdk</artifactId>
-    <version>0.1.0</version>
+    <version>0.1.1</version>
 </dependency>
 ```
 

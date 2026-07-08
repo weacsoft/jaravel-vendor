@@ -1,4 +1,4 @@
-# Auth 模块（认证）
+﻿# Auth 模块（认证）
 
 > 包名：`com.weacsoft.jaravel.vendor.auth`
 > 对齐 Laravel 特性：`Illuminate\Auth`（AuthManager、Guard、UserProvider、Auth 门面、auth 中间件）
@@ -84,7 +84,7 @@ Laravel 的 `Authenticatable` 接口包含 `getAuthPassword()`，`UserProvider` 
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>auth</artifactId>
-    <version>0.1.0</version>
+    <version>0.1.1</version>
 </dependency>
 ```
 

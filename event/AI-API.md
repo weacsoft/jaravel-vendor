@@ -1,6 +1,6 @@
-# event AI-API Reference
+﻿# event AI-API Reference
 
-> Module: `event` | Package: `com.weacsoft.jaravel.vendor.event` | Version: 0.1.0
+> Module: `event` | Package: `com.weacsoft.jaravel.vendor.event` | Version: 0.1.1
 
 ## Overview
 event 模块提供 Laravel 风格的事件系统，包含 Event（事件标记接口）、Listener（监听器函数式接口）、Dispatcher（事件调度器契约）、EventDispatcher（默认实现，支持同步/异步分发）、QueueManager（多队列管理器，每队列独立线程池）、QueueDispatcher（持久化队列分发器契约）、ShouldQueue（标记异步执行）、@ListensTo（自动注册注解）、EventServiceProvider（服务提供者基类）和 EventFacade（门面）。支持自动重试、延迟执行、多队列隔离和持久化队列降级。

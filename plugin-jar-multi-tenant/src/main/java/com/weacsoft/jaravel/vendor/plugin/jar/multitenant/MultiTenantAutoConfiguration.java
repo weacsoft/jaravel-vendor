@@ -1,4 +1,4 @@
-package com.weacsoft.jaravel.vendor.plugin.jar.multitenant;
+﻿package com.weacsoft.jaravel.vendor.plugin.jar.multitenant;
 
 import com.weacsoft.jaravel.vendor.plugin.jar.autoconfigure.PluginJarProperties;
 import com.weacsoft.jaravel.vendor.plugin.jar.integration.PluginIntegration;
@@ -128,7 +128,7 @@ public class MultiTenantAutoConfiguration {
         Path coreJarPath = locateCoreJarPath();
         if (coreJarPath != null) {
             manager.setCoreJarPath(coreJarPath);
-            manager.initSharedClassLoader(coreJarPath, "0.1.0");
+            manager.initSharedClassLoader(coreJarPath, "0.1.1");
             log.info("多租户插件管理器初始化: separator={}, coreJar={}", mtProperties.getSeparator(), coreJarPath);
         } else {
             log.warn("无法定位核心 JAR 路径，插件注解类可能无法被插件加载");

@@ -1,6 +1,6 @@
-# database AI-API Reference
+﻿# database AI-API Reference
 
-> Module: `database` | Package: `com.weacsoft.jaravel.vendor.database` | Version: 0.1.0
+> Module: `database` | Package: `com.weacsoft.jaravel.vendor.database` | Version: 0.1.1
 
 ## Overview
 database 模块提供 Laravel Eloquent 风格的 ORM 基础设施，基于 gaarason/database-all 构建。核心包含 BaseModel（Eloquent 模型基类，合并实体定义与查询职责于单一类）、@DataSource 注解（指定模型使用的数据源，对齐 Laravel `$connection`）和 EloquentUserProvider（基于 Eloquent 的用户提供者，对齐 Laravel EloquentUserProvider）。业务 Model 继承 BaseModel 并加 @Repository 即可像 Laravel 一样使用 find/all/query/save/replicate 等 API。

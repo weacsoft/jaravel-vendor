@@ -3,11 +3,10 @@ package com.weacsoft.jaravel.vendor.plugin.jar.registrar;
 import com.weacsoft.jaravel.vendor.plugin.jar.annotation.HttpMethod;
 import com.weacsoft.jaravel.vendor.plugin.jar.integration.PluginIntegration;
 import com.weacsoft.jaravel.vendor.plugin.jar.model.RouteInfo;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.context.request.NativeWebRequest;
 import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
@@ -108,7 +107,7 @@ public class PluginRouteRegistrar {
         try {
             RequestMappingInfo mappingInfo = buildRequestMappingInfo(route);
             Method handlerMethod = PluginRouteHandler.class.getMethod(
-                    "handleRequest", HttpServletRequest.class, HttpServletResponse.class);
+                    "handleRequest", NativeWebRequest.class);
             handlerMapping.registerMapping(mappingInfo, routeHandler, handlerMethod);
             routeHandler.registerRouteInfo(route);
             registeredMappings.computeIfAbsent(pluginId, k -> new ArrayList<>()).add(mappingInfo);

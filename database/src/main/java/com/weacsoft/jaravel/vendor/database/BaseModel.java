@@ -85,7 +85,7 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
      * 父类 ModelBase 的 modelShadow 字段未标注 @Column(inDatabase=false)，
      * 此处通过字段隐藏（field hiding）方式覆盖，使 gaarason 反射时取到带排除标注的版本。
      */
-    @Column(inDatabase = false)
+    @Column(inDatabase = false, conversion = NullFieldConversion.class)
     @JsonIgnore
     protected transient ModelShadowProvider modelShadow;
 

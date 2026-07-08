@@ -2,14 +2,13 @@ package com.weacsoft.jaravel.vendor.plugin.jar.registrar;
 
 import com.weacsoft.jaravel.vendor.plugin.jar.integration.PluginIntegration;
 import com.weacsoft.jaravel.vendor.plugin.jar.model.RouteInfo;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.context.request.NativeWebRequest;
 import org.springframework.web.context.request.RequestAttributes;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
@@ -19,310 +18,360 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 插件路由代理处理器。
+ * 插件路由处理器 —— 所有插件 HTTP 请求的统一入口。
  * <p>
- * 所有插件路由的 HTTP 请求最终都由本类 {@link #handleRequest} 处理：
- * <ol>
- *   <li>根据 {@code METHOD:/path} 从 {@link #routeRegistry} 查找 {@link RouteInfo}。</li>
- *   <li>从 Spring 容器获取目标 Bean（通过 {@link PluginBeanRegistrar}）。</li>
- *   <li>反射调用目标方法，参数由 {@link #resolveArguments} 解析。</li>
- *   <li>返回值写入响应。</li>
- * </ol>
+ * 通过 {@link PluginRouteRegistrar} 动态注册到 Spring MVC 的
+ * {@link org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping}，
+ * 所有插件路由请求最终由 {@link #handleRequest(NativeWebRequest)} 统一分发。
  * <p>
- * {@link #routeRegistry} 使用 {@link ConcurrentHashMap}，支持并发读写。
+ * 使用 {@link NativeWebRequest} 替代 {@code HttpServletRequest}/{@code HttpServletResponse}，
+ * 消除对 {@code javax.servlet}/{@code jakarta.servlet} 的编译期依赖，
+ * 使同一构件可运行在 SpringBoot 2.7（javax.servlet）和 3.x（jakarta.servlet）环境。
+ *
+ * @author lijialong
  */
 public class PluginRouteHandler {
 
     private static final Logger log = LoggerFactory.getLogger(PluginRouteHandler.class);
 
-    /** 路由注册表：key = "METHOD:/path"，value = RouteInfo */
-    private final ConcurrentHashMap<String, RouteInfo> routeRegistry = new ConcurrentHashMap<>();
-
     private final PluginBeanRegistrar beanRegistrar;
-
     private final PluginIntegration integration;
+
+    /** 路由表：method + ":" + path → RouteInfo */
+    private final Map<String, RouteInfo> routeRegistry = new ConcurrentHashMap<>();
 
     public PluginRouteHandler(PluginBeanRegistrar beanRegistrar, PluginIntegration integration) {
         this.beanRegistrar = beanRegistrar;
         this.integration = integration;
     }
 
-    /**
-     * 生成路由注册表的 key。
-     *
-     * @param route 路由信息
-     * @return key
-     */
-    private String routeKey(RouteInfo route) {
-        return routeKey(route.getMethod().name(), route.getPath());
-    }
+    // ──────────────────────────── 路由注册 ────────────────────────────
 
-    /**
-     * 生成路由注册表的 key。
-     *
-     * @param httpMethod HTTP 方法名
-     * @param path       路径
-     * @return key
-     */
-    private String routeKey(String httpMethod, String path) {
-        return httpMethod + ":" + path;
-    }
-
-    /**
-     * 注册路由信息。
-     *
-     * @param route 路由信息
-     */
     public void registerRouteInfo(RouteInfo route) {
-        if (route == null) {
-            return;
-        }
         routeRegistry.put(routeKey(route), route);
+        log.info("注册插件路由: {} {} → bean={}, method={}",
+                route.getMethod(), route.getPath(), route.getBeanName(), route.getMethodName());
+    }
+
+    /**
+     * 查询已注册的路由信息。
+     *
+     * @param method HTTP 方法名（如 "GET"、"POST"）
+     * @param path   路由路径
+     * @return 路由信息，不存在返回 null
+     */
+    public RouteInfo getRouteInfo(String method, String path) {
+        if (method == null || path == null) {
+            return null;
+        }
+        return routeRegistry.get(routeKey(method, path));
     }
 
     /**
      * 注销路由信息。
      *
-     * @param route 路由信息
+     * @param method HTTP 方法名（如 "GET"、"POST"）
+     * @param path   路由路径
      */
-    public void unregisterRouteInfo(RouteInfo route) {
-        if (route == null) {
+    public void unregisterRouteInfo(String method, String path) {
+        if (method == null || path == null) {
             return;
         }
-        routeRegistry.remove(routeKey(route));
+        routeRegistry.remove(routeKey(method, path));
+        log.info("注销插件路由: {} {}", method, path);
     }
 
-    /**
-     * 按 HTTP 方法与路径注销路由信息。
-     *
-     * @param httpMethod HTTP 方法名
-     * @param path       路径
-     */
-    public void unregisterRouteInfo(String httpMethod, String path) {
-        routeRegistry.remove(routeKey(httpMethod, path));
-    }
+    // ──────────────────────────── 请求分发 ────────────────────────────
 
     /**
-     * 清空所有路由信息。
-     */
-    public void clearRouteInfos() {
-        routeRegistry.clear();
-    }
-
-    /**
-     * 按 HTTP 方法与路径查找已注册的路由信息。
+     * 所有插件路由请求的统一入口。
      * <p>
-     * 供 {@link PluginRouteRegistrar#registerRouteAlias} 查找已有路由的 beanName/methodName。
+     * Spring MVC 将请求分发到此方法后，根据 HTTP 方法和路径查找 {@link RouteInfo}，
+     * 反射调用对应插件 Bean 的方法，并将返回值交给 Spring 的 {@code @ResponseBody} 机制序列化。
      *
-     * @param httpMethod HTTP 方法名
-     * @param path       路径
-     * @return 路由信息，不存在返回 null
-     */
-    public RouteInfo getRouteInfo(String httpMethod, String path) {
-        return routeRegistry.get(routeKey(httpMethod, path));
-    }
-
-    /**
-     * 处理 HTTP 请求。
-     * <p>
-     * 查找路由 -> 获取 Bean -> 反射调用 -> 写响应。
-     *
-     * @param request  HTTP 请求
-     * @param response HTTP 响应
-     * @throws Exception 调用异常
+     * @param webRequest Spring 原生 Web 请求对象（兼容 SB2/SB3）
+     * @return 插件方法返回值（由 Spring 序列化），或 null（当集成层已自行写入响应）
      */
     @ResponseBody
-    public void handleRequest(HttpServletRequest request, HttpServletResponse response) throws Exception {
-        String method = request.getMethod();
-        String path = request.getRequestURI();
+    public Object handleRequest(NativeWebRequest webRequest) throws Exception {
+        String method = extractHttpMethod(webRequest);
+        String path = extractPath(webRequest);
         String key = routeKey(method, path);
+
         RouteInfo route = routeRegistry.get(key);
         if (route == null) {
-            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-            response.setContentType("application/json;charset=UTF-8");
-            response.getWriter().write("{\"error\":\"Route not found\",\"method\":\"" + method + "\",\"path\":\"" + path + "\"}");
-            return;
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Route not found: " + method + " " + path);
         }
+
         try {
             Object bean = beanRegistrar.getApplicationContext().getBean(route.getBeanName());
             if (bean == null) {
-                response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-                response.setContentType("application/json;charset=UTF-8");
-                response.getWriter().write("{\"error\":\"Bean not found: " + route.getBeanName() + "\"}");
-                return;
+                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                        "Bean not found: " + route.getBeanName());
             }
             Method targetMethod = findMethod(bean.getClass(), route.getMethodName());
             if (targetMethod == null) {
-                response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-                response.setContentType("application/json;charset=UTF-8");
-                response.getWriter().write("{\"error\":\"Method not found: " + route.getMethodName() + "\"}");
-                return;
+                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                        "Method not found: " + route.getMethodName() + " on bean: " + route.getBeanName());
             }
-            Object[] args = resolveArguments(targetMethod, request);
+
+            Object[] args = resolveArguments(targetMethod, webRequest);
             Object result = targetMethod.invoke(bean, args);
-            writeResponse(response, result, route.getProduces());
+
+            // 优先交给集成层处理响应
+            Object nativeResponse = getNativeResponse(webRequest);
+            if (nativeResponse != null
+                    && integration.writePluginResponse(result, nativeResponse, route.getProduces())) {
+                return null; // 集成层已自行写入响应
+            }
+
+            // 默认：返回结果，由 Spring @ResponseBody 序列化
+            return result;
+
+        } catch (ResponseStatusException e) {
+            throw e;
         } catch (Exception e) {
             log.error("处理插件路由失败: {} {}", method, path, e);
-            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            response.setContentType("application/json;charset=UTF-8");
-            String msg = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
-            response.getWriter().write("{\"error\":\"" + escapeJson(msg) + "\"}");
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    cause.getMessage() != null ? cause.getMessage() : "Internal error");
         }
     }
 
+    // ──────────────────────────── 参数解析 ────────────────────────────
+
     /**
-     * 解析方法参数。
+     * 解析插件方法参数。
      * <p>
-     * 支持的类型：
-     * <ul>
-     *   <li>{@link String}</li>
-     *   <li>{@code int} / {@link Integer}</li>
-     *   <li>{@code long} / {@link Long}</li>
-     *   <li>{@code boolean} / {@link Boolean}</li>
-     *   <li>{@link HttpServletRequest}</li>
-     *   <li>jaravel {@code Request}（当 integration 可用时）</li>
-     * </ul>
-     * 参数值优先从请求参数（query/form）获取，其次从路径变量获取。
+     * 按以下优先级匹配：
+     * <ol>
+     *   <li>Servlet 原生请求类型（运行时由 javax/jakarta 决定，通过 isInstance 检查）</li>
+     *   <li>jaravel Request 类型（当集成层可用时）</li>
+     *   <li>请求参数 / 路径变量 → 按类型转换</li>
+     * </ol>
      *
-     * @param method  目标方法
-     * @param request HTTP 请求
-     * @return 参数数组
+     * @param method      插件方法
+     * @param webRequest  Spring Web 请求
+     * @return 方法参数数组
      */
-    public Object[] resolveArguments(Method method, HttpServletRequest request) {
+    public Object[] resolveArguments(Method method, NativeWebRequest webRequest) {
         Parameter[] parameters = method.getParameters();
         List<Object> args = new ArrayList<>(parameters.length);
-        Map<String, String> pathVariables = extractPathVariables(request);
-        // 尝试创建 jaravel Request 对象（不可用时为 null）
-        Object pluginRequest = integration.createPluginRequest(request);
+        Map<String, String> pathVariables = extractPathVariables(webRequest);
+        Object nativeRequest = webRequest.getNativeRequest();
+        Object pluginRequest = integration.createPluginRequest(nativeRequest);
+
         for (Parameter parameter : parameters) {
             String name = parameter.getName();
             Class<?> type = parameter.getType();
-            // 1. HttpServletRequest 类型直接注入
-            if (type == HttpServletRequest.class) {
-                args.add(request);
+
+            // 1. Servlet 原生请求类型（运行时通过 isInstance 兼容 javax/jakarta）
+            if (nativeRequest != null && type.isInstance(nativeRequest)) {
+                args.add(nativeRequest);
                 continue;
             }
-            // 2. jaravel Request 类型（当 integration 可用且类型匹配时注入）
+
+            // 2. jaravel Request 类型
             if (pluginRequest != null && isJaravelRequestType(type)) {
                 args.add(pluginRequest);
                 continue;
             }
-            // 3. 其他类型从请求参数/路径变量解析
-            String value = request.getParameter(name);
-            // 回退到路径变量
+
+            // 3. 请求参数 / 路径变量
+            String value = webRequest.getParameter(name);
             if (value == null && pathVariables != null) {
                 value = pathVariables.get(name);
             }
-            args.add(convertValue(value, type, request));
+            args.add(convertValue(value, type, nativeRequest));
         }
         return args.toArray();
     }
 
-    /**
-     * 判断类型是否为 jaravel Request。
-     * <p>
-     * 使用类名比较，避免直接依赖 jaravel 类（plugin-jar-core 不依赖 jaravel）。
-     *
-     * @param type 参数类型
-     * @return true 表示为 jaravel Request 类型
-     */
-    private boolean isJaravelRequestType(Class<?> type) {
-        return "com.weacsoft.jaravel.vendor.http.request.Request".equals(type.getName());
+    // ──────────────────────────── 私有工具 ────────────────────────────
+
+    private String routeKey(String method, String path) {
+        return method.toUpperCase() + ":" + path;
+    }
+
+    private String routeKey(RouteInfo route) {
+        return routeKey(route.getMethod().name(), route.getPath());
+    }
+
+    public List<String> getAllRouteKeys() {
+        return new ArrayList<>(routeRegistry.keySet());
     }
 
     /**
-     * 从当前请求属性中提取路径变量。
+     * 从 NativeWebRequest 提取 HTTP 方法名。
+     * <p>
+     * Spring 6.0+ 的 {@code WebRequest.getHttpMethod()} 在 Spring 5.3 中不存在，
+     * 因此通过反射从原生 Servlet 请求获取 {@code getMethod()}，
+     * 保证同一构件可在 SB2.7（Spring 5.3）和 SB3.x（Spring 6）下编译运行。
+     *
+     * @param webRequest Spring Web 请求
+     * @return HTTP 方法名（大写），无法获取时返回 "GET"
+     */
+    private String extractHttpMethod(NativeWebRequest webRequest) {
+        Object nativeRequest = webRequest.getNativeRequest();
+        if (nativeRequest != null) {
+            try {
+                Method m = nativeRequest.getClass().getMethod("getMethod");
+                Object result = m.invoke(nativeRequest);
+                if (result != null) {
+                    return result.toString().toUpperCase();
+                }
+            } catch (Exception ignored) {
+                // ignore
+            }
+        }
+        return "GET";
+    }
+
+    /**
+     * 从 NativeWebRequest 提取请求 URI。
+     * <p>
+     * 优先使用 {@link NativeWebRequest#getDescription}（返回 "uri=/path"），
+     * 回退到反射调用 nativeRequest.getRequestURI()。
+     */
+    private String extractPath(NativeWebRequest webRequest) {
+        String description = webRequest.getDescription(false);
+        if (description != null && description.startsWith("uri=")) {
+            return description.substring(4);
+        }
+        // 回退：反射获取
+        Object nativeRequest = webRequest.getNativeRequest();
+        if (nativeRequest != null) {
+            try {
+                Method m = nativeRequest.getClass().getMethod("getRequestURI");
+                return (String) m.invoke(nativeRequest);
+            } catch (Exception ignored) {
+                // ignore
+            }
+        }
+        return "/";
+    }
+
+    /**
+     * 从 NativeWebRequest 获取底层 Servlet Response（兼容 javax/jakarta）。
+     * NativeWebRequest 自身提供 getNativeResponse() 方法。
+     */
+    private Object getNativeResponse(NativeWebRequest webRequest) {
+        return webRequest.getNativeResponse();
+    }
+
+    /**
+     * 提取 Spring MVC 路径变量。
+     * <p>
+     * Spring MVC 在路由匹配后将路径变量存入 request attribute，
+     * key 为 {@code HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE}。
+     * 使用字符串常量避免对 spring-webmvc 类的编译期依赖。
      */
     @SuppressWarnings("unchecked")
-    private Map<String, String> extractPathVariables(HttpServletRequest request) {
+    private Map<String, String> extractPathVariables(NativeWebRequest webRequest) {
         try {
-            RequestAttributes attrs = RequestContextHolder.getRequestAttributes();
-            if (attrs instanceof ServletRequestAttributes) {
-                HttpServletRequest current = ((ServletRequestAttributes) attrs).getRequest();
-                Object pathVars = current.getAttribute("org.springframework.web.servlet.HandlerMapping.uriTemplateVariables");
-                if (pathVars instanceof Map) {
-                    return (Map<String, String>) pathVars;
-                }
+            Object pathVars = webRequest.getAttribute(
+                    "org.springframework.web.servlet.HandlerMapping.uriTemplateVariables",
+                    RequestAttributes.SCOPE_REQUEST);
+            if (pathVars instanceof Map) {
+                return (Map<String, String>) pathVars;
             }
         } catch (Exception ignored) {
-            // 忽略
+            // ignore
         }
         return null;
     }
 
+    /**
+     * 将字符串值转换为目标参数类型。
+     *
+     * @param value         字符串值（来自请求参数或路径变量）
+     * @param type          目标类型
+     * @param nativeRequest 原生请求对象（用于注入 Servlet 请求类型参数）
+     * @return 转换后的值
+     */
     @SuppressWarnings("unchecked")
-    private Object convertValue(String value, Class<?> type, HttpServletRequest request) {
-        if (type == HttpServletRequest.class) {
-            return request;
+    private Object convertValue(String value, Class<?> type, Object nativeRequest) {
+        // Servlet 原生请求类型
+        if (nativeRequest != null && type.isInstance(nativeRequest)) {
+            return nativeRequest;
         }
+
         if (value == null) {
             return defaultValue(type);
         }
+
+        String strValue = value.toString();
+
         if (type == String.class) {
-            return value;
+            return strValue;
         }
-        if (type == int.class || type == Integer.class) {
-            return Integer.parseInt(value);
+        if (type == Integer.class || type == int.class) {
+            return Integer.parseInt(strValue);
         }
-        if (type == long.class || type == Long.class) {
-            return Long.parseLong(value);
+        if (type == Long.class || type == long.class) {
+            return Long.parseLong(strValue);
         }
-        if (type == boolean.class || type == Boolean.class) {
-            return Boolean.parseBoolean(value);
+        if (type == Double.class || type == double.class) {
+            return Double.parseDouble(strValue);
         }
-        // 未知类型返回 null
-        return null;
+        if (type == Float.class || type == float.class) {
+            return Float.parseFloat(strValue);
+        }
+        if (type == Boolean.class || type == boolean.class) {
+            return Boolean.parseBoolean(strValue);
+        }
+        if (type == Short.class || type == short.class) {
+            return Short.parseShort(strValue);
+        }
+        if (type == Byte.class || type == byte.class) {
+            return Byte.parseByte(strValue);
+        }
+        if (type == Character.class || type == char.class) {
+            return strValue.length() > 0 ? strValue.charAt(0) : '\0';
+        }
+        if (type == Object.class) {
+            return strValue;
+        }
+        // 枚举
+        if (type.isEnum()) {
+            for (Object enumConstant : type.getEnumConstants()) {
+                if (((Enum<?>) enumConstant).name().equals(strValue)) {
+                    return enumConstant;
+                }
+            }
+        }
+        return strValue;
     }
 
     private Object defaultValue(Class<?> type) {
+        if (type == boolean.class) return false;
         if (type == int.class) return 0;
         if (type == long.class) return 0L;
-        if (type == boolean.class) return false;
+        if (type == double.class) return 0.0;
+        if (type == float.class) return 0.0f;
+        if (type == short.class) return (short) 0;
+        if (type == byte.class) return (byte) 0;
+        if (type == char.class) return '\0';
         return null;
     }
 
-    private Method findMethod(Class<?> beanClass, String methodName) {
-        for (Method method : beanClass.getMethods()) {
+    private Method findMethod(Class<?> clazz, String methodName) {
+        for (Method method : clazz.getDeclaredMethods()) {
             if (method.getName().equals(methodName)) {
                 return method;
             }
         }
+        // 检查父类
+        Class<?> superClass = clazz.getSuperclass();
+        if (superClass != null && superClass != Object.class) {
+            return findMethod(superClass, methodName);
+        }
         return null;
     }
 
-    private void writeResponse(HttpServletResponse response, Object result, String produces) throws Exception {
-        // 优先尝试由 integration 处理（jaravel Response 等）
-        if (integration.writePluginResponse(result, response, produces)) {
-            return; // integration 已处理
-        }
-        // 默认写入逻辑
-        if (result == null) {
-            response.setStatus(HttpServletResponse.SC_OK);
-            return;
-        }
-        String contentType = produces != null ? produces : "application/json";
-        if (!contentType.contains("charset")) {
-            contentType += ";charset=UTF-8";
-        }
-        response.setContentType(contentType);
-        response.setStatus(HttpServletResponse.SC_OK);
-        if (result instanceof String s) {
-            response.getWriter().write(s);
-        } else if (result instanceof byte[] bytes) {
-            response.getOutputStream().write(bytes);
-        } else {
-            // 简单 toString，实际可由上层 MessageConverter 处理
-            response.getWriter().write(result.toString());
-        }
-    }
-
-    private String escapeJson(String text) {
-        if (text == null) {
-            return "";
-        }
-        return text.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r");
+    private boolean isJaravelRequestType(Class<?> type) {
+        return type.getName().startsWith("com.weacsoft.jaravel.")
+                && type.getSimpleName().endsWith("Request");
     }
 }

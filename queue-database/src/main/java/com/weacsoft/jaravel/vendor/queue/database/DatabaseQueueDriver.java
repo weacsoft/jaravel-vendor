@@ -121,25 +121,44 @@ public class DatabaseQueueDriver implements QueueDriver {
     /** 自动创建 jobs 与 failed_jobs 表（IF NOT EXISTS） */
     private void initSchema() {
         try {
+            // 建表（不在 CREATE TABLE 内使用 INDEX，保证 SQLite/MySQL/H2 通用）
             jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS " + table + " (" +
                     "id BIGINT AUTO_INCREMENT PRIMARY KEY, " +
                     "queue VARCHAR(255) NOT NULL, " +
-                    "payload LONGTEXT NOT NULL, " +
+                    "payload TEXT NOT NULL, " +
                     "attempts INT NOT NULL DEFAULT 0, " +
                     "reserved_at BIGINT NULL, " +
                     "available_at BIGINT NOT NULL, " +
-                    "created_at BIGINT NOT NULL, " +
-                    "INDEX " + table + "_queue_index (queue)" +
+                    "created_at BIGINT NOT NULL" +
                     ")");
             jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS " + failedTable + " (" +
                     "id BIGINT AUTO_INCREMENT PRIMARY KEY, " +
                     "queue VARCHAR(255) NOT NULL, " +
-                    "payload LONGTEXT NOT NULL, " +
-                    "exception LONGTEXT, " +
+                    "payload TEXT NOT NULL, " +
+                    "exception TEXT, " +
                     "attempts INT NOT NULL DEFAULT 0, " +
-                    "failed_at BIGINT NOT NULL, " +
-                    "INDEX " + failedTable + "_queue_index (queue)" +
+                    "failed_at BIGINT NOT NULL" +
                     ")");
+            // 单独创建索引（SQLite/MySQL/H2 均支持 CREATE INDEX IF NOT EXISTS 语法）
+            try {
+                jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS " + table + "_queue_index ON " + table + " (queue)");
+            } catch (Exception ignored) {
+                // 某些数据库不支持 IF NOT EXISTS 语法，尝试不带 IF NOT EXISTS
+                try {
+                    jdbcTemplate.execute("CREATE INDEX " + table + "_queue_index ON " + table + " (queue)");
+                } catch (Exception ignored2) {
+                    // 索引已存在或无权限，忽略
+                }
+            }
+            try {
+                jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS " + failedTable + "_queue_index ON " + failedTable + " (queue)");
+            } catch (Exception ignored) {
+                try {
+                    jdbcTemplate.execute("CREATE INDEX " + failedTable + "_queue_index ON " + failedTable + " (queue)");
+                } catch (Exception ignored2) {
+                    // 索引已存在或无权限，忽略
+                }
+            }
             logger.info("[queue-db] 自动建表完成: jobs={}, failed_jobs={}", table, failedTable);
         } catch (Exception e) {
             logger.warn("[queue-db] 自动建表失败（请确认 DDL 权限或手动建表）: {}", e.getMessage());
