@@ -49,13 +49,45 @@ public class BladeCompiler {
     }
 
     /**
+     * 解析模板输入流，优先从文件系统 {@code ./resources/} 目录加载，回退到 ClassPath。
+     * <p>
+     * 加载顺序：
+     * <ol>
+     *   <li>文件系统：{@code ./resources/{templatePath}}（如果文件存在）</li>
+     *   <li>ClassPath：{@code classpath:{templatePath}}（JAR 内置资源）</li>
+     * </ol>
+     * 这样可以在不重新打包 JAR 的情况下，通过在运行目录下放置 {@code resources/} 文件夹
+     * 来覆盖或新增模板，实现前端独立更新。
+     *
+     * @param templatePath 模板相对路径（如 {@code templates/layout.blade.java}）
+     * @return 模板内容的输入流
+     * @throws IOException 如果两个位置都找不到模板文件
+     */
+    private InputStream resolveTemplateStream(String templatePath) throws IOException {
+        // 1. 优先从文件系统 ./resources/ 目录加载
+        File file = new File("resources" + File.separator + templatePath);
+        if (file.isFile()) {
+            return new FileInputStream(file);
+        }
+        // 2. 回退到 ClassPath（JAR 内置资源）
+        return new ClassPathResource(templatePath).getInputStream();
+    }
+
+    /**
      * 编译一个文件的代码
+     * <p>
+     * 资源加载优先级：
+     * <ol>
+     *   <li>文件系统 {@code ./resources/{templateDir}/...} 目录（支持热更新，无需重新打包）</li>
+     *   <li>ClassPath classpath:{templateDir}/... （JAR 内置资源）</li>
+     * </ol>
      *
      * @param templateName 模板文件名
      */
     public String compile(String templateName) throws IOException {
         String templatePath = templateDir + File.separator + templateName.replace(".", File.separator) + suffix;
-        InputStream resource = new ClassPathResource(templatePath).getInputStream();
+        // 优先从文件系统 ./resources/ 目录加载（支持前端独立更新）
+        InputStream resource = resolveTemplateStream(templatePath);
         String employees = null;
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(resource))) {
             employees = reader
