@@ -1,6 +1,6 @@
 # migration 模块
 
-> Jaravel-Vendor 的数据库迁移模块，提供 Laravel 风格的 Blueprint 流式建表、`up()` / `down()` 迁移引擎、`migrate` / `rollback` / `reset` / `refresh` / `status` 命令，以及 MySQL、SQLite、H2、SQL Server 多数据库方言自动适配。支持 DIRECTORY / JAR / CLASSPATH 三种迁移源模式，适配开发与生产部署。**核心逻辑独立于 SpringBoot，可通过 `MigrationCLI` 在纯 Java 环境中运行**。包名统一为 `com.weacsoft.jaravel.vendor.migration`。
+> Jaravel-Vendor 的数据库迁移模块，提供 Laravel 风格的 Blueprint 流式建表、`up()` / `down()` 迁移引擎、`migrate` / `rollback` / `reset` / `refresh` / `status` 命令，以及 MySQL、SQLite、H2、SQL Server、PostgreSQL、Oracle 六种数据库方言自动适配。支持 DIRECTORY / JAR / CLASSPATH 三种迁移源模式，适配开发与生产部署。**核心逻辑独立于 SpringBoot，可通过 `MigrationCLI` 在纯 Java 环境中运行**。内置 `TableMigrator` 跨库表迁移工具，支持 1 步直连迁移和 2 步导出导入迁移。包名统一为 `com.weacsoft.jaravel.vendor.migration`。
 
 ---
 
@@ -26,9 +26,11 @@
 - [18. MigrationRunner —— SpringBoot 适配器](#18-migrationrunner--springboot-适配器)
 - [19. MigrationCLI —— 独立命令行入口](#19-migrationcli--独立命令行入口)
 - [20. JdbcExecutor —— 轻量 JDBC 执行器](#20-jdbcexecutor--轻量-jdbc-执行器)
-- [21. MigrationAutoConfiguration —— 自动装配](#21-migrationautoconfiguration--自动装配)
-- [22. 配置选项](#22-配置选项)
-- [23. 线程安全说明](#23-线程安全说明)
+- [21. Dialect —— 数据库方言接口](#21-dialect--数据库方言接口)
+- [22. TableMigrator —— 跨库表迁移工具](#22-tablemigrator--跨库表迁移工具)
+- [23. MigrationAutoConfiguration —— 自动装配](#23-migrationautoconfiguration--自动装配)
+- [24. 配置选项](#24-配置选项)
+- [25. 线程安全说明](#25-线程安全说明)
 
 ---
 
@@ -57,7 +59,7 @@
 
 ### 多数据库支持
 
-通过 `Connection.getMetaData().getDatabaseProductName()` 自动检测数据库方言，支持：
+通过 `DialectFactory` 自动检测数据库方言（基于 `Connection.getMetaData().getDatabaseProductName()`），支持：
 
 | 数据库 | 标识符引用 | 自增语法 | 建表选项 | 系统目录 |
 | --- | --- | --- | --- | --- |
@@ -65,6 +67,10 @@
 | SQLite | 反引号 `` ` `` | `AUTOINCREMENT` | 无 | `sqlite_master` |
 | H2 | 反引号 `` ` `` | `AUTO_INCREMENT` | 无 | `INFORMATION_SCHEMA` |
 | SQL Server | 方括号 `[]` | `IDENTITY(1,1)` | 无 | `sys.tables` / `sys.columns` |
+| PostgreSQL | 双引号 `""` | `GENERATED ALWAYS AS IDENTITY` | 无 | `information_schema` |
+| Oracle | 双引号 `""` | `GENERATED ALWAYS AS IDENTITY` | 无 | `user_tables` / `user_tab_columns` |
+
+方言采用策略模式实现，所有方言差异（标识符引用、类型映射、自增语法、系统目录查询、ALTER TABLE 语法等）集中在 `Dialect` 接口实现类中，`Schema`、`Blueprint`、`ColumnDefinition`、`MigrationRepository` 通过委托 `Dialect` 完成方言适配，上层 API 无需感知具体方言。新增数据库只需添加一个 `Dialect` 实现类，无需修改现有代码。
 
 ### 多表支持
 
@@ -90,7 +96,7 @@
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>migration</artifactId>
-    <version>0.1.1</version>
+    <version>0.1.2</version>
 </dependency>
 ```
 
@@ -121,6 +127,16 @@ com.weacsoft.jaravel.vendor.migration
 ├── Blueprint                    // 表结构蓝图（流式 API，CREATE 与 ALTER 模式）
 ├── ColumnDefinition             // 列定义（类型映射 + 链式修饰）
 ├── ForeignKeyDefinition         // 外键定义（references/on/onDelete/onUpdate）
+├── Dialect                      // 数据库方言接口（策略模式，封装各数据库 DDL 差异）
+├── AbstractDialect              // 方言抽象基类（通用默认实现）
+├── DialectFactory               // 方言工厂（自动检测数据库产品名并返回对应实现）
+├── MysqlDialect                 // MySQL 方言
+├── SqliteDialect                // SQLite 方言
+├── H2Dialect                    // H2 方言
+├── SqlServerDialect             // SQL Server 方言
+├── PostgresqlDialect            // PostgreSQL 方言
+├── OracleDialect                // Oracle 方言
+├── TableMigrator                // 跨库表迁移工具（1步直连/2步导出导入）
 ├── Migrator                     // 迁移引擎（run/rollback/reset/refresh/status/pending）
 ├── MigrationRepository          // 迁移记录仓库（migrations 表 CRUD）
 ├── MigrationRunner              // 命令行运行器（--jaravel.migrate 等参数）
@@ -310,7 +326,7 @@ jaravel:
 mvn clean package -pl migration,utils -am
 
 # 执行迁移
-java -cp migration/target/migration-0.1.1.jar:utils/target/utils-0.1.1.jar:mysql-connector.jar \
+java -cp migration/target/migration-0.1.2.jar:utils/target/utils-0.1.2.jar:mysql-connector.jar \
   com.weacsoft.jaravel.vendor.migration.MigrationCLI \
   --db-url=jdbc:mysql://localhost:3306/mydb \
   --db-user=root \
@@ -665,6 +681,7 @@ public class Migration_2024_06_20_CreateProductsTable implements Migration {
 | MySQL | `RENAME TABLE \`old\` TO \`new\`` |
 | SQLite / H2 | `ALTER TABLE \`old\` RENAME TO \`new\`` |
 | SQL Server | `sp_rename 'old', 'new'` |
+| PostgreSQL / Oracle | `ALTER TABLE "old" RENAME TO "new"` |
 
 **修改字段**：
 
@@ -673,6 +690,8 @@ public class Migration_2024_06_20_CreateProductsTable implements Migration {
 | MySQL | `ALTER TABLE \`t\` MODIFY \`col\` def` |
 | H2 | `ALTER TABLE \`t\` ALTER COLUMN \`col\` def` |
 | SQL Server | `ALTER TABLE [t] ALTER COLUMN [col] type [NULL\|NOT NULL]`（仅类型+可空性） |
+| PostgreSQL | `ALTER TABLE "t" ALTER COLUMN "col" TYPE type` |
+| Oracle | `ALTER TABLE "t" MODIFY ("col" type [NULL\|NOT NULL] [DEFAULT ...])` |
 | SQLite | 走重建表流程（见下文） |
 
 **SQLite 修改字段的重建表流程**（`sqliteRecreateTableForModify`）：
@@ -816,7 +835,9 @@ schema.dropIfExists("members");
 | `boolean isSqlite()` | 是否为 SQLite 方言 |
 | `boolean isH2()` | 是否为 H2 方言 |
 | `boolean isSqlServer()` | 是否为 SQL Server 方言 |
-| `String quote(String identifier)` | 按方言对标识符加引号（MySQL/SQLite/H2 用反引号，SQL Server 用方括号） |
+| `boolean isPostgresql()` | 是否为 PostgreSQL 方言 |
+| `boolean isOracle()` | 是否为 Oracle 方言 |
+| `String quote(String identifier)` | 按方言对标识符加引号（MySQL/SQLite/H2 用反引号，SQL Server 用方括号，PostgreSQL/Oracle 用双引号） |
 
 ### 使用示例
 
@@ -867,19 +888,19 @@ schema.create("orders", table -> {
 
 ### 类型映射（按方言）
 
-| 逻辑类型 | MySQL / SQLite / H2 | SQL Server |
-| --- | --- | --- |
-| string | `VARCHAR(n)` | `VARCHAR(n)` |
-| integer | `INT` / `INT UNSIGNED` | `INT` |
-| bigInteger | `BIGINT` / `BIGINT UNSIGNED` | `BIGINT` |
-| text | `TEXT` | `VARCHAR(MAX)` |
-| boolean | `TINYINT(1)` | `BIT` |
-| decimal | `DECIMAL(p,s)` | `DECIMAL(p,s)` |
-| dateTime | `DATETIME` | `DATETIME2` |
-| timestamp | `TIMESTAMP` | `DATETIME2`（SQL Server TIMESTAMP 实为 rowversion） |
-| year | `YEAR` | `SMALLINT`（SQL Server 无 YEAR 类型） |
-| json | `JSON` | `NVARCHAR(MAX)`（SQL Server 无原生 JSON 类型） |
-| binary | `LONGBLOB` | `VARBINARY(MAX)` |
+| 逻辑类型 | MySQL / SQLite / H2 | SQL Server | PostgreSQL | Oracle |
+| --- | --- | --- | --- | --- |
+| string | `VARCHAR(n)` | `VARCHAR(n)` | `VARCHAR(n)` | `VARCHAR2(n)` |
+| integer | `INT` / `INT UNSIGNED` | `INT` | `INT` | `NUMBER(10)` |
+| bigInteger | `BIGINT` / `BIGINT UNSIGNED` | `BIGINT` | `BIGINT` | `NUMBER(19)` |
+| text | `TEXT` | `VARCHAR(MAX)` | `TEXT` | `CLOB` |
+| boolean | `TINYINT(1)` | `BIT` | `BOOLEAN` | `NUMBER(1)` |
+| decimal | `DECIMAL(p,s)` | `DECIMAL(p,s)` | `DECIMAL(p,s)` | `NUMBER(p,s)` |
+| dateTime | `DATETIME` | `DATETIME2` | `TIMESTAMP` | `TIMESTAMP` |
+| timestamp | `TIMESTAMP` | `DATETIME2` | `TIMESTAMP` | `TIMESTAMP` |
+| year | `YEAR` | `SMALLINT` | `SMALLINT` | `NUMBER(4)` |
+| json | `JSON` | `NVARCHAR(MAX)` | `JSONB` | `CLOB` |
+| binary | `LONGBLOB` | `VARBINARY(MAX)` | `BYTEA` | `BLOB` |
 
 ### 自增语法（按方言）
 
@@ -888,6 +909,8 @@ schema.create("orders", table -> {
 | MySQL / H2 | `AUTO_INCREMENT` |
 | SQLite | `INTEGER PRIMARY KEY AUTOINCREMENT` |
 | SQL Server | `IDENTITY(1,1) PRIMARY KEY` |
+| PostgreSQL | `BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| Oracle | `NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
 
 ### 使用示例
 
@@ -1053,6 +1076,8 @@ try {
 | SQLite | `INTEGER PRIMARY KEY AUTOINCREMENT` |
 | H2 | `INT NOT NULL AUTO_INCREMENT PRIMARY KEY` |
 | SQL Server | `INT IDENTITY(1,1) PRIMARY KEY`（先查 `sys.tables` 判断是否存在） |
+| PostgreSQL | `SERIAL PRIMARY KEY`（`CREATE TABLE IF NOT EXISTS`） |
+| Oracle | `NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY`（先查 `user_tables` 判断是否存在） |
 
 ---
 
@@ -1111,7 +1136,166 @@ java -jar app.jar --jaravel.migration-status
 
 ---
 
-## 17. MigrationAutoConfiguration —— 自动装配
+## 21. Dialect —— 数据库方言接口
+
+`com.weacsoft.jaravel.vendor.migration.Dialect`
+
+数据库方言策略接口，封装各数据库之间的 SQL DDL 差异。采用策略模式，所有方言相关逻辑（标识符引用、类型映射、自增语法、系统目录查询、ALTER TABLE 语法等）集中在此接口的实现类中。
+
+### 方言实现类
+
+| 实现类 | 数据库 | 标识符引用 | 自增语法 |
+| --- | --- | --- | --- |
+| `MysqlDialect` | MySQL | 反引号 `` ` `` | `AUTO_INCREMENT` |
+| `SqliteDialect` | SQLite | 反引号 `` ` `` | `AUTOINCREMENT` |
+| `H2Dialect` | H2 | 反引号 `` ` `` | `AUTO_INCREMENT` |
+| `SqlServerDialect` | SQL Server | 方括号 `[]` | `IDENTITY(1,1)` |
+| `PostgresqlDialect` | PostgreSQL | 双引号 `""` | `GENERATED ALWAYS AS IDENTITY` |
+| `OracleDialect` | Oracle | 双引号 `""` | `GENERATED ALWAYS AS IDENTITY` |
+
+### DialectFactory —— 方言工厂
+
+`DialectFactory` 根据数据源自动检测数据库产品名并返回对应的 `Dialect` 实现：
+
+```java
+// 自动检测
+Dialect dialect = DialectFactory.detect(dataSource);
+
+// 按名称创建
+Dialect dialect = DialectFactory.create("postgresql");
+```
+
+未识别的数据库默认使用 MySQL 方言。
+
+### 核心方法
+
+| 方法签名 | 说明 |
+| --- | --- |
+| `String quote(String identifier)` | 按方言对标识符加引号 |
+| `String tableOptions()` | 返回 CREATE TABLE 附加选项（如 MySQL 的 ENGINE=InnoDB） |
+| `String renameTableSql(String from, String to)` | 生成重命名表 SQL |
+| `String hasTableSql()` | 返回判断表是否存在的 SQL 模板 |
+| `String hasColumnSql()` | 返回判断列是否存在的 SQL 模板 |
+| `String mapType(String, Integer, Integer, Integer, boolean)` | 将逻辑类型映射为数据库特定类型 |
+| `String autoIncrementPrimaryKeyTypeClause(String)` | 返回自增主键类型子句（特殊格式返回，标准格式返回 null） |
+| `String autoIncrementClause()` | 返回自增关键字 |
+| `String modifyColumnSql(String, ColumnDefinition)` | 生成修改字段 ALTER TABLE SQL |
+| `String createRepositoryTableSql(String)` | 生成创建迁移记录表 SQL |
+| `String dropIndexSql(String, String)` | 生成删除索引 SQL |
+| `boolean supportsColumnComment()` | 是否支持列注释 |
+| `boolean supportsAfterColumn()` | 是否支持 AFTER 子句 |
+
+### 扩展新数据库
+
+新增数据库支持只需添加一个 `Dialect` 实现类，并在 `DialectFactory.create()` 中添加检测分支：
+
+```java
+public class DmDialect extends AbstractDialect {
+    public DmDialect() { super("dm"); }
+    // 实现所有抽象方法...
+}
+
+// DialectFactory.create() 中添加：
+if (lower.contains("dm")) return new DmDialect();
+```
+
+无需修改 `Schema`、`Blueprint`、`ColumnDefinition`、`MigrationRepository` 的任何代码。
+
+---
+
+## 22. TableMigrator —— 跨库表迁移工具
+
+`com.weacsoft.jaravel.vendor.migration.TableMigrator`
+
+跨数据库表迁移工具，支持将表结构和数据从源数据库迁移到目标数据库。不依赖 migration 文件，通过 JDBC `DatabaseMetaData` 直接读取数据库中实际存在的表结构。
+
+### 两种迁移模式
+
+#### 1 步迁移（直连）
+
+源库和目标库同时在线，通过两个独立的 JDBC 连接直接复制：
+
+```java
+TableMigrator migrator = new TableMigrator(sourceDs, targetDs);
+migrator.migrateAll();                     // 迁移所有表（含 migrations 记录表）
+migrator.migrateAll(false);                // 迁移所有用户表（不含 migrations 记录表）
+migrator.migrateTables("users", "orders"); // 迁移指定表
+migrator.migrateTable("users");            // 迁移单表
+```
+
+#### 2 步迁移（导出 → 导入）
+
+两步分离，可在不同时间、不同实例调用：
+
+```java
+// 第一步：导出（只需源数据源）
+TableMigrator exporter = new TableMigrator(sourceDs, null);
+exporter.exportAll(new File("dump.jvd"));                       // 导出所有表
+exporter.exportAll(new File("dump.jvd"), false);                // 不含 migrations 表
+exporter.exportTables(new File("dump.jvd"), "users", "orders"); // 导出指定表
+
+// 第二步：导入（只需目标数据源，可在不同时间调用）
+TableMigrator importer = new TableMigrator(null, targetDs);
+importer.importAll(new File("dump.jvd"));                       // 导入所有表
+importer.importTables(new File("dump.jvd"), "users", "tags");   // 选择性导入
+```
+
+### 方法文档
+
+| 方法签名 | 模式 | 说明 |
+| --- | --- | --- |
+| `int migrateAll()` | 1步 | 迁移所有表（含 migrations） |
+| `int migrateAll(boolean)` | 1步 | 迁移所有表，可控制是否含 migrations |
+| `int migrateTables(String...)` | 1步 | 迁移指定表 |
+| `void migrateTable(String)` | 1步 | 迁移单表 |
+| `int exportAll(File)` | 2步导出 | 导出所有表到 .jvd 文件 |
+| `int exportAll(File, boolean)` | 2步导出 | 导出所有表，可控制是否含 migrations |
+| `int exportTables(File, String...)` | 2步导出 | 导出指定表到 .jvd 文件 |
+| `int importAll(File)` | 2步导入 | 从 .jvd 文件导入所有表 |
+| `int importTables(File, String...)` | 2步导入 | 从 .jvd 文件导入指定表 |
+
+### .jvd 二进制文件格式
+
+自定义私有格式（魔数 `JAVD` + 版本号），包含表结构和数据：
+
+```
+Header: magic(4) + version(4) + tableCount(4)
+Per table: tableName + columnDefs + primaryKey + rowCount + rowData
+```
+
+### 数据类型支持
+
+以 SQLite 兼容基本类型为标准，额外支持：
+
+| 类别 | 支持类型 |
+| --- | --- |
+| 基本 | NULL、String/Text、Integer、Long、Boolean |
+| 浮点 | Float、Double、BigDecimal（字符串中转） |
+| 日期 | Date、Time、Timestamp（ISO 字符串存储） |
+| 二进制 | byte[]（BLOB，额外支持） |
+
+不支持 JSON、自定义对象等高级类型。未知类型自动回退为字符串。
+
+### 兼容性
+
+| 数据库 | 源库读取 | 目标库写入 |
+| --- | --- | --- |
+| MySQL | 完全兼容 | 完全兼容 |
+| H2 | 完全兼容 | 完全兼容 |
+| SQLite | 完全兼容 | 完全兼容 |
+| PostgreSQL | 完全兼容 | 完全兼容 |
+| Oracle | 完全兼容 | 完全兼容 |
+| SQL Server | 完全兼容 | 完全兼容 |
+
+源库读取基于标准 JDBC `DatabaseMetaData`，任何提供 JDBC 驱动的数据库都能作为源库。目标库写入依赖 `Dialect` 实现做类型映射，需已支持的 6 种之一。
+
+### 连接管理
+
+1 步迁移使用两个独立的 JDBC 连接（源、目标分别从各自 DataSource 获取），不依赖跨数据库链接或 dblink。2 步迁移各阶段只需一个数据源。
+
+---
+
+## 23. MigrationAutoConfiguration —— 自动装配
 
 `com.weacsoft.jaravel.vendor.migration.MigrationAutoConfiguration`
 
@@ -1127,7 +1311,7 @@ Bean 带 `@ConditionalOnMissingBean`，允许业务方自定义替换。通过 `
 
 ---
 
-## 18. 配置选项
+## 24. 配置选项
 
 配置前缀为 `jaravel.migration`，对应 `MigrationProperties` 类。
 
@@ -1183,7 +1367,7 @@ jaravel:
 
 ---
 
-## 19. 线程安全说明
+## 25. 线程安全说明
 
 | 类 | 线程安全性 | 说明 |
 | --- | --- | --- |
@@ -1197,3 +1381,7 @@ jaravel:
 | `MigrationRunner` | 单次执行 | `CommandLineRunner.run()` 在启动时单线程调用，无需考虑并发 |
 | `MigrationScanner` | 单次使用 | 内部 `MemoryClassLoader` 懒加载，`finish()` 后释放。设计为单次加载-执行-释放生命周期，非线程安全 |
 | `MigrationGenerator` | 线程安全 | 静态方法，无共享可变状态，可安全并发调用（但同一文件路径并发写入会失败） |
+| `Dialect` / `AbstractDialect` | 线程安全 | 无状态策略对象，各方法无副作用 |
+| `DialectFactory` | 线程安全 | 静态工厂方法，每次返回新的 Dialect 实例 |
+| `MysqlDialect` 等 | 线程安全 | 不可变对象，构造后状态不变 |
+| `TableMigrator` | 单次使用 | 设计为单次迁移生命周期，内部不保持跨方法可变状态，但并发操作同一目标表需外部同步 |

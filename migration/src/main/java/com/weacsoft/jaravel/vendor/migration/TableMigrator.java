@@ -702,14 +702,18 @@ public class TableMigrator {
     // 共用内部方法
     // ========================================================================
 
-    /** 列出源数据库中的所有用户表 */
+    /**
+     * 列出源数据库中的所有用户表。
+     * <p>
+     * 使用方言感知的 catalog/schema 获取方式，兼容 MySQL、PostgreSQL、Oracle、SQL Server 等。
+     * 当 getTables(catalog, schema, ...) 查不到表时，回退到 null/null 查询全部。
+     */
     private List<String> listSourceTables(boolean includeMigrationsTable) {
         List<String> tables = new ArrayList<>();
         try (Connection conn = sourceDataSource.getConnection()) {
             DatabaseMetaData meta = conn.getMetaData();
-            String catalog = conn.getCatalog();
-            String schema = conn.getSchema();
-            try (ResultSet rs = meta.getTables(catalog, schema, "%", new String[]{"TABLE"})) {
+            // 先用方言感知方式获取 catalog/schema
+            try (ResultSet rs = meta.getTables(getEffectiveCatalog(conn), getEffectiveSchema(conn), "%", new String[]{"TABLE"})) {
                 while (rs.next()) {
                     String name = rs.getString("TABLE_NAME");
                     if (name == null || name.isEmpty()) continue;
@@ -717,6 +721,20 @@ public class TableMigrator {
                     if (lower.startsWith("sqlite_")) continue;
                     if (!includeMigrationsTable && lower.equals("migrations")) continue;
                     tables.add(name);
+                }
+            }
+            // 如果方言感知方式查不到表，回退到 null/null
+            if (tables.isEmpty()) {
+                log.debug("[migration] 方言感知方式未找到表，回退到 null/null 查询");
+                try (ResultSet rs = meta.getTables(null, null, "%", new String[]{"TABLE"})) {
+                    while (rs.next()) {
+                        String name = rs.getString("TABLE_NAME");
+                        if (name == null || name.isEmpty()) continue;
+                        String lower = name.toLowerCase();
+                        if (lower.startsWith("sqlite_")) continue;
+                        if (!includeMigrationsTable && lower.equals("migrations")) continue;
+                        tables.add(name);
+                    }
                 }
             }
         } catch (SQLException e) {
@@ -733,8 +751,8 @@ public class TableMigrator {
 
         try (Connection conn = sourceDataSource.getConnection()) {
             DatabaseMetaData dbMeta = conn.getMetaData();
-            String catalog = conn.getCatalog();
-            String schema = conn.getSchema();
+            String catalog = getEffectiveCatalog(conn);
+            String schema = getEffectiveSchema(conn);
 
             // 先用原始表名尝试，如果找不到则进行大小写不敏感匹配
             try (ResultSet rs = dbMeta.getColumns(catalog, schema, tableName, null)) {
@@ -755,10 +773,9 @@ public class TableMigrator {
 
             // 如果原始表名找不到列，尝试大小写不敏感匹配
             if (meta.columns.isEmpty()) {
-                String actualName = findActualTableName(conn, tableName);
-                if (actualName != null) {
-                    meta.tableName = actualName;
-                    try (ResultSet rs = dbMeta.getColumns(catalog, schema, actualName, null)) {
+                // 回退到 null/null 查询
+                if (catalog != null || schema != null) {
+                    try (ResultSet rs = dbMeta.getColumns(null, null, tableName, null)) {
                         while (rs.next()) {
                             ColumnMetaData col = new ColumnMetaData();
                             col.name = rs.getString("COLUMN_NAME");
@@ -773,10 +790,14 @@ public class TableMigrator {
                             meta.columns.add(col);
                         }
                     }
-                    try (ResultSet rs = dbMeta.getPrimaryKeys(catalog, schema, actualName)) {
-                        while (rs.next()) {
-                            meta.primaryKeyColumns.add(rs.getString("COLUMN_NAME"));
-                        }
+                }
+
+                // 如果还是找不到，尝试大小写不敏感匹配
+                if (meta.columns.isEmpty()) {
+                    String actualName = findActualTableName(conn, tableName);
+                    if (actualName != null) {
+                        meta.tableName = actualName;
+                        readColumnsAndPrimaryKeys(dbMeta, conn, actualName, meta);
                     }
                 }
             } else {
@@ -797,10 +818,71 @@ public class TableMigrator {
         return meta;
     }
 
-    /** 大小写不敏感地查找实际表名 */
+    /** 读取列定义和主键（使用 null/null 回退） */
+    private void readColumnsAndPrimaryKeys(DatabaseMetaData dbMeta, Connection conn,
+                                           String tableName, TableMetaData meta) throws SQLException {
+        try (ResultSet rs = dbMeta.getColumns(getEffectiveCatalog(conn), getEffectiveSchema(conn), tableName, null)) {
+            while (rs.next()) {
+                ColumnMetaData col = new ColumnMetaData();
+                col.name = rs.getString("COLUMN_NAME");
+                col.jdbcType = rs.getInt("DATA_TYPE");
+                col.typeName = rs.getString("TYPE_NAME");
+                col.size = rs.getInt("COLUMN_SIZE");
+                col.decimalDigits = rs.getInt("DECIMAL_DIGITS");
+                col.nullable = rs.getInt("NULLABLE") == DatabaseMetaData.columnNullable;
+                col.defaultValue = rs.getString("COLUMN_DEF");
+                String autoInc = rs.getString("IS_AUTOINCREMENT");
+                col.autoIncrement = "YES".equalsIgnoreCase(autoInc);
+                meta.columns.add(col);
+            }
+        }
+        if (meta.columns.isEmpty()) {
+            try (ResultSet rs = dbMeta.getColumns(null, null, tableName, null)) {
+                while (rs.next()) {
+                    ColumnMetaData col = new ColumnMetaData();
+                    col.name = rs.getString("COLUMN_NAME");
+                    col.jdbcType = rs.getInt("DATA_TYPE");
+                    col.typeName = rs.getString("TYPE_NAME");
+                    col.size = rs.getInt("COLUMN_SIZE");
+                    col.decimalDigits = rs.getInt("DECIMAL_DIGITS");
+                    col.nullable = rs.getInt("NULLABLE") == DatabaseMetaData.columnNullable;
+                    col.defaultValue = rs.getString("COLUMN_DEF");
+                    String autoInc = rs.getString("IS_AUTOINCREMENT");
+                    col.autoIncrement = "YES".equalsIgnoreCase(autoInc);
+                    meta.columns.add(col);
+                }
+            }
+        }
+        try (ResultSet rs = dbMeta.getPrimaryKeys(getEffectiveCatalog(conn), getEffectiveSchema(conn), tableName)) {
+            while (rs.next()) {
+                meta.primaryKeyColumns.add(rs.getString("COLUMN_NAME"));
+            }
+        }
+        if (meta.primaryKeyColumns.isEmpty()) {
+            try (ResultSet rs = dbMeta.getPrimaryKeys(null, null, tableName)) {
+                while (rs.next()) {
+                    meta.primaryKeyColumns.add(rs.getString("COLUMN_NAME"));
+                }
+            }
+        }
+    }
+
+    /**
+     * 大小写不敏感地查找实际表名，使用 null/null 回退
+     */
     private String findActualTableName(Connection conn, String tableName) throws SQLException {
         DatabaseMetaData dbMeta = conn.getMetaData();
-        try (ResultSet rs = dbMeta.getTables(conn.getCatalog(), conn.getSchema(), "%", new String[]{"TABLE"})) {
+        // 先用方言感知方式
+        try (ResultSet rs = dbMeta.getTables(getEffectiveCatalog(conn), getEffectiveSchema(conn), "%", new String[]{"TABLE"})) {
+            while (rs.next()) {
+                String name = rs.getString("TABLE_NAME");
+                if (name != null && name.equalsIgnoreCase(tableName)) {
+                    return name;
+                }
+            }
+        }
+        // 回退到 null/null
+        try (ResultSet rs = dbMeta.getTables(null, null, "%", new String[]{"TABLE"})) {
             while (rs.next()) {
                 String name = rs.getString("TABLE_NAME");
                 if (name != null && name.equalsIgnoreCase(tableName)) {
@@ -811,12 +893,39 @@ public class TableMigrator {
         return null;
     }
 
-    /** 删除目标表（如存在） */
+    /**
+     * 删除目标表（如存在）。
+     * <p>
+     * 对于支持 DROP TABLE IF EXISTS 的方言直接执行；
+     * 对于不支持的方言（Oracle），先通过 hasTable 检查再执行 DROP。
+     */
     private void dropTargetTableIfExists(String tableName) {
-        try {
-            targetJdbc.execute("DROP TABLE IF EXISTS " + targetDialect.quote(tableName));
-        } catch (Exception e) {
-            log.warn("[migration] 删除目标表 {} 时忽略错误: {}", tableName, e.getMessage());
+        String targetName = targetDialect.getName();
+        if (targetName.contains("oracle")) {
+            // Oracle 不支持 DROP TABLE IF EXISTS
+            try {
+                String hasSql = targetDialect.hasTableSql();
+                if (hasSql != null) {
+                    Integer cnt = targetJdbc.queryForObject(hasSql, Integer.class, tableName);
+                    if (cnt != null && cnt > 0) {
+                        targetJdbc.execute("DROP TABLE " + targetDialect.quote(tableName));
+                    }
+                    return;
+                }
+            } catch (Exception e) {
+                log.warn("[migration] Oracle 检查表存在性失败，尝试直接 DROP: {}", e.getMessage());
+            }
+            try {
+                targetJdbc.execute("DROP TABLE " + targetDialect.quote(tableName));
+            } catch (Exception e) {
+                log.debug("[migration] 表 {} 不存在或删除失败（忽略）: {}", tableName, e.getMessage());
+            }
+        } else {
+            try {
+                targetJdbc.execute("DROP TABLE IF EXISTS " + targetDialect.quote(tableName));
+            } catch (Exception e) {
+                log.warn("[migration] 删除目标表 {} 时忽略错误: {}", tableName, e.getMessage());
+            }
         }
     }
 
@@ -972,6 +1081,37 @@ public class TableMigrator {
     /** 是否有自增列 */
     private boolean hasAutoIncrementColumn(TableMetaData meta) {
         return meta.columns.stream().anyMatch(c -> c.autoIncrement);
+    }
+
+    /**
+     * 获取有效的 catalog（数据库名），用于 DatabaseMetaData 查询。
+     * <p>
+     * MySQL/SQL Server 使用 catalog 定位数据库；Oracle 的 catalog 返回 null，
+     * 此时返回 null 让 getTables 用 null 匹配所有 catalog。
+     */
+    private static String getEffectiveCatalog(Connection conn) throws SQLException {
+        try {
+            return conn.getCatalog();
+        } catch (SQLException e) {
+            log.debug("[migration] getCatalog() 失败，返回 null: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 获取有效的 schema，用于 DatabaseMetaData 查询。
+     * <p>
+     * PostgreSQL 返回 "public"，Oracle 返回用户名（如 "SCOTT"），
+     * SQL Server 返回 "dbo"，MySQL 返回 null，H2 返回 "PUBLIC"。
+     * 如果获取失败则返回 null。
+     */
+    private static String getEffectiveSchema(Connection conn) throws SQLException {
+        try {
+            return conn.getSchema();
+        } catch (SQLException e) {
+            log.debug("[migration] getSchema() 失败，返回 null: {}", e.getMessage());
+            return null;
+        }
     }
 
     /** JDBC 类型 → 逻辑类型名 */
