@@ -1,0 +1,5 @@
+com\weacsoft\jaravel\vendor\redis\cache\RedisCacheDriver.class
+com\weacsoft\jaravel\vendor\redis\cache\RedisCacheAutoConfiguration$RedisCacheRegistrar.class
+com\weacsoft\jaravel\vendor\redis\cache\RedisCacheAutoConfiguration.class
+META-INF\spring-configuration-metadata.json
+com\weacsoft\jaravel\vendor\redis\cache\RedisCacheProperties.class

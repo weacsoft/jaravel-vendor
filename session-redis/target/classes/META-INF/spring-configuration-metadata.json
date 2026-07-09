@@ -1,0 +1,47 @@
+{
+  "groups": [
+    {
+      "name": "jaravel.session.redis",
+      "type": "com.weacsoft.jaravel.vendor.session.redis.SessionRedisProperties",
+      "sourceType": "com.weacsoft.jaravel.vendor.session.redis.SessionRedisProperties"
+    }
+  ],
+  "properties": [
+    {
+      "name": "jaravel.session.redis.auto-register",
+      "type": "java.lang.Boolean",
+      "description": "是否自动注册 redis-session guard 驱动到 AuthManager",
+      "sourceType": "com.weacsoft.jaravel.vendor.session.redis.SessionRedisProperties",
+      "defaultValue": true
+    },
+    {
+      "name": "jaravel.session.redis.connection",
+      "type": "java.lang.String",
+      "description": "Redis 连接名，对应 jaravel.redis.connections 中的配置",
+      "sourceType": "com.weacsoft.jaravel.vendor.session.redis.SessionRedisProperties",
+      "defaultValue": "session"
+    },
+    {
+      "name": "jaravel.session.redis.cookie",
+      "type": "java.lang.String",
+      "description": "Cookie 名称",
+      "sourceType": "com.weacsoft.jaravel.vendor.session.redis.SessionRedisProperties",
+      "defaultValue": "manage_session"
+    },
+    {
+      "name": "jaravel.session.redis.lifetime",
+      "type": "java.lang.Long",
+      "description": "Session 生命周期（分钟），默认 30",
+      "sourceType": "com.weacsoft.jaravel.vendor.session.redis.SessionRedisProperties",
+      "defaultValue": 30
+    },
+    {
+      "name": "jaravel.session.redis.prefix",
+      "type": "java.lang.String",
+      "description": "Session 键前缀",
+      "sourceType": "com.weacsoft.jaravel.vendor.session.redis.SessionRedisProperties",
+      "defaultValue": "laravel_session"
+    }
+  ],
+  "hints": []
+}

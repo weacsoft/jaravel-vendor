@@ -1,0 +1,7 @@
+com\weacsoft\jaravel\vendor\plugin\jar\multitenant\TenantAwarePluginRouteRegistrar.class
+com\weacsoft\jaravel\vendor\plugin\jar\multitenant\TenantNaming.class
+com\weacsoft\jaravel\vendor\plugin\jar\multitenant\TenantContext.class
+com\weacsoft\jaravel\vendor\plugin\jar\multitenant\MultiTenantAutoConfiguration.class
+com\weacsoft\jaravel\vendor\plugin\jar\multitenant\TenantAwareHotPluginManager.class
+com\weacsoft\jaravel\vendor\plugin\jar\multitenant\MultiTenantProperties.class
+com\weacsoft\jaravel\vendor\plugin\jar\multitenant\TenantAwarePluginBeanRegistrar.class

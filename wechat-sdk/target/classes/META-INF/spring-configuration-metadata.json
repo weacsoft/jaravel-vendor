@@ -1,0 +1,58 @@
+{
+  "groups": [
+    {
+      "name": "jaravel.wechat",
+      "type": "com.weacsoft.jaravel.vendor.wechat.WechatProperties",
+      "sourceType": "com.weacsoft.jaravel.vendor.wechat.WechatProperties"
+    },
+    {
+      "name": "jaravel.wechat.http",
+      "type": "com.weacsoft.jaravel.vendor.wechat.WechatProperties$HttpConfig",
+      "sourceType": "com.weacsoft.jaravel.vendor.wechat.WechatProperties",
+      "sourceMethod": "getHttp()"
+    }
+  ],
+  "properties": [
+    {
+      "name": "jaravel.wechat.cache-store",
+      "type": "java.lang.String",
+      "description": "缓存 store 名称，用于 access_token \/ jsapi_ticket 缓存。 <p> 优先使用此 store，未注册时回退到默认 store（array）。 默认 \"redis\"（多实例共享），单机可设为 \"array\"。",
+      "sourceType": "com.weacsoft.jaravel.vendor.wechat.WechatProperties",
+      "defaultValue": "redis"
+    },
+    {
+      "name": "jaravel.wechat.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否启用微信 SDK，默认 true",
+      "sourceType": "com.weacsoft.jaravel.vendor.wechat.WechatProperties",
+      "defaultValue": true
+    },
+    {
+      "name": "jaravel.wechat.http.retry",
+      "type": "java.lang.Boolean",
+      "description": "是否启用失败重试，默认 true",
+      "sourceType": "com.weacsoft.jaravel.vendor.wechat.WechatProperties$HttpConfig",
+      "defaultValue": true
+    },
+    {
+      "name": "jaravel.wechat.http.timeout",
+      "type": "java.lang.Double",
+      "description": "连接与读取超时时间（秒），默认 5.0",
+      "sourceType": "com.weacsoft.jaravel.vendor.wechat.WechatProperties$HttpConfig",
+      "defaultValue": 5
+    },
+    {
+      "name": "jaravel.wechat.mini-apps",
+      "type": "java.util.Map<java.lang.String,com.weacsoft.jaravel.vendor.wechat.WechatProperties$MiniAppConfig>",
+      "description": "小程序配置映射，key 为配置名或 appId（如 default、wx7051c4a2a779d651），对齐 PHP mini_app 段",
+      "sourceType": "com.weacsoft.jaravel.vendor.wechat.WechatProperties"
+    },
+    {
+      "name": "jaravel.wechat.official-accounts",
+      "type": "java.util.Map<java.lang.String,com.weacsoft.jaravel.vendor.wechat.WechatProperties$OfficialAccountConfig>",
+      "description": "公众号配置映射，key 为配置名（如 default、snsapi_userinfo），对齐 PHP official_account 段",
+      "sourceType": "com.weacsoft.jaravel.vendor.wechat.WechatProperties"
+    }
+  ],
+  "hints": []
+}

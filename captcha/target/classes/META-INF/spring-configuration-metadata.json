@@ -1,0 +1,214 @@
+{
+  "groups": [
+    {
+      "name": "jaravel.captcha",
+      "type": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties"
+    }
+  ],
+  "properties": [
+    {
+      "name": "jaravel.captcha.arc-interfere",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "defaultValue": true
+    },
+    {
+      "name": "jaravel.captcha.arc-interfere-count",
+      "type": "java.lang.Integer",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "defaultValue": 5
+    },
+    {
+      "name": "jaravel.captcha.background-image-base64",
+      "type": "java.lang.String",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties"
+    },
+    {
+      "name": "jaravel.captcha.background-image-path",
+      "type": "java.lang.String",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties"
+    },
+    {
+      "name": "jaravel.captcha.case-sensitive",
+      "type": "java.lang.Boolean",
+      "description": "是否区分大小写",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "defaultValue": false
+    },
+    {
+      "name": "jaravel.captcha.char-set",
+      "type": "java.lang.String",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties"
+    },
+    {
+      "name": "jaravel.captcha.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否启用自动装配",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "defaultValue": true
+    },
+    {
+      "name": "jaravel.captcha.expire-seconds",
+      "type": "java.lang.Long",
+      "description": "过期时间（秒）",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "defaultValue": 300
+    },
+    {
+      "name": "jaravel.captcha.font-family",
+      "type": "java.lang.String",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "defaultValue": "Arial"
+    },
+    {
+      "name": "jaravel.captcha.font-style",
+      "type": "java.lang.Integer",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "defaultValue": 1
+    },
+    {
+      "name": "jaravel.captcha.height",
+      "type": "java.lang.Integer",
+      "description": "图片高度",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "defaultValue": 50
+    },
+    {
+      "name": "jaravel.captcha.interfere-lines",
+      "type": "java.lang.Integer",
+      "description": "干扰线数量",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "defaultValue": 30
+    },
+    {
+      "name": "jaravel.captcha.length",
+      "type": "java.lang.Integer",
+      "description": "验证码字符长度（数字\/字母验证码）",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "defaultValue": 4
+    },
+    {
+      "name": "jaravel.captcha.max-font-size",
+      "type": "java.lang.Integer",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "defaultValue": 0
+    },
+    {
+      "name": "jaravel.captcha.max-jump-distance",
+      "type": "java.lang.Double",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "defaultValue": 80
+    },
+    {
+      "name": "jaravel.captcha.max-rotation-degree",
+      "type": "java.lang.Integer",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "defaultValue": 30
+    },
+    {
+      "name": "jaravel.captcha.max-trajectory-duration-ms",
+      "type": "java.lang.Long",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "defaultValue": 30000
+    },
+    {
+      "name": "jaravel.captcha.min-font-size",
+      "type": "java.lang.Integer",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "defaultValue": 0
+    },
+    {
+      "name": "jaravel.captcha.min-trajectory-duration-ms",
+      "type": "java.lang.Long",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "defaultValue": 500
+    },
+    {
+      "name": "jaravel.captcha.min-trajectory-points",
+      "type": "java.lang.Integer",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "defaultValue": 5
+    },
+    {
+      "name": "jaravel.captcha.noise",
+      "type": "java.lang.Integer",
+      "description": "噪点数量",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "defaultValue": 50
+    },
+    {
+      "name": "jaravel.captcha.tolerance",
+      "type": "java.lang.Double",
+      "description": "滑动\/旋转验证的容差范围",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "defaultValue": 5
+    },
+    {
+      "name": "jaravel.captcha.trajectory-enabled",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "defaultValue": true
+    },
+    {
+      "name": "jaravel.captcha.watermark-color",
+      "type": "java.lang.Integer",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "defaultValue": -2140772762
+    },
+    {
+      "name": "jaravel.captcha.watermark-font-family",
+      "type": "java.lang.String",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "defaultValue": "Arial"
+    },
+    {
+      "name": "jaravel.captcha.watermark-font-size",
+      "type": "java.lang.Integer",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "defaultValue": 12
+    },
+    {
+      "name": "jaravel.captcha.watermark-image-base64",
+      "type": "java.lang.String",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties"
+    },
+    {
+      "name": "jaravel.captcha.watermark-opacity",
+      "type": "java.lang.Float",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "defaultValue": 0.3
+    },
+    {
+      "name": "jaravel.captcha.watermark-position",
+      "type": "java.lang.String",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "defaultValue": "bottom-right"
+    },
+    {
+      "name": "jaravel.captcha.watermark-rotation",
+      "type": "java.lang.Integer",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "defaultValue": 0
+    },
+    {
+      "name": "jaravel.captcha.watermark-scale",
+      "type": "java.lang.Float",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "defaultValue": 0.2
+    },
+    {
+      "name": "jaravel.captcha.watermark-text",
+      "type": "java.lang.String",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties"
+    },
+    {
+      "name": "jaravel.captcha.width",
+      "type": "java.lang.Integer",
+      "description": "图片宽度",
+      "sourceType": "com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties",
+      "defaultValue": 160
+    }
+  ],
+  "hints": []
+}

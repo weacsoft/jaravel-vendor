@@ -1,0 +1,61 @@
+{
+  "groups": [
+    {
+      "name": "jaravel.migration",
+      "type": "com.weacsoft.jaravel.vendor.migration.MigrationProperties",
+      "sourceType": "com.weacsoft.jaravel.vendor.migration.MigrationAutoConfiguration",
+      "sourceMethod": "jaravelMigrationProperties()"
+    }
+  ],
+  "properties": [
+    {
+      "name": "jaravel.migration.auto-run",
+      "type": "java.lang.Boolean",
+      "description": "启动时是否自动执行 migrate",
+      "sourceType": "com.weacsoft.jaravel.vendor.migration.MigrationProperties",
+      "defaultValue": false
+    },
+    {
+      "name": "jaravel.migration.directory",
+      "type": "java.lang.String",
+      "description": "迁移 .java 文件所在目录（DIRECTORY 模式，运行时内存编译扫描的目录）",
+      "sourceType": "com.weacsoft.jaravel.vendor.migration.MigrationProperties",
+      "defaultValue": "migrations"
+    },
+    {
+      "name": "jaravel.migration.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否启用迁移模块",
+      "sourceType": "com.weacsoft.jaravel.vendor.migration.MigrationProperties",
+      "defaultValue": true
+    },
+    {
+      "name": "jaravel.migration.jar-path",
+      "type": "java.lang.String",
+      "description": "JAR 文件路径（JAR 模式，预编译的迁移类 jar）",
+      "sourceType": "com.weacsoft.jaravel.vendor.migration.MigrationProperties",
+      "defaultValue": ""
+    },
+    {
+      "name": "jaravel.migration.package-in-jar",
+      "type": "java.lang.Boolean",
+      "description": "是否将迁移目录打包进 jar（构建时资源配置，用于 CLASSPATH 模式）",
+      "sourceType": "com.weacsoft.jaravel.vendor.migration.MigrationProperties",
+      "defaultValue": false
+    },
+    {
+      "name": "jaravel.migration.source",
+      "type": "com.weacsoft.jaravel.vendor.migration.MigrationSource",
+      "description": "迁移源类型",
+      "sourceType": "com.weacsoft.jaravel.vendor.migration.MigrationProperties"
+    },
+    {
+      "name": "jaravel.migration.table",
+      "type": "java.lang.String",
+      "description": "迁移记录表名",
+      "sourceType": "com.weacsoft.jaravel.vendor.migration.MigrationProperties",
+      "defaultValue": "migrations"
+    }
+  ],
+  "hints": []
+}

@@ -1,0 +1,12 @@
+D:\0code\ai\work\jaravel-vendor\auth\src\main\java\com\weacsoft\jaravel\vendor\auth\contract\UserProvider.java
+D:\0code\ai\work\jaravel-vendor\auth\src\main\java\com\weacsoft\jaravel\vendor\auth\guard\SessionGuard.java
+D:\0code\ai\work\jaravel-vendor\auth\src\main\java\com\weacsoft\jaravel\vendor\auth\autoconfigure\AuthProperties.java
+D:\0code\ai\work\jaravel-vendor\auth\src\main\java\com\weacsoft\jaravel\vendor\auth\contract\AuthGuard.java
+D:\0code\ai\work\jaravel-vendor\auth\src\main\java\com\weacsoft\jaravel\vendor\auth\filter\AuthLifecycleFilter.java
+D:\0code\ai\work\jaravel-vendor\auth\src\main\java\com\weacsoft\jaravel\vendor\auth\AuthContext.java
+D:\0code\ai\work\jaravel-vendor\auth\src\main\java\com\weacsoft\jaravel\vendor\auth\middleware\Authenticate.java
+D:\0code\ai\work\jaravel-vendor\auth\src\main\java\com\weacsoft\jaravel\vendor\auth\contract\Authenticatable.java
+D:\0code\ai\work\jaravel-vendor\auth\src\main\java\com\weacsoft\jaravel\vendor\auth\contract\GuardFactory.java
+D:\0code\ai\work\jaravel-vendor\auth\src\main\java\com\weacsoft\jaravel\vendor\auth\AuthManager.java
+D:\0code\ai\work\jaravel-vendor\auth\src\main\java\com\weacsoft\jaravel\vendor\auth\facade\Auth.java
+D:\0code\ai\work\jaravel-vendor\auth\src\main\java\com\weacsoft\jaravel\vendor\auth\autoconfigure\AuthAutoConfiguration.java

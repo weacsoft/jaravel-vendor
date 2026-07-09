@@ -1,0 +1,40 @@
+{
+  "groups": [
+    {
+      "name": "jaravel.cache",
+      "type": "com.weacsoft.jaravel.vendor.cache.CacheProperties",
+      "sourceType": "com.weacsoft.jaravel.vendor.cache.CacheProperties"
+    }
+  ],
+  "properties": [
+    {
+      "name": "jaravel.cache.database-table",
+      "type": "java.lang.String",
+      "description": "database 驱动表名，默认 jaravel_cache",
+      "sourceType": "com.weacsoft.jaravel.vendor.cache.CacheProperties",
+      "defaultValue": "jaravel_cache"
+    },
+    {
+      "name": "jaravel.cache.default-store",
+      "type": "java.lang.String",
+      "description": "默认 store 名称",
+      "sourceType": "com.weacsoft.jaravel.vendor.cache.CacheProperties",
+      "defaultValue": "array"
+    },
+    {
+      "name": "jaravel.cache.file-dir",
+      "type": "java.lang.String",
+      "description": "file 驱动目录，空串表示使用系统临时目录下的 jaravel-cache 子目录",
+      "sourceType": "com.weacsoft.jaravel.vendor.cache.CacheProperties",
+      "defaultValue": ""
+    },
+    {
+      "name": "jaravel.cache.prefix",
+      "type": "java.lang.String",
+      "description": "缓存键前缀",
+      "sourceType": "com.weacsoft.jaravel.vendor.cache.CacheProperties",
+      "defaultValue": "jaravel"
+    }
+  ],
+  "hints": []
+}

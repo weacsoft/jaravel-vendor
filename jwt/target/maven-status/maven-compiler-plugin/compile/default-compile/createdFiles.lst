@@ -1,0 +1,7 @@
+com\weacsoft\jaravel\vendor\jwt\JwtGuard.class
+com\weacsoft\jaravel\vendor\jwt\autoconfigure\JwtProperties.class
+com\weacsoft\jaravel\vendor\jwt\JwtService.class
+com\weacsoft\jaravel\vendor\jwt\autoconfigure\JwtAutoConfiguration.class
+com\weacsoft\jaravel\vendor\jwt\JwtConfig.class
+com\weacsoft\jaravel\vendor\jwt\JwtTokenResponseFilter.class
+META-INF\spring-configuration-metadata.json

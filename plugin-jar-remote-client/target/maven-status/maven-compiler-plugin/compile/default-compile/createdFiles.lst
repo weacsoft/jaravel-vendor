@@ -1,0 +1,13 @@
+com\weacsoft\jaravel\vendor\plugin\jar\remote\client\RemoteProxy.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\client\RemoteClientAutoConfiguration$DefaultBeanResolverConfig.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\client\RemoteClientProperties.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\client\RemoteClientAutoConfiguration.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\client\RemotePluginClient.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\client\RequestCoordinator.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\client\SubServerInfo.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\client\SubServerRegistry.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\client\RemoteExecutionDispatcher.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\client\TcpTransport.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\client\RemoteClientAutoConfiguration$HotPluginBeanResolverConfig.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\client\RemoteProxy$RemoteInvocationHandler.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\client\HttpTransport.class

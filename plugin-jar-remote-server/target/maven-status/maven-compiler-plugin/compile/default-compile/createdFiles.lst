@@ -1,0 +1,14 @@
+com\weacsoft\jaravel\vendor\plugin\jar\remote\protocol\RemoteTransport.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\server\RemoteServerAutoConfiguration$HotPluginBeanResolverConfig.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\spi\BeanResolver.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\server\HttpRpcHandler.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\spi\SpringBeanResolver.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\server\RemotePluginServer.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\protocol\ExecuteRequest.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\server\RemoteServerAutoConfiguration$DefaultBeanResolverConfig.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\protocol\RemoteProtocol.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\protocol\ExecuteResponse.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\server\RemotePluginServer$ChildNodeInfo.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\server\RemoteServerAutoConfiguration.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\server\RemoteServerProperties.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\protocol\ProtocolCodec.class

@@ -1,0 +1,6 @@
+com\weacsoft\jaravel\vendor\modelcache\ModelCache.class
+com\weacsoft\jaravel\vendor\modelcache\ModelCacheAutoConfiguration.class
+com\weacsoft\jaravel\vendor\modelcache\ModelCacheService.class
+com\weacsoft\jaravel\vendor\modelcache\ModelCacheProperties.class
+META-INF\spring-configuration-metadata.json
+com\weacsoft\jaravel\vendor\modelcache\CachableModel.class

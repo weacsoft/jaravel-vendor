@@ -1,0 +1,7 @@
+com\weacsoft\jaravel\vendor\redis\RedisAutoConfiguration.class
+com\weacsoft\jaravel\vendor\redis\lock\RedisLockProviderImpl.class
+com\weacsoft\jaravel\vendor\redis\RedisProperties$Options.class
+META-INF\spring-configuration-metadata.json
+com\weacsoft\jaravel\vendor\redis\RedisProperties.class
+com\weacsoft\jaravel\vendor\redis\RedisManager.class
+com\weacsoft\jaravel\vendor\redis\RedisProperties$ConnectionConfig.class

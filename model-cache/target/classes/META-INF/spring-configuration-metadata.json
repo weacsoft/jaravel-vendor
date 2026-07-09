@@ -1,0 +1,40 @@
+{
+  "groups": [
+    {
+      "name": "jaravel.model-cache",
+      "type": "com.weacsoft.jaravel.vendor.modelcache.ModelCacheProperties",
+      "sourceType": "com.weacsoft.jaravel.vendor.modelcache.ModelCacheProperties"
+    }
+  ],
+  "properties": [
+    {
+      "name": "jaravel.model-cache.default-ttl",
+      "type": "java.lang.Long",
+      "description": "默认缓存 TTL（秒），@CachableModel 未指定或为 -1 时使用",
+      "sourceType": "com.weacsoft.jaravel.vendor.modelcache.ModelCacheProperties",
+      "defaultValue": 3600
+    },
+    {
+      "name": "jaravel.model-cache.enabled",
+      "type": "java.lang.Boolean",
+      "description": "全局开关，关闭后所有模型缓存不生效（直接回源）",
+      "sourceType": "com.weacsoft.jaravel.vendor.modelcache.ModelCacheProperties",
+      "defaultValue": true
+    },
+    {
+      "name": "jaravel.model-cache.key-prefix",
+      "type": "java.lang.String",
+      "description": "缓存键前缀",
+      "sourceType": "com.weacsoft.jaravel.vendor.modelcache.ModelCacheProperties",
+      "defaultValue": "model-cache:"
+    },
+    {
+      "name": "jaravel.model-cache.store",
+      "type": "java.lang.String",
+      "description": "缓存 store 名称，需在 CacheManager 中已注册",
+      "sourceType": "com.weacsoft.jaravel.vendor.modelcache.ModelCacheProperties",
+      "defaultValue": "array"
+    }
+  ],
+  "hints": []
+}

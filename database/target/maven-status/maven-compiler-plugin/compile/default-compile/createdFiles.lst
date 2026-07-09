@@ -1,0 +1,4 @@
+com\weacsoft\jaravel\vendor\database\NullFieldConversion.class
+com\weacsoft\jaravel\vendor\database\BaseModel.class
+com\weacsoft\jaravel\vendor\database\DataSource.class
+com\weacsoft\jaravel\vendor\database\EloquentUserProvider.class

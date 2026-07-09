@@ -1,0 +1,5 @@
+com\weacsoft\jaravel\vendor\plugin\jar\remote\protocol\ProtocolCodecTest.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\protocol\RemoteProtocolTest.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\server\RemoteServerPropertiesTest.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\protocol\ExecuteRequestTest.class
+com\weacsoft\jaravel\vendor\plugin\jar\remote\protocol\ExecuteResponseTest.class

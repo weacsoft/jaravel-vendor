@@ -1,0 +1,6 @@
+com\weacsoft\jaravel\vendor\plugin\jar\database\autoconfigure\PluginJarDatabaseAutoConfiguration.class
+com\weacsoft\jaravel\vendor\plugin\jar\database\model\PluginMetadataModel.class
+com\weacsoft\jaravel\vendor\plugin\jar\database\persistence\ModelMetadataPersistence.class
+com\weacsoft\jaravel\vendor\plugin\jar\database\persistence\ModelMetadataPersistence$1.class
+com\weacsoft\jaravel\vendor\plugin\jar\database\persistence\ModelMetadataPersistence$2.class
+com\weacsoft\jaravel\vendor\plugin\jar\database\migration\Migration_2024_01_03_CreatePluginMetadataTable.class

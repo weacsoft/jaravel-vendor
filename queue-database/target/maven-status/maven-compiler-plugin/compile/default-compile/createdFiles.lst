@@ -1,0 +1,11 @@
+com\weacsoft\jaravel\vendor\queue\database\QueueDatabaseProperties.class
+com\weacsoft\jaravel\vendor\queue\database\DatabaseQueueWorker.class
+com\weacsoft\jaravel\vendor\queue\database\QueuedJob.class
+com\weacsoft\jaravel\vendor\queue\database\QueueProperties.class
+com\weacsoft\jaravel\vendor\queue\database\DatabaseQueueDispatcher.class
+com\weacsoft\jaravel\vendor\queue\database\DatabaseQueueDriver.class
+com\weacsoft\jaravel\vendor\queue\database\QueueDatabaseAutoConfiguration.class
+META-INF\spring-configuration-metadata.json
+com\weacsoft\jaravel\vendor\queue\database\QueueDriver.class
+com\weacsoft\jaravel\vendor\queue\database\RedisQueueAutoConfiguration.class
+com\weacsoft\jaravel\vendor\queue\database\RedisQueueDriver.class

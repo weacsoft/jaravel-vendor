@@ -1,0 +1,19 @@
+{
+  "groups": [
+    {
+      "name": "jaravel.auth",
+      "type": "com.weacsoft.jaravel.vendor.auth.autoconfigure.AuthProperties",
+      "sourceType": "com.weacsoft.jaravel.vendor.auth.autoconfigure.AuthProperties"
+    }
+  ],
+  "properties": [
+    {
+      "name": "jaravel.auth.default-guard",
+      "type": "java.lang.String",
+      "description": "默认守卫名",
+      "sourceType": "com.weacsoft.jaravel.vendor.auth.autoconfigure.AuthProperties",
+      "defaultValue": "web"
+    }
+  ],
+  "hints": []
+}
