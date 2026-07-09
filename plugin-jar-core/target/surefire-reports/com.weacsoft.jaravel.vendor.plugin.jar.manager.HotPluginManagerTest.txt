@@ -1,4 +1,0 @@
--------------------------------------------------------------------------------
-Test set: com.weacsoft.jaravel.vendor.plugin.jar.manager.HotPluginManagerTest
--------------------------------------------------------------------------------
-Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.902 s -- in com.weacsoft.jaravel.vendor.plugin.jar.manager.HotPluginManagerTest

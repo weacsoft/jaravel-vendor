@@ -1,7 +1,0 @@
-com\weacsoft\jaravel\vendor\schedule\ScheduleRunner.class
-com\weacsoft\jaravel\vendor\schedule\Schedule.class
-com\weacsoft\jaravel\vendor\schedule\RedisLockProvider.class
-com\weacsoft\jaravel\vendor\schedule\ScheduleAutoConfiguration.class
-com\weacsoft\jaravel\vendor\schedule\ScheduledTask.class
-com\weacsoft\jaravel\vendor\schedule\ScheduleProperties.class
-META-INF\spring-configuration-metadata.json

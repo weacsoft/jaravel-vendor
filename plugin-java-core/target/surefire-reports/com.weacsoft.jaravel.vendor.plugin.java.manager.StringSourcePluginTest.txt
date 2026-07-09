@@ -1,4 +1,0 @@
--------------------------------------------------------------------------------
-Test set: com.weacsoft.jaravel.vendor.plugin.java.manager.StringSourcePluginTest
--------------------------------------------------------------------------------
-Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.935 s -- in com.weacsoft.jaravel.vendor.plugin.java.manager.StringSourcePluginTest

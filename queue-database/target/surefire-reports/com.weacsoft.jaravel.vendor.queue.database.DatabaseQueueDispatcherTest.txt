@@ -1,4 +1,0 @@
--------------------------------------------------------------------------------
-Test set: com.weacsoft.jaravel.vendor.queue.database.DatabaseQueueDispatcherTest
--------------------------------------------------------------------------------
-Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.535 s -- in com.weacsoft.jaravel.vendor.queue.database.DatabaseQueueDispatcherTest

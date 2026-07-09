@@ -1,6 +1,0 @@
-com\weacsoft\jaravel\vendor\queue\database\DatabaseQueueDispatcherTest$FakeDriver.class
-com\weacsoft\jaravel\vendor\queue\database\DatabaseQueueDispatcherTest$UserRegistered.class
-com\weacsoft\jaravel\vendor\queue\database\DatabaseQueueDispatcherTest.class
-com\weacsoft\jaravel\vendor\queue\database\DatabaseQueueDriverTest.class
-com\weacsoft\jaravel\vendor\queue\database\QueuedJobTest.class
-com\weacsoft\jaravel\vendor\queue\database\DatabaseQueueDispatcherTest$UserRegisteredListener.class

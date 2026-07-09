@@ -1,7 +1,0 @@
-com\weacsoft\jaravel\vendor\session\redis\SessionRedisProperties.class
-com\weacsoft\jaravel\vendor\session\redis\SessionRedisAutoConfiguration.class
-com\weacsoft\jaravel\vendor\session\redis\RedisSessionStore.class
-META-INF\spring-configuration-metadata.json
-com\weacsoft\jaravel\vendor\session\redis\RedisSessionGuard.class
-com\weacsoft\jaravel\vendor\session\redis\RedisSessionStore$1.class
-com\weacsoft\jaravel\vendor\session\redis\SessionRedisAutoConfiguration$RedisSessionGuardRegistrar.class

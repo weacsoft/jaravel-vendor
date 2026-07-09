@@ -1,6 +1,0 @@
-com\weacsoft\jaravel\vendor\springboot\GlobalMiddlewareRegistry.class
-com\weacsoft\jaravel\vendor\springboot\ResponseReturnValueHandler.class
-com\weacsoft\jaravel\vendor\springboot\SpringBootRouteAutoConfiguration.class
-com\weacsoft\jaravel\vendor\springboot\SpringBootResponseMVCResolver.class
-com\weacsoft\jaravel\vendor\springboot\SpringBootRequestMVCResolver.class
-com\weacsoft\jaravel\vendor\springboot\ResponseAutoConfiguration.class

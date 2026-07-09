@@ -1,4 +1,0 @@
--------------------------------------------------------------------------------
-Test set: com.weacsoft.jaravel.vendor.utils.memory.MemoryClassLoaderTest
--------------------------------------------------------------------------------
-Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.597 s -- in com.weacsoft.jaravel.vendor.utils.memory.MemoryClassLoaderTest
