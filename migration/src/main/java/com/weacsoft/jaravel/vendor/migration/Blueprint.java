@@ -7,8 +7,11 @@ import java.util.List;
  * 表结构蓝图，对齐 Laravel 的 {@code Illuminate\Database\Schema\Blueprint}。
  * <p>
  * 通过流式 API 声明表结构，最终由 {@link Schema} 执行生成 SQL DDL。
- * 支持 MySQL、SQLite、H2、SQL Server 等多种数据库方言，通过 {@link #setDatabaseType(String)}
- * 注入数据库产品名（小写），由本类按方言生成对应的标识符引用、自增语法与类型映射。
+ * <p>
+ * 方言相关逻辑（标识符引用、自增语法、类型映射等）全部委托给 {@link Dialect} 实现，
+ * 支持 MySQL、SQLite、H2、SQL Server、PostgreSQL、Oracle。
+ * 通过 {@link #setDialect(Dialect)} 注入方言（由 {@link Schema} 自动完成），
+ * 也兼容 {@link #setDatabaseType(String)} 旧接口（内部转换为 Dialect）。
  * <pre>
  * schema.create("users", table -> {
  *     table.id();
@@ -35,10 +38,12 @@ public class Blueprint {
     private final List<ForeignKeyDefinition> foreignKeys = new ArrayList<>();
     private final List<String> indexCommands = new ArrayList<>();
     private final List<String> dropCommands = new ArrayList<>();
-    /** 建表附加选项，MySQL 默认 " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"，H2/SQLite/SQL Server 等可置空 */
+    /** 建表附加选项，由 Dialect.tableOptions() 提供 */
     private String tableOptions = " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
     /** 数据库产品名（小写），用于方言判断，默认 mysql */
     private String databaseType = "mysql";
+    /** 当前方言实现，由 Schema 注入或由 setDatabaseType 间接创建 */
+    private Dialect dialect;
 
     public Blueprint(String table) {
         this.table = table;
@@ -49,9 +54,35 @@ public class Blueprint {
         this.tableOptions = tableOptions == null ? "" : tableOptions;
     }
 
-    /** 设置数据库产品名（方言），由 Schema 注入，供列定义按方言生成 SQL */
+    /**
+     * 注入方言实现（由 {@link Schema} 自动调用），同时同步 databaseType 和 tableOptions。
+     * <p>
+     * 这是推荐的方言注入方式，直接传入 {@link Dialect} 实例。
+     */
+    void setDialect(Dialect dialect) {
+        this.dialect = dialect;
+        this.databaseType = dialect.getName();
+    }
+
+    /** 获取当前方言（延迟初始化，兼容旧 setDatabaseType 路径） */
+    Dialect getDialect() {
+        if (dialect == null) {
+            dialect = DialectFactory.create(databaseType);
+        }
+        return dialect;
+    }
+
+    /**
+     * 设置数据库产品名（方言），兼容旧接口。
+     * <p>
+     * 内部通过 {@link DialectFactory#create(String)} 转换为 {@link Dialect} 实现，
+     * 推荐使用 {@link #setDialect(Dialect)} 直接注入。
+     *
+     * @param databaseType 数据库产品名（大小写不敏感）
+     */
     public void setDatabaseType(String databaseType) {
         this.databaseType = databaseType == null ? "mysql" : databaseType.toLowerCase();
+        this.dialect = DialectFactory.create(this.databaseType);
     }
 
     /** 获取数据库产品名（小写） */
@@ -61,39 +92,42 @@ public class Blueprint {
 
     /** 是否为 SQLite 方言 */
     public boolean isSqlite() {
-        return databaseType.contains("sqlite");
+        return getDialect().getName().contains("sqlite");
     }
 
     /** 是否为 H2 方言 */
     public boolean isH2() {
-        return databaseType.contains("h2");
+        return getDialect().getName().contains("h2");
     }
 
     /** 是否为 SQL Server 方言 */
     public boolean isSqlServer() {
-        return databaseType.contains("sql server");
+        return getDialect().getName().contains("sql server");
     }
 
     /** 是否为 MySQL 方言 */
     public boolean isMysql() {
-        return databaseType.contains("mysql");
+        return getDialect().getName().contains("mysql");
+    }
+
+    /** 是否为 PostgreSQL 方言 */
+    public boolean isPostgresql() {
+        return getDialect().getName().contains("postgresql");
+    }
+
+    /** 是否为 Oracle 方言 */
+    public boolean isOracle() {
+        return getDialect().getName().contains("oracle");
     }
 
     /**
-     * 按方言对标识符加引号。
-     * <ul>
-     *   <li>MySQL / SQLite / H2：使用反引号 {@code `name`}</li>
-     *   <li>SQL Server：使用方括号 {@code [name]}</li>
-     * </ul>
+     * 按方言对标识符加引号，委托给 {@link Dialect#quote}。
      *
      * @param identifier 标识符（表名/列名/索引名等）
      * @return 加引号后的标识符
      */
     public String quote(String identifier) {
-        if (isSqlServer()) {
-            return "[" + identifier + "]";
-        }
-        return "`" + identifier + "`";
+        return getDialect().quote(identifier);
     }
 
     /** 返回主键列数量（用于区分单列主键与复合主键） */
@@ -386,18 +420,9 @@ public class Blueprint {
         dropCommands.add("ALTER TABLE " + quote(table) + " DROP COLUMN " + quote(column));
     }
 
-    /** 删除索引 */
+    /** 删除索引（按方言生成 DROP INDEX 语法） */
     public void dropIndex(String indexName) {
-        if (isSqlServer()) {
-            // SQL Server: DROP INDEX index_name ON table_name
-            dropCommands.add("DROP INDEX " + quote(indexName) + " ON " + quote(table));
-        } else if (isSqlite()) {
-            // SQLite: DROP INDEX IF EXISTS index_name
-            dropCommands.add("DROP INDEX IF EXISTS " + quote(indexName));
-        } else {
-            // MySQL / H2: DROP INDEX `index_name` ON `table`
-            dropCommands.add("DROP INDEX " + quote(indexName) + " ON " + quote(table));
-        }
+        dropCommands.add(getDialect().dropIndexSql(indexName, quote(table)));
     }
 
     /** 重命名列 */

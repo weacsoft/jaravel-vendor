@@ -11,7 +11,9 @@ import java.util.List;
  * 迁移记录仓库，对齐 Laravel 的 {@code Illuminate\Database\Migrations\DatabaseMigrationRepository}。
  * <p>
  * 维护 {@code migrations} 表，记录已执行的迁移，支持查询已运行列表、记录、删除、获取批次号。
- * 自动适配 MySQL / SQLite / H2 / SQL Server 方言。
+ * <p>
+ * 方言相关逻辑（建表 SQL、标识符引用）全部委托给 {@link Dialect} 实现，
+ * 支持 MySQL、SQLite、H2、SQL Server、PostgreSQL、Oracle。
  */
 public class MigrationRepository {
 
@@ -19,82 +21,39 @@ public class MigrationRepository {
 
     private final JdbcExecutor jdbc;
     private final String table;
-    private final String databaseProductName;
+    private final Dialect dialect;
 
     public MigrationRepository(DataSource dataSource, String table) {
         this.jdbc = new JdbcExecutor(dataSource);
         this.table = table;
-        this.databaseProductName = detectProductName(dataSource);
-    }
-
-    private String detectProductName(DataSource dataSource) {
-        try (java.sql.Connection conn = dataSource.getConnection()) {
-            return conn.getMetaData().getDatabaseProductName().toLowerCase();
-        } catch (Exception e) {
-            log.warn("[migration] 无法识别数据库产品，使用默认 MySQL 方言: {}", e.getMessage());
-            return "mysql";
-        }
-    }
-
-    private boolean isSqlite() {
-        return databaseProductName.contains("sqlite");
-    }
-
-    private boolean isH2() {
-        return databaseProductName.contains("h2");
-    }
-
-    private boolean isSqlServer() {
-        return databaseProductName.contains("sql server");
+        this.dialect = DialectFactory.detect(dataSource);
     }
 
     /** 按方言对标识符加引号 */
     private String quote(String identifier) {
-        if (isSqlServer()) {
-            return "[" + identifier + "]";
-        }
-        return "`" + identifier + "`";
+        return dialect.quote(identifier);
     }
 
-    /** 创建 migrations 记录表（如不存在） */
+    /**
+     * 创建 migrations 记录表（如不存在）。
+     * <p>
+     * 建表 SQL 由 {@link Dialect#createRepositoryTableSql} 生成。
+     * 对于不支持 CREATE TABLE IF NOT EXISTS 的方言（SQL Server、Oracle），
+     * 由 {@link Dialect#needsCheckTableExistsBeforeCreateRepository} 控制先检查再创建。
+     */
     public void createRepository() {
-        String sql;
-        if (isSqlite()) {
-            // SQLite: INTEGER PRIMARY KEY AUTOINCREMENT
-            sql = "CREATE TABLE IF NOT EXISTS `" + table + "` ("
-                + "`id` INTEGER PRIMARY KEY AUTOINCREMENT, "
-                + "`migration` VARCHAR(255) NOT NULL, "
-                + "`batch` INT NOT NULL"
-                + ")";
-        } else if (isH2()) {
-            // H2: AUTO_INCREMENT, 无 ENGINE
-            sql = "CREATE TABLE IF NOT EXISTS `" + table + "` ("
-                + "`id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY, "
-                + "`migration` VARCHAR(255) NOT NULL, "
-                + "`batch` INT NOT NULL"
-                + ")";
-        } else if (isSqlServer()) {
-            // SQL Server: IDENTITY(1,1)，无 IF NOT EXISTS 语法（旧版），用方括号引用
-            // 先检查表是否存在，不存在则创建
-            Integer cnt = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM sys.tables WHERE name = ?", Integer.class, table);
-            if (cnt != null && cnt > 0) {
-                log.info("[migration] 迁移记录表已存在: {}", table);
-                return;
+        if (dialect.needsCheckTableExistsBeforeCreateRepository()) {
+            // SQL Server / Oracle 不支持 IF NOT EXISTS，先检查表是否存在
+            String hasSql = dialect.hasTableSql();
+            if (hasSql != null) {
+                Integer cnt = jdbc.queryForObject(hasSql, Integer.class, table);
+                if (cnt != null && cnt > 0) {
+                    log.info("[migration] 迁移记录表已存在: {}", table);
+                    return;
+                }
             }
-            sql = "CREATE TABLE [" + table + "] ("
-                + "[id] INT IDENTITY(1,1) PRIMARY KEY, "
-                + "[migration] VARCHAR(255) NOT NULL, "
-                + "[batch] INT NOT NULL"
-                + ")";
-        } else {
-            // MySQL
-            sql = "CREATE TABLE IF NOT EXISTS `" + table + "` ("
-                + "`id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, "
-                + "`migration` VARCHAR(255) NOT NULL, "
-                + "`batch` INT NOT NULL"
-                + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
         }
+        String sql = dialect.createRepositoryTableSql(table);
         log.info("[migration] 创建迁移记录表: {}", sql);
         jdbc.execute(sql);
     }

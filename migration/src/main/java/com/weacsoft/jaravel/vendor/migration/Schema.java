@@ -14,17 +14,11 @@ import java.util.stream.Collectors;
  * Schema 构建器，对齐 Laravel 的 {@code Illuminate\Support\Facades\Schema}。
  * <p>
  * 通过 {@link Blueprint} 声明表结构，由本类执行生成的 SQL DDL。
- * 自动适配 MySQL、SQLite、H2、SQL Server 等多种数据库方言：
- * <ul>
- *   <li>标识符引用：MySQL/SQLite/H2 用反引号，SQL Server 用方括号；</li>
- *   <li>自增：MySQL/H2 用 AUTO_INCREMENT，SQLite 用 AUTOINCREMENT，SQL Server 用 IDENTITY(1,1)；</li>
- *   <li>建表选项：MySQL 追加 ENGINE/CHARSET，其余方言为空；</li>
- *   <li>系统目录：MySQL 查 information_schema，SQLite 查 sqlite_master，H2 查 INFORMATION_SCHEMA，
- *       SQL Server 查 sys.tables / sys.columns；</li>
- *   <li>重命名：MySQL 用 RENAME TABLE，SQLite/H2 用 ALTER TABLE RENAME TO，SQL Server 用 sp_rename；</li>
- *   <li>修改字段：MySQL 用 ALTER TABLE MODIFY，H2 用 ALTER TABLE ALTER COLUMN，
- *       SQL Server 用 ALTER TABLE ALTER COLUMN（仅类型+可空性），SQLite 走重建表流程。</li>
- * </ul>
+ * <p>
+ * 方言相关逻辑全部委托给 {@link Dialect} 实现（通过 {@link DialectFactory#detect} 自动检测），
+ * 支持 MySQL、SQLite、H2、SQL Server、PostgreSQL、Oracle。
+ * 标识符引用、自增语法、类型映射、系统目录查询、ALTER TABLE 语法等差异由各方言实现类处理，
+ * 本类只负责编排执行流程。上层 API 无需感知具体方言。
  * <pre>
  * schema.create("users", table -> table.id().string("name"));
  * schema.table("users", table -> table.string("phone").nullable());
@@ -39,53 +33,17 @@ public class Schema {
     private static final Logger log = LoggerFactory.getLogger(Schema.class);
 
     private final JdbcExecutor jdbc;
-    /** 数据库产品名（小写），用于方言判断 */
-    private final String databaseProductName;
+    /** 当前数据库方言 */
+    private final Dialect dialect;
 
     public Schema(DataSource dataSource) {
         this.jdbc = new JdbcExecutor(dataSource);
-        this.databaseProductName = detectProductName(dataSource);
-    }
-
-    private String detectProductName(DataSource dataSource) {
-        try (java.sql.Connection conn = dataSource.getConnection()) {
-            return conn.getMetaData().getDatabaseProductName().toLowerCase();
-        } catch (Exception e) {
-            log.warn("[migration] 无法识别数据库产品，使用默认 MySQL 方言: {}", e.getMessage());
-            return "mysql";
-        }
-    }
-
-    /** 是否为 SQLite 方言 */
-    private boolean isSqlite() {
-        return databaseProductName.contains("sqlite");
-    }
-
-    /** 是否为 H2 方言 */
-    private boolean isH2() {
-        return databaseProductName.contains("h2");
-    }
-
-    /** 是否为 SQL Server 方言 */
-    private boolean isSqlServer() {
-        return databaseProductName.contains("sql server");
+        this.dialect = DialectFactory.detect(dataSource);
     }
 
     /** 按方言对标识符加引号 */
     private String quote(String identifier) {
-        if (isSqlServer()) {
-            return "[" + identifier + "]";
-        }
-        return "`" + identifier + "`";
-    }
-
-    /** 根据方言返回建表附加选项 */
-    private String tableOptions() {
-        // H2、SQLite、SQL Server 均不支持 ENGINE/CHARSET 语法，返回空串
-        if (isH2() || isSqlite() || isSqlServer()) {
-            return "";
-        }
-        return " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+        return dialect.quote(identifier);
     }
 
     /**
@@ -98,8 +56,8 @@ public class Schema {
      */
     public void create(String table, Consumer<Blueprint> definition) {
         Blueprint blueprint = new Blueprint(table);
-        blueprint.setDatabaseType(databaseProductName);
-        blueprint.setTableOptions(tableOptions());
+        blueprint.setDialect(dialect);
+        blueprint.setTableOptions(dialect.tableOptions());
         definition.accept(blueprint);
         String sql = blueprint.toCreateSql();
         log.info("[migration] CREATE TABLE: {}", sql);
@@ -117,24 +75,17 @@ public class Schema {
     /**
      * 修改已有表，对齐 Laravel Schema::table。
      * <p>
-     * 支持增加字段（{@code table.string("phone")}）、修改字段（{@code table.string("name").change()}）、
-     * 删除字段（{@code table.dropColumn("phone")}）、重命名字段（{@code table.renameColumn("old","new")}）等操作。
-     * <p>
-     * 按方言生成对应 ALTER TABLE 语法：
-     * <ul>
-     *   <li>增加字段：所有方言均用 {@code ALTER TABLE t ADD col_def}；</li>
-     *   <li>修改字段：MySQL 用 {@code MODIFY}，H2 用 {@code ALTER COLUMN}，
-     *       SQL Server 用 {@code ALTER COLUMN}（仅类型+可空性），SQLite 走重建表流程；</li>
-     *   <li>删除字段：所有方言均用 {@code ALTER TABLE t DROP COLUMN col}。</li>
-     * </ul>
+     * 支持增加字段、修改字段、删除字段、重命名字段等操作。
+     * 修改字段的 ALTER TABLE 语法由 {@link Dialect#modifyColumnSql} 生成，
+     * SQLite 走重建表流程（{@link Dialect#needsTableRecreationForModify}）。
      *
      * @param table      表名
      * @param definition 表结构修改回调
      */
     public void table(String table, Consumer<Blueprint> definition) {
         Blueprint blueprint = new Blueprint(table);
-        blueprint.setDatabaseType(databaseProductName);
-        blueprint.setTableOptions(tableOptions());
+        blueprint.setDialect(dialect);
+        blueprint.setTableOptions(dialect.tableOptions());
         definition.accept(blueprint);
 
         // 区分新增字段与修改字段
@@ -157,22 +108,12 @@ public class Schema {
 
         // 2. 修改字段：按方言处理
         if (!modifyColumns.isEmpty()) {
-            if (isSqlite()) {
+            if (dialect.needsTableRecreationForModify()) {
                 // SQLite 不支持 MODIFY，走重建表流程
                 sqliteRecreateTableForModify(table, blueprint, modifyColumns);
             } else {
                 for (ColumnDefinition c : modifyColumns) {
-                    String sql;
-                    if (isSqlServer()) {
-                        // SQL Server: ALTER TABLE [t] ALTER COLUMN [col] type [NULL|NOT NULL]
-                        sql = "ALTER TABLE " + quote(table) + " ALTER COLUMN " + c.toModifyColumnFragment();
-                    } else if (isH2()) {
-                        // H2: ALTER TABLE `t` ALTER COLUMN `col` def
-                        sql = "ALTER TABLE " + quote(table) + " ALTER COLUMN " + c.toModifyColumnFragment();
-                    } else {
-                        // MySQL: ALTER TABLE `t` MODIFY `col` def
-                        sql = "ALTER TABLE " + quote(table) + " MODIFY " + c.toModifyColumnFragment();
-                    }
+                    String sql = dialect.modifyColumnSql(quote(table), c);
                     log.info("[migration] MODIFY COLUMN: {}", sql);
                     jdbc.execute(sql);
                 }
@@ -208,14 +149,10 @@ public class Schema {
      *   <li>将临时表重命名为原表名。</li>
      * </ol>
      * 注意：此流程会丢失原表上的索引与外键，如需保留请在迁移中重新声明。
-     *
-     * @param table          表名
-     * @param blueprint      蓝图（用于引用标识符）
-     * @param modifyColumns  需修改的列定义列表
      */
     private void sqliteRecreateTableForModify(String table, Blueprint blueprint, List<ColumnDefinition> modifyColumns) {
         log.info("[migration] SQLite 重建表以修改字段: {}", table);
-        List<Map<String, Object>> existingCols = jdbc.queryForMapList("PRAGMA table_info(" + quote(table) + ")");
+        List<Map<String, Object>> existingCols = jdbc.queryForMapList(dialect.pragmaTableInfoSql(quote(table)));
 
         String tempTable = table + "_jaravel_temp";
         StringBuilder createSql = new StringBuilder("CREATE TABLE " + quote(tempTable) + " (");
@@ -285,8 +222,6 @@ public class Schema {
 
     /**
      * 删除表（如存在），对齐 Laravel Schema::dropIfExists。
-     * <p>
-     * 若 down() 中创建了多张表，应多次调用本方法逐一删除。
      *
      * @param table 表名
      */
@@ -305,60 +240,26 @@ public class Schema {
 
     /**
      * 重命名表，对齐 Laravel Schema::rename。
-     * <ul>
-     *   <li>MySQL：{@code RENAME TABLE `old` TO `new`}</li>
-     *   <li>SQLite / H2：{@code ALTER TABLE `old` RENAME TO `new`}</li>
-     *   <li>SQL Server：{@code sp_rename 'old', 'new'}</li>
-     * </ul>
+     * 完整 SQL 由 {@link Dialect#renameTableSql} 生成。
      */
     public void rename(String from, String to) {
-        String sql;
-        if (isSqlServer()) {
-            // SQL Server: sp_rename 'old_table', 'new_table'
-            sql = "sp_rename '" + from + "', '" + to + "'";
-        } else if (isSqlite() || isH2()) {
-            // SQLite / H2: ALTER TABLE ... RENAME TO ...
-            sql = "ALTER TABLE " + quote(from) + " RENAME TO " + quote(to);
-        } else {
-            // MySQL: RENAME TABLE ... TO ...
-            sql = "RENAME TABLE " + quote(from) + " TO " + quote(to);
-        }
+        String sql = dialect.renameTableSql(from, to);
         log.info("[migration] RENAME: {}", sql);
         jdbc.execute(sql);
     }
 
     /**
      * 判断表是否存在。
-     * <ul>
-     *   <li>SQLite：查 sqlite_master</li>
-     *   <li>H2：查 INFORMATION_SCHEMA.TABLES</li>
-     *   <li>SQL Server：查 sys.tables</li>
-     *   <li>MySQL：查 information_schema.tables</li>
-     * </ul>
+     * SQL 由 {@link Dialect#hasTableSql} 提供，SQLite 走 PRAGMA（由 {@link Dialect#usesPragmaForColumnInfo} 判断）。
      */
     public boolean hasTable(String table) {
         try {
-            if (isSqlite()) {
-                Integer count = jdbc.queryForObject(
-                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
-                    Integer.class, table);
-                return count != null && count > 0;
-            } else if (isH2()) {
-                Integer count = jdbc.queryForObject(
-                    "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = UPPER(?)",
-                    Integer.class, table);
-                return count != null && count > 0;
-            } else if (isSqlServer()) {
-                Integer count = jdbc.queryForObject(
-                    "SELECT COUNT(*) FROM sys.tables WHERE name = ?",
-                    Integer.class, table);
-                return count != null && count > 0;
-            } else {
-                Integer count = jdbc.queryForObject(
-                    "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?",
-                    Integer.class, table);
-                return count != null && count > 0;
+            String sql = dialect.hasTableSql();
+            if (sql == null) {
+                return false;
             }
+            Integer count = jdbc.queryForObject(sql, Integer.class, table);
+            return count != null && count > 0;
         } catch (Exception e) {
             return false;
         }
@@ -366,35 +267,24 @@ public class Schema {
 
     /**
      * 判断列是否存在。
-     * <ul>
-     *   <li>SQLite：PRAGMA table_info</li>
-     *   <li>H2：查 INFORMATION_SCHEMA.COLUMNS</li>
-     *   <li>SQL Server：查 sys.columns</li>
-     *   <li>MySQL：查 information_schema.columns</li>
-     * </ul>
+     * <p>
+     * SQLite 使用 PRAGMA table_info 读取列信息（由 {@link Dialect#usesPragmaForColumnInfo} 判断），
+     * 其余方言使用标准 SQL 查询（由 {@link Dialect#hasColumnSql} 提供）。
      */
     public boolean hasColumn(String table, String column) {
         try {
-            if (isSqlite()) {
+            if (dialect.usesPragmaForColumnInfo()) {
                 List<Map<String, Object>> rows = jdbc.queryForMapList(
-                    "PRAGMA table_info(" + quote(table) + ")");
+                    dialect.pragmaTableInfoSql(quote(table)));
                 return rows.stream()
                     .map(row -> String.valueOf(row.get("name")))
                     .anyMatch(c -> c.equalsIgnoreCase(column));
-            } else if (isH2()) {
-                Integer count = jdbc.queryForObject(
-                    "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = UPPER(?) AND COLUMN_NAME = UPPER(?)",
-                    Integer.class, table, column);
-                return count != null && count > 0;
-            } else if (isSqlServer()) {
-                Integer count = jdbc.queryForObject(
-                    "SELECT COUNT(*) FROM sys.columns c JOIN sys.tables t ON c.object_id = t.object_id WHERE t.name = ? AND c.name = ?",
-                    Integer.class, table, column);
-                return count != null && count > 0;
             } else {
-                Integer count = jdbc.queryForObject(
-                    "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = ? AND column_name = ?",
-                    Integer.class, table, column);
+                String sql = dialect.hasColumnSql();
+                if (sql == null) {
+                    return false;
+                }
+                Integer count = jdbc.queryForObject(sql, Integer.class, table, column);
                 return count != null && count > 0;
             }
         } catch (Exception e) {
