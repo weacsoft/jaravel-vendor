@@ -19,7 +19,7 @@ class CaptchaManagerTest {
     void testCreateDefault() {
         CaptchaManager manager = CaptchaManager.createDefault();
         Set<String> types = manager.getTypes();
-        assertEquals(4, types.size());
+        assertEquals(5, types.size());
         assertTrue(types.contains("number"));
         assertTrue(types.contains("arithmetic"));
         assertTrue(types.contains("slider"));
@@ -29,30 +29,29 @@ class CaptchaManagerTest {
     @Test
     void testGenerateNumber() {
         CaptchaManager manager = CaptchaManager.createDefault();
-        CaptchaResult result = manager.generate("number", "num-key-1");
+        CaptchaResult result = manager.generate("number");
         assertNotNull(result);
         assertEquals("number", result.getType());
-        assertEquals("num-key-1", result.getCaptchaKey());
+        assertNotNull(result.getCaptchaKey());
         assertNotNull(result.getImageBase64());
         assertTrue(result.getImageBase64().startsWith("data:image/png;base64,"));
-        assertNotNull(result.getToken());
     }
 
     @Test
     void testGenerateArithmetic() {
         CaptchaManager manager = CaptchaManager.createDefault();
-        CaptchaResult result = manager.generate("arithmetic", "ari-key-1");
+        CaptchaResult result = manager.generate("arithmetic");
         assertNotNull(result);
         assertEquals("arithmetic", result.getType());
         assertNotNull(result.getImageBase64());
         assertTrue(result.getImageBase64().startsWith("data:image/png;base64,"));
-        assertNotNull(result.getToken());
+        assertNotNull(result.getCaptchaKey());
     }
 
     @Test
     void testGenerateSlider() {
         CaptchaManager manager = CaptchaManager.createDefault();
-        CaptchaResult result = manager.generate("slider", "sli-key-1");
+        CaptchaResult result = manager.generate("slider");
         assertNotNull(result);
         assertEquals("slider", result.getType());
         assertNotNull(result.getImageBase64());
@@ -70,7 +69,7 @@ class CaptchaManagerTest {
     @Test
     void testGenerateRotate() {
         CaptchaManager manager = CaptchaManager.createDefault();
-        CaptchaResult result = manager.generate("rotate", "rot-key-1");
+        CaptchaResult result = manager.generate("rotate");
         assertNotNull(result);
         assertEquals("rotate", result.getType());
         assertNotNull(result.getImageBase64());
@@ -81,8 +80,8 @@ class CaptchaManagerTest {
     @Test
     void testVerifyWrongAnswer() {
         CaptchaManager manager = CaptchaManager.createDefault();
-        manager.generate("number", "wrong-key-1");
-        assertFalse(manager.verify("number", "wrong-key-1", "definitely-wrong-answer"));
+        CaptchaResult result = manager.generate("number");
+        assertFalse(manager.verify("number", result.getCaptchaKey(), "definitely-wrong-answer"));
     }
 
     @Test
@@ -90,21 +89,20 @@ class CaptchaManagerTest {
         // 设置很短的过期时间（1 秒）
         CaptchaProperties props = new CaptchaProperties();
         props.setExpireSeconds(1);
-        MemoryCaptchaStore store = new MemoryCaptchaStore();
-        CaptchaManager manager = new CaptchaManager(store, props);
-        manager.register(new NumberCaptcha(store, props));
+        CaptchaManager manager = new CaptchaManager(props);
+        manager.register(new NumberCaptcha(props));
 
-        manager.generate("number", "expire-key-1");
+        CaptchaResult result = manager.generate("number");
         // 等待超过过期时间
         Thread.sleep(1100);
-        assertFalse(manager.verify("number", "expire-key-1", "anything"));
+        assertFalse(manager.verify("number", result.getCaptchaKey(), "anything"));
     }
 
     @Test
     void testUnknownType() {
         CaptchaManager manager = CaptchaManager.createDefault();
         // 未知类型生成抛 IllegalArgumentException
-        assertThrows(IllegalArgumentException.class, () -> manager.generate("unknown", "key"));
+        assertThrows(IllegalArgumentException.class, () -> manager.generate("unknown"));
         // 未知类型验证返回 false（不抛异常）
         assertFalse(manager.verify("unknown", "key", "input"));
     }

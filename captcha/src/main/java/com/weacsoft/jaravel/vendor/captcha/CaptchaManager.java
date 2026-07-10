@@ -9,13 +9,34 @@ import java.util.Set;
  * 验证码管理器：统一管理多种验证码类型的注册与调用。
  * <p>
  * 内部维护 {@code type -> Captcha} 映射，提供按类型生成 / 验证的入口，
- * 并通过 {@link #createDefault()} 提供开箱即用的默认管理器（注册数字、算术、滑动、旋转四种）。
+ * 并通过 {@link #createDefault()} 提供开箱即用的默认管理器（注册数字、算术、滑动、旋转、文字点选五种）。
  * 核心层不依赖 Spring，可独立使用；SpringBoot 兼容层可将其包装为 Bean。
- *
+ * <p>
+ * <h3>基本用法</h3>
  * <pre>
  *   CaptchaManager manager = CaptchaManager.createDefault();
- *   CaptchaResult result = manager.generate("number", uuid);
- *   boolean ok = manager.verify("number", uuid, userInput);
+ *   CaptchaResult result = manager.generate("number");
+ *   boolean ok = manager.verify("number", result.getCaptchaKey(), userInput);
+ * </pre>
+ * <p>
+ * <h3>运行时配置覆盖</h3>
+ * <pre>
+ *   CaptchaProperties custom = CaptchaProperties.createDefault();
+ *   custom.setWidth(300);
+ *   custom.setHeight(100);
+ *   CaptchaResult result = manager.generate("number", custom);
+ * </pre>
+ * <p>
+ * <h3>运行时加密密钥</h3>
+ * <pre>
+ *   CaptchaResult result = manager.generate("number", null, "my-secret-key");
+ *   boolean ok = manager.verify("number", captchaKey, userInput, "my-secret-key");
+ * </pre>
+ * <p>
+ * <h3>静态调用</h3>
+ * <pre>
+ *   CaptchaResult result = CaptchaManager.generateStatic("number");
+ *   boolean ok = CaptchaManager.verifyStatic("number", captchaKey, userInput);
  * </pre>
  */
 public class CaptchaManager {
@@ -23,17 +44,24 @@ public class CaptchaManager {
     /** type -> Captcha，使用 LinkedHashMap 保持注册顺序 */
     private final Map<String, Captcha> captchas = new LinkedHashMap<>();
 
-    /** 默认存储与配置（createDefault 使用，单例共享） */
-    private CaptchaStore store;
-
+    /** 配置属性 */
     private CaptchaProperties properties;
 
+    /** 静态默认实例（延迟初始化） */
+    private static volatile CaptchaManager defaultInstance;
+
     public CaptchaManager() {
-        this(new MemoryCaptchaStore(), CaptchaProperties.createDefault());
+        this(CaptchaProperties.createDefault());
     }
 
+    public CaptchaManager(CaptchaProperties properties) {
+        this.properties = properties;
+    }
+
+    /**
+     * 兼容旧构造（store 参数被忽略，无状态模式不需要存储）。
+     */
     public CaptchaManager(CaptchaStore store, CaptchaProperties properties) {
-        this.store = store;
         this.properties = properties;
     }
 
@@ -49,37 +77,99 @@ public class CaptchaManager {
         captchas.put(captcha.getType(), captcha);
     }
 
+    // ==================== 生成 ====================
+
     /**
-     * 生成指定类型的验证码。
+     * 生成指定类型的验证码（使用默认配置）。
      *
-     * @param type       验证码类型
-     * @param captchaKey 验证码标识
+     * @param type 验证码类型
      * @return 生成结果
      * @throws IllegalArgumentException 类型未注册时抛出
      */
-    public CaptchaResult generate(String type, String captchaKey) {
+    public CaptchaResult generate(String type) {
+        return generate(type, null, null);
+    }
+
+    /**
+     * 生成指定类型的验证码（带运行时配置覆盖）。
+     *
+     * @param type      验证码类型
+     * @param overrides 运行时配置覆盖（null 表示使用默认配置）
+     * @return 生成结果
+     */
+    public CaptchaResult generate(String type, CaptchaProperties overrides) {
+        return generate(type, overrides, null);
+    }
+
+    /**
+     * 生成指定类型的验证码（带运行时配置覆盖和加密密钥）。
+     *
+     * @param type          验证码类型
+     * @param overrides     运行时配置覆盖（null 表示使用默认配置）
+     * @param encryptionKey 运行时加密密钥（null 表示使用配置中的密钥）
+     * @return 生成结果
+     */
+    public CaptchaResult generate(String type, CaptchaProperties overrides, String encryptionKey) {
         Captcha captcha = captchas.get(type);
         if (captcha == null) {
             throw new IllegalArgumentException("Unsupported captcha type: " + type);
         }
-        return captcha.generate(captchaKey);
+        if (captcha instanceof AbstractCaptcha) {
+            return ((AbstractCaptcha) captcha).generate(overrides, encryptionKey);
+        }
+        return captcha.generate();
     }
 
+    // ==================== 验证 ====================
+
     /**
-     * 验证指定类型的验证码。
+     * 验证指定类型的验证码（使用默认配置，自动解密加密输入）。
      *
      * @param type       验证码类型
-     * @param captchaKey 验证码标识
-     * @param userInput  用户输入
+     * @param captchaKey 验证码标识（自包含加密令牌）
+     * @param userInput  用户输入（可能是加密的）
      * @return 是否通过；类型未注册返回 {@code false}
      */
     public boolean verify(String type, String captchaKey, String userInput) {
+        return verify(type, captchaKey, userInput, null, null);
+    }
+
+    /**
+     * 验证指定类型的验证码（带运行时加密密钥）。
+     *
+     * @param type          验证码类型
+     * @param captchaKey    验证码标识
+     * @param userInput     用户输入
+     * @param encryptionKey 运行时加密密钥（null 表示使用配置中的密钥）
+     * @return 是否通过
+     */
+    public boolean verify(String type, String captchaKey, String userInput, String encryptionKey) {
+        return verify(type, captchaKey, userInput, null, encryptionKey);
+    }
+
+    /**
+     * 验证指定类型的验证码（带运行时配置覆盖和加密密钥）。
+     *
+     * @param type          验证码类型
+     * @param captchaKey    验证码标识
+     * @param userInput     用户输入
+     * @param overrides     运行时配置覆盖
+     * @param encryptionKey 运行时加密密钥
+     * @return 是否通过
+     */
+    public boolean verify(String type, String captchaKey, String userInput,
+                          CaptchaProperties overrides, String encryptionKey) {
         Captcha captcha = captchas.get(type);
         if (captcha == null) {
             return false;
         }
+        if (captcha instanceof AbstractCaptcha) {
+            return ((AbstractCaptcha) captcha).verify(captchaKey, userInput, overrides, encryptionKey);
+        }
         return captcha.verify(captchaKey, userInput);
     }
+
+    // ==================== 查询 ====================
 
     /**
      * 返回所有已注册类型。
@@ -109,37 +199,122 @@ public class CaptchaManager {
         return Collections.unmodifiableMap(captchas);
     }
 
-    public CaptchaStore getStore() {
-        return store;
-    }
-
-    public void setStore(CaptchaStore store) {
-        this.store = store;
-    }
-
     public CaptchaProperties getProperties() {
         return properties;
     }
 
     public void setProperties(CaptchaProperties properties) {
         this.properties = properties;
+        // 同步更新所有已注册的 AbstractCaptcha 实例
+        for (Captcha captcha : captchas.values()) {
+            if (captcha instanceof AbstractCaptcha) {
+                ((AbstractCaptcha) captcha).setProperties(properties);
+            }
+        }
+    }
+
+    // ==================== 静态方法 ====================
+
+    /**
+     * 获取静态默认实例（延迟初始化，线程安全）。
+     *
+     * @return 默认管理器实例
+     */
+    public static CaptchaManager getDefault() {
+        if (defaultInstance == null) {
+            synchronized (CaptchaManager.class) {
+                if (defaultInstance == null) {
+                    defaultInstance = createDefault();
+                }
+            }
+        }
+        return defaultInstance;
     }
 
     /**
-     * 创建默认管理器：使用内存存储与默认配置，注册数字、算术、滑动、旋转四种验证码。
+     * 设置静态默认实例。
+     *
+     * @param manager 管理器实例
+     */
+    public static void setDefault(CaptchaManager manager) {
+        defaultInstance = manager;
+    }
+
+    /**
+     * 静态方法：生成验证码（使用默认实例）。
+     *
+     * @param type 验证码类型
+     * @return 生成结果
+     */
+    public static CaptchaResult generateStatic(String type) {
+        return getDefault().generate(type);
+    }
+
+    /**
+     * 静态方法：生成验证码（带运行时配置覆盖）。
+     *
+     * @param type      验证码类型
+     * @param overrides 运行时配置覆盖
+     * @return 生成结果
+     */
+    public static CaptchaResult generateStatic(String type, CaptchaProperties overrides) {
+        return getDefault().generate(type, overrides);
+    }
+
+    /**
+     * 静态方法：生成验证码（带运行时配置覆盖和加密密钥）。
+     *
+     * @param type          验证码类型
+     * @param overrides     运行时配置覆盖
+     * @param encryptionKey 运行时加密密钥
+     * @return 生成结果
+     */
+    public static CaptchaResult generateStatic(String type, CaptchaProperties overrides, String encryptionKey) {
+        return getDefault().generate(type, overrides, encryptionKey);
+    }
+
+    /**
+     * 静态方法：验证验证码（使用默认实例）。
+     *
+     * @param type       验证码类型
+     * @param captchaKey 验证码标识
+     * @param userInput  用户输入
+     * @return 是否通过
+     */
+    public static boolean verifyStatic(String type, String captchaKey, String userInput) {
+        return getDefault().verify(type, captchaKey, userInput);
+    }
+
+    /**
+     * 静态方法：验证验证码（带运行时加密密钥）。
+     *
+     * @param type          验证码类型
+     * @param captchaKey    验证码标识
+     * @param userInput     用户输入
+     * @param encryptionKey 运行时加密密钥
+     * @return 是否通过
+     */
+    public static boolean verifyStatic(String type, String captchaKey, String userInput, String encryptionKey) {
+        return getDefault().verify(type, captchaKey, userInput, encryptionKey);
+    }
+
+    // ==================== 工厂方法 ====================
+
+    /**
+     * 创建默认管理器：使用默认配置，注册数字、算术、滑动、旋转、文字点选五种验证码。
      * <p>
-     * 四种验证码共享同一 {@link CaptchaStore} 与 {@link CaptchaProperties}。
+     * 五种验证码共享同一 {@link CaptchaProperties}。
      *
      * @return 默认管理器
      */
     public static CaptchaManager createDefault() {
         CaptchaProperties properties = CaptchaProperties.createDefault();
-        CaptchaStore store = new MemoryCaptchaStore();
-        CaptchaManager manager = new CaptchaManager(store, properties);
-        manager.register(new NumberCaptcha(store, properties));
-        manager.register(new ArithmeticCaptcha(store, properties));
-        manager.register(new SliderCaptcha(store, properties));
-        manager.register(new RotateCaptcha(store, properties));
+        CaptchaManager manager = new CaptchaManager(properties);
+        manager.register(new NumberCaptcha(properties));
+        manager.register(new ArithmeticCaptcha(properties));
+        manager.register(new SliderCaptcha(properties));
+        manager.register(new RotateCaptcha(properties));
+        manager.register(new ClickCaptcha(properties));
         return manager;
     }
 }

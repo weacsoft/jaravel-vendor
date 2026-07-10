@@ -32,7 +32,7 @@ class WatermarkAndBackgroundTest {
         props.setWatermarkText("MyWatermark");
         NumberCaptcha captcha = new NumberCaptcha(new MemoryCaptchaStore(), props);
 
-        CaptchaResult result = captcha.generate("wm-num-key");
+        CaptchaResult result = captcha.generate();
         assertNotNull(result);
         assertValidPng(result.getImageBase64());
     }
@@ -43,7 +43,7 @@ class WatermarkAndBackgroundTest {
         props.setWatermarkText("MyWatermark");
         SliderCaptcha captcha = new SliderCaptcha(new MemoryCaptchaStore(), props);
 
-        CaptchaResult result = captcha.generate("wm-sli-key");
+        CaptchaResult result = captcha.generate();
         assertNotNull(result);
         assertValidPng(result.getImageBase64());
     }
@@ -54,7 +54,7 @@ class WatermarkAndBackgroundTest {
         props.setWatermarkText("MyWatermark");
         RotateCaptcha captcha = new RotateCaptcha(new MemoryCaptchaStore(), props);
 
-        CaptchaResult result = captcha.generate("wm-rot-key");
+        CaptchaResult result = captcha.generate();
         assertNotNull(result);
         assertValidPng(result.getImageBase64());
     }
@@ -65,7 +65,7 @@ class WatermarkAndBackgroundTest {
         props.setWatermarkText("MyWatermark");
         ArithmeticCaptcha captcha = new ArithmeticCaptcha(new MemoryCaptchaStore(), props);
 
-        CaptchaResult result = captcha.generate("wm-ari-key");
+        CaptchaResult result = captcha.generate();
         assertNotNull(result);
         assertValidPng(result.getImageBase64());
     }
@@ -81,7 +81,7 @@ class WatermarkAndBackgroundTest {
             props.setWatermarkPosition(pos);
             NumberCaptcha captcha = new NumberCaptcha(new MemoryCaptchaStore(), props);
 
-            CaptchaResult result = captcha.generate("wm-pos-" + pos + "-key");
+            CaptchaResult result = captcha.generate();
             assertNotNull(result);
             assertValidPng(result.getImageBase64());
         }
@@ -94,7 +94,7 @@ class WatermarkAndBackgroundTest {
         props.setWatermarkRotation(45);
         NumberCaptcha captcha = new NumberCaptcha(new MemoryCaptchaStore(), props);
 
-        CaptchaResult result = captcha.generate("wm-rot45-key");
+        CaptchaResult result = captcha.generate();
         assertNotNull(result);
         assertValidPng(result.getImageBase64());
     }
@@ -107,7 +107,7 @@ class WatermarkAndBackgroundTest {
         props.setBackgroundImageBase64(createTestImageBase64(props.getWidth(), props.getHeight()));
         SliderCaptcha captcha = new SliderCaptcha(new MemoryCaptchaStore(), props);
 
-        CaptchaResult result = captcha.generate("bg-sli-key");
+        CaptchaResult result = captcha.generate();
         assertNotNull(result);
         assertNotNull(result.getImageBase64());
         assertTrue(result.getImageBase64().startsWith("data:image/png;base64,"));
@@ -120,7 +120,7 @@ class WatermarkAndBackgroundTest {
         props.setBackgroundImageBase64(createTestImageBase64(size, size));
         RotateCaptcha captcha = new RotateCaptcha(new MemoryCaptchaStore(), props);
 
-        CaptchaResult result = captcha.generate("bg-rot-key");
+        CaptchaResult result = captcha.generate();
         assertNotNull(result);
         assertNotNull(result.getImageBase64());
         assertTrue(result.getImageBase64().startsWith("data:image/png;base64,"));
@@ -134,7 +134,7 @@ class WatermarkAndBackgroundTest {
         // 不设置任何水印与背景图，确保正常生成
         NumberCaptcha captcha = new NumberCaptcha(new MemoryCaptchaStore(), props);
 
-        CaptchaResult result = captcha.generate("no-wm-key");
+        CaptchaResult result = captcha.generate();
         assertNotNull(result);
         assertValidPng(result.getImageBase64());
     }
@@ -145,7 +145,7 @@ class WatermarkAndBackgroundTest {
         props.setWatermarkImageBase64(createTestImageBase64(60, 30));
         NumberCaptcha captcha = new NumberCaptcha(new MemoryCaptchaStore(), props);
 
-        CaptchaResult result = captcha.generate("wm-img-key");
+        CaptchaResult result = captcha.generate();
         assertNotNull(result);
         assertValidPng(result.getImageBase64());
     }

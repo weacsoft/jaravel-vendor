@@ -63,10 +63,36 @@ public class CaptchaProperties {
     /** 噪点数量 */
     private int noiseCount = 50;
 
+    // ==================== 干扰级别配置 ====================
+
+    /**
+     * 干扰强度级别（1~5）。
+     * <p>
+     * 统一控制噪点、干扰线、弧线干扰的数量倍率：
+     * <ul>
+     *   <li>1 — 极轻（0.2x）：几乎无干扰</li>
+     *   <li>2 — 轻度（0.5x）</li>
+     *   <li>3 — 中等（1.0x）：默认</li>
+     *   <li>4 — 较强（1.5x）</li>
+     *   <li>5 — 极强（2.0x）：干扰最大化</li>
+     * </ul>
+     * 设置后会覆盖 noiseCount / interfereCount / arcInterfereCount 的原始值。
+     */
+    private int interferenceLevel = 3;
+
     // ==================== 视觉配置 ====================
 
     /** 字体名称（null 表示使用系统默认） */
-    private String fontFamily = "Arial";
+    private String fontFamily = null;
+
+    /**
+     * CJK 字体名称（用于文字点选等需要中文的场景）。
+     * null 表示自动检测系统中可用的中文字体。
+     */
+    private String cjkFontFamily = null;
+
+    /** 自定义字体文件路径（.ttf / .otf / .ttc），null 表示不使用自定义字体文件 */
+    private String fontPath = null;
 
     /** 字体样式：Font.PLAIN=0, Font.BOLD=1, Font.ITALIC=2, Font.BOLD|Font.ITALIC=3 */
     private int fontStyle = 1;
@@ -113,6 +139,39 @@ public class CaptchaProperties {
 
     /** 自定义背景图的 base64 数据（优先级高于 backgroundImagePath），null 表示不使用 */
     private String backgroundImageBase64 = null;
+
+    /**
+     * 多张自定义背景图路径列表（文件路径或 classpath 资源路径）。
+     * 每次生成时从中随机选择一张，null 或空表示不使用。
+     * 优先级：backgroundImageBase64 > backgroundImages > backgroundImagePath > 随机生成。
+     */
+    private java.util.List<String> backgroundImages = null;
+
+    // ==================== 点选验证码配置 ====================
+
+    /** 文字点选验证码：需要点选的目标文字数量（默认 3） */
+    private int clickTargetCount = 3;
+
+    /** 文字点选验证码：干扰文字数量（默认 3） */
+    private int clickDecoyCount = 3;
+
+    // ==================== 加密配置 ====================
+
+    /**
+     * 加密类型：none（不加密，纯 Base64）、aes（AES/CBC/PKCS5Padding）、rsa（RSA/OAEP）。
+     * 默认 aes。
+     */
+    private String encryptionType = "aes";
+
+    /**
+     * 加密密钥。
+     * <ul>
+     *   <li>NONE 模式：忽略</li>
+     *   <li>AES 模式：对称密钥字符串（SHA-256 哈希后取前 16 字节）</li>
+     *   <li>RSA 模式：Base64 公钥 + "|" + Base64 私钥，或仅公钥 / 仅私钥</li>
+     * </ul>
+     */
+    private String encryptionKey = "jaravel-captcha-default-key";
 
     // ==================== 水印配置 ====================
 
@@ -399,6 +458,109 @@ public class CaptchaProperties {
 
     public void setWatermarkScale(float watermarkScale) {
         this.watermarkScale = watermarkScale;
+    }
+
+    // ==================== 新增字段 getter / setter ====================
+
+    public int getInterferenceLevel() {
+        return interferenceLevel;
+    }
+
+    public void setInterferenceLevel(int interferenceLevel) {
+        this.interferenceLevel = Math.max(1, Math.min(5, interferenceLevel));
+    }
+
+    public String getCjkFontFamily() {
+        return cjkFontFamily;
+    }
+
+    public void setCjkFontFamily(String cjkFontFamily) {
+        this.cjkFontFamily = cjkFontFamily;
+    }
+
+    public String getFontPath() {
+        return fontPath;
+    }
+
+    public void setFontPath(String fontPath) {
+        this.fontPath = fontPath;
+    }
+
+    public java.util.List<String> getBackgroundImages() {
+        return backgroundImages;
+    }
+
+    public void setBackgroundImages(java.util.List<String> backgroundImages) {
+        this.backgroundImages = backgroundImages;
+    }
+
+    public int getClickTargetCount() {
+        return clickTargetCount;
+    }
+
+    public void setClickTargetCount(int clickTargetCount) {
+        this.clickTargetCount = Math.max(1, Math.min(8, clickTargetCount));
+    }
+
+    public int getClickDecoyCount() {
+        return clickDecoyCount;
+    }
+
+    public void setClickDecoyCount(int clickDecoyCount) {
+        this.clickDecoyCount = Math.max(0, Math.min(10, clickDecoyCount));
+    }
+
+    public String getEncryptionType() {
+        return encryptionType;
+    }
+
+    public void setEncryptionType(String encryptionType) {
+        this.encryptionType = encryptionType;
+    }
+
+    public String getEncryptionKey() {
+        return encryptionKey;
+    }
+
+    public void setEncryptionKey(String encryptionKey) {
+        this.encryptionKey = encryptionKey;
+    }
+
+    // ==================== 干扰级别辅助方法 ====================
+
+    /**
+     * 根据干扰级别返回噪点数量。
+     */
+    public int getEffectiveNoiseCount() {
+        return (int) (noiseCount * getInterferenceMultiplier());
+    }
+
+    /**
+     * 根据干扰级别返回干扰线数量。
+     */
+    public int getEffectiveInterfereCount() {
+        return (int) (interfereCount * getInterferenceMultiplier());
+    }
+
+    /**
+     * 根据干扰级别返回弧线干扰数量。
+     */
+    public int getEffectiveArcInterfereCount() {
+        if (!arcInterfere) return 0;
+        return (int) (arcInterfereCount * getInterferenceMultiplier());
+    }
+
+    /**
+     * 干扰级别对应的倍率。
+     */
+    public double getInterferenceMultiplier() {
+        switch (interferenceLevel) {
+            case 1: return 0.2;
+            case 2: return 0.5;
+            case 4: return 1.5;
+            case 5: return 2.0;
+            default: return 1.0; // level 3
+        }
     }
 
     /**

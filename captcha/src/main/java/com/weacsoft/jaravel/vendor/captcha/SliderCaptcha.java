@@ -39,6 +39,10 @@ public class SliderCaptcha extends AbstractCaptcha {
         super();
     }
 
+    public SliderCaptcha(CaptchaProperties properties) {
+        super(properties);
+    }
+
     public SliderCaptcha(CaptchaStore store, CaptchaProperties properties) {
         super(store, properties);
     }

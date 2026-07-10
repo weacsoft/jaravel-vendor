@@ -5,6 +5,7 @@ import java.awt.Color;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics2D;
+import java.awt.GraphicsEnvironment;
 import java.awt.GradientPaint;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
@@ -14,52 +15,68 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Base64;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Random;
+import java.util.Set;
 import javax.imageio.ImageIO;
 
 /**
  * 验证码抽象基类，实现 {@link Captcha} 接口，提供模板方法与公共图像处理逻辑。
  * <p>
- * 采用模板方法模式：
+ * 采用<b>无状态设计</b>与模板方法模式：
  * <ul>
- *     <li>{@link #generate(String)} —— 构造上下文、调用 {@link #doGenerate(CaptchaContext)} 生成结果，
- *         将答案写入 {@link CaptchaStore}，并生成无状态 token；</li>
- *     <li>{@link #verify(String, String)} —— 从 {@link CaptchaStore} 一次性取出答案，
- *         交给 {@link #doVerify(String, String)} 比对。</li>
+ *     <li>{@link #generate()} —— 构造上下文、调用 {@link #doGenerate(CaptchaContext)} 生成图片，
+ *         将答案加密为自包含的 captchaKey（answer|expireTime|nonce），服务端无需存储任何状态；</li>
+ *     <li>{@link #verify(String, String)} —— 解密 captchaKey 取出答案与过期时间，
+     *         检查过期后交由 {@link #doVerify(String, String)} 比对。</li>
  * </ul>
  * 子类只需实现 {@link #doGenerate(CaptchaContext)}（产出图片 + 通过上下文回写答案）
  * 与 {@link #doVerify(String, String)}（比对逻辑）即可。
  * <p>
- * 另提供 {@link #generateToken(String, String, long)} 与 {@link #verifyToken(String, String)}
- * 用于无状态场景：token 由 captchaKey、answer、expireTime 经 Base64 编码拼接而成
- * （简单编码，非加密安全；如需更高安全性可由子类覆盖）。
+ * <h3>无状态 captchaKey 格式</h3>
+ * <pre>
+ *   captchaKey = crypto.encrypt(expireTime + "|" + nonce + "|" + answer)
+ * </pre>
+ * 解密后按 {@code |} 分割为 3 段（answer 可含 {@code |}），依次为过期时间、随机数、答案。
  * <p>
- * 核心层不依赖任何第三方库，图像生成基于 {@code java.awt}，编码基于 {@code java.util.Base64}。
+ * <h3>运行时配置覆盖</h3>
+ * 支持通过 {@link #generate(CaptchaProperties)} 和 {@link #generate(CaptchaProperties, String)}
+ * 在调用时指定配置覆盖和加密密钥，无需修改全局配置。
+ * <p>
+ * 核心层不依赖任何第三方库，图像生成基于 {@code java.awt}，编码基于 {@code java.util.Base64}，
+ * 加密基于 JDK 内置 {@code javax.crypto} / {@code java.security}。
  */
 public abstract class AbstractCaptcha implements Captcha {
-
-    /** 验证码存储 */
-    protected CaptchaStore store;
 
     /** 配置属性 */
     protected CaptchaProperties properties;
 
     /**
-     * 默认构造：使用 {@link MemoryCaptchaStore} 与默认配置。
+     * 默认构造：使用默认配置。
      */
     public AbstractCaptcha() {
-        this(new MemoryCaptchaStore(), CaptchaProperties.createDefault());
+        this(CaptchaProperties.createDefault());
     }
 
     /**
-     * 指定存储与配置构造。
+     * 指定配置构造。
      *
-     * @param store      验证码存储
+     * @param properties 配置属性
+     */
+    public AbstractCaptcha(CaptchaProperties properties) {
+        this.properties = properties;
+    }
+
+    /**
+     * 兼容旧构造（store 参数被忽略，无状态模式不需要存储）。
+     *
+     * @param store      验证码存储（已弃用，无状态模式不使用）
      * @param properties 配置属性
      */
     public AbstractCaptcha(CaptchaStore store, CaptchaProperties properties) {
-        this.store = store;
         this.properties = properties;
     }
 
@@ -76,93 +93,264 @@ public abstract class AbstractCaptcha implements Captcha {
     /**
      * 子类实现：比对真实答案与用户输入。
      *
-     * @param answer    真实答案（来自 store 或 token）
-     * @param userInput 用户输入
+     * @param answer    真实答案（从 captchaKey 解密获得）
+     * @param userInput 用户输入（已解密）
      * @return 是否匹配
      */
     protected abstract boolean doVerify(String answer, String userInput);
 
+    // ==================== 生成（无状态） ====================
+
     @Override
-    public CaptchaResult generate(String captchaKey) {
-        CaptchaContext context = new CaptchaContext(captchaKey, properties);
+    public CaptchaResult generate() {
+        return generate(null, null);
+    }
+
+    /**
+     * 生成验证码（带运行时配置覆盖）。
+     *
+     * @param overrides 运行时配置覆盖（null 表示使用默认配置）
+     * @return 验证码结果
+     */
+    public CaptchaResult generate(CaptchaProperties overrides) {
+        return generate(overrides, null);
+    }
+
+    /**
+     * 生成验证码（带运行时配置覆盖和加密密钥）。
+     *
+     * @param overrides      运行时配置覆盖（null 表示使用默认配置）
+     * @param encryptionKey  运行时加密密钥（null 表示使用配置中的密钥）
+     * @return 验证码结果
+     */
+    public CaptchaResult generate(CaptchaProperties overrides, String encryptionKey) {
+        CaptchaProperties props = overrides != null ? overrides : this.properties;
+        CaptchaCrypto crypto = createCrypto(props, encryptionKey);
+
+        CaptchaContext context = new CaptchaContext(null, props);
         CaptchaResult result = doGenerate(context);
         if (result == null) {
             result = new CaptchaResult();
         }
 
-        long expireTime = System.currentTimeMillis() + properties.getExpireSeconds() * 1000L;
+        long expireTime = System.currentTimeMillis() + props.getExpireSeconds() * 1000L;
+        String answer = context.getAnswer();
+        if (answer == null) {
+            answer = "";
+        }
+        String nonce = Long.toHexString(System.nanoTime())
+                + Integer.toHexString(new Random().nextInt(0xFFFF));
+        // 格式: expireTime|nonce|answer（answer 在最后，可含特殊字符）
+        String payload = expireTime + "|" + nonce + "|" + answer;
+        String captchaKey = crypto.encrypt(payload);
+
         result.setCaptchaKey(captchaKey);
         result.setType(getType());
         result.setExpireTime(expireTime);
-
-        String answer = context.getAnswer();
-        if (store != null && answer != null) {
-            store.put(captchaKey, answer, properties.getExpireSeconds());
-        }
-        result.setToken(generateToken(captchaKey, answer, expireTime));
         return result;
     }
 
+    // ==================== 验证（无状态） ====================
+
     @Override
     public boolean verify(String captchaKey, String userInput) {
-        if (store == null) {
-            return false;
-        }
-        String answer = store.pull(captchaKey);
-        if (answer == null) {
-            return false;
-        }
-        return doVerify(answer, userInput);
-    }
-
-    // ==================== 无状态 token ====================
-
-    /**
-     * 生成无状态 token：对 captchaKey、answer、expireTime 分别 Base64 编码后以 "." 拼接。
-     *
-     * @param captchaKey 验证码标识
-     * @param answer     答案
-     * @param expireTime 过期时间戳（毫秒）
-     * @return token 字符串
-     */
-    protected String generateToken(String captchaKey, String answer, long expireTime) {
-        Base64.Encoder encoder = Base64.getEncoder();
-        String keyPart = encoder.encodeToString(toBytes(captchaKey));
-        String answerPart = encoder.encodeToString(toBytes(answer != null ? answer : ""));
-        String timePart = encoder.encodeToString(toBytes(String.valueOf(expireTime)));
-        return keyPart + "." + answerPart + "." + timePart;
+        return verify(captchaKey, userInput, null, null);
     }
 
     /**
-     * 校验无状态 token：解码 token 取出答案与过期时间，过期或解码失败返回 {@code false}，
-     * 否则交由 {@link #doVerify(String, String)} 比对。
+     * 验证验证码（带运行时加密密钥）。
      *
-     * @param token      token 字符串
-     * @param userInput  用户输入
+     * @param captchaKey     验证码 key（自包含加密令牌）
+     * @param userInput      用户输入（可能是加密的）
+     * @param encryptionKey  运行时加密密钥（null 表示使用配置中的密钥）
      * @return 是否通过
      */
-    protected boolean verifyToken(String token, String userInput) {
-        if (token == null || token.isEmpty()) {
+    public boolean verify(String captchaKey, String userInput, String encryptionKey) {
+        return verify(captchaKey, userInput, null, encryptionKey);
+    }
+
+    /**
+     * 验证验证码（带运行时配置覆盖和加密密钥）。
+     *
+     * @param captchaKey     验证码 key
+     * @param userInput      用户输入
+     * @param overrides      运行时配置覆盖
+     * @param encryptionKey  运行时加密密钥
+     * @return 是否通过
+     */
+    public boolean verify(String captchaKey, String userInput,
+                          CaptchaProperties overrides, String encryptionKey) {
+        if (captchaKey == null || captchaKey.isEmpty()) {
             return false;
         }
-        String[] parts = token.split("\\.");
-        if (parts.length != 3) {
+        CaptchaProperties props = overrides != null ? overrides : this.properties;
+        CaptchaCrypto crypto = createCrypto(props, encryptionKey);
+
+        // 1. 解密 captchaKey
+        String payload = crypto.decrypt(captchaKey);
+        if (payload == null) {
             return false;
         }
+
+        // 2. 解析: "expireTime|nonce|answer"（answer 可含 |，用 limit=3 分割）
+        String[] parts = payload.split("\\|", 3);
+        if (parts.length < 3) {
+            return false;
+        }
+
+        long expireTime;
         try {
-            Base64.Decoder decoder = Base64.getDecoder();
-            String answer = new String(decoder.decode(parts[1]), StandardCharsets.UTF_8);
-            long expireTime = Long.parseLong(new String(decoder.decode(parts[2]), StandardCharsets.UTF_8));
-            if (System.currentTimeMillis() > expireTime) {
+            expireTime = Long.parseLong(parts[0]);
+        } catch (NumberFormatException e) {
+            return false;
+        }
+        if (System.currentTimeMillis() > expireTime) {
+            return false;
+        }
+
+        String answer = parts[2];
+
+        // 3. 解密用户输入（若启用加密）
+        String decryptedInput = userInput;
+        if (crypto.isEnabled() && userInput != null && !userInput.isEmpty()) {
+            decryptedInput = crypto.decrypt(userInput);
+            if (decryptedInput == null) {
                 return false;
             }
-            return doVerify(answer, userInput);
-        } catch (Exception e) {
-            return false;
         }
+
+        // 4. 交由子类比对
+        return doVerify(answer, decryptedInput);
+    }
+
+    // ==================== 加密工具 ====================
+
+    /**
+     * 根据配置和可选的运行时密钥创建加密实例。
+     *
+     * @param props         配置属性
+     * @param encryptionKey 运行时密钥（null 则使用 props 中的密钥）
+     * @return CaptchaCrypto 实例
+     */
+    protected CaptchaCrypto createCrypto(CaptchaProperties props, String encryptionKey) {
+        String type = props != null ? props.getEncryptionType() : "none";
+        String key = encryptionKey != null ? encryptionKey
+                : (props != null ? props.getEncryptionKey() : null);
+        return CaptchaCrypto.create(type, key);
     }
 
     // ==================== 公共图像工具 ====================
+
+    /** 缓存检测到的 CJK 字体名 */
+    private static String detectedCjkFont = null;
+
+    /** 自定义字体缓存 */
+    private static Font customFontCache = null;
+    private static String customFontPathCache = null;
+
+    /**
+     * 自动检测系统中可用的中文字体。
+     * 按优先级检测常见中文字体名称，找不到则回退到 SansSerif。
+     *
+     * @return 可用的中文字体名
+     */
+    protected static String detectCjkFont() {
+        if (detectedCjkFont != null) {
+            return detectedCjkFont;
+        }
+        String[] available = GraphicsEnvironment.getLocalGraphicsEnvironment()
+                .getAvailableFontFamilyNames();
+        Set<String> availableSet = new HashSet<>(Arrays.asList(available));
+        // 按优先级排列常见中文字体
+        String[] candidates = {
+            "Microsoft YaHei", "微软雅黑", "SimHei", "黑体", "SimSun", "宋体",
+            "Noto Sans CJK SC", "Noto Sans SC", "WenQuanYi Micro Hei", "文泉驿微米黑",
+            "PingFang SC", "Heiti SC", "STHeiti", "Source Han Sans SC",
+            "Source Han Sans CN", "Arial Unicode MS", "DejaVu Sans"
+        };
+        for (String c : candidates) {
+            if (availableSet.contains(c)) {
+                detectedCjkFont = c;
+                return c;
+            }
+        }
+        detectedCjkFont = "SansSerif";
+        return detectedCjkFont;
+    }
+
+    /**
+     * 从文件加载自定义字体（.ttf / .otf / .ttc），带缓存。
+     *
+     * @param path 字体文件路径
+     * @return Font 对象，加载失败返回 null
+     */
+    protected static Font loadCustomFont(String path) {
+        if (path == null || path.isBlank()) {
+            return null;
+        }
+        if (customFontCache != null && path.equals(customFontPathCache)) {
+            return customFontCache;
+        }
+        try {
+            File file = new File(path);
+            if (file.exists()) {
+                customFontCache = Font.createFont(Font.TRUETYPE_FONT, file);
+                customFontPathCache = path;
+                return customFontCache;
+            }
+            // 尝试 classpath
+            try (InputStream is = AbstractCaptcha.class.getClassLoader()
+                    .getResourceAsStream(path)) {
+                if (is != null) {
+                    customFontCache = Font.createFont(Font.TRUETYPE_FONT, is);
+                    customFontPathCache = path;
+                    return customFontCache;
+                }
+            }
+        } catch (Exception e) {
+            // 加载失败静默处理
+        }
+        return null;
+    }
+
+    /**
+     * 解析字体：优先使用自定义字体文件，其次使用配置的 fontFamily，最后回退到 SansSerif。
+     *
+     * @param style 字体样式
+     * @param size  字体大小
+     * @return Font 对象
+     */
+    protected Font resolveFont(int style, int size) {
+        return resolveFont(style, size, false);
+    }
+
+    /**
+     * 解析字体（可指定是否需要 CJK 支持）。
+     *
+     * @param style 字体样式
+     * @param size  字体大小
+     * @param cjk   是否需要 CJK（中文）字体
+     * @return Font 对象
+     */
+    protected Font resolveFont(int style, int size, boolean cjk) {
+        // 1. 自定义字体文件优先
+        if (properties != null && properties.getFontPath() != null) {
+            Font custom = loadCustomFont(properties.getFontPath());
+            if (custom != null) {
+                return custom.deriveFont(style, (float) size);
+            }
+        }
+        // 2. CJK 字体
+        if (cjk) {
+            String family = properties != null && properties.getCjkFontFamily() != null
+                    ? properties.getCjkFontFamily() : detectCjkFont();
+            return new Font(family, style, size);
+        }
+        // 3. 普通字体
+        String family = properties != null && properties.getFontFamily() != null
+                ? properties.getFontFamily() : "SansSerif";
+        return new Font(family, style, size);
+    }
 
     /**
      * 创建一张白色背景的 RGB 图片。
@@ -285,11 +473,12 @@ public abstract class AbstractCaptcha implements Captcha {
     protected void drawText(Graphics2D g, String text, int width, int height, Random random,
                             CaptchaProperties props) {
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
         int len = text.length();
         int slot = width / (len + 1);
 
-        int minFs = props.getMinFontSize() > 0 ? props.getMinFontSize() : height - 14;
-        int maxFs = props.getMaxFontSize() > 0 ? props.getMaxFontSize() : height - 6;
+        int minFs = props.getMinFontSize() > 0 ? props.getMinFontSize() : height / 2;
+        int maxFs = props.getMaxFontSize() > 0 ? props.getMaxFontSize() : (int) (height * 0.7);
         if (minFs > maxFs) {
             int tmp = minFs; minFs = maxFs; maxFs = tmp;
         }
@@ -300,13 +489,23 @@ public abstract class AbstractCaptcha implements Captcha {
             try {
                 g2.setColor(randomColor(random));
                 int fontSize = minFs + (maxFs > minFs ? random.nextInt(maxFs - minFs) : 0);
-                String family = props.getFontFamily() != null ? props.getFontFamily() : "Arial";
-                g2.setFont(new Font(family, props.getFontStyle(), fontSize));
-                int x = slot * i + slot / 2;
-                int y = height / 2 + random.nextInt(height / 4) - height / 8;
+                Font font = resolveFont(props.getFontStyle(), fontSize);
+                g2.setFont(font);
+                FontMetrics fm = g2.getFontMetrics();
+
+                String ch = String.valueOf(text.charAt(i));
+                int charWidth = fm.stringWidth(ch);
+
+                // 水平居中于 slot
+                int x = slot * i + slot / 2 - charWidth / 2;
+                // 垂直居中：使用 FontMetrics 的 ascent/descent 精确计算
+                int baselineY = (height + fm.getAscent() - fm.getDescent()) / 2;
+                // 添加少量随机偏移
+                int y = baselineY + (height > 20 ? random.nextInt(height / 6) - height / 12 : 0);
+
                 double angle = maxRot > 0 ? random.nextInt(maxRot * 2) - maxRot : 0;
-                g2.rotate(Math.toRadians(angle), x, y);
-                g2.drawString(String.valueOf(text.charAt(i)), x, y);
+                g2.rotate(Math.toRadians(angle), x + charWidth / 2.0, y);
+                g2.drawString(ch, x, y);
             } finally {
                 g2.dispose();
             }
@@ -365,25 +564,21 @@ public abstract class AbstractCaptcha implements Captcha {
             }
         }
 
-        // 其次从文件路径加载
+        // 其次从多张背景图列表中随机选择一张
+        if (src == null) {
+            List<String> images = properties.getBackgroundImages();
+            if (images != null && !images.isEmpty()) {
+                Random rand = new Random();
+                String path = images.get(rand.nextInt(images.size()));
+                src = loadImageFromPath(path);
+            }
+        }
+
+        // 最后从单张背景图路径加载
         if (src == null) {
             String path = properties.getBackgroundImagePath();
             if (path != null && !path.isBlank()) {
-                try {
-                    File file = new File(path);
-                    if (file.exists()) {
-                        src = ImageIO.read(file);
-                    } else {
-                        // 尝试 classpath
-                        try (InputStream is = getClass().getClassLoader().getResourceAsStream(path)) {
-                            if (is != null) {
-                                src = ImageIO.read(is);
-                            }
-                        }
-                    }
-                } catch (Exception e) {
-                    // 加载失败静默处理
-                }
+                src = loadImageFromPath(path);
             }
         }
 
@@ -401,6 +596,33 @@ public abstract class AbstractCaptcha implements Captcha {
             g.dispose();
         }
         return scaled;
+    }
+
+    /**
+     * 从文件路径或 classpath 路径加载图片。
+     *
+     * @param path 文件路径或 classpath 资源路径
+     * @return 图片，加载失败返回 null
+     */
+    private BufferedImage loadImageFromPath(String path) {
+        if (path == null || path.isBlank()) {
+            return null;
+        }
+        try {
+            File file = new File(path);
+            if (file.exists()) {
+                return ImageIO.read(file);
+            }
+            // 尝试 classpath
+            try (InputStream is = getClass().getClassLoader().getResourceAsStream(path)) {
+                if (is != null) {
+                    return ImageIO.read(is);
+                }
+            }
+        } catch (Exception e) {
+            // 加载失败静默处理
+        }
+        return null;
     }
 
     /**
@@ -577,14 +799,6 @@ public abstract class AbstractCaptcha implements Captcha {
     }
 
     // ==================== getter / setter ====================
-
-    public CaptchaStore getStore() {
-        return store;
-    }
-
-    public void setStore(CaptchaStore store) {
-        this.store = store;
-    }
 
     public CaptchaProperties getProperties() {
         return properties;

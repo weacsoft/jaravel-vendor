@@ -16,6 +16,33 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class RotateCaptchaTest {
 
     /**
+     * 从无状态 captchaKey 中解密提取答案（仅供测试使用）。
+     *
+     * @param captcha    验证码实例
+     * @param captchaKey 生成时返回的 captchaKey
+     * @return 答案字符串
+     */
+    private String extractAnswer(AbstractCaptcha captcha, String captchaKey) {
+        CaptchaProperties props = captcha.getProperties();
+        CaptchaCrypto crypto = CaptchaCrypto.create(
+                props.getEncryptionType(), props.getEncryptionKey());
+        String payload = crypto.decrypt(captchaKey);
+        String[] parts = payload.split("\\|", 3);
+        return parts[2];
+    }
+
+    /**
+     * 创建使用 none 加密的默认配置，以便明文 / JSON 输入可直接验证。
+     *
+     * @return 配置属性
+     */
+    private CaptchaProperties createTestProps() {
+        CaptchaProperties props = CaptchaProperties.createDefault();
+        props.setEncryptionType("none");
+        return props;
+    }
+
+    /**
      * 构造一份合法的"人类旋转"轨迹 JSON：value 为最终旋转角度，
      * trajectory 为 11 个采样点，总时长 1000ms，使用余弦缓动（ease-in-out）
      * 模拟"加速 → 接近匀速 → 减速"的真实旋转过程。
@@ -45,7 +72,7 @@ class RotateCaptchaTest {
     @Test
     void testGenerate() {
         RotateCaptcha captcha = new RotateCaptcha();
-        CaptchaResult result = captcha.generate("rot-gen-key");
+        CaptchaResult result = captcha.generate();
         assertNotNull(result);
         assertEquals("rotate", result.getType());
         assertNotNull(result.getImageBase64());
@@ -56,26 +83,26 @@ class RotateCaptchaTest {
     @Test
     void testVerifyWithTrajectory() {
         // 正确角度 + 合法人类轨迹 → 验证通过
-        RotateCaptcha captcha = new RotateCaptcha(); // 默认启用轨迹验证
-        String key = "rot-with-traj-key";
-        captcha.generate(key);
-        // store.get 不消费答案，verify 内部用 pull 消费
-        String answer = captcha.getStore().get(key);
+        RotateCaptcha captcha = new RotateCaptcha(createTestProps()); // 默认启用轨迹验证
+        CaptchaResult result = captcha.generate();
+        String captchaKey = result.getCaptchaKey();
+        // 无状态模式：从 captchaKey 解密提取答案
+        String answer = extractAnswer(captcha, captchaKey);
         assertNotNull(answer);
         int angle = Integer.parseInt(answer.trim());
-        assertTrue(captcha.verify(key, buildHumanTrajectoryJson(angle)));
+        assertTrue(captcha.verify(captchaKey, buildHumanTrajectoryJson(angle)));
     }
 
     @Test
     void testVerifyWithoutTrajectory() {
         // 启用轨迹验证时，只提交数字（无 trajectory）应失败
-        RotateCaptcha captcha = new RotateCaptcha();
-        String key = "rot-no-traj-key";
-        captcha.generate(key);
-        String answer = captcha.getStore().get(key);
+        RotateCaptcha captcha = new RotateCaptcha(createTestProps());
+        CaptchaResult result = captcha.generate();
+        String captchaKey = result.getCaptchaKey();
+        String answer = extractAnswer(captcha, captchaKey);
         assertNotNull(answer);
         // 即便角度正确，缺少轨迹也无法通过
-        assertFalse(captcha.verify(key, answer));
+        assertFalse(captcha.verify(captchaKey, answer));
     }
 
     @Test
@@ -83,24 +110,25 @@ class RotateCaptchaTest {
         // 禁用轨迹验证时，只提交数字应通过
         CaptchaProperties props = CaptchaProperties.createDefault();
         props.setTrajectoryEnabled(false);
+        props.setEncryptionType("none");
         RotateCaptcha captcha = new RotateCaptcha(new MemoryCaptchaStore(), props);
-        String key = "rot-disabled-key";
-        captcha.generate(key);
-        String answer = captcha.getStore().get(key);
+        CaptchaResult result = captcha.generate();
+        String captchaKey = result.getCaptchaKey();
+        String answer = extractAnswer(captcha, captchaKey);
         assertNotNull(answer);
-        assertTrue(captcha.verify(key, answer));
+        assertTrue(captcha.verify(captchaKey, answer));
     }
 
     @Test
     void testVerifyWrongAngle() {
         // 角度不在容差范围内应失败
-        RotateCaptcha captcha = new RotateCaptcha();
-        String key = "rot-wrong-angle-key";
-        captcha.generate(key);
-        String answer = captcha.getStore().get(key);
+        RotateCaptcha captcha = new RotateCaptcha(createTestProps());
+        CaptchaResult result = captcha.generate();
+        String captchaKey = result.getCaptchaKey();
+        String answer = extractAnswer(captcha, captchaKey);
         assertNotNull(answer);
         int angle = Integer.parseInt(answer.trim());
         int wrongAngle = (angle + 90) % 360; // 明显超出容差（默认 5）
-        assertFalse(captcha.verify(key, buildHumanTrajectoryJson(wrongAngle)));
+        assertFalse(captcha.verify(captchaKey, buildHumanTrajectoryJson(wrongAngle)));
     }
 }

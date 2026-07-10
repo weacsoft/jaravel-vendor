@@ -16,6 +16,33 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SliderCaptchaTest {
 
     /**
+     * 从无状态 captchaKey 中解密提取答案（仅供测试使用）。
+     *
+     * @param captcha    验证码实例
+     * @param captchaKey 生成时返回的 captchaKey
+     * @return 答案字符串
+     */
+    private String extractAnswer(AbstractCaptcha captcha, String captchaKey) {
+        CaptchaProperties props = captcha.getProperties();
+        CaptchaCrypto crypto = CaptchaCrypto.create(
+                props.getEncryptionType(), props.getEncryptionKey());
+        String payload = crypto.decrypt(captchaKey);
+        String[] parts = payload.split("\\|", 3);
+        return parts[2];
+    }
+
+    /**
+     * 创建使用 none 加密的默认配置，以便明文 / JSON 输入可直接验证。
+     *
+     * @return 配置属性
+     */
+    private CaptchaProperties createTestProps() {
+        CaptchaProperties props = CaptchaProperties.createDefault();
+        props.setEncryptionType("none");
+        return props;
+    }
+
+    /**
      * 构造一份合法的"人类拖动"轨迹 JSON：value 为最终滑块 x 坐标，
      * trajectory 为 11 个采样点，总时长 1000ms，使用余弦缓动（ease-in-out）
      * 模拟"加速 → 接近匀速 → 减速"的真实拖动过程。
@@ -67,7 +94,7 @@ class SliderCaptchaTest {
     @Test
     void testGenerate() {
         SliderCaptcha captcha = new SliderCaptcha();
-        CaptchaResult result = captcha.generate("sli-gen-key");
+        CaptchaResult result = captcha.generate();
         assertNotNull(result);
         assertEquals("slider", result.getType());
         // 背景图
@@ -85,50 +112,50 @@ class SliderCaptchaTest {
     @Test
     void testVerifyWithTrajectory() {
         // 正确值 + 合法人类轨迹 → 验证通过
-        SliderCaptcha captcha = new SliderCaptcha(); // 默认启用轨迹验证
-        String key = "sli-with-traj-key";
-        captcha.generate(key);
-        // store.get 不消费答案，verify 内部用 pull 消费
-        String answer = captcha.getStore().get(key);
+        SliderCaptcha captcha = new SliderCaptcha(createTestProps()); // 默认启用轨迹验证
+        CaptchaResult result = captcha.generate();
+        String captchaKey = result.getCaptchaKey();
+        // 无状态模式：从 captchaKey 解密提取答案
+        String answer = extractAnswer(captcha, captchaKey);
         assertNotNull(answer);
         int gapX = Integer.parseInt(answer.trim());
-        assertTrue(captcha.verify(key, buildHumanTrajectoryJson(gapX)));
+        assertTrue(captcha.verify(captchaKey, buildHumanTrajectoryJson(gapX)));
     }
 
     @Test
     void testVerifyWithoutTrajectory() {
         // 启用轨迹验证时，只提交数字（无 trajectory）应失败
-        SliderCaptcha captcha = new SliderCaptcha();
-        String key = "sli-no-traj-key";
-        captcha.generate(key);
-        String answer = captcha.getStore().get(key);
+        SliderCaptcha captcha = new SliderCaptcha(createTestProps());
+        CaptchaResult result = captcha.generate();
+        String captchaKey = result.getCaptchaKey();
+        String answer = extractAnswer(captcha, captchaKey);
         assertNotNull(answer);
         // 即便数值正确，缺少轨迹也无法通过
-        assertFalse(captcha.verify(key, answer));
+        assertFalse(captcha.verify(captchaKey, answer));
     }
 
     @Test
     void testVerifyTrajectoryTooFewPoints() {
         // 轨迹点数太少应失败
-        SliderCaptcha captcha = new SliderCaptcha();
-        String key = "sli-few-points-key";
-        captcha.generate(key);
-        String answer = captcha.getStore().get(key);
+        SliderCaptcha captcha = new SliderCaptcha(createTestProps());
+        CaptchaResult result = captcha.generate();
+        String captchaKey = result.getCaptchaKey();
+        String answer = extractAnswer(captcha, captchaKey);
         assertNotNull(answer);
         int gapX = Integer.parseInt(answer.trim());
-        assertFalse(captcha.verify(key, buildTooFewPointsJson(gapX)));
+        assertFalse(captcha.verify(captchaKey, buildTooFewPointsJson(gapX)));
     }
 
     @Test
     void testVerifyTrajectoryTooFast() {
         // 轨迹时长太短应失败
-        SliderCaptcha captcha = new SliderCaptcha();
-        String key = "sli-too-fast-key";
-        captcha.generate(key);
-        String answer = captcha.getStore().get(key);
+        SliderCaptcha captcha = new SliderCaptcha(createTestProps());
+        CaptchaResult result = captcha.generate();
+        String captchaKey = result.getCaptchaKey();
+        String answer = extractAnswer(captcha, captchaKey);
         assertNotNull(answer);
         int gapX = Integer.parseInt(answer.trim());
-        assertFalse(captcha.verify(key, buildTooFastJson(gapX)));
+        assertFalse(captcha.verify(captchaKey, buildTooFastJson(gapX)));
     }
 
     @Test
@@ -136,24 +163,25 @@ class SliderCaptchaTest {
         // 禁用轨迹验证时，只提交数字应通过
         CaptchaProperties props = CaptchaProperties.createDefault();
         props.setTrajectoryEnabled(false);
+        props.setEncryptionType("none");
         SliderCaptcha captcha = new SliderCaptcha(new MemoryCaptchaStore(), props);
-        String key = "sli-disabled-key";
-        captcha.generate(key);
-        String answer = captcha.getStore().get(key);
+        CaptchaResult result = captcha.generate();
+        String captchaKey = result.getCaptchaKey();
+        String answer = extractAnswer(captcha, captchaKey);
         assertNotNull(answer);
-        assertTrue(captcha.verify(key, answer));
+        assertTrue(captcha.verify(captchaKey, answer));
     }
 
     @Test
     void testVerifyWrongValue() {
         // 值不在容差范围内应失败
-        SliderCaptcha captcha = new SliderCaptcha();
-        String key = "sli-wrong-value-key";
-        captcha.generate(key);
-        String answer = captcha.getStore().get(key);
+        SliderCaptcha captcha = new SliderCaptcha(createTestProps());
+        CaptchaResult result = captcha.generate();
+        String captchaKey = result.getCaptchaKey();
+        String answer = extractAnswer(captcha, captchaKey);
         assertNotNull(answer);
         int gapX = Integer.parseInt(answer.trim());
         int wrongValue = gapX + 100; // 明显超出容差（默认 5）
-        assertFalse(captcha.verify(key, buildHumanTrajectoryJson(wrongValue)));
+        assertFalse(captcha.verify(captchaKey, buildHumanTrajectoryJson(wrongValue)));
     }
 }

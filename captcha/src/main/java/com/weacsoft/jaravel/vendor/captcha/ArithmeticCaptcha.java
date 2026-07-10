@@ -16,6 +16,10 @@ public class ArithmeticCaptcha extends AbstractCaptcha {
         super();
     }
 
+    public ArithmeticCaptcha(CaptchaProperties properties) {
+        super(properties);
+    }
+
     public ArithmeticCaptcha(CaptchaStore store, CaptchaProperties properties) {
         super(store, properties);
     }
@@ -65,10 +69,10 @@ public class ArithmeticCaptcha extends AbstractCaptcha {
         BufferedImage image = createImage(width, height);
         Graphics2D g = image.createGraphics();
         try {
-            addNoise(g, width, height, p.getNoiseCount(), random);
-            addInterfereLines(g, width, height, p.getInterfereCount(), random);
+            addNoise(g, width, height, p.getEffectiveNoiseCount(), random);
+            addInterfereLines(g, width, height, p.getEffectiveInterfereCount(), random);
             if (p.isArcInterfere()) {
-                addArcInterference(g, width, height, p.getArcInterfereCount(), random);
+                addArcInterference(g, width, height, p.getEffectiveArcInterfereCount(), random);
             }
             drawText(g, expression, width, height, random);
         } finally {

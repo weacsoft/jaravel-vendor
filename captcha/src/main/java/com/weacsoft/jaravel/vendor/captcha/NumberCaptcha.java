@@ -17,6 +17,10 @@ public class NumberCaptcha extends AbstractCaptcha {
         super();
     }
 
+    public NumberCaptcha(CaptchaProperties properties) {
+        super(properties);
+    }
+
     public NumberCaptcha(CaptchaStore store, CaptchaProperties properties) {
         super(store, properties);
     }
@@ -39,10 +43,10 @@ public class NumberCaptcha extends AbstractCaptcha {
         BufferedImage image = createImage(width, height);
         Graphics2D g = image.createGraphics();
         try {
-            addNoise(g, width, height, p.getNoiseCount(), random);
-            addInterfereLines(g, width, height, p.getInterfereCount(), random);
+            addNoise(g, width, height, p.getEffectiveNoiseCount(), random);
+            addInterfereLines(g, width, height, p.getEffectiveInterfereCount(), random);
             if (p.isArcInterfere()) {
-                addArcInterference(g, width, height, p.getArcInterfereCount(), random);
+                addArcInterference(g, width, height, p.getEffectiveArcInterfereCount(), random);
             }
             drawText(g, answer, width, height, random);
         } finally {

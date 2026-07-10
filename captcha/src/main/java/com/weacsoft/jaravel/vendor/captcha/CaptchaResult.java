@@ -6,13 +6,13 @@ import java.util.Map;
 /**
  * 验证码生成结果。
  * <p>
- * 封装一次验证码生成产生的全部信息：base64 图片、加密 token、过期时间以及额外数据。
+ * 封装一次验证码生成产生的全部信息：base64 图片、captchaKey（无状态自包含）、过期时间以及额外数据。
  * 该对象会被返回给调用方用于 JSON 序列化下发到前端，因此答案本身不包含在此对象中
- * （答案仅存于 {@link CaptchaStore}，避免泄露）。
+ * （答案被加密编码在 captchaKey 中，仅服务端可解密）。
  */
 public class CaptchaResult {
 
-    /** 验证码标识 */
+    /** 验证码标识（无状态模式下为加密的自包含令牌，包含答案+过期时间+随机数） */
     private String captchaKey;
 
     /** 验证码类型 */
@@ -20,9 +20,6 @@ public class CaptchaResult {
 
     /** base64 编码的图片（带 {@code data:image/png;base64,} 前缀） */
     private String imageBase64;
-
-    /** 加密 token（包含答案的加密信息，可用于无状态验证） */
-    private String token;
 
     /** 过期时间戳（毫秒） */
     private long expireTime;
@@ -35,11 +32,10 @@ public class CaptchaResult {
     }
 
     public CaptchaResult(String captchaKey, String type, String imageBase64,
-                         String token, long expireTime, Map<String, Object> extra) {
+                         long expireTime, Map<String, Object> extra) {
         this.captchaKey = captchaKey;
         this.type = type;
         this.imageBase64 = imageBase64;
-        this.token = token;
         this.expireTime = expireTime;
         this.extra = extra != null ? extra : new HashMap<>();
     }
@@ -68,14 +64,6 @@ public class CaptchaResult {
         this.imageBase64 = imageBase64;
     }
 
-    public String getToken() {
-        return token;
-    }
-
-    public void setToken(String token) {
-        this.token = token;
-    }
-
     public long getExpireTime() {
         return expireTime;
     }
@@ -102,7 +90,6 @@ public class CaptchaResult {
         map.put("captchaKey", captchaKey);
         map.put("type", type);
         map.put("imageBase64", imageBase64);
-        map.put("token", token);
         map.put("expireTime", expireTime);
         map.put("extra", extra);
         return map;
@@ -115,7 +102,6 @@ public class CaptchaResult {
                 + ", type='" + type + '\''
                 + ", expireTime=" + expireTime
                 + ", hasImage=" + (imageBase64 != null)
-                + ", hasToken=" + (token != null)
                 + ", extra=" + extra
                 + '}';
     }

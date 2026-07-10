@@ -33,6 +33,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *     min-trajectory-duration-ms: 500
  *     max-trajectory-duration-ms: 30000
  *     max-jump-distance: 80
+ *     # 加密配置
+ *     encryption-enabled: true
+ *     encryption-key: jaravel-captcha-default-key
  * </pre>
  */
 @ConfigurationProperties(prefix = "jaravel.captcha")
@@ -96,6 +99,26 @@ public class CaptchaProperties {
     private String watermarkImageBase64 = null;
     private float watermarkOpacity = 0.3f;
     private float watermarkScale = 0.2f;
+
+    // 高级视觉与点击验证码配置
+    /** 干扰等级 1-5 */
+    private int interferenceLevel = 3;
+    /** 中日韩（CJK）字体名称 */
+    private String cjkFontFamily = null;
+    /** 自定义字体文件路径 */
+    private String fontPath = null;
+    /** 背景图片路径列表 */
+    private java.util.List<String> backgroundImages = null;
+    /** 点击验证码目标数量 */
+    private int clickTargetCount = 3;
+    /** 点击验证码干扰项数量 */
+    private int clickDecoyCount = 3;
+
+    // 加密配置
+    /** 加密类型：none / aes / rsa */
+    private String encryptionType = "aes";
+    /** 加密密钥 */
+    private String encryptionKey = "jaravel-captcha-default-key";
 
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
@@ -196,6 +219,30 @@ public class CaptchaProperties {
     public float getWatermarkScale() { return watermarkScale; }
     public void setWatermarkScale(float watermarkScale) { this.watermarkScale = watermarkScale; }
 
+    public int getInterferenceLevel() { return interferenceLevel; }
+    public void setInterferenceLevel(int interferenceLevel) { this.interferenceLevel = interferenceLevel; }
+
+    public String getCjkFontFamily() { return cjkFontFamily; }
+    public void setCjkFontFamily(String cjkFontFamily) { this.cjkFontFamily = cjkFontFamily; }
+
+    public String getFontPath() { return fontPath; }
+    public void setFontPath(String fontPath) { this.fontPath = fontPath; }
+
+    public java.util.List<String> getBackgroundImages() { return backgroundImages; }
+    public void setBackgroundImages(java.util.List<String> backgroundImages) { this.backgroundImages = backgroundImages; }
+
+    public int getClickTargetCount() { return clickTargetCount; }
+    public void setClickTargetCount(int clickTargetCount) { this.clickTargetCount = clickTargetCount; }
+
+    public int getClickDecoyCount() { return clickDecoyCount; }
+    public void setClickDecoyCount(int clickDecoyCount) { this.clickDecoyCount = clickDecoyCount; }
+
+    public String getEncryptionType() { return encryptionType; }
+    public void setEncryptionType(String encryptionType) { this.encryptionType = encryptionType; }
+
+    public String getEncryptionKey() { return encryptionKey; }
+    public void setEncryptionKey(String encryptionKey) { this.encryptionKey = encryptionKey; }
+
     /**
      * 转为核心层配置对象。
      */
@@ -234,6 +281,14 @@ public class CaptchaProperties {
         core.setWatermarkImageBase64(watermarkImageBase64);
         core.setWatermarkOpacity(watermarkOpacity);
         core.setWatermarkScale(watermarkScale);
+        core.setInterferenceLevel(interferenceLevel);
+        core.setCjkFontFamily(cjkFontFamily);
+        core.setFontPath(fontPath);
+        core.setBackgroundImages(backgroundImages);
+        core.setClickTargetCount(clickTargetCount);
+        core.setClickDecoyCount(clickDecoyCount);
+        core.setEncryptionType(encryptionType);
+        core.setEncryptionKey(encryptionKey);
         return core;
     }
 }
