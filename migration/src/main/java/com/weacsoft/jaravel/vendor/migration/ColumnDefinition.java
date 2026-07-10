@@ -1,5 +1,8 @@
 package com.weacsoft.jaravel.vendor.migration;
 
+import com.weacsoft.jaravel.vendor.migration.dialect.Dialect;
+import com.weacsoft.jaravel.vendor.migration.dialect.DialectFactory;
+
 /**
  * 列定义，对齐 Laravel Blueprint 中的列修饰链。
  * <p>
@@ -229,17 +232,17 @@ public class ColumnDefinition {
     void setPrecision(Integer precision) { this.precision = precision; }
     void setScale(Integer scale) { this.scale = scale; }
 
-    // ---- 包级可见 getters（供同包 Dialect 实现访问字段细节） ----
+    // ---- getters（供 Dialect 实现访问字段细节，跨包访问故为 public） ----
 
-    String getType() { return type; }
-    Integer getLength() { return length; }
-    Integer getPrecision() { return precision; }
-    Integer getScale() { return scale; }
-    boolean isUnsigned() { return unsigned; }
-    boolean isNullable() { return nullable; }
-    boolean isAutoIncrement() { return autoIncrement; }
-    String getDefaultValue() { return defaultValue; }
-    boolean hasDefault() { return hasDefault; }
-    String getComment() { return comment; }
-    String getAfterColumn() { return afterColumn; }
+    public String getType() { return type; }
+    public Integer getLength() { return length; }
+    public Integer getPrecision() { return precision; }
+    public Integer getScale() { return scale; }
+    public boolean isUnsigned() { return unsigned; }
+    public boolean isNullable() { return nullable; }
+    public boolean isAutoIncrement() { return autoIncrement; }
+    public String getDefaultValue() { return defaultValue; }
+    public boolean hasDefault() { return hasDefault; }
+    public String getComment() { return comment; }
+    public String getAfterColumn() { return afterColumn; }
 }

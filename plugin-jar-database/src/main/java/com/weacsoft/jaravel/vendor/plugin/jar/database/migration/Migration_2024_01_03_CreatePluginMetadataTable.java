@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
  * 表结构对齐 {@link com.weacsoft.jaravel.vendor.plugin.jar.database.model.PluginMetadataModel}，
  * 复杂字段（共享类依赖、组件类、路由映射）以 JSON 字符串存储在 TEXT 列中。
  * <p>
- * 命名遵循 {@code Migration_YYYY_MM_DD_Description} 约定，{@link com.weacsoft.jaravel.vendor.migration.Migrator}
+ * 命名遵循 {@code Migration_YYYY_MM_DD_Description} 约定，{@link com.weacsoft.jaravel.vendor.migration.engine.Migrator}
  * 按类名字典序排序即可获得正确的执行顺序。
  */
 @Component

@@ -1,5 +1,14 @@
 package com.weacsoft.jaravel.vendor.captcha;
 
+import com.weacsoft.jaravel.vendor.captcha.generator.AbstractCaptcha;
+import com.weacsoft.jaravel.vendor.captcha.generator.ArithmeticCaptcha;
+import com.weacsoft.jaravel.vendor.captcha.generator.Captcha;
+import com.weacsoft.jaravel.vendor.captcha.generator.ClickCaptcha;
+import com.weacsoft.jaravel.vendor.captcha.generator.NumberCaptcha;
+import com.weacsoft.jaravel.vendor.captcha.generator.RotateCaptcha;
+import com.weacsoft.jaravel.vendor.captcha.generator.SliderCaptcha;
+import com.weacsoft.jaravel.vendor.captcha.store.CaptchaStore;
+import com.weacsoft.jaravel.vendor.captcha.store.MemoryCaptchaStore;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;

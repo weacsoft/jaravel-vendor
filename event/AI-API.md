@@ -121,7 +121,7 @@ List<Listener<UserRegistered>> listeners = dispatcher.getListeners(UserRegistere
 ```java
 @Component
 @ListensTo(UserRegistered.class)
-public class SendWelcomeEmailListener implements Listener<UserRegistered>, ShouldQueue {
+public class WelcomeMailListener implements Listener<UserRegistered>, ShouldQueue {
     @Override
     public void handle(UserRegistered event) {
         mailService.send(event.email);
@@ -152,7 +152,7 @@ public class SendWelcomeEmailListener implements Listener<UserRegistered>, Shoul
 ```java
 @Component
 @ListensTo(UserRegistered.class)
-public class LogRegistrationListener implements Listener<UserRegistered> {
+public class RegistrationLogListener implements Listener<UserRegistered> {
     @Override
     public void handle(UserRegistered event) {
         logService.log("用户注册: " + event.userId);
@@ -220,8 +220,8 @@ public class LogRegistrationListener implements Listener<UserRegistered> {
 public class AppEventServiceProvider extends EventServiceProvider {
     @Override
     public void register() {
-        listen(UserRegistered.class, new SendWelcomeEmailListener());
-        listen(UserRegistered.class, new LogRegistrationListener());
+        listen(UserRegistered.class, new WelcomeMailListener());
+        listen(UserRegistered.class, new RegistrationLogListener());
         listen(OrderPaid.class, new UpdateInventoryListener());
     }
 }

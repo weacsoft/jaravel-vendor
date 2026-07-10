@@ -1,9 +1,14 @@
 package com.weacsoft.jaravel.vendor.captcha.springboot;
 
 import com.weacsoft.jaravel.vendor.captcha.CaptchaManager;
-import com.weacsoft.jaravel.vendor.captcha.CaptchaStore;
-import com.weacsoft.jaravel.vendor.captcha.CacheStoreCaptchaStore;
-import com.weacsoft.jaravel.vendor.captcha.MemoryCaptchaStore;
+import com.weacsoft.jaravel.vendor.captcha.store.CaptchaStore;
+import com.weacsoft.jaravel.vendor.captcha.store.CacheStoreCaptchaStore;
+import com.weacsoft.jaravel.vendor.captcha.store.MemoryCaptchaStore;
+import com.weacsoft.jaravel.vendor.captcha.generator.ArithmeticCaptcha;
+import com.weacsoft.jaravel.vendor.captcha.generator.ClickCaptcha;
+import com.weacsoft.jaravel.vendor.captcha.generator.NumberCaptcha;
+import com.weacsoft.jaravel.vendor.captcha.generator.RotateCaptcha;
+import com.weacsoft.jaravel.vendor.captcha.generator.SliderCaptcha;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -65,11 +70,11 @@ public class CaptchaAutoConfiguration {
         }
 
         CaptchaManager manager = new CaptchaManager(store, coreProps);
-        manager.register(new com.weacsoft.jaravel.vendor.captcha.NumberCaptcha(coreProps));
-        manager.register(new com.weacsoft.jaravel.vendor.captcha.ArithmeticCaptcha(coreProps));
-        manager.register(new com.weacsoft.jaravel.vendor.captcha.SliderCaptcha(coreProps));
-        manager.register(new com.weacsoft.jaravel.vendor.captcha.RotateCaptcha(coreProps));
-        manager.register(new com.weacsoft.jaravel.vendor.captcha.ClickCaptcha(coreProps));
+        manager.register(new NumberCaptcha(coreProps));
+        manager.register(new ArithmeticCaptcha(coreProps));
+        manager.register(new SliderCaptcha(coreProps));
+        manager.register(new RotateCaptcha(coreProps));
+        manager.register(new ClickCaptcha(coreProps));
 
         // 设置静态默认实例，支持 CaptchaService.generateStatic() / verifyStatic()
         CaptchaManager.setDefault(manager);

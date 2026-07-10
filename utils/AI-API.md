@@ -3,14 +3,14 @@
 > Module: `utils` | Package: `com.weacsoft.jaravel.vendor.utils` | Version: 0.1.1
 
 ## Overview
-utils 模块提供通用的内存编译工具，包含 MemoryClassLoader、MemoryFileManager 和 SourceCodeJavaFileObject 三个核心类。它们协同工作，将 Java 源代码字符串在内存中编译为 class 字节码并直接加载，无需写入磁盘文件。这套机制被 jblade 模板引擎和 migration 迁移系统等用于动态编译和加载 Java 代码。
+utils 模块提供内存编译基础设施，包含 MemoryClassLoader、MemoryFileManager 和 SourceCodeJavaFileObject 三个核心类。它们协同工作，将 Java 源代码字符串在内存中编译为 class 字节码并直接加载，无需写入磁盘文件。这套机制被 jblade 模板引擎和 migration 迁移系统等用于动态编译和加载 Java 代码。
 
 ## Classes & Interfaces
 
 ### MemoryClassLoader
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.utils.memory`
-- **Description**: 自定义类加载器，从内存读取 class 字节码。接收一个 `Map<String, byte[]>`（类名 -> 字节码），在 findClass 时从内存中查找并 defineClass。
+- **Description**: 自定义类加载器，从内存读取 class 字节码。接收一个 `Map<String, byte[]>`（类名 -> 字节码），在 findClass 时从内存中查找并 defineClass。提供 `removeAll()` 清除所有已编译类字节码，以及 `getCompiledClassesName()` 获取所有已编译类的类名列表，便于资源管理与清理。
 - **Extends**: `java.lang.ClassLoader`
 
 #### Methods
@@ -19,6 +19,8 @@ utils 模块提供通用的内存编译工具，包含 MemoryClassLoader、Memor
 |--------|-----------|--------|-------------|
 | `MemoryClassLoader` | `Map<String, byte[]> classBytes, ClassLoader parent` | 构造方法 | 构造内存类加载器，指定字节码映射和父类加载器 |
 | `findClass` | `String name` | `Class<?>` | 从内存中查找并定义类；内存中不存在时委托父类加载器查找 |
+| `removeAll` | 无 | `void` | 清除所有已编译的类字节码，释放内存 |
+| `getCompiledClassesName` | 无 | `List<String>` | 获取所有已编译类的类名列表 |
 
 #### Usage Example
 ```java
@@ -27,6 +29,12 @@ Map<String, byte[]> compiledClasses = new ConcurrentHashMap<>();
 MemoryClassLoader loader = new MemoryClassLoader(compiledClasses, getClass().getClassLoader());
 Class<?> clazz = loader.loadClass("com.example.MyMigration");
 Object instance = clazz.getDeclaredConstructor().newInstance();
+
+// 获取所有已编译类的类名列表
+List<String> classNames = loader.getCompiledClassesName();
+
+// 清除所有已编译的类字节码（释放资源）
+loader.removeAll();
 ```
 
 ---

@@ -1,5 +1,7 @@
 package com.weacsoft.jaravel.vendor.migration;
 
+import com.weacsoft.jaravel.vendor.migration.autoconfigure.MigrationProperties;
+import com.weacsoft.jaravel.vendor.migration.engine.MigrationSource;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;

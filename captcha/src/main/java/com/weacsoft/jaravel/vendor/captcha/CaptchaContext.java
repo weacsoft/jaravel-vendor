@@ -1,5 +1,7 @@
 package com.weacsoft.jaravel.vendor.captcha;
 
+import com.weacsoft.jaravel.vendor.captcha.generator.AbstractCaptcha;
+
 /**
  * 验证码生成上下文。
  * <p>

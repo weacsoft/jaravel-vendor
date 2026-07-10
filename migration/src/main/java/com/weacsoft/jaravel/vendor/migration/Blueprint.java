@@ -1,5 +1,8 @@
 package com.weacsoft.jaravel.vendor.migration;
 
+import com.weacsoft.jaravel.vendor.migration.dialect.Dialect;
+import com.weacsoft.jaravel.vendor.migration.dialect.DialectFactory;
+
 import java.util.ArrayList;
 import java.util.List;
 

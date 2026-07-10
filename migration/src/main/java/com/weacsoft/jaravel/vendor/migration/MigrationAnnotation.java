@@ -1,5 +1,6 @@
 package com.weacsoft.jaravel.vendor.migration;
 
+import com.weacsoft.jaravel.vendor.migration.engine.MigrationScanner;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;

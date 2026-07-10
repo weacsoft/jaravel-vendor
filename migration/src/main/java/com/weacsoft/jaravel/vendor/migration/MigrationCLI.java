@@ -1,5 +1,8 @@
 package com.weacsoft.jaravel.vendor.migration;
 
+import com.weacsoft.jaravel.vendor.migration.autoconfigure.MigrationProperties;
+import com.weacsoft.jaravel.vendor.migration.engine.MigrationExecutor;
+import com.weacsoft.jaravel.vendor.migration.engine.MigrationSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

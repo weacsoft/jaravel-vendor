@@ -1,5 +1,11 @@
 package com.weacsoft.jaravel.vendor.captcha;
 
+import com.weacsoft.jaravel.vendor.captcha.generator.AbstractCaptcha;
+import com.weacsoft.jaravel.vendor.captcha.generator.ArithmeticCaptcha;
+import com.weacsoft.jaravel.vendor.captcha.generator.NumberCaptcha;
+import com.weacsoft.jaravel.vendor.captcha.generator.RotateCaptcha;
+import com.weacsoft.jaravel.vendor.captcha.generator.SliderCaptcha;
+import com.weacsoft.jaravel.vendor.captcha.store.MemoryCaptchaStore;
 import org.junit.jupiter.api.Test;
 
 import javax.imageio.ImageIO;

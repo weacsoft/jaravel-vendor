@@ -1,5 +1,8 @@
 package com.weacsoft.jaravel.vendor.captcha;
 
+import com.weacsoft.jaravel.vendor.captcha.crypto.CaptchaCrypto;
+import com.weacsoft.jaravel.vendor.captcha.generator.AbstractCaptcha;
+import com.weacsoft.jaravel.vendor.captcha.generator.ArithmeticCaptcha;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

@@ -365,28 +365,6 @@ return ResponseBuilder.raw()
 
 ---
 
-### JSONResponseResolver
-- **Type**: class
-- **Package**: `com.weacsoft.jaravel.vendor.http.response`
-- **Description**: JSON 响应解析器，提供标准化的成功/错误响应 Map 构造方法。
-
-#### Methods
-
-| Method | Parameters | Return | Description |
-|--------|-----------|--------|-------------|
-| `createErrorResponse` | `String message` | `Map<String, Object>` | 创建错误响应 Map |
-| `createSuccessResponse` | 无 | `Map<String, Object>` | 创建成功响应 Map（无数据） |
-| `createSuccessResponse` | `Object[] data` | `Map<String, Object>` | 创建成功响应 Map（带数据） |
-| `createResponse` | `boolean success, String message, Object[] data` | `Map<String, Object>` | 创建标准响应 Map |
-
-#### Usage Example
-```java
-Map<String, Object> success = JSONResponseResolver.createSuccessResponse(new Object[]{user});
-Map<String, Object> error = JSONResponseResolver.createErrorResponse("参数错误");
-```
-
----
-
 ### Controllers
 - **Type**: interface
 - **Package**: `com.weacsoft.jaravel.vendor.controller`

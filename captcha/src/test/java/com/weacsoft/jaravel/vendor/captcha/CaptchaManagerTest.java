@@ -1,5 +1,6 @@
 package com.weacsoft.jaravel.vendor.captcha;
 
+import com.weacsoft.jaravel.vendor.captcha.generator.NumberCaptcha;
 import org.junit.jupiter.api.Test;
 
 import java.util.Set;

@@ -13,10 +13,10 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.weacsoft.jaravel.vendor.cache.ArrayCacheDriver;
+import com.weacsoft.jaravel.vendor.cache.driver.ArrayCacheDriver;
 import com.weacsoft.jaravel.vendor.cache.CacheManager;
 import com.weacsoft.jaravel.vendor.cache.CacheStore;
-import com.weacsoft.jaravel.vendor.cache.DefaultCacheStore;
+import com.weacsoft.jaravel.vendor.cache.store.DefaultCacheStore;
 
 /**
  * {@link ModelCacheService} 模型缓存核心逻辑单元测试。

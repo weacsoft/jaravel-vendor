@@ -1,5 +1,8 @@
 package com.weacsoft.jaravel.vendor.migration;
 
+import com.weacsoft.jaravel.vendor.migration.engine.MigrationScanner;
+import com.weacsoft.jaravel.vendor.migration.engine.Migrator;
+
 /**
  * 迁移接口，对齐 Laravel 的 {@code Illuminate\Database\Migrations\Migration}。
  * <p>

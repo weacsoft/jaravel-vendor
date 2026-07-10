@@ -5,6 +5,17 @@
 ## Overview
 migration 模块提供 Laravel 风格的数据库迁移系统，包含 Blueprint（流式建表蓝图）、Schema（DDL 执行器，支持 MySQL/SQLite/H2/SQL Server 多方言）、Migrator（迁移引擎，支持 migrate/rollback/reset/refresh/status）、MigrationScanner（三种迁移源加载：DIRECTORY 内存编译/JAR 加载/CLASSPATH 扫描）、MigrationRepository（迁移记录仓库）、MigrationExecutor（核心执行器，无 SpringBoot 依赖）、MigrationCLI（独立命令行入口）、JdbcExecutor（轻量 JDBC 执行器，替代 JdbcTemplate）和 MigrationRunner（SpringBoot 适配器）。迁移文件通过 @MigrationAnnotation 标记，运行时编译/加载、反射实例化、执行后自动释放。核心逻辑完全独立于 SpringBoot，可通过 MigrationCLI 在纯 Java 环境中运行。
 
+## Package Structure
+
+模块按职责拆分为以下子包：
+
+| 子包 | 类 |
+|------|-----|
+| `com.weacsoft.jaravel.vendor.migration`（根包） | `Migration`, `Schema`, `MigrationAnnotation`, `Blueprint`, `ColumnDefinition`, `ForeignKeyDefinition`, `JdbcExecutor`, `MigrationGenerator`, `MigrationCLI`, `TableMigrator` |
+| `com.weacsoft.jaravel.vendor.migration.dialect` | `Dialect`, `AbstractDialect`, `DialectFactory`, `MysqlDialect`, `H2Dialect`, `SqliteDialect`, `SqlServerDialect`, `PostgresqlDialect`, `OracleDialect` |
+| `com.weacsoft.jaravel.vendor.migration.engine` | `Migrator`, `MigrationExecutor`, `MigrationRunner`, `MigrationScanner`, `MigrationRepository`, `MigrationSource` |
+| `com.weacsoft.jaravel.vendor.migration.autoconfigure` | `MigrationAutoConfiguration`, `MigrationProperties` |
+
 ## Classes & Interfaces
 
 ### Blueprint
@@ -244,7 +255,7 @@ public class Migration_2024_01_01_CreateUsersTable implements Migration {
 
 ### MigrationSource
 - **Type**: enum
-- **Package**: `com.weacsoft.jaravel.vendor.migration`
+- **Package**: `com.weacsoft.jaravel.vendor.migration.engine`
 - **Description**: 迁移源类型，支持三种迁移来源。
 
 #### Constants
@@ -259,7 +270,7 @@ public class Migration_2024_01_01_CreateUsersTable implements Migration {
 
 ### Migrator
 - **Type**: class
-- **Package**: `com.weacsoft.jaravel.vendor.migration`
+- **Package**: `com.weacsoft.jaravel.vendor.migration.engine`
 - **Description**: 迁移引擎，对齐 Laravel `Illuminate\Database\Migrations\Migrator`。通过 MigrationScanner 获取已编译的迁移类，反射实例化并执行 up/down，维护 migrations 记录表。
 
 #### Methods
@@ -291,7 +302,7 @@ migrator.finish();                 // 释放资源
 
 ### MigrationScanner
 - **Type**: class
-- **Package**: `com.weacsoft.jaravel.vendor.migration`
+- **Package**: `com.weacsoft.jaravel.vendor.migration.engine`
 - **Description**: 迁移源扫描器与加载器，支持三种迁移来源模式（DIRECTORY/JAR/CLASSPATH）。通过 @MigrationAnnotation 注解自动识别迁移类，无需手动指定包名。
 
 #### Methods (主要)
@@ -315,7 +326,7 @@ migrator.finish();                 // 释放资源
 
 ### MigrationRepository
 - **Type**: class
-- **Package**: `com.weacsoft.jaravel.vendor.migration`
+- **Package**: `com.weacsoft.jaravel.vendor.migration.engine`
 - **Description**: 迁移记录仓库，对齐 Laravel `DatabaseMigrationRepository`。维护 migrations 表，记录已执行的迁移。
 
 #### Methods
@@ -335,7 +346,7 @@ migrator.finish();                 // 释放资源
 
 ### MigrationRunner
 - **Type**: class
-- **Package**: `com.weacsoft.jaravel.vendor.migration`
+- **Package**: `com.weacsoft.jaravel.vendor.migration.engine`
 - **Description**: SpringBoot 命令行运行器适配层。实现 CommandLineRunner，内部委托给 MigrationExecutor。仅此类需要 SpringBoot 依赖。
 - **Implements**: `org.springframework.boot.CommandLineRunner`
 
@@ -371,7 +382,7 @@ java -jar app.jar --jaravel.migration-status
 
 ### MigrationAutoConfiguration
 - **Type**: class
-- **Package**: `com.weacsoft.jaravel.vendor.migration`
+- **Package**: `com.weacsoft.jaravel.vendor.migration.autoconfigure`
 - **Description**: 迁移模块自动装配（SpringBoot 适配层）。通过 @Bean @ConfigurationProperties 绑定配置，注册 MigrationRunner Bean。核心逻辑（MigrationExecutor）已独立于 SpringBoot。
 - **Annotations**: `@AutoConfiguration`, `@AutoConfigureAfter(DataSourceAutoConfiguration.class)`, `@ConditionalOnClass(MigrationExecutor.class)`, `@ConditionalOnBean(DataSource.class)`, `@ConditionalOnProperty(prefix = "jaravel.migration", name = "enabled", havingValue = "true", matchIfMissing = true)`
 
@@ -386,7 +397,7 @@ java -jar app.jar --jaravel.migration-status
 
 ### MigrationProperties
 - **Type**: class
-- **Package**: `com.weacsoft.jaravel.vendor.migration`
+- **Package**: `com.weacsoft.jaravel.vendor.migration.autoconfigure`
 - **Description**: 迁移配置属性，前缀 `jaravel.migration`。纯 POJO，无 Spring 注解。在 SpringBoot 中通过 MigrationAutoConfiguration 的 @Bean @ConfigurationProperties 绑定；独立运行时手动设置。
 
 #### Properties
@@ -427,7 +438,7 @@ jaravel:
 
 ### MigrationExecutor
 - **Type**: class
-- **Package**: `com.weacsoft.jaravel.vendor.migration`
+- **Package**: `com.weacsoft.jaravel.vendor.migration.engine`
 - **Description**: 迁移执行器，核心逻辑无 SpringBoot 依赖。根据 MigrationProperties 配置的源模式加载迁移，执行 migrate/rollback/reset/refresh/status 命令。可被 MigrationRunner（SpringBoot）或 MigrationCLI（独立）调用。
 
 #### Methods

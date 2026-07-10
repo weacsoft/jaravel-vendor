@@ -1,5 +1,7 @@
 package com.weacsoft.jaravel.vendor.cache;
 
+import com.weacsoft.jaravel.vendor.cache.autoconfigure.CacheAutoConfiguration;
+
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 

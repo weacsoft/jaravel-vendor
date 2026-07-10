@@ -574,7 +574,7 @@ public class CaptchaProperties {
     }
 
     /** 默认字符集（排除易混淆字符 0/O/1/I/L） */
-    static final char[] DEFAULT_CHARS =
+    public static final char[] DEFAULT_CHARS =
             "ABCDEFGHJKMNPQRSTUVWXYZ23456789".toCharArray();
 
     /**

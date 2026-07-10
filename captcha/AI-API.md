@@ -7,11 +7,23 @@ captcha 模块提供四种验证码（图片数字 `number`、算术 `arithmetic
 
 滑动与旋转验证码支持**轨迹行为分析**：通过 `TrajectoryValidator` 校验用户拖动轨迹的人类行为特征（点数、时长、连续性、非匀速、加速度多样性），防范自动化脚本直接提交最终值。视觉呈现（字体、字符集、旋转角度、弧线干扰等）高度可配置，配置项集中在 `CaptchaProperties`。滑动与旋转验证码支持**自定义背景图**（通过文件路径或 base64 数据指定），四种验证码均支持叠加**文字水印与图片水印**（可配置内容、字体、颜色、位置、旋转角度、透明度、缩放比例），水印在验证码内容绘制完成后由 `AbstractCaptcha.applyWatermark()` 统一叠加。
 
+## Package Structure
+
+模块按职责拆分为以下子包：
+
+| 子包 | 类 |
+|------|-----|
+| `com.weacsoft.jaravel.vendor.captcha`（根包） | `CaptchaManager`, `CaptchaContext`, `CaptchaResult`, `VerifyResult`, `CaptchaProperties`, `TrajectoryValidator` |
+| `com.weacsoft.jaravel.vendor.captcha.generator` | `Captcha`(接口), `AbstractCaptcha`, `ArithmeticCaptcha`, `NumberCaptcha`, `SliderCaptcha`, `RotateCaptcha`, `ClickCaptcha` |
+| `com.weacsoft.jaravel.vendor.captcha.store` | `CaptchaStore`(接口), `MemoryCaptchaStore`, `CacheStoreCaptchaStore` |
+| `com.weacsoft.jaravel.vendor.captcha.crypto` | `CaptchaCrypto` |
+| `com.weacsoft.jaravel.vendor.captcha.springboot` | `CaptchaAutoConfiguration`, `CaptchaProperties`（SpringBoot 适配层） |
+
 ## Classes & Interfaces
 
 ### Captcha
 - **Type**: interface
-- **Package**: `com.weacsoft.jaravel.vendor.captcha`
+- **Package**: `com.weacsoft.jaravel.vendor.captcha.generator`
 - **Description**: 验证码接口。所有验证码类型（图片数字、算术、滑动、旋转等）实现此接口。核心层不依赖 SpringBoot，可独立使用。
 
 #### Methods
@@ -65,7 +77,7 @@ protected CaptchaResult doGenerate(CaptchaContext context) {
 
 ### AbstractCaptcha
 - **Type**: abstract class
-- **Package**: `com.weacsoft.jaravel.vendor.captcha`
+- **Package**: `com.weacsoft.jaravel.vendor.captcha.generator`
 - **Description**: 验证码抽象基类，实现 `Captcha` 接口，提供模板方法与公共图像处理逻辑。采用模板方法模式：`generate()` 构造上下文、调用 `doGenerate()` 生成结果、将答案写入 `CaptchaStore` 并生成无状态 token；`verify()` 从 `CaptchaStore` 一次性取出答案交给 `doVerify()` 比对。另提供 `generateToken` / `verifyToken` 用于无状态场景。核心层不依赖任何第三方库，图像生成基于 `java.awt`，编码基于 `java.util.Base64`。
 - **Implements**: `Captcha`
 
@@ -219,7 +231,7 @@ Map<String, Object> map = result.toMap();
 
 ### CaptchaStore
 - **Type**: interface
-- **Package**: `com.weacsoft.jaravel.vendor.captcha`
+- **Package**: `com.weacsoft.jaravel.vendor.captcha.store`
 - **Description**: 验证码存储接口（SPI）。核心层通过此接口存取验证码答案，与具体存储介质解耦。默认实现 `MemoryCaptchaStore`（`ConcurrentHashMap` + TTL）。可适配为 CacheStore（jaravel cache 模块）、Redis 等。
 
 #### Methods
@@ -244,7 +256,7 @@ store.get("my-key");                  // null（已被 pull 删除）
 
 ### MemoryCaptchaStore
 - **Type**: class
-- **Package**: `com.weacsoft.jaravel.vendor.captcha`
+- **Package**: `com.weacsoft.jaravel.vendor.captcha.store`
 - **Description**: 基于 `ConcurrentHashMap` 的内存验证码存储默认实现。线程安全，自带 TTL 过期机制：`get()` 与 `pull()` 读取时会检查过期，过期则自动删除并返回 `null`。另提供 `cleanup()` 主动清理全部过期项。适用于单机、低并发场景；分布式环境请改用基于 Redis / jaravel cache 模块的实现。
 - **Implements**: `CaptchaStore`
 
@@ -281,7 +293,7 @@ int total = store.size();
 
 ### CacheStoreCaptchaStore
 - **Type**: class
-- **Package**: `com.weacsoft.jaravel.vendor.captcha`
+- **Package**: `com.weacsoft.jaravel.vendor.captcha.store`
 - **Description**: 基于 jaravel `CacheStore` 的验证码存储适配器。当项目引入了 jaravel cache 模块时，可通过此类将验证码答案存入 CacheStore（底层可以是 Redis、数据库等），实现跨进程验证码共享。未引入 cache 模块时使用 `MemoryCaptchaStore`。key 前缀默认为 `captcha:`，避免与其他业务缓存冲突。
 - **Implements**: `CaptchaStore`
 
@@ -510,7 +522,7 @@ custom.register(new NumberCaptcha(custom.getStore(), custom.getProperties()));
 
 ### NumberCaptcha
 - **Type**: class
-- **Package**: `com.weacsoft.jaravel.vendor.captcha`
+- **Package**: `com.weacsoft.jaravel.vendor.captcha.generator`
 - **Description**: 图片数字验证码：随机字母 + 数字字符串。类型名 `"number"`。在 `AbstractCaptcha` 提供的图像工具之上绘制带噪点、干扰线、随机旋转的字符图片。验证时按 `CaptchaProperties.isCaseSensitive()` 决定是否区分大小写。字符集排除易混淆字符 0/O/1/I/L。支持水印（`applyWatermark()` 在字符绘制完成后叠加，配置详见 `CaptchaProperties` 水印配置）。
 - **Extends**: `AbstractCaptcha`
 - **Type Name**: `"number"`
@@ -545,7 +557,7 @@ boolean ok = captcha.verify("my-key", "AB23");
 
 ### ArithmeticCaptcha
 - **Type**: class
-- **Package**: `com.weacsoft.jaravel.vendor.captcha`
+- **Package**: `com.weacsoft.jaravel.vendor.captcha.generator`
 - **Description**: 算术验证码：随机生成 `a op b = ?` 形式的算式，答案为运算结果。类型名 `"arithmetic"`。支持加、减、乘三种运算，减法保证结果非负，乘法限制操作数在 1~9 之间避免结果过大。验证时按字符串相等比对（去除空格）。支持水印（`applyWatermark()` 在算式文本绘制完成后叠加，配置详见 `CaptchaProperties` 水印配置）。
 - **Extends**: `AbstractCaptcha`
 - **Type Name**: `"arithmetic"`
@@ -655,7 +667,7 @@ List<TrajectoryValidator.Point> legacyTraj = TrajectoryValidator.extractTrajecto
 
 ### SliderCaptcha
 - **Type**: class
-- **Package**: `com.weacsoft.jaravel.vendor.captcha`
+- **Package**: `com.weacsoft.jaravel.vendor.captcha.generator`
 - **Description**: 滑动验证码：在背景图上随机位置抠出缺口，前端拖动滑块拼回缺口。类型名 `"slider"`。答案为缺口横坐标 `gapX`。`doVerify` 通过 `TrajectoryValidator.extractValue()` 提取用户提交的最终值进行位置校验（`CaptchaProperties.getTolerance()` 像素容差）；若 `CaptchaProperties.isTrajectoryEnabled()` 为 `true`，还会通过 `TrajectoryValidator.validate()` 校验拖动轨迹的人类行为特征（点数、时长、连续性、非匀速、加速度多样性）。支持 JSON 格式输入（含 `value` 与 `trajectory`），未启用轨迹验证时也兼容纯数字字符串输入。支持自定义背景图（通过 `CaptchaProperties.backgroundImagePath` / `backgroundImageBase64` 配置，优先使用自定义图，未配置或加载失败时回退到 `drawRandomBackground()` 随机渐变背景）与水印（`applyWatermark()` 在缺口绘制后叠加）。
 - **Extends**: `AbstractCaptcha`
 - **Type Name**: `"slider"`
@@ -714,7 +726,7 @@ boolean ok2 = captcha.verify("my-key", "123");
 
 ### RotateCaptcha
 - **Type**: class
-- **Package**: `com.weacsoft.jaravel.vendor.captcha`
+- **Package**: `com.weacsoft.jaravel.vendor.captcha.generator`
 - **Description**: 旋转验证码：将一张带明显朝向（向上箭头）的图片随机旋转，前端拖动将其转回正方向。类型名 `"rotate"`。答案为旋转角度（0~359）。`doVerify` 通过 `TrajectoryValidator.extractValue()` 提取用户提交的最终角度进行角度校验（`CaptchaProperties.getTolerance()` 角度容差，双向最短角差）；若 `CaptchaProperties.isTrajectoryEnabled()` 为 `true`，还会通过 `TrajectoryValidator.validate()` 校验旋转轨迹的人类行为特征（点数、时长、连续性、非匀速、加速度多样性）。支持 JSON 格式输入（含 `value` 与 `trajectory`），未启用轨迹验证时也兼容纯数字字符串输入。使用正方形画布（`Math.max(width, 200)`）。支持自定义背景图（通过 `CaptchaProperties.backgroundImagePath` / `backgroundImageBase64` 配置，优先使用自定义图作为底图并叠加朝向标记，未配置或加载失败时使用 `drawRandomBackground()` 随机渐变背景）与水印（`applyWatermark()` 在旋转后的展示图上叠加）。
 - **Extends**: `AbstractCaptcha`
 - **Type Name**: `"rotate"`

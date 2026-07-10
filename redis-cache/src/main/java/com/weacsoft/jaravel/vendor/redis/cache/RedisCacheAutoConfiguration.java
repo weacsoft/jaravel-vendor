@@ -1,7 +1,7 @@
 package com.weacsoft.jaravel.vendor.redis.cache;
 
 import com.weacsoft.jaravel.vendor.cache.CacheManager;
-import com.weacsoft.jaravel.vendor.cache.DefaultCacheStore;
+import com.weacsoft.jaravel.vendor.cache.store.DefaultCacheStore;
 import com.weacsoft.jaravel.vendor.redis.RedisManager;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
@@ -29,7 +29,7 @@ import org.springframework.context.annotation.Bean;
  * 或将 {@code jaravel.cache.default-store} 设为 {@code redis} 使其成为默认 store。
  */
 @AutoConfiguration
-@AutoConfigureAfter({com.weacsoft.jaravel.vendor.cache.CacheAutoConfiguration.class,
+@AutoConfigureAfter({com.weacsoft.jaravel.vendor.cache.autoconfigure.CacheAutoConfiguration.class,
                      com.weacsoft.jaravel.vendor.redis.RedisAutoConfiguration.class})
 @ConditionalOnClass({RedisCacheDriver.class, CacheManager.class, RedisManager.class})
 @ConditionalOnBean({RedisManager.class, CacheManager.class})
@@ -57,7 +57,7 @@ public class RedisCacheAutoConfiguration {
     @Bean
     public RedisCacheRegistrar redisCacheRegistrar(CacheManager cacheManager,
                                                    RedisCacheDriver redisCacheDriver,
-                                                   com.weacsoft.jaravel.vendor.cache.CacheProperties cacheProperties) {
+                                                   com.weacsoft.jaravel.vendor.cache.autoconfigure.CacheProperties cacheProperties) {
         return new RedisCacheRegistrar(cacheManager, redisCacheDriver, cacheProperties.getPrefix());
     }
 

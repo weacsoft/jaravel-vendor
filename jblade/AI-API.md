@@ -5,6 +5,8 @@
 ## Overview
 jblade 模块是 Laravel Blade 风格的 Java 模板引擎。它将 `.blade.java` 模板文件编译为 Java 类（通过内存编译器），支持模板继承（@extends/@yield/@section）、组件（@component/@slot）、控制结构（@if/@foreach/@for）、变量输出（{{ }}）以及丰富的 Blade 表达式语法（对象方法/属性访问、数组访问、字符串拼接、空合并运算符等）。编译后的模板类继承 BladeTemplate，运行时通过 BladeEngine 渲染。
 
+> **依赖说明**：jblade 通过 Maven 依赖 `utils` 模块复用内存编译基础设施（`MemoryClassLoader`、`MemoryFileManager`、`SourceCodeJavaFileObject` 等，包名 `com.weacsoft.jaravel.vendor.utils.memory.*`）。这些类不再在 jblade 模块中重复定义，由 utils 模块统一提供。`BladeCompiler` 和 `BladeEngine` 直接使用 utils 模块中的 `MemoryClassLoader` 进行模板类的内存编译与加载。
+
 ## Classes & Interfaces
 
 ### BladeEngine
@@ -247,31 +249,6 @@ String html = engine.render("user.list", Map.of(
     "title", "用户列表",
     "users", userService.findAll()
 ));
-```
-
----
-
-### StringUtils
-- **Type**: class
-- **Package**: `com.weacsoft.jaravel.vendor.utils`
-- **Description**: 字符串命名风格转换工具，支持下划线与驼峰互转。
-
-#### Methods
-
-| Method | Parameters | Return | Description |
-|--------|-----------|--------|-------------|
-| `underlineToCamelCase` | `String underlineStr` | `String` | 下划线转小驼峰（user_name -> userName） |
-| `camelCaseToUnderline` | `String camelCaseStr` | `String` | 小驼峰转下划线（userName -> user_name） |
-| `underlineToPascalCase` | `String underlineStr` | `String` | 下划线转大驼峰（user_name -> UserName） |
-| `pascalCaseToUnderline` | `String pascalCaseStr` | `String` | 大驼峰转下划线（UserName -> user_name） |
-| `camelCaseToPascalCase` | `String camelCaseStr` | `String` | 小驼峰转大驼峰（userName -> UserName） |
-| `pascalCaseToCamelCase` | `String pascalCaseStr` | `String` | 大驼峰转小驼峰（UserName -> userName） |
-
-#### Usage Example
-```java
-String camel = StringUtils.underlineToCamelCase("user_name"); // "userName"
-String underline = StringUtils.camelCaseToUnderline("userName"); // "user_name"
-String pascal = StringUtils.underlineToPascalCase("user_name"); // "UserName"
 ```
 
 ---

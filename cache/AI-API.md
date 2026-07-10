@@ -5,6 +5,17 @@
 ## Overview
 cache 模块提供 Laravel 风格的缓存系统，包含 CacheManager（多仓库管理器）、CacheStore（高级缓存操作契约）、CacheDriver（底层存储契约）、DefaultCacheStore（默认仓库实现，带前缀隔离）、ArrayCacheDriver（内存驱动）、FileCacheDriver（文件驱动）、DatabaseCacheDriver（数据库驱动）和 Cache 门面。支持 put/get/has/forget/flush/pull/add/increment/decrement/putMany/getMany/remember/rememberForever 等完整语义，TTL 统一为秒。redis 驱动位于独立的 `redis-cache` 模块。
 
+## Package Structure
+
+模块按职责拆分为以下子包：
+
+| 子包 | 类 |
+|------|-----|
+| `com.weacsoft.jaravel.vendor.cache`（根包） | `CacheDriver`(接口), `CacheStore`(接口), `CacheManager`, `Cache` |
+| `com.weacsoft.jaravel.vendor.cache.driver` | `ArrayCacheDriver`, `FileCacheDriver`, `DatabaseCacheDriver` |
+| `com.weacsoft.jaravel.vendor.cache.store` | `DefaultCacheStore` |
+| `com.weacsoft.jaravel.vendor.cache.autoconfigure` | `CacheAutoConfiguration`, `CacheProperties` |
+
 ## Classes & Interfaces
 
 ### CacheManager
@@ -90,7 +101,7 @@ cacheManager.setDefaultStore("redis");
 
 ### DefaultCacheStore
 - **Type**: class
-- **Package**: `com.weacsoft.jaravel.vendor.cache`
+- **Package**: `com.weacsoft.jaravel.vendor.cache.store`
 - **Description**: 默认缓存仓库实现，对齐 Laravel `Illuminate\Cache\Repository`。委托给底层 CacheDriver，所有 key 操作前自动前置 prefix + ":"，用于隔离不同模块的缓存命名空间。
 - **Implements**: `CacheStore`
 
@@ -113,7 +124,7 @@ User u = store.get("user:1", User.class);
 
 ### ArrayCacheDriver
 - **Type**: class
-- **Package**: `com.weacsoft.jaravel.vendor.cache`
+- **Package**: `com.weacsoft.jaravel.vendor.cache.driver`
 - **Description**: 基于内存 ConcurrentHashMap 的缓存驱动，对齐 Laravel "array" 缓存驱动。线程安全，进程内有效，重启即失。读取时惰性清理过期条目。
 - **Implements**: `CacheDriver`
 
@@ -133,7 +144,7 @@ User u = store.get("user:1", User.class);
 
 ### FileCacheDriver
 - **Type**: class
-- **Package**: `com.weacsoft.jaravel.vendor.cache`
+- **Package**: `com.weacsoft.jaravel.vendor.cache.driver`
 - **Description**: 基于文件系统的缓存驱动，对齐 Laravel "file" 缓存驱动。每个 key 对应目录下一个文件，使用 Jackson 序列化为 JSON。缓存键通过 UTF-8 十六进制编码作为文件名，保证可逆且文件系统安全。
 - **Implements**: `CacheDriver`
 
@@ -165,7 +176,7 @@ Object value = driver.get("user:1");
 
 ### DatabaseCacheDriver
 - **Type**: class
-- **Package**: `com.weacsoft.jaravel.vendor.cache`
+- **Package**: `com.weacsoft.jaravel.vendor.cache.driver`
 - **Description**: 基于关系型数据库的缓存驱动，对齐 Laravel "database" 缓存驱动。使用 Spring `JdbcTemplate` 将缓存条目持久化到 `jaravel_cache` 表，缓存值以 JSON 字符串存储。构造时自动建表（若不存在），自动适配 MySQL / PostgreSQL / SQLite / H2 / SQL Server 方言（建表与 upsert 语义）。读取 / 存在性判断时命中已过期记录会异步删除。
 - **Implements**: `CacheDriver`
 
@@ -257,7 +268,7 @@ Cache.store("file").put("key", "value", 3600);
 
 ### CacheAutoConfiguration
 - **Type**: class
-- **Package**: `com.weacsoft.jaravel.vendor.cache`
+- **Package**: `com.weacsoft.jaravel.vendor.cache.autoconfigure`
 - **Description**: 缓存自动装配，注册 ArrayCacheDriver、FileCacheDriver 驱动 Bean 和 CacheManager（注册 array/file 两个 store）；database 驱动由内部 `DatabaseCacheConfiguration` 在 `DataSource` bean 存在时装配。
 - **Annotations**: `@AutoConfiguration`, `@ConditionalOnClass(CacheManager.class)`, `@AutoConfigureAfter(DataSourceAutoConfiguration)`, `@EnableConfigurationProperties(CacheProperties.class)`
 
@@ -275,7 +286,7 @@ Cache.store("file").put("key", "value", 3600);
 
 ### CacheProperties
 - **Type**: class
-- **Package**: `com.weacsoft.jaravel.vendor.cache`
+- **Package**: `com.weacsoft.jaravel.vendor.cache.autoconfigure`
 - **Description**: 缓存配置属性，前缀 `jaravel.cache`，对齐 Laravel `config/cache.php`。
 - **Annotations**: `@ConfigurationProperties(prefix = "jaravel.cache")`
 

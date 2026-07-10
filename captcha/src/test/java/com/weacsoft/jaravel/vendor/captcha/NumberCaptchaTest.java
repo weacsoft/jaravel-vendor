@@ -1,5 +1,8 @@
 package com.weacsoft.jaravel.vendor.captcha;
 
+import com.weacsoft.jaravel.vendor.captcha.crypto.CaptchaCrypto;
+import com.weacsoft.jaravel.vendor.captcha.generator.AbstractCaptcha;
+import com.weacsoft.jaravel.vendor.captcha.generator.NumberCaptcha;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -72,8 +75,8 @@ class NumberCaptchaTest {
     }
 
     @Test
-    void testVerifyReusable() {
-        // 无状态模式下 captchaKey 可重复验证（无消费机制）
+    void testVerifySingleUse() {
+        // 验证码一次性使用：nonce 在验证后被消费，不可重复验证
         CaptchaProperties props = CaptchaProperties.createDefault();
         props.setEncryptionType("none");
         NumberCaptcha captcha = new NumberCaptcha(props);
@@ -82,7 +85,7 @@ class NumberCaptchaTest {
         String answer = extractAnswer(captcha, captchaKey);
         // 第一次验证通过
         assertTrue(captcha.verify(captchaKey, answer));
-        // 无状态模式下可重复验证
-        assertTrue(captcha.verify(captchaKey, answer));
+        // 第二次验证应失败（nonce 已被消费）
+        assertFalse(captcha.verify(captchaKey, answer));
     }
 }

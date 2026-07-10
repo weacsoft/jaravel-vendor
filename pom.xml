@@ -7,7 +7,7 @@
     <!-- Jaravel-Vendor : Laravel 风格的 SpringBoot 3 多模块框架（适配器包，类比 PHP vendor 目录） -->
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>jaravel-vendor</artifactId>
-    <version>0.1.2</version>
+    <version>0.1.3</version>
     <packaging>pom</packaging>
     <name>jaravel-vendor</name>
     <description>Laravel 风格的 SpringBoot 3 高性能多模块框架：配置 / 路由 / 中间件 / Auth / Eloquent ORM / 迁移 / 缓存 /

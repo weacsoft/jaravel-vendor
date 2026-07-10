@@ -1,10 +1,10 @@
 package com.weacsoft.jaravel.vendor.wechat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.weacsoft.jaravel.vendor.cache.ArrayCacheDriver;
+import com.weacsoft.jaravel.vendor.cache.driver.ArrayCacheDriver;
 import com.weacsoft.jaravel.vendor.cache.CacheManager;
 import com.weacsoft.jaravel.vendor.cache.CacheStore;
-import com.weacsoft.jaravel.vendor.cache.DefaultCacheStore;
+import com.weacsoft.jaravel.vendor.cache.store.DefaultCacheStore;
 import okhttp3.MediaType;
 import okhttp3.MultipartBody;
 import okhttp3.OkHttpClient;

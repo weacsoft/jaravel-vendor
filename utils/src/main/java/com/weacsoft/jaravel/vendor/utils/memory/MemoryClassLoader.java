@@ -1,5 +1,7 @@
 package com.weacsoft.jaravel.vendor.utils.memory;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -74,5 +76,21 @@ public class MemoryClassLoader extends ClassLoader {
      */
     public Map<String, byte[]> getCompiledClasses() {
         return classBytes;
+    }
+
+    /**
+     * 清除所有已编译的类字节码。
+     */
+    public void removeAll() {
+        classBytes.clear();
+    }
+
+    /**
+     * 获取所有已编译类的类名列表。
+     *
+     * @return 类全限定名列表
+     */
+    public List<String> getCompiledClassesName() {
+        return new ArrayList<>(classBytes.keySet());
     }
 }

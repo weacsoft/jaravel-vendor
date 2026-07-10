@@ -1,8 +1,8 @@
 package com.weacsoft.jaravel.vendor.jwt;
 
-import com.weacsoft.jaravel.vendor.cache.ArrayCacheDriver;
+import com.weacsoft.jaravel.vendor.cache.driver.ArrayCacheDriver;
 import com.weacsoft.jaravel.vendor.cache.CacheStore;
-import com.weacsoft.jaravel.vendor.cache.DefaultCacheStore;
+import com.weacsoft.jaravel.vendor.cache.store.DefaultCacheStore;
 import io.jsonwebtoken.Claims;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
