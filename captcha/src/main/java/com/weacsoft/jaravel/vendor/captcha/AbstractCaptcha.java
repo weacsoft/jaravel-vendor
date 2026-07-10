@@ -54,8 +54,11 @@ public abstract class AbstractCaptcha implements Captcha {
     /** 配置属性 */
     protected CaptchaProperties properties;
 
+    /** 验证码存储（用于防复用：记录已消费的 nonce），默认内存实现 */
+    protected CaptchaStore store = new MemoryCaptchaStore();
+
     /**
-     * 默认构造：使用默认配置。
+     * 默认构造：使用默认配置和内存存储。
      */
     public AbstractCaptcha() {
         this(CaptchaProperties.createDefault());
@@ -71,13 +74,31 @@ public abstract class AbstractCaptcha implements Captcha {
     }
 
     /**
-     * 兼容旧构造（store 参数被忽略，无状态模式不需要存储）。
+     * 指定存储和配置构造。
+     * <p>
+     * 传入的 {@code store} 用于防复用：验证成功后 nonce 被写入 store，
+     * 再次验证同一 captchaKey 时会被拒绝。可传入 {@link CacheStoreCaptchaStore}
+     * 以使用 jaravel cache 模块（Redis/数据库等），实现跨进程防复用。
      *
-     * @param store      验证码存储（已弃用，无状态模式不使用）
+     * @param store      验证码存储（用于防复用），null 则使用 {@link MemoryCaptchaStore}
      * @param properties 配置属性
      */
     public AbstractCaptcha(CaptchaStore store, CaptchaProperties properties) {
         this.properties = properties;
+        if (store != null) {
+            this.store = store;
+        }
+    }
+
+    /**
+     * 设置验证码存储（用于防复用）。
+     *
+     * @param store 验证码存储，null 则使用 {@link MemoryCaptchaStore}
+     */
+    public void setStore(CaptchaStore store) {
+        if (store != null) {
+            this.store = store;
+        }
     }
 
     // ==================== 模板方法 ====================
@@ -154,7 +175,7 @@ public abstract class AbstractCaptcha implements Captcha {
 
     @Override
     public boolean verify(String captchaKey, String userInput) {
-        return verify(captchaKey, userInput, null, null);
+        return verify(captchaKey, userInput, null, null).isPassed();
     }
 
     /**
@@ -166,22 +187,25 @@ public abstract class AbstractCaptcha implements Captcha {
      * @return 是否通过
      */
     public boolean verify(String captchaKey, String userInput, String encryptionKey) {
-        return verify(captchaKey, userInput, null, encryptionKey);
+        return verify(captchaKey, userInput, null, encryptionKey).isPassed();
     }
 
     /**
-     * 验证验证码（带运行时配置覆盖和加密密钥）。
+     * 验证验证码（带运行时配置覆盖和加密密钥），返回详细结果。
+     * <p>
+     * 安全策略：无论验证成功还是失败，都会消费 nonce（标记为已使用），
+     * 防止同一 captchaKey 被反复尝试。验证码是一次性的。
      *
      * @param captchaKey     验证码 key
      * @param userInput      用户输入
      * @param overrides      运行时配置覆盖
      * @param encryptionKey  运行时加密密钥
-     * @return 是否通过
+     * @return 验证结果（含是否通过、是否已被使用）
      */
-    public boolean verify(String captchaKey, String userInput,
+    public VerifyResult verify(String captchaKey, String userInput,
                           CaptchaProperties overrides, String encryptionKey) {
         if (captchaKey == null || captchaKey.isEmpty()) {
-            return false;
+            return VerifyResult.fail();
         }
         CaptchaProperties props = overrides != null ? overrides : this.properties;
         CaptchaCrypto crypto = createCrypto(props, encryptionKey);
@@ -189,38 +213,83 @@ public abstract class AbstractCaptcha implements Captcha {
         // 1. 解密 captchaKey
         String payload = crypto.decrypt(captchaKey);
         if (payload == null) {
-            return false;
+            return VerifyResult.fail();
         }
 
         // 2. 解析: "expireTime|nonce|answer"（answer 可含 |，用 limit=3 分割）
         String[] parts = payload.split("\\|", 3);
         if (parts.length < 3) {
-            return false;
+            return VerifyResult.fail();
         }
 
         long expireTime;
         try {
             expireTime = Long.parseLong(parts[0]);
         } catch (NumberFormatException e) {
-            return false;
+            return VerifyResult.fail();
         }
         if (System.currentTimeMillis() > expireTime) {
-            return false;
+            return VerifyResult.fail();
         }
 
+        String nonce = parts[1];
         String answer = parts[2];
 
-        // 3. 解密用户输入（若启用加密）
+        // 3. 防复用检查：nonce 已被消费则拒绝（验证码已被使用过）
+        if (isNonceConsumed(nonce)) {
+            return VerifyResult.alreadyUsed();
+        }
+
+        // 4. 解密用户输入（若启用加密）
         String decryptedInput = userInput;
         if (crypto.isEnabled() && userInput != null && !userInput.isEmpty()) {
             decryptedInput = crypto.decrypt(userInput);
             if (decryptedInput == null) {
-                return false;
+                // 解密失败也消费 nonce，防止暴力尝试
+                consumeNonce(nonce, expireTime);
+                return VerifyResult.fail();
             }
         }
 
-        // 4. 交由子类比对
-        return doVerify(answer, decryptedInput);
+        // 5. 交由子类比对
+        boolean passed = doVerify(answer, decryptedInput);
+
+        // 6. 无论成功还是失败，都消费 nonce（一次性使用，防止反复尝试）
+        consumeNonce(nonce, expireTime);
+
+        return passed ? VerifyResult.pass() : VerifyResult.fail();
+    }
+
+    // ==================== 防复用：通过 CaptchaStore 追踪已消费 nonce ====================
+
+    /** nonce 在 store 中的 key 前缀 */
+    private static final String NONCE_PREFIX = "consumed:";
+
+    /**
+     * 检查 nonce 是否已被消费。
+     * <p>
+     * 通过 {@link CaptchaStore} 查询，底层可以是 {@link MemoryCaptchaStore}（内存）、
+     * {@link CacheStoreCaptchaStore}（jaravel cache 模块，支持 Redis/数据库）等。
+     *
+     * @param nonce 随机数标识
+     * @return true 表示已被消费（应拒绝验证）
+     */
+    private boolean isNonceConsumed(String nonce) {
+        return store.get(NONCE_PREFIX + nonce) != null;
+    }
+
+    /**
+     * 标记 nonce 为已消费。
+     * <p>
+     * 将 nonce 写入 {@link CaptchaStore}，TTL 与 captchaKey 的过期时间一致，
+     * 过期后自动清除，无需手动清理。
+     *
+     * @param nonce      随机数标识
+     * @param expireTime captchaKey 的过期时间戳（毫秒）
+     */
+    private void consumeNonce(String nonce, long expireTime) {
+        long ttlSeconds = Math.max(1, (expireTime - System.currentTimeMillis()) / 1000L);
+        store.put(NONCE_PREFIX + nonce, "1", ttlSeconds);
     }
 
     // ==================== 加密工具 ====================

@@ -3,6 +3,7 @@ package com.weacsoft.jaravel.vendor.captcha;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.FontMetrics;
+import java.awt.GradientPaint;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
@@ -73,13 +74,17 @@ public class ClickCaptcha extends AbstractCaptcha {
         int width = p.getWidth();
         int height = p.getHeight();
 
-        // 1. 创建背景
+        // 1. 创建背景：优先加载自定义背景图，无则使用浅色纯色背景（不用噪点背景）
         BufferedImage bg = loadBackgroundImage(width, height);
         if (bg == null) {
             bg = createImage(width, height);
             Graphics2D g = bg.createGraphics();
             try {
-                drawRandomBackground(g, width, height, random);
+                // 使用浅色渐变背景，不加色块噪点，确保文字清晰可辨
+                GradientPaint paint = new GradientPaint(0, 0, new Color(240, 245, 250),
+                        width, height, new Color(225, 235, 245));
+                g.setPaint(paint);
+                g.fillRect(0, 0, width, height);
             } finally {
                 g.dispose();
             }
@@ -108,7 +113,7 @@ public class ClickCaptcha extends AbstractCaptcha {
         // 打乱文字与位置的对应关系
         java.util.Collections.shuffle(allChars, random);
 
-        // 4. 绘制文字
+        // 4. 绘制文字 — 深色高对比度，增加旋转/歪斜/波浪等效果
         Graphics2D g = bg.createGraphics();
         try {
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -116,24 +121,68 @@ public class ClickCaptcha extends AbstractCaptcha {
 
             int fontSize = Math.max(18, height / 6);
 
+            // 深色文字颜色池（确保与浅色背景高对比度）
+            Color[] textColors = {
+                new Color(33, 33, 33), new Color(50, 50, 80),
+                new Color(80, 30, 30), new Color(30, 60, 30),
+                new Color(50, 30, 70), new Color(70, 50, 20)
+            };
+
             for (int i = 0; i < allChars.size() && i < positions.size(); i++) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 try {
                     int[] pos = positions.get(i);
-                    g2.setColor(randomColor(random));
+                    g2.setColor(textColors[random.nextInt(textColors.length)]);
                     int style = random.nextBoolean() ? Font.BOLD : Font.PLAIN;
                     g2.setFont(resolveFont(style, fontSize + random.nextInt(6) - 3, true));
-                    double angle = random.nextInt(30) - 15;
+
+                    // 所有文字都旋转 ±75°，并叠加随机倾斜/波浪效果
+                    char ch = allChars.get(i);
+
+                    // 旋转角度：-75° ~ +75°，保证大角度
+                    double angle = random.nextInt(151) - 75;
                     g2.rotate(Math.toRadians(angle), pos[0], pos[1]);
-                    g2.drawString(String.valueOf(allChars.get(i)), pos[0] - fontSize / 3, pos[1] + fontSize / 3);
+
+                    // 额外随机效果叠加
+                    int extraEffect = random.nextInt(3);
+                    if (extraEffect == 0) {
+                        // 叠加倾斜
+                        double shearX = (random.nextDouble() - 0.5) * 0.3;
+                        g2.shear(shearX, 0);
+                        g2.drawString(String.valueOf(ch), pos[0] - fontSize / 3, pos[1] + fontSize / 3);
+                    } else if (extraEffect == 1) {
+                        // 仅旋转，不加其他效果
+                        g2.drawString(String.valueOf(ch), pos[0] - fontSize / 3, pos[1] + fontSize / 3);
+                    } else {
+                        // 叠加波浪效果
+                        String s = String.valueOf(ch);
+                        FontMetrics fm = g2.getFontMetrics();
+                        int charWidth = fm.charWidth(ch);
+                        int segments = Math.max(3, charWidth / 3);
+                        int segWidth = charWidth / segments;
+                        int baseX = pos[0] - fontSize / 3;
+                        int baseY = pos[1] + fontSize / 3;
+                        for (int seg = 0; seg < segments; seg++) {
+                            Graphics2D g3 = (Graphics2D) g2.create();
+                            try {
+                                double waveOffset = Math.sin(seg * 0.8) * (fontSize * 0.12);
+                                g3.clipRect(baseX + seg * segWidth, 0, segWidth + 1, height);
+                                g3.drawString(s, baseX, baseY + (int) waveOffset);
+                            } finally {
+                                g3.dispose();
+                            }
+                        }
+                    }
                 } finally {
                     g2.dispose();
                 }
             }
 
-            // 添加干扰线和噪点
-            addInterfereLines(g, width, height, p.getEffectiveInterfereCount() / 2, random);
-            addNoise(g, width, height, p.getEffectiveNoiseCount() / 2, random);
+            // 在文字之间添加横线干扰（比贯穿全图的线更自然）
+            int lineCount = Math.min(3, p.getEffectiveInterfereCount() / 10);
+            if (lineCount > 0) {
+                addInterfereLines(g, width, height, lineCount, random);
+            }
         } finally {
             g.dispose();
         }

@@ -65,7 +65,8 @@ public class RotateCaptcha extends AbstractCaptcha {
 
         // 旋转验证码使用正方形画布
         int size = p.getWidth();
-        int angle = random.nextInt(360);
+        // 避免旋转角度太接近 0°（起点终点重合）：角度范围 40°~320°
+        int angle = 40 + random.nextInt(280);
 
         // 1. 绘制带明显朝向的原图：优先使用自定义背景图，无则生成风景图
         BufferedImage src = loadBackgroundImage(size, size);
@@ -90,7 +91,7 @@ public class RotateCaptcha extends AbstractCaptcha {
             // 暗色圆孔（半透明黑色遮罩）
             gBg.setColor(new Color(0, 0, 0, 120));
             gBg.fillOval(cx - r, cy - r, r * 2, r * 2);
-            // 暗色描边（与圆孔融为一体，不使用白色）
+            // 暗色描边
             gBg.setColor(new Color(0, 0, 0, 60));
             gBg.setStroke(new BasicStroke(1.5f));
             gBg.drawOval(cx - r, cy - r, r * 2 - 1, r * 2 - 1);
@@ -98,10 +99,10 @@ public class RotateCaptcha extends AbstractCaptcha {
             gBg.dispose();
         }
 
-        // 5. 旋转圆形拼图块（2r×2r 图片旋转后再裁剪圆形，无方形边距伪影）
+        // 5. 旋转圆形拼图块
         BufferedImage rotatedCircle = rotateImage(circle, angle, r);
 
-        // 6. 应用水印（仅背景）
+        // 7. 应用水印（仅背景）
         applyWatermark(bgWithHole);
 
         // 答案是用户需要旋转回正的角度 = 360 - 原始旋转角度
@@ -264,9 +265,6 @@ public class RotateCaptcha extends AbstractCaptcha {
 
     /**
      * 从源图中切出圆形区域，生成 2r x 2r 的 ARGB 图片（恰好是圆形，无透明边距）。
-     * <p>
-     * 图片尺寸严格等于圆的直径，消除了 size×size 画布中圆外的透明区域，
-     * 从根本上避免浏览器旋转时方形包围盒产生的描边伪影。
      *
      * @param src 源图
      * @param cx  圆心 x（在源图中的坐标）
@@ -281,13 +279,10 @@ public class RotateCaptcha extends AbstractCaptcha {
         try {
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            // 填充不透明圆形（在 2r×2r 画布中，圆心位于 (r, r)）
             Ellipse2D circleShape = new Ellipse2D.Float(0, 0, d, d);
             g.setColor(Color.WHITE);
             g.fill(circleShape);
-            // SrcIn 合成：仅保留圆形区域内的源图像素
             g.setComposite(java.awt.AlphaComposite.SrcIn);
-            // 将源图偏移绘制，使圆心对齐到 (r, r)
             g.drawImage(src, -(cx - r), -(cy - r), null);
         } finally {
             g.dispose();
@@ -297,8 +292,6 @@ public class RotateCaptcha extends AbstractCaptcha {
 
     /**
      * 将 2r×2r 圆形图片绕中心旋转指定角度，再次裁剪圆形，生成干净的 ARGB 图片。
-     * <p>
-     * 由于图片尺寸等于圆的直径，旋转后无方形边距伪影。
      *
      * @param src   源图（2r×2r 圆形）
      * @param angle 旋转角度（度）

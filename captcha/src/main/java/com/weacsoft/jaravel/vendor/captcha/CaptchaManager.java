@@ -47,6 +47,9 @@ public class CaptchaManager {
     /** 配置属性 */
     private CaptchaProperties properties;
 
+    /** 验证码存储（用于防复用），默认内存实现 */
+    private CaptchaStore store = new MemoryCaptchaStore();
+
     /** 静态默认实例（延迟初始化） */
     private static volatile CaptchaManager defaultInstance;
 
@@ -59,20 +62,52 @@ public class CaptchaManager {
     }
 
     /**
-     * 兼容旧构造（store 参数被忽略，无状态模式不需要存储）。
+     * 指定存储和配置构造。
+     * <p>
+     * 传入的 {@code store} 用于防复用：验证成功后 nonce 被写入 store，
+     * 再次验证同一 captchaKey 时会被拒绝。
+     *
+     * @param store      验证码存储（用于防复用），null 则使用 {@link MemoryCaptchaStore}
+     * @param properties 配置属性
      */
     public CaptchaManager(CaptchaStore store, CaptchaProperties properties) {
         this.properties = properties;
+        if (store != null) {
+            this.store = store;
+        }
     }
 
     /**
-     * 注册验证码实现。
+     * 设置验证码存储（用于防复用），会同步更新所有已注册的 AbstractCaptcha 实例。
+     *
+     * @param store 验证码存储，null 则忽略
+     */
+    public void setStore(CaptchaStore store) {
+        if (store != null) {
+            this.store = store;
+            for (Captcha captcha : captchas.values()) {
+                if (captcha instanceof AbstractCaptcha) {
+                    ((AbstractCaptcha) captcha).setStore(store);
+                }
+            }
+        }
+    }
+
+    public CaptchaStore getStore() {
+        return store;
+    }
+
+    /**
+     * 注册验证码实现，自动注入当前 store。
      *
      * @param captcha 验证码实现
      */
     public void register(Captcha captcha) {
         if (captcha == null || captcha.getType() == null) {
             throw new IllegalArgumentException("captcha and its type must not be null");
+        }
+        if (captcha instanceof AbstractCaptcha) {
+            ((AbstractCaptcha) captcha).setStore(this.store);
         }
         captchas.put(captcha.getType(), captcha);
     }
@@ -159,14 +194,29 @@ public class CaptchaManager {
      */
     public boolean verify(String type, String captchaKey, String userInput,
                           CaptchaProperties overrides, String encryptionKey) {
+        return verifyDetailed(type, captchaKey, userInput, overrides, encryptionKey).isPassed();
+    }
+
+    /**
+     * 验证指定类型的验证码，返回详细结果（含是否已被使用）。
+     *
+     * @param type          验证码类型
+     * @param captchaKey    验证码标识
+     * @param userInput     用户输入
+     * @param overrides     运行时配置覆盖
+     * @param encryptionKey 运行时加密密钥
+     * @return 验证结果（含是否通过、是否已被使用）
+     */
+    public VerifyResult verifyDetailed(String type, String captchaKey, String userInput,
+                          CaptchaProperties overrides, String encryptionKey) {
         Captcha captcha = captchas.get(type);
         if (captcha == null) {
-            return false;
+            return VerifyResult.fail();
         }
         if (captcha instanceof AbstractCaptcha) {
             return ((AbstractCaptcha) captcha).verify(captchaKey, userInput, overrides, encryptionKey);
         }
-        return captcha.verify(captchaKey, userInput);
+        return captcha.verify(captchaKey, userInput) ? VerifyResult.pass() : VerifyResult.fail();
     }
 
     // ==================== 查询 ====================
