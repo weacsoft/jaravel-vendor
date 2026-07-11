@@ -1,4 +1,4 @@
-package com.weacsoft.jaravel.vendor.http.staticresource;
+package com.weacsoft.jaravel.vendor.route.staticresource;
 
 /**
  * 静态资源配置属性，前缀 {@code jaravel.http.static-resource}。

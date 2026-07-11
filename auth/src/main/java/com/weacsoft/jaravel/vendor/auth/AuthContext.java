@@ -1,6 +1,6 @@
 package com.weacsoft.jaravel.vendor.auth;
 
-import com.weacsoft.jaravel.vendor.http.request.Request;
+import com.weacsoft.jaravel.vendor.http.controller.request.Request;
 
 /**
  * 认证上下文：以 ThreadLocal 持有当前请求，供 Guard 读取 session / token。

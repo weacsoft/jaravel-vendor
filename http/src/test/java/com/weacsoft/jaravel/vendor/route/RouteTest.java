@@ -1,8 +1,8 @@
 package com.weacsoft.jaravel.vendor.route;
 
-import com.weacsoft.jaravel.vendor.controller.Controllers;
-import com.weacsoft.jaravel.vendor.http.response.ResponseBuilder;
-import com.weacsoft.jaravel.vendor.middleware.Middleware;
+import com.weacsoft.jaravel.vendor.http.controller.Controllers;
+import com.weacsoft.jaravel.vendor.http.controller.response.ResponseBuilder;
+import com.weacsoft.jaravel.vendor.http.middleware.Middleware;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

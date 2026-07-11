@@ -4,7 +4,7 @@ import com.weacsoft.jaravel.vendor.auth.AuthContext;
 import com.weacsoft.jaravel.vendor.auth.contract.AuthGuard;
 import com.weacsoft.jaravel.vendor.auth.contract.Authenticatable;
 import com.weacsoft.jaravel.vendor.auth.contract.UserProvider;
-import com.weacsoft.jaravel.vendor.http.request.Request;
+import com.weacsoft.jaravel.vendor.http.controller.request.Request;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 

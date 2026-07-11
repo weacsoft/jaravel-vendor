@@ -1,4 +1,4 @@
-package com.weacsoft.jaravel.vendor.http.staticresource;
+package com.weacsoft.jaravel.vendor.route.staticresource;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

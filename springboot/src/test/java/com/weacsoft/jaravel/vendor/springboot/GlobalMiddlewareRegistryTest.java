@@ -1,6 +1,6 @@
 package com.weacsoft.jaravel.vendor.springboot;
 
-import com.weacsoft.jaravel.vendor.middleware.Middleware;
+import com.weacsoft.jaravel.vendor.http.middleware.Middleware;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;

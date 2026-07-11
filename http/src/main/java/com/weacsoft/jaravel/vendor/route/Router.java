@@ -1,8 +1,8 @@
 package com.weacsoft.jaravel.vendor.route;
 
-import com.weacsoft.jaravel.vendor.controller.Controllers;
-import com.weacsoft.jaravel.vendor.http.staticresource.StaticResourceRoute;
-import com.weacsoft.jaravel.vendor.middleware.Middleware;
+import com.weacsoft.jaravel.vendor.http.controller.Controllers;
+import com.weacsoft.jaravel.vendor.route.staticresource.StaticResourceRoute;
+import com.weacsoft.jaravel.vendor.http.middleware.Middleware;
 import lombok.Getter;
 import lombok.Setter;
 

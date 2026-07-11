@@ -1,4 +1,4 @@
-package com.weacsoft.jaravel.vendor.http.response;
+package com.weacsoft.jaravel.vendor.http.controller.response;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.Cookie;

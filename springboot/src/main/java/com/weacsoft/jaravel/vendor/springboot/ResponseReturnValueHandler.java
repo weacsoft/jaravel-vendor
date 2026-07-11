@@ -1,6 +1,6 @@
 package com.weacsoft.jaravel.vendor.springboot;
 
-import com.weacsoft.jaravel.vendor.http.response.Response;
+import com.weacsoft.jaravel.vendor.http.controller.response.Response;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;

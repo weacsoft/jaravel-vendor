@@ -1,6 +1,6 @@
 package com.weacsoft.jaravel.vendor.springboot;
 
-import com.weacsoft.jaravel.vendor.middleware.Middleware;
+import com.weacsoft.jaravel.vendor.http.middleware.Middleware;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;

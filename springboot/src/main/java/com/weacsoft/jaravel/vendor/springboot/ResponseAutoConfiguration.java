@@ -11,7 +11,7 @@ import java.util.List;
 /**
  * 响应自动装配：将 {@link ResponseReturnValueHandler} 前置注入到
  * {@link RequestMappingHandlerAdapter} 的返回值处理器链，使 Controller 方法
- * 可直接返回 {@link com.weacsoft.jaravel.vendor.http.response.Response}。
+ * 可直接返回 {@link com.weacsoft.jaravel.vendor.http.controller.response.Response}。
  * <p>
  * 适配 Spring Boot 3.2.5 / Jakarta Servlet。
  */

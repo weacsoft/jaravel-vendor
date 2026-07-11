@@ -1,4 +1,4 @@
-package com.weacsoft.jaravel.vendor.http.request;
+package com.weacsoft.jaravel.vendor.http.controller.request;
 
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;

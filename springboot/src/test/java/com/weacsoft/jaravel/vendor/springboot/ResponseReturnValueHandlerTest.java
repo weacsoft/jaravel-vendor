@@ -1,6 +1,6 @@
 package com.weacsoft.jaravel.vendor.springboot;
 
-import com.weacsoft.jaravel.vendor.http.response.Response;
+import com.weacsoft.jaravel.vendor.http.controller.response.Response;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.MethodParameter;
 

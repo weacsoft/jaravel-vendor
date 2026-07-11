@@ -2,7 +2,7 @@ package com.weacsoft.jaravel.vendor.auth.filter;
 
 import com.weacsoft.jaravel.vendor.auth.AuthContext;
 import com.weacsoft.jaravel.vendor.auth.AuthManager;
-import com.weacsoft.jaravel.vendor.http.request.Request;
+import com.weacsoft.jaravel.vendor.http.controller.request.Request;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;

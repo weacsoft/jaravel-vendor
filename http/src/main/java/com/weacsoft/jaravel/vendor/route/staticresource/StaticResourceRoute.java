@@ -1,9 +1,9 @@
-package com.weacsoft.jaravel.vendor.http.staticresource;
+package com.weacsoft.jaravel.vendor.route.staticresource;
 
-import com.weacsoft.jaravel.vendor.controller.Controllers;
-import com.weacsoft.jaravel.vendor.http.request.Request;
-import com.weacsoft.jaravel.vendor.http.response.Response;
-import com.weacsoft.jaravel.vendor.http.response.ResponseBuilder;
+import com.weacsoft.jaravel.vendor.http.controller.Controllers;
+import com.weacsoft.jaravel.vendor.http.controller.request.Request;
+import com.weacsoft.jaravel.vendor.http.controller.response.Response;
+import com.weacsoft.jaravel.vendor.http.controller.response.ResponseBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

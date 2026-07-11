@@ -1,7 +1,7 @@
 package com.weacsoft.jaravel.vendor.springboot;
 
-import com.weacsoft.jaravel.vendor.http.request.Request;
-import com.weacsoft.jaravel.vendor.http.request.RequestFactory;
+import com.weacsoft.jaravel.vendor.http.controller.request.Request;
+import com.weacsoft.jaravel.vendor.http.controller.request.RequestFactory;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.core.MethodParameter;
 import org.springframework.stereotype.Component;

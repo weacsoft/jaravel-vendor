@@ -58,10 +58,10 @@ public final class MakeGenerator {
 
     private static String buildControllerSource(String packageName, String className) {
         return "package " + packageName + ";\n\n" +
-                "import com.weacsoft.jaravel.vendor.controller.Controllers;\n" +
-                "import com.weacsoft.jaravel.vendor.http.request.Request;\n" +
-                "import com.weacsoft.jaravel.vendor.http.response.Response;\n" +
-                "import com.weacsoft.jaravel.vendor.http.response.ResponseBuilder;\n\n" +
+                "import com.weacsoft.jaravel.vendor.http.controller.Controllers;\n" +
+                "import com.weacsoft.jaravel.vendor.http.controller.request.Request;\n" +
+                "import com.weacsoft.jaravel.vendor.http.controller.response.Response;\n" +
+                "import com.weacsoft.jaravel.vendor.http.controller.response.ResponseBuilder;\n\n" +
                 "import java.util.HashMap;\n" +
                 "import java.util.Map;\n\n" +
                 "/**\n" +
@@ -97,9 +97,9 @@ public final class MakeGenerator {
 
     private static String buildMiddlewareSource(String packageName, String className) {
         return "package " + packageName + ";\n\n" +
-                "import com.weacsoft.jaravel.vendor.middleware.Middleware;\n" +
-                "import com.weacsoft.jaravel.vendor.http.request.Request;\n" +
-                "import com.weacsoft.jaravel.vendor.http.response.Response;\n\n" +
+                "import com.weacsoft.jaravel.vendor.http.middleware.Middleware;\n" +
+                "import com.weacsoft.jaravel.vendor.http.controller.request.Request;\n" +
+                "import com.weacsoft.jaravel.vendor.http.controller.response.Response;\n\n" +
                 "/**\n" +
                 " * " + className + " 中间件。\n" +
                 " * <p>\n" +

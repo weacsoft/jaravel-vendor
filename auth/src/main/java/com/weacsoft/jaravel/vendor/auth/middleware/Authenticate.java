@@ -1,10 +1,10 @@
 package com.weacsoft.jaravel.vendor.auth.middleware;
 
 import com.weacsoft.jaravel.vendor.auth.facade.Auth;
-import com.weacsoft.jaravel.vendor.middleware.Middleware;
-import com.weacsoft.jaravel.vendor.http.request.Request;
-import com.weacsoft.jaravel.vendor.http.response.Response;
-import com.weacsoft.jaravel.vendor.http.response.ResponseBuilder;
+import com.weacsoft.jaravel.vendor.http.middleware.Middleware;
+import com.weacsoft.jaravel.vendor.http.controller.request.Request;
+import com.weacsoft.jaravel.vendor.http.controller.response.Response;
+import com.weacsoft.jaravel.vendor.http.controller.response.ResponseBuilder;
 
 /**
  * 认证中间件，对齐 Laravel 的 {@code auth} 中间件。

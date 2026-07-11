@@ -1,7 +1,7 @@
 package com.weacsoft.jaravel.vendor.wire;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.weacsoft.jaravel.vendor.http.request.Request;
+import com.weacsoft.jaravel.vendor.http.controller.request.Request;
 
 import java.util.*;
 

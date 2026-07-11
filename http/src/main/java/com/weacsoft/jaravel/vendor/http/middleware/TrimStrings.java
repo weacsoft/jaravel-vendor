@@ -1,7 +1,7 @@
-package com.weacsoft.jaravel.vendor.middleware;
+package com.weacsoft.jaravel.vendor.http.middleware;
 
-import com.weacsoft.jaravel.vendor.http.request.Request;
-import com.weacsoft.jaravel.vendor.http.response.Response;
+import com.weacsoft.jaravel.vendor.http.controller.request.Request;
+import com.weacsoft.jaravel.vendor.http.controller.response.Response;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;

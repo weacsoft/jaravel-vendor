@@ -2,10 +2,10 @@ package com.weacsoft.jaravel.vendor.springboot;
 
 import com.weacsoft.jaravel.vendor.auth.AuthContext;
 import com.weacsoft.jaravel.vendor.auth.AuthManager;
-import com.weacsoft.jaravel.vendor.http.request.Request;
-import com.weacsoft.jaravel.vendor.http.request.RequestFactory;
-import com.weacsoft.jaravel.vendor.http.response.Response;
-import com.weacsoft.jaravel.vendor.middleware.Middleware;
+import com.weacsoft.jaravel.vendor.http.controller.request.Request;
+import com.weacsoft.jaravel.vendor.http.controller.request.RequestFactory;
+import com.weacsoft.jaravel.vendor.http.controller.response.Response;
+import com.weacsoft.jaravel.vendor.http.middleware.Middleware;
 import com.weacsoft.jaravel.vendor.route.Route;
 import com.weacsoft.jaravel.vendor.route.Router;
 import org.springframework.beans.factory.ObjectProvider;
