@@ -1,10 +1,8 @@
 package com.weacsoft.jaravel.vendor.wechat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.weacsoft.jaravel.vendor.cache.driver.ArrayCacheDriver;
 import com.weacsoft.jaravel.vendor.cache.CacheManager;
 import com.weacsoft.jaravel.vendor.cache.CacheStore;
-import com.weacsoft.jaravel.vendor.cache.store.DefaultCacheStore;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -241,7 +239,7 @@ public class AccessTokenManager {
     private static CacheStore resolveStore(CacheManager cacheManager, String preferredStore) {
         if (cacheManager == null) {
             logger.warn("[wechat] CacheManager 未注入，AccessToken 使用本地内存缓存");
-            return new DefaultCacheStore(new ArrayCacheDriver(), "");
+            return CacheManager.createDefaultStore();
         }
         if (preferredStore == null || preferredStore.isEmpty()) {
             preferredStore = "redis";

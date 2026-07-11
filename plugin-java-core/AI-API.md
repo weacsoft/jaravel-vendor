@@ -4,7 +4,7 @@
 
 ## Overview
 
-plugin-java-core 模块提供了基于 `.java` 源文件的动态插件系统。与 `plugin-jar-core` 不同，本模块直接处理源码文件：`DynamicJavaCompiler` 使用 JDK 内置的 `javax.tools.JavaCompiler` 在运行时编译 `.java` 文件为字节码，`DynamicClassLoader` 加载编译后的类，`JavaFileScanner` 通过反射扫描 `@PluginComponent` 和 `@PluginMapping` 注解提取组件和路由信息。`JavaFilePluginManager` 管理完整的插件生命周期（注册、编译、启用、禁用、重载），复用 `plugin-jar-core` 的 `PluginBeanRegistrar` 和 `PluginRouteRegistrar` 完成与主应用的集成。适用于开发阶段快速迭代、无需打包 JAR 的场景。
+plugin-java-core 模块提供了基于 `.java` 源文件的动态插件系统。与 `plugin-jar-core` 不同，本模块直接处理源码文件：`DynamicJavaCompiler` 使用 JDK 内置的 `javax.tools.JavaCompiler` 在运行时编译 `.java` 文件为字节码，`DynamicClassLoader` 加载编译后的类，`JavaFileScanner` 通过反射扫描 `@PluginComponent` 和 `@PluginMapping` 注解提取组件和路由信息。`JavaFilePluginManager` 管理完整的插件生命周期（注册、编译、启用、禁用、重载），复用 `plugin-jar-core` 的 `PluginBeanRegistrar` 和 `PluginRouteRegistrar` 完成与主应用的集成。`JavaSourceExecutor` 负责编译后类的反射调用执行，其 `invokeAndSetResult` 逻辑已提取到 `plugin-jar-core` 的 `PluginExecutionHelper` 公共工具类中，不再各自维护重复代码。适用于开发阶段快速迭代、无需打包 JAR 的场景。
 
 ## Classes & Interfaces
 

@@ -6,14 +6,14 @@
 
 wechat-sdk 模块提供了微信开发平台 API 封装，支持公众号（OfficialAccount）和小程序（MiniProgram）两种应用类型。`AccessTokenManager` 负责获取和缓存 access_token（基于 cache 模块的 `CacheStore`，首选 store 可配置、默认 redis、回退 array）；`OfficialAccountService` 封装公众号用户、菜单、模板消息、JSSDK 等 API；`MiniProgramService` 封装小程序登录（jscode2session）、订阅消息等 API。所有 HTTP 请求通过 OkHttp 发送，响应通过 Jackson 解析。
 
-> 缓存说明：token / jsapi_ticket 缓存委托给 cache 模块的 `CacheManager`。首选 store 由 `jaravel.wechat.cache-store` 配置（默认 `redis`，多实例共享，需引入 `redis-cache` 模块自动注册）；该 store 未注册时回退到 `array` 内存 store。可通过 `cache-store` 切换为 `array` 或其他已注册 store。
+> 缓存说明：token / jsapi_ticket 缓存委托给 cache 模块的 `CacheManager`。首选 store 由 `jaravel.wechat.cache-store` 配置（默认 `redis`，多实例共享，需引入 `redis-cache` 模块自动注册）；该 store 未注册时回退到 `array` 内存 store。当 `CacheManager` 未注入（cache 模块不可用）时，通过 `CacheManager.createDefaultStore()` 工厂方法获取独立的内存缓存 store 作为 fallback，保证 SDK 仍可用。
 
 ## Classes & Interfaces
 
 ### AccessTokenManager
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.wechat`
-- **Description**: access_token 管理器。调用微信 `cgi-bin/token` 接口获取 access_token，并通过 cache 模块的 `CacheStore` 缓存，提前 5 分钟（300 秒）过期避免临界点失效。支持公众号和小程序的 token 获取。首选缓存 store 可通过构造器 `preferredStore` 参数指定（自动装配时取自 `WechatProperties.getCacheStore()`，默认 `redis`），该 store 未注册时回退到 `array` 内存 store。
+- **Description**: access_token 管理器。调用微信 `cgi-bin/token` 接口获取 access_token，并通过 cache 模块的 `CacheStore` 缓存，提前 5 分钟（300 秒）过期避免临界点失效。支持公众号和小程序的 token 获取。首选缓存 store 可通过构造器 `preferredStore` 参数指定（自动装配时取自 `WechatProperties.getCacheStore()`，默认 `redis`），该 store 未注册时回退到 `array` 内存 store。不再直接依赖 `ArrayCacheDriver` 和 `DefaultCacheStore`，当 `CacheManager` 为 null 时通过 `CacheManager.createDefaultStore()` 工厂方法获取 fallback store。
 
 #### Constants
 
@@ -26,7 +26,7 @@ wechat-sdk 模块提供了微信开发平台 API 封装，支持公众号（Offi
 | Constructor | Parameters | Description |
 |-------------|-----------|-------------|
 | `AccessTokenManager` | `OkHttpClient httpClient, ObjectMapper objectMapper, CacheManager cacheManager` | 构造 access_token 管理器；首选 store 默认为 `redis`，委托到带 `preferredStore` 的全参构造器 |
-| `AccessTokenManager` | `OkHttpClient httpClient, ObjectMapper objectMapper, CacheManager cacheManager, String preferredStore` | 构造 access_token 管理器并指定首选缓存 store 名称（如 `redis`、`array`）。通过 `resolveStore` 解析：优先使用 `preferredStore`，未注册时回退 `array`；`CacheManager` 为 null 时使用独立的 `DefaultCacheStore(ArrayCacheDriver)` |
+| `AccessTokenManager` | `OkHttpClient httpClient, ObjectMapper objectMapper, CacheManager cacheManager, String preferredStore` | 构造 access_token 管理器并指定首选缓存 store 名称（如 `redis`、`array`）。通过 `resolveStore` 解析：优先使用 `preferredStore`，未注册时回退 `array`；`CacheManager` 为 null 时通过 `CacheManager.createDefaultStore()` 工厂方法获取独立的内存缓存 store |
 
 #### Methods
 
@@ -36,7 +36,7 @@ wechat-sdk 模块提供了微信开发平台 API 封装，支持公众号（Offi
 | `refreshToken` | `String appId, String secret` | `String` | 强制刷新 access_token（忽略缓存，重新请求微信 API 并回填缓存） |
 | `invalidateToken` | `String appId` | `void` | 清除指定应用的 access_token 缓存（按 key `forget`），下次 `getToken` 会重新请求微信 API |
 | `invalidateAllTokens` | 无 | `void` | 清除所有应用的 access_token 缓存。**注意**：调用 `flush()` 会清空当前 store 下所有缓存（包括其他模块），仅在独立 store 或全局重置时使用 |
-| `resolveStore`（private static） | `CacheManager cacheManager, String preferredStore` | `CacheStore` | 解析缓存仓库：`preferredStore` 为空时默认 `redis`；优先 `cacheManager.store(preferredStore)`，抛 `IllegalStateException`（store 未注册）时回退 `cacheManager.store("array")`；`cacheManager` 为 null 时返回独立的 `DefaultCacheStore(ArrayCacheDriver)` 保证 SDK 可用 |
+| `resolveStore`（private static） | `CacheManager cacheManager, String preferredStore` | `CacheStore` | 解析缓存仓库：`preferredStore` 为空时默认 `redis`；优先 `cacheManager.store(preferredStore)`，抛 `IllegalStateException`（store 未注册）时回退 `cacheManager.store("array")`；`cacheManager` 为 null 时通过 `CacheManager.createDefaultStore()` 工厂方法返回独立的内存缓存 store 保证 SDK 可用 |
 
 #### Usage Example
 ```java
@@ -59,7 +59,7 @@ String freshToken = tokenManager.refreshToken("wx1234567890abcdef", "your-secret
 
 | Constructor | Parameters | Description |
 |-------------|-----------|-------------|
-| `OfficialAccountService` | `AccessTokenManager accessTokenManager, WechatProperties properties, OkHttpClient httpClient, ObjectMapper objectMapper, CacheManager cacheManager` | 构造公众号服务；`cacheManager` 用于 jsapi_ticket 缓存，首选 store 取自 `properties.getCacheStore()`（默认 `redis`），未注册时回退 `array` |
+| `OfficialAccountService` | `AccessTokenManager accessTokenManager, WechatProperties properties, OkHttpClient httpClient, ObjectMapper objectMapper, CacheManager cacheManager` | 构造公众号服务；`cacheManager` 用于 jsapi_ticket 缓存，首选 store 取自 `properties.getCacheStore()`（默认 `redis`），未注册时回退 `array`；`cacheManager` 为 null 时通过 `CacheManager.createDefaultStore()` 工厂方法获取独立的内存缓存 store |
 
 #### Methods
 

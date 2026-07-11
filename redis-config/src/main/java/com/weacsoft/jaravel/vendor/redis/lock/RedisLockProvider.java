@@ -1,10 +1,11 @@
-package com.weacsoft.jaravel.vendor.schedule;
+package com.weacsoft.jaravel.vendor.redis.lock;
 
 /**
  * Redis 分布式锁提供者接口。
  * <p>
- * 抽象分布式锁实现，使 schedule 模块不直接依赖 redis-config 模块。
- * 当 redis-config 模块存在时，由其自动装配提供实现；否则分布式锁功能不可用。
+ * 抽象分布式锁实现，定义于 redis-config 模块中。
+ * 当 Redis 配置可用时，由 {@link RedisLockProviderImpl} 提供实现；
+ * schedule 模块通过依赖注入可选使用此接口，实现定时任务的分布式锁防重复执行。
  */
 public interface RedisLockProvider {
 

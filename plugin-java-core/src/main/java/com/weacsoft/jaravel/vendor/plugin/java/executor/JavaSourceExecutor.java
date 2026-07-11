@@ -3,12 +3,11 @@ package com.weacsoft.jaravel.vendor.plugin.java.executor;
 import com.weacsoft.jaravel.vendor.plugin.java.classloader.DynamicClassLoader;
 import com.weacsoft.jaravel.vendor.plugin.java.compiler.DynamicJavaCompiler;
 import com.weacsoft.jaravel.vendor.plugin.java.compiler.DynamicJavaCompiler.JavaSourceFile;
+import com.weacsoft.jaravel.vendor.plugin.jar.executor.PluginExecutionHelper;
 
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
 import java.io.File;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
@@ -146,7 +145,7 @@ public final class JavaSourceExecutor {
             classLoader = new DynamicClassLoader(
                     JavaSourceExecutor.class.getClassLoader(), compiledClasses);
             Class<?> clazz = classLoader.loadClass(className);
-            invokeAndSetResult(result, clazz);
+            PluginExecutionHelper.invokeAndSetResult(result, clazz);
         } catch (Exception e) {
             result.put("success", false);
             result.put("error", "执行异常: " + e.getMessage());
@@ -215,7 +214,7 @@ public final class JavaSourceExecutor {
             classLoader = new URLClassLoader(new URL[]{tempDir.toUri().toURL()},
                     JavaSourceExecutor.class.getClassLoader());
             Class<?> clazz = classLoader.loadClass(className);
-            invokeAndSetResult(result, clazz);
+            PluginExecutionHelper.invokeAndSetResult(result, clazz);
         } catch (Exception e) {
             if (!result.containsKey("compile_success")) {
                 result.put("compile_success", false);
@@ -272,51 +271,6 @@ public final class JavaSourceExecutor {
         }
 
         return packageName != null ? packageName + "." + simpleClassName : simpleClassName;
-    }
-
-    // ==================== 内部工具 ====================
-
-    /**
-     * 反射调用 run() 或 main() 方法并设置结果。
-     * 优先调用 run()（静态或实例均可），其次调用 main(String[])。
-     */
-    private static void invokeAndSetResult(Map<String, Object> result, Class<?> clazz) throws Exception {
-        Object output = null;
-        boolean invoked = false;
-
-        // 优先调用 run()
-        try {
-            Method runMethod = clazz.getMethod("run");
-            output = Modifier.isStatic(runMethod.getModifiers())
-                    ? runMethod.invoke(null)
-                    : runMethod.invoke(clazz.getDeclaredConstructor().newInstance());
-            invoked = true;
-        } catch (NoSuchMethodException e) {
-            // 没有 run() 方法，尝试 main()
-        }
-
-        // 其次调用 main()
-        if (!invoked) {
-            try {
-                Method mainMethod = clazz.getMethod("main", String[].class);
-                if (Modifier.isStatic(mainMethod.getModifiers())) {
-                    mainMethod.invoke(null, (Object) new String[]{});
-                    output = "main() 方法已执行";
-                    invoked = true;
-                }
-            } catch (NoSuchMethodException e) {
-                // 没有 main() 方法
-            }
-        }
-
-        if (!invoked) {
-            result.put("success", false);
-            result.put("error", "未找到 run() 或 main() 方法");
-            return;
-        }
-
-        result.put("success", true);
-        result.put("output", output != null ? output.toString() : "null");
     }
 
     /** 清理临时目录 */

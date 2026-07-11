@@ -4,8 +4,6 @@ import java.io.ByteArrayInputStream;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
@@ -76,7 +74,7 @@ public final class JarBytesExecutor {
             classLoader = new InMemoryJarClassLoader(
                     jarBytes, JarBytesExecutor.class.getClassLoader());
             Class<?> clazz = classLoader.loadClass(mainClass);
-            invokeAndSetResult(result, clazz);
+            PluginExecutionHelper.invokeAndSetResult(result, clazz);
         } catch (ClassNotFoundException e) {
             result.put("success", false);
             result.put("error", "类不存在: " + mainClass);
@@ -140,7 +138,7 @@ public final class JarBytesExecutor {
             classLoader = new URLClassLoader(new URL[]{jarFile.toURI().toURL()},
                     JarBytesExecutor.class.getClassLoader());
             Class<?> clazz = classLoader.loadClass(mainClass);
-            invokeAndSetResult(result, clazz);
+            PluginExecutionHelper.invokeAndSetResult(result, clazz);
         } catch (ClassNotFoundException e) {
             result.put("success", false);
             result.put("error", "类不存在: " + mainClass);
@@ -223,48 +221,6 @@ public final class JarBytesExecutor {
         } catch (IOException e) {
             return new java.util.ArrayList<>();
         }
-    }
-
-    // ==================== 内部工具 ====================
-
-    /**
-     * 反射调用 run() 或 main() 方法并设置结果。
-     */
-    private static void invokeAndSetResult(Map<String, Object> result, Class<?> clazz) throws Exception {
-        Object output = null;
-        boolean invoked = false;
-
-        try {
-            Method runMethod = clazz.getMethod("run");
-            output = Modifier.isStatic(runMethod.getModifiers())
-                    ? runMethod.invoke(null)
-                    : runMethod.invoke(clazz.getDeclaredConstructor().newInstance());
-            invoked = true;
-        } catch (NoSuchMethodException e) {
-            // 没有 run() 方法，尝试 main()
-        }
-
-        if (!invoked) {
-            try {
-                Method mainMethod = clazz.getMethod("main", String[].class);
-                if (Modifier.isStatic(mainMethod.getModifiers())) {
-                    mainMethod.invoke(null, (Object) new String[]{});
-                    output = "main() 方法已执行";
-                    invoked = true;
-                }
-            } catch (NoSuchMethodException e) {
-                // 没有 main() 方法
-            }
-        }
-
-        if (!invoked) {
-            result.put("success", false);
-            result.put("error", "未找到 run() 或 main() 方法");
-            return;
-        }
-
-        result.put("success", true);
-        result.put("output", output != null ? output.toString() : "null");
     }
 
     // ==================== 内部类 ====================

@@ -1,6 +1,7 @@
 package com.weacsoft.jaravel.vendor.schedule;
 
 import com.weacsoft.jaravel.vendor.artisan.ArtisanApplication;
+import com.weacsoft.jaravel.vendor.redis.lock.RedisLockProvider;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -3,7 +3,9 @@
 > Module: `redis-config` | Package: `com.weacsoft.jaravel.vendor.redis` | Version: 0.1.1
 
 ## Overview
-redis-config 模块提供 Laravel 风格的 Redis 连接管理，基于 Lettuce 客户端实现。核心包含 RedisManager（多命名连接管理器，支持 standalone/sentinel/cluster 三种模式）、RedisProperties（配置属性，对齐 Laravel `config/database.php` redis 段）、RedisAutoConfiguration（自动装配）和 RedisLockProviderImpl（基于 Redis 的分布式锁实现）。连接在首次访问时惰性创建，进程生命周期内复用，所有连接线程安全可共享。
+redis-config 模块提供 Laravel 风格的 Redis 连接管理，基于 Lettuce 客户端实现。核心包含 RedisManager（多命名连接管理器，支持 standalone/sentinel/cluster 三种模式）、RedisProperties（配置属性，对齐 Laravel `config/database.php` redis 段）、RedisAutoConfiguration（自动装配）、RedisLockProvider（分布式锁接口）和 RedisLockProviderImpl（基于 Redis 的分布式锁实现）。连接在首次访问时惰性创建，进程生命周期内复用，所有连接线程安全可共享。
+
+> RedisLockProvider 接口已从 `com.weacsoft.jaravel.vendor.schedule.RedisLockProvider` 移至 `com.weacsoft.jaravel.vendor.redis.lock.RedisLockProvider`（本模块）。redis-config 模块不再依赖 schedule 模块；schedule 模块改为依赖 redis-config 模块（依赖方向已修正）。
 
 ## Classes & Interfaces
 
@@ -150,7 +152,7 @@ jaravel:
 ### RedisAutoConfiguration
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.redis`
-- **Description**: Redis 自动装配，对齐 Laravel Redis 服务提供者。当 classpath 存在 RedisManager 且配置了 `jaravel.redis.connections` 时，创建 RedisManager Bean。同时提供 RedisLockProvider 实现（当 schedule 模块存在时）。
+- **Description**: Redis 自动装配，对齐 Laravel Redis 服务提供者。当 classpath 存在 RedisManager 且配置了 `jaravel.redis.connections` 时，创建 RedisManager Bean。同时提供 RedisLockProvider 实现（接口定义于本模块 `com.weacsoft.jaravel.vendor.redis.lock` 包，不再依赖 schedule 模块）。
 - **Annotations**: `@AutoConfiguration`, `@ConditionalOnClass(RedisManager.class)`, `@ConditionalOnProperty(prefix = "jaravel.redis", name = "connections")`, `@EnableConfigurationProperties(RedisProperties.class)`
 
 #### Bean Methods
@@ -162,11 +164,25 @@ jaravel:
 
 ---
 
+### RedisLockProvider
+- **Type**: interface
+- **Package**: `com.weacsoft.jaravel.vendor.redis.lock`
+- **Description**: Redis 分布式锁提供者接口，抽象分布式锁实现。定义于 redis-config 模块中。当 Redis 配置可用时，由 `RedisLockProviderImpl` 提供实现；schedule 模块通过依赖注入可选使用此接口，实现定时任务的分布式锁防重复执行。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `tryLock` | `String key, long ttlSeconds` | `boolean` | 尝试获取分布式锁，成功返回 true |
+| `unlock` | `String key` | `void` | 释放分布式锁 |
+
+---
+
 ### RedisLockProviderImpl
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.redis.lock`
 - **Description**: 基于 Redis 的分布式锁实现，对齐 Laravel `Illuminate\Cache\RedisLock`。使用 Redis `SET key value NX EX seconds` 实现原子性加锁，通过 `DEL key` 释放锁。适用于多机环境下的定时任务防重复执行。
-- **Implements**: `com.weacsoft.jaravel.vendor.schedule.RedisLockProvider`
+- **Implements**: `com.weacsoft.jaravel.vendor.redis.lock.RedisLockProvider`
 
 #### Methods
 

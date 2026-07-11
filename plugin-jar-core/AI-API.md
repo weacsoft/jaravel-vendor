@@ -155,6 +155,25 @@ routeRegistrar.unregisterRoutes(pluginInfo);
 | `getBean` | - | `Object` | 获取目标 Bean 实例 |
 | `getMethod` | - | `Method` | 获取目标方法 |
 
+### PluginExecutionHelper
+- **Type**: class (final, 工具类)
+- **Package**: `com.weacsoft.jaravel.vendor.plugin.jar.executor`
+- **Description**: 插件执行公共辅助工具。提取 `JarBytesExecutor` 和 `JavaSourceExecutor`（plugin-java-core 模块）中重复的反射调用逻辑，统一「优先 run() → 其次 main(String[])」的调用约定。工具类不可实例化。
+- **Used by**: `JarBytesExecutor`、`JavaSourceExecutor`（plugin-java-core 模块）
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `invokeAndSetResult`（static） | `Map<String, Object> result, Class<?> clazz` | `void` | 反射调用指定类的 `run()` 或 `main(String[])` 方法，并将结果写入 result Map。调用优先级：1. `run()`（静态或实例方法均可，有返回值则记录输出）；2. `main(String[])`（仅调用静态方法，无返回值时记录固定输出）。若两者均不存在，result 中写入失败状态。成功时写入 `success=true` 和 `output`；失败时写入 `success=false` 和 `error` |
+
+#### Usage Example
+```java
+Map<String, Object> result = new LinkedHashMap<>();
+PluginExecutionHelper.invokeAndSetResult(result, loadedClass);
+// result 包含 success 和 output（或 error）字段
+```
+
 ### PluginInfo
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.plugin.jar.model`

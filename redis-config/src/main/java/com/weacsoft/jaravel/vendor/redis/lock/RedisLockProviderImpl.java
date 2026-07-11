@@ -1,7 +1,6 @@
 package com.weacsoft.jaravel.vendor.redis.lock;
 
 import com.weacsoft.jaravel.vendor.redis.RedisManager;
-import com.weacsoft.jaravel.vendor.schedule.RedisLockProvider;
 import io.lettuce.core.api.sync.RedisCommands;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

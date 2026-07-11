@@ -96,7 +96,7 @@
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>migration</artifactId>
-    <version>0.1.3</version>
+    <version>0.1.2</version>
 </dependency>
 ```
 
@@ -326,7 +326,7 @@ jaravel:
 mvn clean package -pl migration,utils -am
 
 # 执行迁移
-java -cp migration/target/migration-0.1.3.jar:utils/target/utils-0.1.3.jar:mysql-connector.jar \
+java -cp migration/target/migration-0.1.2.jar:utils/target/utils-0.1.2.jar:mysql-connector.jar \
   com.weacsoft.jaravel.vendor.migration.MigrationCLI \
   --db-url=jdbc:mysql://localhost:3306/mydb \
   --db-user=root \

@@ -1,7 +1,7 @@
 package com.weacsoft.jaravel.vendor.redis;
 
+import com.weacsoft.jaravel.vendor.redis.lock.RedisLockProvider;
 import com.weacsoft.jaravel.vendor.redis.lock.RedisLockProviderImpl;
-import com.weacsoft.jaravel.vendor.schedule.RedisLockProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;

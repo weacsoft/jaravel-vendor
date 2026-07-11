@@ -6,6 +6,8 @@
 
 springboot 模块是 Jaravel 框架与 Spring Boot Web MVC 的桥接层。`GlobalMiddlewareRegistry` 管理全局中间件列表，在请求处理前统一执行；`SpringBootRequestMVCResolver` 和 `SpringBootResponseMVCResolver` 负责在 Spring MVC 的 `HttpServletRequest`/`HttpServletResponse` 与框架内部请求/响应对象之间转换；`ResponseReturnValueHandler` 作为自定义 `HandlerMethodReturnValueHandler`，将 Controller 返回值统一包装为标准响应格式（`{code, message, data}`）。
 
+> auth 解耦说明：`SpringBootRouteAutoConfiguration` 通过 `RouteAuthHandler` 接口解耦对 auth 模块的 optional 依赖。当 auth 模块存在于 classpath 时，由 `AuthRouteAuthHandler`（`@ConditionalOnClass` 守卫）在请求处理前设置 `AuthContext`、请求结束后清理认证状态；当 auth 模块不存在时，由 `DefaultRouteAuthHandler` 提供 no-op 实现，避免 `NoClassDefFoundError`。`SpringBootRouteAutoConfiguration` 不再直接 import `AuthContext` 和 `AuthManager`。
+
 ## Classes & Interfaces
 
 ### GlobalMiddlewareRegistry
@@ -119,20 +121,74 @@ public class UserController {
 }
 ```
 
-### SpringBootRouteAutoConfiguration
-- **Type**: class
+### RouteAuthHandler
+- **Type**: interface
 - **Package**: `com.weacsoft.jaravel.vendor.springboot`
-- **Annotations**: `@AutoConfiguration`, `@ConditionalOnWebApplication`, `@ConditionalOnClass({RouterFunction, GlobalMiddlewareRegistry})`
-- **Description**: 路由桥接自动装配。注册 `GlobalMiddlewareRegistry`、`SpringBootRequestMVCResolver`、`SpringBootResponseMVCResolver` Bean，并配置 `RouterFunction` 将所有请求桥接到框架路由系统，在分发前执行全局中间件链。
+- **Description**: 路由认证处理器接口，用于解耦 springboot 模块对 auth 模块的 optional 依赖。当 auth 模块存在于 classpath 时，由 `AuthRouteAuthHandler` 提供实现，在请求处理前设置 `AuthContext`，请求结束后清理认证状态。当 auth 模块不存在时，由 `DefaultRouteAuthHandler` 提供 no-op 实现，所有操作变为空操作，避免 `NoClassDefFoundError`。
 
 #### Methods
 
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
+| `setupAuth` | `Request request` | `void` | 设置当前请求的认证上下文 |
+| `clearAuth` | 无 | `void` | 清理认证上下文（请求结束后调用） |
+
+---
+
+### DefaultRouteAuthHandler
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.springboot`
+- **Implements**: `com.weacsoft.jaravel.vendor.springboot.RouteAuthHandler`
+- **Description**: 默认路由认证处理器（no-op 实现）。当 auth 模块不在 classpath 时使用此实现，所有操作为空操作。由 `@ConditionalOnMissingBean(RouteAuthHandler.class)` 守卫，仅在没有其他 `RouteAuthHandler` 实现时创建。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `setupAuth` | `Request request` | `void` | no-op：auth 模块不在 classpath |
+| `clearAuth` | 无 | `void` | no-op：auth 模块不在 classpath |
+
+---
+
+### AuthRouteAuthHandler
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.springboot`
+- **Implements**: `com.weacsoft.jaravel.vendor.springboot.RouteAuthHandler`
+- **Annotations**: `@ConditionalOnClass(AuthManager.class)`
+- **Description**: 基于 auth 模块的路由认证处理器。当 `AuthManager` 存在于 classpath 时启用，在请求处理前通过 `AuthContext.set(request)` 设置认证上下文，请求结束后通过 `AuthContext.clear()` 和 `AuthManager.clear()` 清理 ThreadLocal 状态。`@ConditionalOnClass` 通过 ASM 读取字节码注解，不会触发类加载；当 auth 模块不在 classpath 时，Spring 不会加载此类，从而避免 `NoClassDefFoundError`。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `AuthRouteAuthHandler` | `AuthManager authManager` | 构造方法 | 创建基于 auth 模块的认证处理器 |
+| `setupAuth` | `Request request` | `void` | 通过 `AuthContext.set(request)` 设置认证上下文 |
+| `clearAuth` | 无 | `void` | 通过 `AuthContext.clear()` 和 `authManager.clear()` 清理 ThreadLocal 状态 |
+
+#### Usage Example
+```java
+// 自动装配：当 auth 模块在 classpath 时，Spring 自动创建 AuthRouteAuthHandler
+// 当 auth 模块不在 classpath 时，自动创建 DefaultRouteAuthHandler（no-op）
+// 业务代码无需关心 auth 模块是否存在，统一通过 RouteAuthHandler 接口调用
+```
+
+### SpringBootRouteAutoConfiguration
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.springboot`
+- **Annotations**: `@AutoConfiguration`
+- **Description**: 路由桥接自动装配。注册 `Router`、`GlobalMiddlewareRegistry`、`SpringBootRequestMVCResolver`、`SpringBootResponseMVCResolver` Bean，并配置 `RouterFunction` 将所有请求桥接到框架路由系统，在分发前执行全局中间件链。通过 `RouteAuthHandler` 接口解耦对 auth 模块的 optional 依赖：当 auth 模块在 classpath 且 `AuthManager` bean 存在时创建 `AuthRouteAuthHandler`，否则创建 `DefaultRouteAuthHandler`（no-op）。不再直接 import `AuthContext` 和 `AuthManager`，使用 `@ConditionalOnClass(name = ...)` 字符串形式避免触发类加载。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `baseRouter` | 无 | `Router` | 创建框架路由器 Bean（`@Bean`, `@ConditionalOnMissingBean`） |
 | `globalMiddlewareRegistry` | - | `GlobalMiddlewareRegistry` | 创建全局中间件注册表 Bean（`@Bean`, `@ConditionalOnMissingBean`） |
 | `requestMVCResolver` | - | `SpringBootRequestMVCResolver` | 创建请求解析器 Bean（`@Bean`, `@ConditionalOnMissingBean`） |
 | `responseMVCResolver` | - | `SpringBootResponseMVCResolver` | 创建响应解析器 Bean（`@Bean`, `@ConditionalOnMissingBean`） |
-| `jaravelRouterFunction` | `GlobalMiddlewareRegistry registry, SpringBootRequestMVCResolver requestResolver, SpringBootResponseMVCResolver responseResolver, Router router` | `RouterFunction<ServerResponse>` | 创建 RouterFunction 桥接 Bean（`@Bean`） |
+| `authRouteAuthHandler` | `com.weacsoft.jaravel.vendor.auth.AuthManager authManager` | `RouteAuthHandler` | 创建基于 auth 模块的认证处理器 Bean（`@Bean`, `@ConditionalOnClass(name = "com.weacsoft.jaravel.vendor.auth.AuthManager")`, `@ConditionalOnBean(type = "com.weacsoft.jaravel.vendor.auth.AuthManager")`, `@ConditionalOnMissingBean(RouteAuthHandler.class)`）；参数使用全限定名，无需 import |
+| `defaultRouteAuthHandler` | 无 | `RouteAuthHandler` | 创建 no-op 认证处理器 Bean（`@Bean`, `@ConditionalOnMissingBean(RouteAuthHandler.class)`）；当 auth 模块不在 classpath 时作为 fallback |
+| `jaravelRouterFunction` | `Router router, ObjectProvider<GlobalMiddlewareRegistry> globalMiddlewareProvider, RouteAuthHandler routeAuthHandler` | `RouterFunction<ServerResponse>` | 创建 RouterFunction 桥接 Bean（`@Bean`）；请求处理时先通过 `routeAuthHandler.setupAuth()` 设置认证上下文，执行中间件链和路由，结束后 `routeAuthHandler.clearAuth()` 清理 |
 
 #### Usage Example
 ```java

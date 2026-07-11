@@ -4,7 +4,9 @@
 
 ## Overview
 
-schedule 模块提供了 Laravel 风格的任务调度框架，支持 Cron 表达式、固定间隔和一次性延迟任务。`Schedule` 负责任务注册，`ScheduledTask` 封装单个调度任务元数据，`ScheduleRunner` 在应用启动时使用 `ScheduledExecutorService` 执行所有已注册任务。当 `RedisManager` 可用时，通过 `RedisLockProvider` 实现分布式锁，确保多实例环境下同一任务只有一个实例执行。
+schedule 模块提供了 Laravel 风格的任务调度框架，支持 Cron 表达式、固定间隔和一次性延迟任务。`Schedule` 负责任务注册，`ScheduledTask` 封装单个调度任务元数据，`ScheduleRunner` 在应用启动时使用 `ScheduledExecutorService` 执行所有已注册任务。当 `RedisLockProvider` 可用时，通过分布式锁确保多实例环境下同一任务只有一个实例执行。
+
+> RedisLockProvider 接口已移至 redis-config 模块（`com.weacsoft.jaravel.vendor.redis.lock.RedisLockProvider`），由 redis-config 模块的 `RedisLockProviderImpl` 提供实现。schedule 模块通过 `ObjectProvider<RedisLockProvider>` 可选注入，当 redis-config 不存在时分布式锁任务降级为单机执行。schedule 模块不再定义 RedisLockProvider，改为依赖 redis-config 模块（依赖方向已修正）。
 
 ## Classes & Interfaces
 
@@ -90,7 +92,7 @@ schedule.register(task);
 - **Package**: `com.weacsoft.jaravel.vendor.schedule`
 - **Implements**: `org.springframework.boot.CommandLineRunner`
 - **Annotations**: `@Component`
-- **Description**: 调度任务执行器。在应用启动时遍历 `Schedule` 中所有已注册任务，根据任务类型使用 `ScheduledExecutorService` 调度执行。对于启用分布式锁的任务，执行前通过 `RedisLockProvider` 尝试获取锁，获取失败则跳过本次执行。
+- **Description**: 调度任务执行器。在应用启动时遍历 `Schedule` 中所有已注册任务，根据任务类型使用 `ScheduledExecutorService` 调度执行。对于启用分布式锁的任务，执行前通过 `RedisLockProvider`（来自 redis-config 模块，通过 `ObjectProvider` 可选注入）尝试获取锁，获取失败则跳过本次执行。当 `RedisLockProvider` 不存在时，分布式锁任务降级为单机执行。
 
 #### Methods
 
@@ -105,32 +107,10 @@ schedule.register(task);
 // 无需手动调用，只需通过 Schedule 注册任务即可
 ```
 
-### RedisLockProvider
-- **Type**: class
-- **Package**: `com.weacsoft.jaravel.vendor.schedule`
-- **Description**: 基于 Redis 的分布式锁提供者。使用 `SET key value NX PX ttl` 原子命令获取锁，通过 Lua 脚本释放锁（校验 value 后 DEL），确保多实例环境下任务不重复执行。
-
-#### Methods
-
-| Method | Parameters | Return | Description |
-|--------|-----------|--------|-------------|
-| `RedisLockProvider` | `RedisManager redisManager, String connectionName` | - | 构造 Redis 锁提供者 |
-| `tryLock` | `String key, String value, long ttlSeconds` | `boolean` | 尝试获取分布式锁，成功返回 true |
-| `unlock` | `String key, String value` | `void` | 释放分布式锁（Lua 脚本校验 value） |
-| `isLocked` | `String key` | `boolean` | 检查锁是否被持有 |
-
-#### Usage Example
-```java
-RedisLockProvider lockProvider = new RedisLockProvider(redisManager, "cache");
-String lockValue = UUID.randomUUID().toString();
-if (lockProvider.tryLock("task:report", lockValue, 60)) {
-    try {
-        // 执行任务
-    } finally {
-        lockProvider.unlock("task:report", lockValue);
-    }
-}
-```
+### RedisLockProvider（已移至 redis-config 模块）
+- **Type**: interface
+- **Package**: `com.weacsoft.jaravel.vendor.redis.lock`（原 `com.weacsoft.jaravel.vendor.schedule`）
+- **Description**: Redis 分布式锁提供者接口，已从 schedule 模块移至 redis-config 模块。由 redis-config 模块的 `RedisLockProviderImpl` 提供实现。schedule 模块通过 `ObjectProvider<RedisLockProvider>` 可选注入，当 redis-config 不存在时分布式锁任务降级为单机执行。接口定义和方法详情请参见 redis-config 模块文档。
 
 ### ScheduleProperties
 - **Type**: class
@@ -166,12 +146,11 @@ jaravel:
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.schedule`
 - **Annotations**: `@AutoConfiguration`, `@ConditionalOnClass(Schedule.class)`, `@ConditionalOnProperty(prefix = "jaravel.schedule", name = "enabled", havingValue = "true", matchIfMissing = true)`
-- **Description**: 调度自动装配。创建 `Schedule`、`ScheduleRunner` Bean，当 `RedisManager` 存在且启用分布式锁时创建 `RedisLockProvider`。
+- **Description**: 调度自动装配。创建 `Schedule`、`ScheduleRunner` Bean。`ScheduleRunner` 通过 `ObjectProvider<RedisLockProvider>` 可选注入分布式锁提供者（来自 redis-config 模块），当 `RedisLockProvider` 不存在时分布式锁任务降级为单机执行。不再创建 `RedisLockProvider` Bean（由 redis-config 模块的 `RedisAutoConfiguration` 提供）。
 
 #### Methods
 
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
 | `schedule` | - | `Schedule` | 创建调度注册中心 Bean（`@Bean`, `@ConditionalOnMissingBean`） |
-| `scheduleRunner` | `Schedule schedule, ScheduleProperties properties` | `ScheduleRunner` | 创建调度执行器 Bean（`@Bean`, `@ConditionalOnMissingBean`） |
-| `redisLockProvider` | `RedisManager redisManager, ScheduleProperties properties` | `RedisLockProvider` | 创建 Redis 锁提供者 Bean（`@Bean`, `@ConditionalOnBean(RedisManager)`, `@ConditionalOnProperty`） |
+| `scheduleRunner` | `Schedule schedule, ObjectProvider<ArtisanApplication> artisanProvider, ObjectProvider<RedisLockProvider> lockProvider` | `ScheduleRunner` | 创建调度执行器 Bean（`@Bean`, `@ConditionalOnMissingBean`）；`RedisLockProvider` 来自 redis-config 模块，通过 `ObjectProvider.getIfAvailable()` 可选注入，不存在时为 null |

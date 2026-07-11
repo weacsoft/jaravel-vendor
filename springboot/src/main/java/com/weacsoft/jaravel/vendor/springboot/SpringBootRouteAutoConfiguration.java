@@ -1,7 +1,5 @@
 package com.weacsoft.jaravel.vendor.springboot;
 
-import com.weacsoft.jaravel.vendor.auth.AuthContext;
-import com.weacsoft.jaravel.vendor.auth.AuthManager;
 import com.weacsoft.jaravel.vendor.http.controller.request.Request;
 import com.weacsoft.jaravel.vendor.http.controller.request.RequestFactory;
 import com.weacsoft.jaravel.vendor.http.controller.response.Response;
@@ -10,6 +8,8 @@ import com.weacsoft.jaravel.vendor.route.Route;
 import com.weacsoft.jaravel.vendor.route.Router;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.HttpMethod;
@@ -37,7 +37,7 @@ import java.util.Map;
  * <ol>
  *   <li>遍历 {@link Router#getAllRoutes()}，为每条路由构造 {@link RequestPredicate}（HTTP 方法 + 完整 URI）</li>
  *   <li>构造 {@link HandlerFunction}：通过 {@link RequestFactory#buildFromServerRequest} 构建 Laravel 风格
- *       {@link Request}，设置 {@link AuthContext}，再以逆序折叠路由中间件链，终点调用 {@code Route.getAction()::handle}</li>
+ *       {@link Request}，通过 {@link RouteAuthHandler} 设置认证上下文，再以逆序折叠路由中间件链，终点调用 {@code Route.getAction()::handle}</li>
  *   <li>将 {@link Response} 的状态码、响应头、内容转为 Spring {@link ServerResponse}</li>
  * </ol>
  */
@@ -53,16 +53,43 @@ public class SpringBootRouteAutoConfiguration {
         return router;
     }
 
+    /**
+     * 认证处理器 bean：当 auth 模块在 classpath 且 AuthManager bean 存在时启用。
+     * <p>
+     * 封装 {@code AuthContext} 和 {@code AuthManager} 的调用，使主路由逻辑不直接
+     * 引用 auth 模块的类，避免 auth 不在 classpath 时的 {@code NoClassDefFoundError}。
+     * <p>
+     * 使用 {@code @ConditionalOnClass(name = ...)} 字符串形式，不触发 AuthManager 类加载；
+     * 方法参数使用全限定名，无需 import。Spring 通过 ASM 读取注解元数据，
+     * 仅在条件满足时才调用此方法，此时 AuthManager 必然在 classpath。
+     */
+    @Bean
+    @ConditionalOnClass(name = "com.weacsoft.jaravel.vendor.auth.AuthManager")
+    @ConditionalOnBean(type = "com.weacsoft.jaravel.vendor.auth.AuthManager")
+    @ConditionalOnMissingBean(RouteAuthHandler.class)
+    public RouteAuthHandler authRouteAuthHandler(
+            com.weacsoft.jaravel.vendor.auth.AuthManager authManager) {
+        return new AuthRouteAuthHandler(authManager);
+    }
+
+    /**
+     * 认证处理器 bean（fallback）：当 auth 模块不在 classpath 时使用 no-op 实现。
+     */
+    @Bean
+    @ConditionalOnMissingBean(RouteAuthHandler.class)
+    public RouteAuthHandler defaultRouteAuthHandler() {
+        return new DefaultRouteAuthHandler();
+    }
+
     @Bean
     public RouterFunction<ServerResponse> jaravelRouterFunction(Router router,
-            ObjectProvider<AuthManager> authManagerProvider,
-            ObjectProvider<GlobalMiddlewareRegistry> globalMiddlewareProvider) {
-        AuthManager authManager = authManagerProvider.getIfAvailable();
+            ObjectProvider<GlobalMiddlewareRegistry> globalMiddlewareProvider,
+            RouteAuthHandler routeAuthHandler) {
         GlobalMiddlewareRegistry globalMiddleware = globalMiddlewareProvider.getIfAvailable();
         List<Route> routes = router.getAllRoutes();
         RouterFunctions.Builder builder = RouterFunctions.route();
         routes.forEach(route -> {
-            builder.route(createRoutePredicate(route), createRouteFunction(route, authManager, globalMiddleware));
+            builder.route(createRoutePredicate(route), createRouteFunction(route, routeAuthHandler, globalMiddleware));
         });
         return builder.build();
     }
@@ -72,7 +99,7 @@ public class SpringBootRouteAutoConfiguration {
                 .and(RequestPredicates.path(route.generateFullUri()));
     }
 
-    private HandlerFunction<ServerResponse> createRouteFunction(Route route, AuthManager authManager,
+    private HandlerFunction<ServerResponse> createRouteFunction(Route route, RouteAuthHandler routeAuthHandler,
             GlobalMiddlewareRegistry globalMiddleware) {
         return springRequest -> {
             try {
@@ -87,8 +114,8 @@ public class SpringBootRouteAutoConfiguration {
                     }
                 } catch (Exception ignored) {
                 }
-                // 设置 AuthContext，使认证中间件能读取 Request 中的 Authorization 头
-                AuthContext.set(customRequest);
+                // 设置认证上下文（当 auth 模块存在时设置 AuthContext，否则 no-op）
+                routeAuthHandler.setupAuth(customRequest);
                 try {
                     // 合并中间件：全局中间件 + 路由中间件
                     List<Middleware> allMiddlewares = new ArrayList<>();
@@ -108,10 +135,7 @@ public class SpringBootRouteAutoConfiguration {
                     Response response = finalHandler.apply(customRequest);
                     return createResponse(response, customRequest);
                 } finally {
-                    AuthContext.clear();
-                    if (authManager != null) {
-                        authManager.clear();
-                    }
+                    routeAuthHandler.clearAuth();
                 }
             } catch (Exception e) {
                 log.error("路由处理异常 [{} {}]", route.getMethod(), route.generateFullUri(), e);

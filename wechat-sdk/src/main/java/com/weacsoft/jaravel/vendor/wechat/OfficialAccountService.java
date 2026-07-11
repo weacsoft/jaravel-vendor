@@ -1,10 +1,8 @@
 package com.weacsoft.jaravel.vendor.wechat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.weacsoft.jaravel.vendor.cache.driver.ArrayCacheDriver;
 import com.weacsoft.jaravel.vendor.cache.CacheManager;
 import com.weacsoft.jaravel.vendor.cache.CacheStore;
-import com.weacsoft.jaravel.vendor.cache.store.DefaultCacheStore;
 import okhttp3.MediaType;
 import okhttp3.MultipartBody;
 import okhttp3.OkHttpClient;
@@ -864,7 +862,7 @@ public class OfficialAccountService {
     private static CacheStore resolveStore(CacheManager cacheManager, String preferredStore) {
         if (cacheManager == null) {
             logger.warn("[wechat] CacheManager 未注入，jsapi_ticket 使用本地内存缓存");
-            return new DefaultCacheStore(new ArrayCacheDriver(), "");
+            return CacheManager.createDefaultStore();
         }
         if (preferredStore == null || preferredStore.isEmpty()) {
             preferredStore = "redis";

@@ -1,6 +1,8 @@
 package com.weacsoft.jaravel.vendor.cache;
 
 import com.weacsoft.jaravel.vendor.cache.autoconfigure.CacheAutoConfiguration;
+import com.weacsoft.jaravel.vendor.cache.driver.ArrayCacheDriver;
+import com.weacsoft.jaravel.vendor.cache.store.DefaultCacheStore;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -63,5 +65,14 @@ public class CacheManager {
      */
     public String getDefaultStore() {
         return defaultStore;
+    }
+
+    /**
+     * 创建默认的内存缓存 store（基于 ArrayCacheDriver），供模块在 CacheManager 未注入时作为 fallback 使用。
+     *
+     * @return 内存缓存 store
+     */
+    public static CacheStore createDefaultStore() {
+        return new DefaultCacheStore(new ArrayCacheDriver(), "");
     }
 }

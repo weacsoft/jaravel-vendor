@@ -7,7 +7,7 @@
     <parent>
         <groupId>io.github.lijialong1313</groupId>
         <artifactId>jaravel-vendor</artifactId>
-        <version>0.1.3</version>
+        <version>0.1.2</version>
     </parent>
 
     <artifactId>cache</artifactId>
@@ -18,6 +18,11 @@
         <dependency>
             <groupId>io.github.lijialong1313</groupId>
             <artifactId>core</artifactId>
+        </dependency>
+        <!-- 内部模块：utils（SimpleMemoryCache，ArrayCacheDriver 委托实现基础） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>utils</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
