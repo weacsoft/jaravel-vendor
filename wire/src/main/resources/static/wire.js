@@ -21,9 +21,62 @@
     // ===== 初始化 =====
 
     function init() {
+        // 清理 <head> 中原始文本元素（title/style/script）的 wire 标记
+        cleanHeadWireMarkers();
+
         var configs = document.querySelectorAll('[wire\\:config]');
         for (var i = 0; i < configs.length; i++) {
             initComponent(configs[i]);
+        }
+    }
+
+    /**
+     * 清理 <head> 中原始文本元素的 wire section 标记。
+     * <p>
+     * HTML 原始文本元素（title, style, script）不解析 HTML 注释，
+     * <!--wire:section-start:name--> 会被当作纯文本显示。
+     * 此方法在初始化时提取真实内容并设置到对应元素上。
+     * 同时处理属性值中的 wire 标记（如 <meta content="@yield('desc')">）。
+     */
+    function cleanHeadWireMarkers() {
+        // 1. 处理原始文本元素：title, style, script
+        var rawTextEls = document.querySelectorAll('title, style, script');
+        for (var i = 0; i < rawTextEls.length; i++) {
+            var el = rawTextEls[i];
+            var content = el.textContent || '';
+            // 提取所有 wire section 标记中的内容
+            var regex = /<!--wire:section-start:([\s\S]+?)-->([\s\S]*?)<!--wire:section-end:\1-->/g;
+            var match;
+            var cleaned = content;
+            while ((match = regex.exec(content)) !== null) {
+                cleaned = cleaned.replace(match[0], match[2]);
+            }
+            if (cleaned !== content) {
+                if (el.tagName === 'TITLE') {
+                    document.title = cleaned;
+                } else {
+                    el.textContent = cleaned;
+                }
+            }
+        }
+
+        // 2. 处理属性值中的 wire 标记（如 <meta content="<!--wire:section-start:desc-->val<!--wire:section-end:desc-->">）
+        var allEls = document.head ? document.head.querySelectorAll('*') : [];
+        for (var j = 0; j < allEls.length; j++) {
+            var elem = allEls[j];
+            for (var attrIdx = 0; attrIdx < elem.attributes.length; attrIdx++) {
+                var attr = elem.attributes[attrIdx];
+                var attrVal = attr.value;
+                var attrRegex = /<!--wire:section-start:([\s\S]+?)-->([\s\S]*?)<!--wire:section-end:\1-->/g;
+                var attrMatch;
+                var attrCleaned = attrVal;
+                while ((attrMatch = attrRegex.exec(attrVal)) !== null) {
+                    attrCleaned = attrCleaned.replace(attrMatch[0], attrMatch[2]);
+                }
+                if (attrCleaned !== attrVal) {
+                    elem.setAttribute(attr.name, attrCleaned);
+                }
+            }
         }
     }
 
@@ -430,14 +483,16 @@
 
     function getAllSections(component) {
         var sections = [];
-        var sectionEls = component.element.querySelectorAll('[wire\\:section]');
+        // 1. 搜索整个文档中的 [wire:section] 元素（body + head）
+        var sectionEls = document.documentElement.querySelectorAll('[wire\\:section]');
         for (var i = 0; i < sectionEls.length; i++) {
             var name = sectionEls[i].getAttribute('wire:section');
             if (sections.indexOf(name) === -1) {
                 sections.push(name);
             }
         }
-        var walker = document.createTreeWalker(component.element, NodeFilter.SHOW_COMMENT, null, null);
+        // 2. 搜索整个文档中的注释标记（body 中的正常注释）
+        var walker = document.createTreeWalker(document.documentElement, NodeFilter.SHOW_COMMENT, null, null);
         var comment;
         while (comment = walker.nextNode()) {
             var text = comment.nodeValue;
@@ -446,18 +501,48 @@
                 sections.push(match[1]);
             }
         }
+        // 3. 搜索原始文本元素（title, style, script）中的文本 wire 标记
+        var rawTextEls = document.querySelectorAll('title, style, script');
+        for (var r = 0; r < rawTextEls.length; r++) {
+            var rawContent = rawTextEls[r].textContent || '';
+            var rawRegex = /<!--wire:section-start:([\s\S]+?)-->/g;
+            var rawMatch;
+            while ((rawMatch = rawRegex.exec(rawContent)) !== null) {
+                if (sections.indexOf(rawMatch[1]) === -1) {
+                    sections.push(rawMatch[1]);
+                }
+            }
+        }
+        // 4. 搜索 head 中元素属性值里的 wire 标记（如 <meta content="@yield('desc')">）
+        var headEls = document.head ? document.head.querySelectorAll('*') : [];
+        for (var h = 0; h < headEls.length; h++) {
+            for (var ha = 0; ha < headEls[h].attributes.length; ha++) {
+                var attrVal = headEls[h].attributes[ha].value;
+                var attrMatch = attrVal.match(/<!--wire:section-start:([\s\S]+?)-->/);
+                if (attrMatch && sections.indexOf(attrMatch[1]) === -1) {
+                    sections.push(attrMatch[1]);
+                }
+            }
+        }
         return sections;
     }
 
     /**
      * 替换 section 内容。
-     * 支持两种标记方式：
-     * 1. <div wire:section="name">...</div> — 替换 innerHTML
+     * 支持四种标记方式：
+     * 1. <div wire:section="name">...</div> — 替换 innerHTML（body 或 head）
      * 2. <!--wire:section-start:name-->...<!--wire:section-end:name--> — 替换注释间的所有节点
+     * 3. 原始文本元素（title, style, script）中的文本标记 — 替换 textContent
+     * 4. 元素属性值中的标记（如 <meta content="...">） — 替换属性值
      */
     function replaceSection(component, sectionName, html) {
-        // 方式1: [wire:section] 元素属性
-        var sectionEl = component.element.querySelector('[wire\\:section="' + sectionName + '"]');
+        // 提取纯内容（去除 wire 标记）
+        var cleanContent = html
+            .replace(/<!--wire:section-start:[\s\S]+?-->/g, '')
+            .replace(/<!--wire:section-end:[\s\S]+?-->/g, '');
+
+        // 方式1: [wire:section] 元素属性（搜索整个文档）
+        var sectionEl = document.documentElement.querySelector('[wire\\:section="' + sectionName + '"]');
         if (sectionEl) {
             var focusInfo = saveFocus(sectionEl);
             sectionEl.innerHTML = html;
@@ -466,38 +551,68 @@
             return;
         }
 
-        // 方式2: HTML 注释标记
-        var startComment = findComment(component.element, 'wire:section-start:' + sectionName);
-        var endComment = findComment(component.element, 'wire:section-end:' + sectionName);
+        // 方式2: HTML 注释标记（搜索整个文档）
+        var startComment = findComment(document.documentElement, 'wire:section-start:' + sectionName);
+        var endComment = findComment(document.documentElement, 'wire:section-end:' + sectionName);
         if (startComment && endComment) {
-            // 收集 start 和 end 之间的所有节点
             var nodesToRemove = [];
             var node = startComment.nextSibling;
             while (node && node !== endComment) {
                 nodesToRemove.push(node);
                 node = node.nextSibling;
             }
-
-            // 保存焦点信息
             var parent = startComment.parentNode;
-            var focusInfo = saveFocus(parent);
-
-            // 移除旧节点
+            var focusInfo2 = saveFocus(parent);
             for (var i = 0; i < nodesToRemove.length; i++) {
                 parent.removeChild(nodesToRemove[i]);
             }
-
-            // 插入新内容
             var template = document.createElement('template');
             template.innerHTML = html;
-            var frag = template.content;
-            parent.insertBefore(frag, endComment);
-
-            // 恢复焦点
-            restoreFocus(focusInfo);
-
-            // 重新绑定事件
+            parent.insertBefore(template.content, endComment);
+            restoreFocus(focusInfo2);
             rebindSection(component, parent);
+            return;
+        }
+
+        // 方式3: 原始文本元素（title, style, script）中的文本标记
+        var rawTextEls = document.querySelectorAll('title, style, script');
+        for (var r = 0; r < rawTextEls.length; r++) {
+            var el = rawTextEls[r];
+            var content = el.textContent || '';
+            var startMarker = '<!--wire:section-start:' + sectionName + '-->';
+            var endMarker = '<!--wire:section-end:' + sectionName + '-->';
+            var startIdx = content.indexOf(startMarker);
+            if (startIdx >= 0) {
+                var endIdx = content.indexOf(endMarker, startIdx);
+                if (endIdx >= 0) {
+                    if (el.tagName === 'TITLE') {
+                        document.title = cleanContent;
+                    } else {
+                        el.textContent = cleanContent;
+                    }
+                    return;
+                }
+            }
+        }
+
+        // 方式4: 元素属性值中的标记（如 <meta content="@yield('desc')">）
+        var allEls = document.documentElement.querySelectorAll('*');
+        for (var a = 0; a < allEls.length; a++) {
+            var elem = allEls[a];
+            for (var attrIdx = 0; attrIdx < elem.attributes.length; attrIdx++) {
+                var attr = elem.attributes[attrIdx];
+                var attrVal = attr.value;
+                var attrStartMarker = '<!--wire:section-start:' + sectionName + '-->';
+                if (attrVal.indexOf(attrStartMarker) >= 0) {
+                    var attrEndMarker = '<!--wire:section-end:' + sectionName + '-->';
+                    var newAttrVal = attrVal.replace(
+                        new RegExp('<!--wire:section-start:' + sectionName + '-->([\\s\\S]*?)<!--wire:section-end:' + sectionName + '-->'),
+                        cleanContent
+                    );
+                    elem.setAttribute(attr.name, newAttrVal);
+                    return;
+                }
+            }
         }
     }
 
