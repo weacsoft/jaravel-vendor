@@ -10,13 +10,25 @@ import com.weacsoft.jaravel.vendor.migration.engine.MigrationSource;
  * {@code @Bean @ConfigurationProperties} 方法绑定配置；
  * 在独立运行时通过 {@link MigrationCLI} 手动设置。
  * <p>
- * 支持三种迁移源模式：
+ * 支持五种迁移源模式：
  * <pre>
  * # 目录模式（需要 JDK）
  * jaravel:
  *   migration:
  *     source: DIRECTORY
  *     directory: migrations
+ *
+ * # 预编译目录模式（只需要 JRE）
+ * jaravel:
+ *   migration:
+ *     source: DIRECTORY_CLASSES
+ *     classes-dir: precompiled/migrations
+ *
+ * # 打包模式（只需要 JRE）
+ * jaravel:
+ *   migration:
+ *     source: PACKAGED
+ *     package-path: precompiled/migrations.jmigration.zip
  *
  * # JAR 模式（只需要 JRE）
  * jaravel:
@@ -56,6 +68,12 @@ public class MigrationProperties {
     /** 迁移 .java 文件所在目录（DIRECTORY 模式，运行时内存编译扫描的目录） */
     private String directory = "migrations";
 
+    /** 预编译 class 文件目录（DIRECTORY_CLASSES 模式） */
+    private String classesDir = "";
+
+    /** 预编译打包文件路径（PACKAGED 模式，如 migrations.jmigration.zip） */
+    private String packagePath = "";
+
     /** JAR 文件路径（JAR 模式，预编译的迁移类 jar） */
     private String jarPath = "";
 
@@ -73,6 +91,10 @@ public class MigrationProperties {
     public void setSource(MigrationSource source) { this.source = source; }
     public String getDirectory() { return directory; }
     public void setDirectory(String directory) { this.directory = directory; }
+    public String getClassesDir() { return classesDir; }
+    public void setClassesDir(String classesDir) { this.classesDir = classesDir; }
+    public String getPackagePath() { return packagePath; }
+    public void setPackagePath(String packagePath) { this.packagePath = packagePath; }
     public String getJarPath() { return jarPath; }
     public void setJarPath(String jarPath) { this.jarPath = jarPath; }
     public boolean isPackageInJar() { return packageInJar; }

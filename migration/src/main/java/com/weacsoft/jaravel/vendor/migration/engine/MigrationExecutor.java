@@ -21,6 +21,8 @@ import java.util.List;
  * 通过 {@link MigrationScanner} 根据配置的 {@link MigrationSource} 选择迁移加载方式：
  * <ul>
  *   <li>{@link MigrationSource#DIRECTORY}：编译迁移目录下的 {@code .java} 文件（需要 JDK）</li>
+ *   <li>{@link MigrationSource#DIRECTORY_CLASSES}：从预编译目录加载 {@code .class} 文件（只需要 JRE）</li>
+ *   <li>{@link MigrationSource#PACKAGED}：从预编译 zip 包加载迁移类（只需要 JRE）</li>
  *   <li>{@link MigrationSource#JAR}：从 JAR 文件加载预编译的迁移类（只需要 JRE）</li>
  *   <li>{@link MigrationSource#CLASSPATH}：从 classpath 扫描迁移类（内置迁移）</li>
  * </ul>
@@ -86,6 +88,14 @@ public class MigrationExecutor {
                 case DIRECTORY:
                     log.info("[migration] 从目录编译迁移: {}", properties.getDirectory());
                     scanner.compileFromDirectory(properties.getDirectory());
+                    break;
+                case DIRECTORY_CLASSES:
+                    log.info("[migration] 从预编译目录加载迁移: {}", properties.getClassesDir());
+                    scanner.loadFromDirectoryClasses(properties.getClassesDir());
+                    break;
+                case PACKAGED:
+                    log.info("[migration] 从打包文件加载迁移: {}", properties.getPackagePath());
+                    scanner.loadFromZip(properties.getPackagePath());
                     break;
                 case JAR:
                     log.info("[migration] 从 JAR 加载迁移: {}", properties.getJarPath());

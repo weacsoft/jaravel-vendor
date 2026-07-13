@@ -35,8 +35,10 @@ import javax.sql.DataSource;
  *   <li>{@code --db-url=<url>}      数据库 JDBC URL（必填）</li>
  *   <li>{@code --db-user=<user>}    数据库用户名（必填）</li>
  *   <li>{@code --db-password=<pwd>} 数据库密码（默认空）</li>
- *   <li>{@code --source=<type>}     迁移源：DIRECTORY / JAR / CLASSPATH（默认 DIRECTORY）</li>
+ *   <li>{@code --source=<type>}     迁移源：DIRECTORY / DIRECTORY_CLASSES / PACKAGED / JAR / CLASSPATH（默认 DIRECTORY）</li>
  *   <li>{@code --directory=<path>}  迁移文件目录（DIRECTORY 模式）</li>
+ *   <li>{@code --classes-dir=<path>}  预编译 class 文件目录（DIRECTORY_CLASSES 模式）</li>
+ *   <li>{@code --package-path=<path>} 预编译打包文件路径（PACKAGED 模式，如 migrations.jmigration.zip）</li>
  *   <li>{@code --jar-path=<path>}   迁移 JAR 路径（JAR 模式）</li>
  *   <li>{@code --table=<name>}      迁移记录表名（默认 migrations）</li>
  * </ul>
@@ -105,6 +107,8 @@ public class MigrationCLI {
             String sourceStr = opts.getOrDefault("source", "DIRECTORY").toUpperCase();
             properties.setSource(MigrationSource.valueOf(sourceStr));
             properties.setDirectory(opts.getOrDefault("directory", "migrations"));
+            properties.setClassesDir(opts.getOrDefault("classes-dir", ""));
+            properties.setPackagePath(opts.getOrDefault("package-path", ""));
             properties.setJarPath(opts.getOrDefault("jar-path", ""));
             properties.setAutoRun(false);
 
@@ -163,8 +167,10 @@ public class MigrationCLI {
         System.out.println();
         System.out.println("可选参数:");
         System.out.println("  --db-password=<pwd>  数据库密码（默认空）");
-        System.out.println("  --source=<type>      迁移源：DIRECTORY / JAR / CLASSPATH（默认 DIRECTORY）");
+        System.out.println("  --source=<type>      迁移源：DIRECTORY / DIRECTORY_CLASSES / PACKAGED / JAR / CLASSPATH（默认 DIRECTORY）");
         System.out.println("  --directory=<path>   迁移文件目录（DIRECTORY 模式）");
+        System.out.println("  --classes-dir=<path>   预编译 class 文件目录（DIRECTORY_CLASSES 模式）");
+        System.out.println("  --package-path=<path>  预编译打包文件路径（PACKAGED 模式，如 migrations.jmigration.zip）");
         System.out.println("  --jar-path=<path>    迁移 JAR 路径（JAR 模式）");
         System.out.println("  --table=<name>       迁移记录表名（默认 migrations）");
         System.out.println();

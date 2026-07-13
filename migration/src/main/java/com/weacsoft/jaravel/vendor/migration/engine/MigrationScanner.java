@@ -14,8 +14,10 @@ import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
 import javax.tools.JavaFileObject;
 import javax.tools.ToolProvider;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
@@ -32,23 +34,28 @@ import java.util.jar.JarFile;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 /**
- * 迁移源扫描器与加载器，支持四种迁移来源模式。
+ * 迁移源扫描器与加载器，支持五种迁移来源模式。
  * <p>
- * <b>四种模式</b>：
+ * <b>五种模式</b>：
  * <ul>
  *   <li><b>DIRECTORY</b>（目录模式）：扫描目录下的 {@code .java} 文件，运行时内存编译（需要 JDK）。
  *       通过 {@link #compileFromDirectory(String)} 加载。</li>
  *   <li><b>DIRECTORY_CLASSES</b>（预编译目录模式）：从目录加载预编译的 {@code .class} 文件（只需 JRE）。
  *       通过 {@link #loadFromDirectoryClasses(String)} 加载，使用 {@link URLClassLoader}。</li>
+ *   <li><b>PACKAGED</b>（打包模式）：从预编译的 zip 包加载迁移类（只需 JRE）。
+ *       通过 {@link #loadFromZip(String)} 加载，使用 {@link MemoryClassLoader}。
+ *       zip 包格式与 jblade 的 .jblade.zip 一致，包含 manifest.txt 和 .class 文件。</li>
  *   <li><b>JAR</b>（JAR 模式）：从 {@code .jar} 文件加载预编译的迁移类（只需要 JRE）。
  *       通过 {@link #loadFromJar(File)} 加载，使用 {@link URLClassLoader}。</li>
  *   <li><b>CLASSPATH</b>（Classpath 模式）：从当前 classpath 扫描迁移类（内置迁移）。
  *       通过 {@link #loadFromClasspath()} 加载，使用当前 {@link ClassLoader}。</li>
  * </ul>
  * <p>
- * 三种模式均通过 {@link MigrationAnnotation} 注解自动识别迁移类，无需手动指定包名。
+ * 五种模式均通过 {@link MigrationAnnotation} 注解自动识别迁移类，无需手动指定包名。
  * <p>
  * <b>核心数据结构</b>：
  * <ul>
@@ -114,6 +121,18 @@ public class MigrationScanner {
         List<String> names = new ArrayList<>(compiledClasses.keySet());
         names.addAll(loadedClasses.keySet());
         return names;
+    }
+
+    /**
+     * 获取已编译类的字节码映射表（类名 -> 字节码）。
+     * <p>
+     * DIRECTORY 模式编译后和 PACKAGED 模式从 zip 加载后，字节码存储在此映射中。
+     * {@link MigrationPrecompiler} 通过此方法获取编译产物用于打包。
+     *
+     * @return 类全限定名 -> 字节码的映射表
+     */
+    public Map<String, byte[]> getCompiledClasses() {
+        return compiledClasses;
     }
 
     /**
@@ -348,6 +367,85 @@ public class MigrationScanner {
                 result.add(file);
             }
         }
+    }
+
+    // ==================== PACKAGED 模式（打包 zip） ====================
+
+    /**
+     * 从预编译的 zip 包加载迁移类（JRE 模式，无需 JDK）。
+     * <p>
+     * zip 包格式与 jblade 的 .jblade.zip 一致，包含 manifest.txt 和 .class 文件。
+     * 读取 zip 中所有 .class 文件的字节码，通过 {@link MemoryClassLoader} 加载，
+     * 检查 {@link MigrationAnnotation} 标记，自动识别迁移类。
+     * <p>
+     * 适用于：开发阶段用 JDK 预编译打包为 zip，生产环境只需 JRE 即可运行。
+     *
+     * @param zipPath zip 文件路径
+     * @throws Exception 加载异常
+     */
+    public void loadFromZip(String zipPath) throws Exception {
+        File zipFile = new File(zipPath);
+        if (!zipFile.exists() || !zipFile.isFile()) {
+            throw new RuntimeException("ZIP 文件不存在或不是文件: " + zipFile.getAbsolutePath());
+        }
+
+        int classCount = 0;
+        // 1. 读取 zip 中所有 .class 文件的字节码
+        try (ZipFile zip = new ZipFile(zipFile)) {
+            Enumeration<? extends ZipEntry> entries = zip.entries();
+            while (entries.hasMoreElements()) {
+                ZipEntry entry = entries.nextElement();
+                String name = entry.getName();
+                if (!name.endsWith(".class") || entry.isDirectory()) {
+                    continue;
+                }
+                String className = name.replace('/', '.').replace('\\', '.')
+                    .substring(0, name.length() - ".class".length());
+
+                try (InputStream is = zip.getInputStream(entry)) {
+                    compiledClasses.put(className, readAllBytes(is));
+                    classCount++;
+                }
+            }
+        }
+        log.info("[migration] 从 ZIP 读取了 {} 个 class 文件: {}", classCount, zipFile.getAbsolutePath());
+
+        // 2. 通过 MemoryClassLoader 加载每个类，检查是否为迁移类
+        MemoryClassLoader loader = getMemoryClassLoader();
+        int migrationCount = 0;
+        for (String className : new ArrayList<>(compiledClasses.keySet())) {
+            // 跳过内部类
+            if (className.contains("$")) {
+                continue;
+            }
+            try {
+                Class<?> clazz = loader.loadClass(className);
+                if (isMigrationClass(clazz)) {
+                    migrationCount++;
+                    log.info("[migration] 从 ZIP 加载迁移类: {}", className);
+                }
+            } catch (Throwable e) {
+                log.debug("[migration] 跳过无法加载的类: {} - {}", className, e.getMessage());
+            }
+        }
+        log.info("[migration] 从 ZIP 加载了 {} 个迁移类: {}", migrationCount, zipFile.getAbsolutePath());
+    }
+
+    /**
+     * 读取输入流的全部字节。
+     *
+     * @param is 输入流
+     * @return 字节数组
+     * @throws IOException 如果读取失败
+     */
+    private byte[] readAllBytes(InputStream is) throws IOException {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        int n;
+        while ((n = is.read(buffer)) != -1) {
+            bos.write(buffer, 0, n);
+        }
+        return bos.toByteArray();
     }
 
     // ==================== JAR 模式 ====================
@@ -743,6 +841,8 @@ public class MigrationScanner {
      * 在所有迁移操作完成后调用，确保：
      * <ul>
      *   <li>DIRECTORY 模式：清除 {@code compiledClasses} 与 {@link MemoryClassLoader}</li>
+     *   <li>DIRECTORY_CLASSES 模式：清除 {@code loadedClasses} 并关闭 {@link URLClassLoader}</li>
+     *   <li>PACKAGED 模式：清除 {@code compiledClasses} 与 {@link MemoryClassLoader}</li>
      *   <li>JAR 模式：清除 {@code loadedClasses} 并关闭 {@link URLClassLoader}</li>
      *   <li>CLASSPATH 模式：清除 {@code loadedClasses}</li>
      * </ul>
