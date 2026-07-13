@@ -5912,7 +5912,7 @@ Auth.login(user);
 <h3>migration — 数据库迁移</h3>
 <p class="module-desc">Laravel 风格迁移系统，独立于 SpringBoot 运行，支持 MySQL/SQLite/H2</p>
 <h4>简介</h4>
-<p>&gt; Jaravel-Vendor 的数据库迁移模块，提供 Laravel 风格的 Blueprint 流式建表、<code>up()</code> / <code>down()</code> 迁移引擎、<code>migrate</code> / <code>rollback</code> / <code>reset</code> / <code>refresh</code> / <code>status</code> 命令，以及 MySQL、SQLite、H2、SQL Server、PostgreSQL、Oracle 多数据库方言自动适配，并通过 <code>TableMigrator</code> 提供跨库表迁移能力。支持 DIRECTORY / DIRECTORY_CLASSES / JAR / CLASSPATH 四种迁移源模式，适配开发与生产部署。<strong>核心逻辑独立于 SpringBoot，可通过 <code>MigrationCLI</code> 在纯 Java 环境中运行</strong>。包名统一为 <code>com.weacsoft.jaravel.vendor.migration</code>。</p>
+<p>&gt; Jaravel-Vendor 的数据库迁移模块，提供 Laravel 风格的 Blueprint 流式建表、<code>up()</code> / <code>down()</code> 迁移引擎、<code>migrate</code> / <code>rollback</code> / <code>reset</code> / <code>refresh</code> / <code>status</code> 命令，以及 MySQL、SQLite、H2、SQL Server、PostgreSQL、Oracle 多数据库方言自动适配，并通过 <code>TableMigrator</code> 提供跨库表迁移能力。支持 DIRECTORY / DIRECTORY_CLASSES / PACKAGED / JAR / CLASSPATH 五种迁移源模式，适配开发与生产部署。其中 DIRECTORY_CLASSES、PACKAGED、JAR、CLASSPATH 模式仅需 JRE，可通过 <code>MigrationPrecompiler</code> 在 JDK 环境中预编译迁移类后部署到 JRE 环境。<strong>核心逻辑独立于 SpringBoot，可通过 <code>MigrationCLI</code> 在纯 Java 环境中运行</strong>。包名统一为 <code>com.weacsoft.jaravel.vendor.migration</code>。</p>
 
 <p>---</p>
 
@@ -5924,6 +5924,7 @@ Auth.login(user);
 <li><a href="#migration-3-类总览">3. 类总览</a></li>
 <li><a href="#migration-4-迁移源模式">4. 迁移源模式</a></li>
 <li><a href="#migration-5-jdkjre-构建配置">5. JDK/JRE 构建配置</a></li>
+<li style="list-style: none; padding-left: 1.5em;">└─ <a href="#migration-预编译打包流程">预编译打包流程（MigrationPrecompiler / MigrationPrecompilerMain）</a></li>
 <li><a href="#migration-6-独立运行（无-springboot）">6. 独立运行（无 SpringBoot）</a></li>
 <li><a href="#migration-7-migration-——-迁移接口">7. Migration —— 迁移接口</a></li>
 <li><a href="#migration-7-migrationannotation-——-迁移标记注解">8. MigrationAnnotation —— 迁移标记注解</a></li>
@@ -5990,16 +5991,17 @@ Auth.login(user);
 
 <p>单次 <code>up()</code> 可连续调用多次 <code>Schema.create()</code> 或 <code>Schema.table()</code> 处理多张表，<code>down()</code> 应对称地删除/回滚所有在 <code>up()</code> 中创建或修改的表。</p>
 
-<h6 id="migration-四种迁移源模式">四种迁移源模式</h6>
+<h6 id="migration-五种迁移源模式">五种迁移源模式</h6>
 
-<p>模块支持四种迁移来源（<code>MigrationSource</code> 枚举），适配不同的部署环境：</p>
+<p>模块支持五种迁移来源（<code>MigrationSource</code> 枚举），适配不同的部署环境：</p>
 
 <li><strong>DIRECTORY</strong>：从目录读取 <code>.java</code> 文件，运行时内存编译（需要 JDK）</li>
 <li><strong>DIRECTORY_CLASSES</strong>：从目录加载预编译的 <code>.class</code> 文件（只需要 JRE，无需 JDK）</li>
+<li><strong>PACKAGED</strong>：从预编译 zip 包加载迁移类（只需要 JRE，无需 JDK）。zip 包由 <code>MigrationPrecompiler</code> 生成，内含 <code>manifest.txt</code> 与 <code>.class</code> 文件</li>
 <li><strong>JAR</strong>：从 <code>.jar</code> 文件加载预编译迁移类（只需要 JRE）</li>
 <li><strong>CLASSPATH</strong>：从 classpath 扫描内置迁移类（只需要 JRE）</li>
 
-<p>详见 <a href="#migration-4-迁移源模式">第 4 节：迁移源模式</a>。</p>
+<p>其中 DIRECTORY_CLASSES 与 PACKAGED 模式的预编译产物可通过 <code>MigrationPrecompiler</code> 命令行工具（<code>MigrationPrecompilerMain</code>）一键生成，详见 <a href="#migration-预编译打包流程">预编译打包流程</a> 与 <a href="#migration-4-迁移源模式">第 4 节：迁移源模式</a>。</p>
 
 <p>---</p>
 
@@ -6026,7 +6028,7 @@ Auth.login(user);
 <tr><td>`org.slf4j:slf4j-api`</td><td>日志门面</td></tr>
 </table>
 
-<p>&gt; 运行环境要求：JDK 17+（DIRECTORY 模式）或 JRE 17+（DIRECTORY_CLASSES / JAR / CLASSPATH 模式），Spring Boot 3.2.5（Spring 6.x），容器中需存在 <code>javax.sql.DataSource</code> Bean。</p>
+<p>&gt; 运行环境要求：JDK 17+（DIRECTORY 模式）或 JRE 17+（DIRECTORY_CLASSES / PACKAGED / JAR / CLASSPATH 模式），Spring Boot 3.2.5（Spring 6.x），容器中需存在 <code>javax.sql.DataSource</code> Bean。</p>
 
 <p>---</p>
 
@@ -6036,9 +6038,12 @@ Auth.login(user);
 com.weacsoft.jaravel.vendor.migration
 ├── Migration                    // 迁移接口（up/down/getName）
 ├── MigrationAnnotation          // 迁移类标记注解（替代 @Component）
-├── MigrationSource              // 迁移源类型枚举（DIRECTORY / DIRECTORY_CLASSES / JAR / CLASSPATH）
-├── MigrationScanner             // 迁移源扫描器与加载器（支持四种模式）
+├── MigrationSource              // 迁移源类型枚举（DIRECTORY / DIRECTORY_CLASSES / PACKAGED / JAR / CLASSPATH）
+├── MigrationScanner             // 迁移源扫描器与加载器（支持五种模式）
 ├── MigrationGenerator           // 迁移类源码生成器（make:migration）
+├── MigrationPrecompiler         // 迁移类预编译器（JDK 环境预编译 .java 为 .class / zip 包）
+├── CompileMode                  // 预编译输出模式枚举（PACKAGED / CLASSES）
+├── MigrationPrecompilerMain     // 预编译命令行工具（--source-dir/--output-dir/--mode/--file-name）
 ├── Schema                       // 表结构构建器（create/table/drop/rename/hasTable/hasColumn）
 ├── Blueprint                    // 表结构蓝图（流式 API，CREATE 与 ALTER 模式）
 ├── ColumnDefinition             // 列定义（类型映射 + 链式修饰）
@@ -6054,23 +6059,24 @@ com.weacsoft.jaravel.vendor.migration
 
 <p><code>com.weacsoft.jaravel.vendor.migration.MigrationSource</code></p>
 
-<p>定义四种迁移来源，适配不同的部署场景：</p>
+<p>定义五种迁移来源，适配不同的部署场景：</p>
 
 <table>
 <tr><th>枚举值</th><th>说明</th><th>运行环境</th><th>加载方法</th></tr>
 <tr><td>`DIRECTORY`</td><td>从目录读取 `.java` 文件，运行时内存编译</td><td>JDK</td><td>`MigrationScanner.compileFromDirectory()`</td></tr>
 <tr><td>`DIRECTORY_CLASSES`</td><td>从目录加载预编译的 `.class` 文件</td><td>JRE</td><td>`MigrationScanner.loadFromDirectoryClasses()`</td></tr>
+<tr><td>`PACKAGED`</td><td>从预编译 zip 包加载迁移类（由 `MigrationPrecompiler` 生成，内含 manifest.txt 与 .class）</td><td>JRE</td><td>`MigrationScanner.loadFromZip()`</td></tr>
 <tr><td>`JAR`</td><td>从 `.jar` 文件加载预编译的迁移类</td><td>JRE</td><td>`MigrationScanner.loadFromJar()`</td></tr>
 <tr><td>`CLASSPATH`</td><td>从当前 classpath 扫描迁移类（内置迁移）</td><td>JRE</td><td>`MigrationScanner.loadFromClasspath()`</td></tr>
 </table>
 
-<p>四种模式均通过 <code>@MigrationAnnotation</code> 注解自动识别迁移类，无需手动指定包名。</p>
+<p>五种模式均通过 <code>@MigrationAnnotation</code> 注解自动识别迁移类，无需手动指定包名。其中 DIRECTORY_CLASSES 与 PACKAGED 模式的预编译产物可由 <code>MigrationPrecompiler</code> 在 JDK 环境中生成，部署到仅需 JRE 的生产环境。</p>
 
 <p>---</p>
 
 <h5 id="migration-4-迁移源模式">4. 迁移源模式</h5>
 
-<p><code>migration</code> 模块支持四种迁移来源模式，通过 <code>jaravel.migration.source</code> 配置项切换，适配不同的部署环境（开发 / 生产 / 内置迁移）。</p>
+<p><code>migration</code> 模块支持五种迁移来源模式，通过 <code>jaravel.migration.source</code> 配置项切换，适配不同的部署环境（开发 / 生产 / 内置迁移）。</p>
 
 <h6 id="migration-模式总览">模式总览</h6>
 
@@ -6078,11 +6084,12 @@ com.weacsoft.jaravel.vendor.migration
 <tr><th>模式</th><th>说明</th><th>需要</th><th>配置</th></tr>
 <tr><td>`DIRECTORY`</td><td>从目录读取 `.java` 文件，运行时内存编译</td><td>JDK</td><td>`jaravel.migration.source=DIRECTORY`</td></tr>
 <tr><td>`DIRECTORY_CLASSES`</td><td>从目录加载预编译的 `.class` 文件</td><td>JRE</td><td>`jaravel.migration.source=DIRECTORY_CLASSES`</td></tr>
+<tr><td>`PACKAGED`</td><td>从预编译 zip 包加载迁移类（`.jmigration.zip`）</td><td>JRE</td><td>`jaravel.migration.source=PACKAGED`</td></tr>
 <tr><td>`JAR`</td><td>从 `.jar` 文件加载预编译迁移类</td><td>JRE</td><td>`jaravel.migration.source=JAR`</td></tr>
 <tr><td>`CLASSPATH`</td><td>从 classpath 扫描内置迁移类</td><td>JRE</td><td>`jaravel.migration.source=CLASSPATH`</td></tr>
 </table>
 
-<p>四种模式均通过 <code>@MigrationAnnotation</code> 注解自动识别迁移类，无需手动指定包名。</p>
+<p>五种模式均通过 <code>@MigrationAnnotation</code> 注解自动识别迁移类，无需手动指定包名。DIRECTORY_CLASSES 与 PACKAGED 模式适用于将迁移类预编译后部署到仅需 JRE 的环境，预编译产物由 <code>MigrationPrecompiler</code> 生成。</p>
 
 <h6 id="migration-directory-模式（目录模式）">DIRECTORY 模式（目录模式）</h6>
 
@@ -6118,6 +6125,24 @@ jaravel:
 
 <p>&gt; <strong>与 DIRECTORY 模式的关系</strong>：DIRECTORY 模式从 <code>.java</code> 源文件运行时编译（需 JDK），DIRECTORY_CLASSES 模式从已编译的 <code>.class</code> 文件加载（仅需 JRE）。开发阶段使用 DIRECTORY 模式修改即时生效，生产部署时预编译为 .class 后切换到 DIRECTORY_CLASSES 模式。</p>
 
+<h6 id="migration-packaged-模式（预编译打包模式）">PACKAGED 模式（预编译打包模式）</h6>
+
+<p>从预编译的 zip 包加载迁移类，无需运行时编译。只需要 JRE 环境，无需 JDK。zip 包由 <code>MigrationPrecompiler</code> 在 JDK 环境中预编译生成，内含 <code>manifest.txt</code>（迁移类清单）与所有 <code>.class</code> 文件。适用于将迁移类打包为单一文件部署到生产环境的场景。</p>
+
+<li>适用场景：生产部署，迁移类已预编译打包为 <code>.jmigration.zip</code> 单文件</li>
+<li>配置项：<code>jaravel.migration.package-path</code>（对应 <code>packagePath</code> 属性）</li>
+<li>加载方法：<code>MigrationScanner.loadFromZip()</code></li>
+<li>读取 zip 包中 <code>manifest.txt</code> 获取迁移类清单，逐个加载 <code>.class</code> 文件，通过 <code>@MigrationAnnotation</code> 识别迁移类</li>
+
+<pre><code>
+jaravel:
+  migration:
+    source: PACKAGED
+    package-path: precompiled/migrations.jmigration.zip
+</code></pre>
+
+<p>&gt; <strong>与 DIRECTORY_CLASSES 模式的关系</strong>：DIRECTORY_CLASSES 从散乱的 <code>.class</code> 文件目录加载（多文件），PACKAGED 从单一 zip 包加载（单文件）。zip 包通过 <code>manifest.txt</code> 显式声明迁移类清单，加载更高效且部署更简洁。两者均仅需 JRE，预编译产物均由 <code>MigrationPrecompiler</code> 生成（详见 <a href="#migration-预编译打包流程">预编译打包流程</a>）。</p>
+
 <h6 id="migration-jar-模式">JAR 模式</h6>
 
 <p>从独立的 <code>.jar</code> 文件加载预编译的迁移类，通过 <code>URLClassLoader</code> 加载。只需要 JRE 环境，无需 JDK。</p>
@@ -6150,10 +6175,10 @@ jaravel:
 
 <h6 id="migration-自动包名检测">自动包名检测</h6>
 
-<p>四种迁移源模式均支持<strong>自动包名检测</strong>：迁移文件可以使用任意包名，<code>MigrationScanner</code> 会自动识别并加载。无需手动配置包扫描路径。</p>
+<p>五种迁移源模式均支持<strong>自动包名检测</strong>：迁移文件可以使用任意包名，<code>MigrationScanner</code> 会自动识别并加载。无需手动配置包扫描路径。</p>
 
 <li>DIRECTORY 模式：从 <code>.java</code> 源文件中解析 <code>package</code> 声明提取包名</li>
-<li>DIRECTORY_CLASSES / JAR / CLASSPATH 模式：扫描所有 <code>.class</code> 文件，通过 <code>@MigrationAnnotation</code> 注解判断是否为迁移类，自动识别任意包名</li>
+<li>DIRECTORY_CLASSES / PACKAGED / JAR / CLASSPATH 模式：扫描所有 <code>.class</code> 文件（PACKAGED 模式从 zip 包内读取），通过 <code>@MigrationAnnotation</code> 注解判断是否为迁移类，自动识别任意包名</li>
 
 <h6 id="migration-模式选择建议">模式选择建议</h6>
 
@@ -6161,6 +6186,7 @@ jaravel:
 <tr><th>场景</th><th>推荐模式</th><th>运行环境</th></tr>
 <tr><td>本地开发</td><td>`DIRECTORY`</td><td>JDK</td></tr>
 <tr><td>生产部署（预编译 class 目录）</td><td>`DIRECTORY_CLASSES`</td><td>JRE</td></tr>
+<tr><td>生产部署（预编译 zip 单文件）</td><td>`PACKAGED`</td><td>JRE</td></tr>
 <tr><td>生产部署（迁移类独立 jar）</td><td>`JAR`</td><td>JRE</td></tr>
 <tr><td>框架内置迁移</td><td>`CLASSPATH`</td><td>JRE</td></tr>
 </table>
@@ -6175,13 +6201,13 @@ jaravel:
 
 <table>
 <tr><th>Profile</th><th>激活方式</th><th>运行环境</th><th>支持的迁移源模式</th></tr>
-<tr><td>`jdk-mode`</td><td>默认（未指定 `-Djre-only` 时激活）</td><td>完整 JDK</td><td>DIRECTORY / DIRECTORY_CLASSES / JAR / CLASSPATH</td></tr>
-<tr><td>`jre-mode`</td><td>`-Djre-only`</td><td>仅 JRE</td><td>DIRECTORY_CLASSES / JAR / CLASSPATH</td></tr>
+<tr><td>`jdk-mode`</td><td>默认（未指定 `-Djre-only` 时激活）</td><td>完整 JDK</td><td>DIRECTORY / DIRECTORY_CLASSES / PACKAGED / JAR / CLASSPATH</td></tr>
+<tr><td>`jre-mode`</td><td>`-Djre-only`</td><td>仅 JRE</td><td>DIRECTORY_CLASSES / PACKAGED / JAR / CLASSPATH</td></tr>
 </table>
 
 <h6 id="migration-jdk-mode（默认）">jdk-mode（默认）</h6>
 
-<p>完整 JDK 环境，<code>javax.tools.JavaCompiler</code> 由 JDK 提供，支持全部四种迁移源模式（包括 DIRECTORY 内存编译和 DIRECTORY_CLASSES 预编译 class 加载）。</p>
+<p>完整 JDK 环境，<code>javax.tools.JavaCompiler</code> 由 JDK 提供，支持全部五种迁移源模式（包括 DIRECTORY 内存编译，以及 DIRECTORY_CLASSES / PACKAGED 预编译加载）。JDK 环境还可通过 <code>MigrationPrecompiler</code> 预编译迁移类，供 JRE 环境使用。</p>
 
 <pre><code>
 # 默认构建，使用 JDK
@@ -6190,7 +6216,7 @@ mvn clean package
 
 <h6 id="migration-jre-mode">jre-mode</h6>
 
-<p>仅 JRE 环境，不包含编译器，因此不支持 DIRECTORY 内存编译模式，支持 DIRECTORY_CLASSES（预编译 class 目录）、JAR 与 CLASSPATH 模式。</p>
+<p>仅 JRE 环境，不包含编译器，因此不支持 DIRECTORY 内存编译模式，支持 DIRECTORY_CLASSES（预编译 class 目录）、PACKAGED（预编译 zip 包）、JAR 与 CLASSPATH 模式。预编译产物需在 JDK 环境中通过 <code>MigrationPrecompiler</code> 提前生成。</p>
 
 <pre><code>
 # JRE 模式构建
@@ -6201,17 +6227,18 @@ mvn clean package -Djre-only
 
 <h6 id="migration-jdk-不可用时的解决方案">JDK 不可用时的解决方案</h6>
 
-<p>当运行环境仅有 JRE（无法获取 <code>javax.tools.JavaCompiler</code>）时，<code>DIRECTORY</code> 模式不可用。以下提供四种替代方案：</p>
+<p>当运行环境仅有 JRE（无法获取 <code>javax.tools.JavaCompiler</code>）时，<code>DIRECTORY</code> 模式不可用。以下提供五种替代方案：</p>
 
 <table>
 <tr><th>方案</th><th>迁移源模式</th><th>说明</th></tr>
 <tr><td>1. 预编译 class 目录</td><td>`DIRECTORY_CLASSES`</td><td>在 JDK 环境中预编译迁移 .java 为 .class，生产环境通过 `DIRECTORY_CLASSES` 模式从目录加载。无需打包为 jar</td></tr>
-<tr><td>2. 打包为独立 jar</td><td>`JAR`</td><td>在 JDK 环境中编译迁移类并打包为独立 jar，生产环境通过 `JAR` 模式加载</td></tr>
-<tr><td>3. 内置到 classpath</td><td>`CLASSPATH`</td><td>将迁移类与框架一起打包，生产环境通过 `CLASSPATH` 模式从 classpath 扫描</td></tr>
-<tr><td>4. 升级为 JDK</td><td>`DIRECTORY`</td><td>将运行环境升级为完整 JDK，继续使用 `DIRECTORY` 模式运行时编译</td></tr>
+<tr><td>2. 预编译 zip 包</td><td>`PACKAGED`</td><td>在 JDK 环境中通过 `MigrationPrecompiler` 预编译并打包为 `.jmigration.zip`（含 manifest.txt + .class），生产环境通过 `PACKAGED` 模式从 zip 加载。单文件部署，最简洁</td></tr>
+<tr><td>3. 打包为独立 jar</td><td>`JAR`</td><td>在 JDK 环境中编译迁移类并打包为独立 jar，生产环境通过 `JAR` 模式加载</td></tr>
+<tr><td>4. 内置到 classpath</td><td>`CLASSPATH`</td><td>将迁移类与框架一起打包，生产环境通过 `CLASSPATH` 模式从 classpath 扫描</td></tr>
+<tr><td>5. 升级为 JDK</td><td>`DIRECTORY`</td><td>将运行环境升级为完整 JDK，继续使用 `DIRECTORY` 模式运行时编译</td></tr>
 </table>
 
-<p>&gt; <strong>推荐</strong>：方案 1（DIRECTORY_CLASSES）最为灵活，无需打包步骤，只需将预编译的 .class 文件复制到生产环境目录即可。方案 2 和 3 适合已使用 jar 打包流程的项目。方案 4 适合容器镜像不受限的场景。</p>
+<p>&gt; <strong>推荐</strong>：方案 1（DIRECTORY_CLASSES）最为灵活，无需打包步骤，只需将预编译的 .class 文件复制到生产环境目录即可。方案 2（PACKAGED）适合追求单文件部署的场景，通过 <code>MigrationPrecompiler</code> 一键生成 zip 包。方案 3 和 4 适合已使用 jar 打包流程的项目。方案 5 适合容器镜像不受限的场景。</p>
 
 <h6 id="migration-构建时打包迁移目录（classpath-模式）">构建时打包迁移目录（CLASSPATH 模式）</h6>
 
@@ -6226,6 +6253,112 @@ mvn clean package -Djre-only
     &lt;/includes&gt;
 &lt;/resource&gt;
 </code></pre>
+
+<h6 id="migration-预编译打包流程">预编译打包流程</h6>
+
+<p><code>MigrationPrecompiler</code> 是迁移类预编译器，在 <strong>JDK 环境</strong>中将 <code>.java</code> 迁移源文件预编译为 <code>.class</code> 字节码，并可选地打包为 zip 包。生成的预编译产物可部署到仅需 <strong>JRE</strong> 的生产环境，配合 <code>DIRECTORY_CLASSES</code>（散乱 class 目录）或 <code>PACKAGED</code>（zip 包）模式加载，从而避免在生产环境依赖 JDK。</p>
+
+<p>预编译器与运行时扫描器的关系：<code>MigrationPrecompiler</code> 复用 <code>MigrationScanner.compileFromDirectory()</code> 的内存编译逻辑将 <code>.java</code> 编译为字节码，再通过 <code>MigrationScanner.getCompiledClasses()</code> 获取编译产物并写出。运行时则由 <code>MigrationScanner.loadFromDirectoryClasses()</code> 或 <code>MigrationScanner.loadFromZip()</code> 加载这些产物。</p>
+
+<h6 id="migration-预编译器类">MigrationPrecompiler 类</h6>
+
+<p><code>com.weacsoft.jaravel.vendor.migration.MigrationPrecompiler</code></p>
+
+<p>迁移类预编译器。构造时指定迁移源文件目录（<code>.java</code> 所在目录），调用 <code>compileAll</code> 系列方法生成预编译产物。</p>
+
+<table>
+<tr><th>方法签名</th><th>说明</th></tr>
+<tr><td>`MigrationPrecompiler(String sourceDir)`</td><td>构造方法，指定迁移 `.java` 源文件所在目录</td></tr>
+<tr><td>`int compileAll(String outputDir, CompileMode mode, String fileName)`</td><td>预编译所有迁移文件。根据 `mode` 选择输出形式：`PACKAGED` 打包为 zip，`CLASSES` 输出散乱 class。返回编译的迁移类数量</td></tr>
+<tr><td>`int compileAllToZip(String outputDir, String fileName)`</td><td>预编译并打包为 zip 包（等价于 `compileAll(outputDir, CompileMode.PACKAGED, fileName)`）。返回编译的迁移类数量</td></tr>
+<tr><td>`int compileAllToClasses(String outputDir)`</td><td>预编译并输出散乱 `.class` 文件到目录（等价于 `compileAll(outputDir, CompileMode.CLASSES, null)`）。返回编译的迁移类数量</td></tr>
+</table>
+
+<h6 id="migration-compilemode-枚举">CompileMode 枚举</h6>
+
+<p><code>com.weacsoft.jaravel.vendor.migration.CompileMode</code></p>
+
+<p>预编译输出模式枚举，决定 <code>compileAll</code> 的产物形式：</p>
+
+<table>
+<tr><th>枚举值</th><th>产物形式</th><th>对应运行时模式</th><th>说明</th></tr>
+<tr><td>`PACKAGED`</td><td>zip 包（`<fileName>.jmigration.zip`）</td><td>`PACKAGED`</td><td>将所有 .class 与 manifest.txt 打包为单一 zip 文件，适合单文件部署</td></tr>
+<tr><td>`CLASSES`</td><td>散乱 `.class` 文件目录</td><td>`DIRECTORY_CLASSES`</td><td>将 .class 文件按包结构输出到目录，适合目录加载</td></tr>
+</table>
+
+<h6 id="migration-zip-包格式">zip 包格式</h6>
+
+<p>PACKAGED 模式生成的 zip 包（约定扩展名为 <code>.jmigration.zip</code>）内部结构如下：</p>
+
+<pre><code>
+migrations.jmigration.zip
+├── manifest.txt              // 迁移类清单（每行一个全限定类名）
+├── com/
+│   └── example/
+│       └── Migration_2024_01_01_CreateUsersTable.class
+└── com/
+    └── example/
+        └── Migration_2024_01_02_AddEmailToUsersTable.class
+</code></pre>
+
+<li><code>manifest.txt</code>：迁移类清单文件，每行记录一个迁移类的全限定名，运行时由 <code>MigrationScanner.loadFromZip()</code> 读取以确定待加载的迁移类</li>
+<li><code>.class</code> 文件：按包名路径组织，与普通 class 目录结构一致</li>
+<li>内部类（含 <code>$</code> 的类）会被一并打包，但不会出现在 manifest 中</li>
+
+<h6 id="migration-预编译命令行工具">MigrationPrecompilerMain 命令行工具</h6>
+
+<p><code>com.weacsoft.jaravel.vendor.migration.MigrationPrecompilerMain</code></p>
+
+<p>预编译命令行入口，封装 <code>MigrationPrecompiler</code>，无需编写代码即可生成预编译产物。仅需 JDK 环境 + migration.jar + utils.jar。</p>
+
+<table>
+<tr><th>参数</th><th>必填</th><th>默认值</th><th>说明</th></tr>
+<tr><td>`--source-dir=<path>`</td><td>是</td><td>-</td><td>迁移 `.java` 源文件所在目录</td></tr>
+<tr><td>`--output-dir=<path>`</td><td>是</td><td>-</td><td>预编译产物输出目录</td></tr>
+<tr><td>`--mode=<mode>`</td><td>否</td><td>`packaged`</td><td>预编译模式：`packaged`（zip 包）/ `classes`（散乱 class）</td></tr>
+<tr><td>`--file-name=<name>`</td><td>否</td><td>`migrations.jmigration.zip`</td><td>zip 包文件名（仅 `packaged` 模式生效）</td></tr>
+</table>
+
+<pre><code>
+# 打包为 zip（PACKAGED 模式，默认）
+java -cp migration.jar MigrationPrecompilerMain \
+  --source-dir=migrations \
+  --output-dir=precompiled \
+  --mode=packaged \
+  --file-name=migrations.jmigration.zip
+
+# 输出散乱 class（DIRECTORY_CLASSES 模式）
+java -cp migration.jar MigrationPrecompilerMain \
+  --source-dir=migrations \
+  --output-dir=precompiled/migrations \
+  --mode=classes
+</code></pre>
+
+<h6 id="migration-完整预编译工作流">完整预编译工作流</h6>
+
+<p>典型的「开发用 JDK，生产用 JRE」工作流如下：</p>
+
+<pre><code>
+# 1. 开发阶段：使用 DIRECTORY 模式（需 JDK），迁移 .java 修改即时生效
+#    application.yml: jaravel.migration.source=DIRECTORY, directory=migrations
+
+# 2. 发布前：在 JDK 环境预编译迁移类
+java -cp migration.jar:utils.jar MigrationPrecompilerMain \
+  --source-dir=migrations \
+  --output-dir=precompiled \
+  --mode=packaged \
+  --file-name=migrations.jmigration.zip
+# 产物：precompiled/migrations.jmigration.zip
+
+# 3. 生产部署：仅需 JRE，配置 PACKAGED 模式加载 zip 包
+#    application.yml:
+#    jaravel:
+#      migration:
+#        source: PACKAGED
+#        package-path: precompiled/migrations.jmigration.zip
+</code></pre>
+
+<p>&gt; <strong>提示</strong>：若偏好散乱 class 目录，第 2 步改用 <code>--mode=classes</code>，第 3 步配置 <code>source: DIRECTORY_CLASSES</code> 与 <code>classes-dir</code>。zip 包（PACKAGED）部署更简洁，class 目录（DIRECTORY_CLASSES）调试更直观。</p>
 
 <p>---</p>
 
@@ -6256,7 +6389,7 @@ mvn clean package -Djre-only
 jaravel:
   migration:
     enabled: true
-    source: DIRECTORY          # DIRECTORY / JAR / CLASSPATH
+    source: DIRECTORY          # DIRECTORY / DIRECTORY_CLASSES / PACKAGED / JAR / CLASSPATH
     directory: migrations
     table: migrations
     auto-run: true
@@ -6321,7 +6454,7 @@ executor.execute(&quot;status&quot;);            // 查看状态
 
 <p>每个迁移类实现此接口，提供 <code>up()</code> 与 <code>down()</code> 两个方法，分别表示正向执行与回滚。</p>
 
-<p>&gt; <strong>重要</strong>：迁移类使用 <code>@MigrationAnnotation</code> 标记（非 Spring <code>@Component</code>），在运行时由 <code>MigrationScanner</code> 加载（DIRECTORY 内存编译 / JAR 加载 / CLASSPATH 扫描）、反射实例化、执行后自动释放。</p>
+<p>&gt; <strong>重要</strong>：迁移类使用 <code>@MigrationAnnotation</code> 标记（非 Spring <code>@Component</code>），在运行时由 <code>MigrationScanner</code> 加载（DIRECTORY 内存编译 / DIRECTORY_CLASSES 与 PACKAGED 预编译加载 / JAR 加载 / CLASSPATH 扫描）、反射实例化、执行后自动释放。</p>
 
 <h6 id="migration-方法文档">方法文档</h6>
 
@@ -6394,7 +6527,7 @@ public class Migration_2024_02_01_CreateBlogTables implements Migration {
 
 <p><code>com.weacsoft.jaravel.vendor.migration.MigrationAnnotation</code></p>
 
-<p>迁移类标记注解，用于在运行时识别哪些类是迁移类。<strong>替代 Spring <code>@Component</code></strong>：迁移文件不再作为 Spring Bean 注册到容器，而是通过 <code>MigrationScanner</code> 在运行时加载（DIRECTORY 编译 / JAR 加载 / CLASSPATH 扫描）、反射实例化、执行后自动释放。</p>
+<p>迁移类标记注解，用于在运行时识别哪些类是迁移类。<strong>替代 Spring <code>@Component</code></strong>：迁移文件不再作为 Spring Bean 注册到容器，而是通过 <code>MigrationScanner</code> 在运行时加载（DIRECTORY 编译 / DIRECTORY_CLASSES 与 PACKAGED 预编译加载 / JAR 加载 / CLASSPATH 扫描）、反射实例化、执行后自动释放。</p>
 
 <h6 id="migration-注解定义">注解定义</h6>
 
@@ -6428,7 +6561,7 @@ public class Migration_2024_01_02_CustomName implements Migration {
 }
 </code></pre>
 
-<p>&gt; 四种迁移源模式均通过 <code>@MigrationAnnotation</code> 自动识别迁移类，迁移文件可使用任意包名，无需手动配置包扫描路径。</p>
+<p>&gt; 五种迁移源模式均通过 <code>@MigrationAnnotation</code> 自动识别迁移类，迁移文件可使用任意包名，无需手动配置包扫描路径。</p>
 
 <p>---</p>
 
@@ -6436,7 +6569,7 @@ public class Migration_2024_01_02_CustomName implements Migration {
 
 <p><code>com.weacsoft.jaravel.vendor.migration.MigrationScanner</code></p>
 
-<p>迁移源扫描器与加载器，支持四种迁移来源模式（DIRECTORY / DIRECTORY_CLASSES / JAR / CLASSPATH）。四种模式均通过 <code>@MigrationAnnotation</code> 注解自动识别迁移类，无需手动指定包名。</p>
+<p>迁移源扫描器与加载器，支持五种迁移来源模式（DIRECTORY / DIRECTORY_CLASSES / PACKAGED / JAR / CLASSPATH）。五种模式均通过 <code>@MigrationAnnotation</code> 注解自动识别迁移类，无需手动指定包名。其中 DIRECTORY_CLASSES / PACKAGED 模式加载的预编译产物可由 <code>MigrationPrecompiler</code> 生成。</p>
 
 <h6 id="migration-核心数据结构">核心数据结构</h6>
 
@@ -6456,9 +6589,11 @@ public class Migration_2024_01_02_CustomName implements Migration {
 <tr><td>`void compileFromDirectory(File dir)`</td><td>DIRECTORY</td><td>同上，接收 `File` 参数</td></tr>
 <tr><td>`void loadFromDirectoryClasses(String directory)`</td><td>DIRECTORY_CLASSES</td><td>从目录加载预编译的 `.class` 文件，递归扫描，跳过内部类。仅需 JRE，无需 JDK</td></tr>
 <tr><td>`void loadFromDirectoryClasses(File dir)`</td><td>DIRECTORY_CLASSES</td><td>同上，接收 `File` 参数</td></tr>
+<tr><td>`void loadFromZip(String zipPath)`</td><td>PACKAGED</td><td>从预编译 zip 包加载迁移类，读取 `manifest.txt` 迁移类清单并逐个加载 `.class`。仅需 JRE，无需 JDK</td></tr>
 <tr><td>`void loadFromJar(File jarFile)`</td><td>JAR</td><td>从 JAR 文件加载预编译迁移类，使用 `URLClassLoader`，扫描所有 `.class`（跳过 `META-INF` 与内部类）</td></tr>
 <tr><td>`void loadFromClasspath()`</td><td>CLASSPATH</td><td>从当前 classpath 扫描迁移类，支持目录（递归）与 JAR 文件</td></tr>
 <tr><td>`Class<?> getCompiledClass(String className)`</td><td>通用</td><td>获取已编译或已加载的类，优先从 `compiledClasses` 查找，其次 `loadedClasses`</td></tr>
+<tr><td>`Map<String, byte[]> getCompiledClasses()`</td><td>通用</td><td>获取编译后的字节码映射（类名 -> 字节码）。DIRECTORY 模式编译产物由此方法暴露，供 `MigrationPrecompiler` 写出预编译文件</td></tr>
 <tr><td>`List<String> getAllMigrationClassNames()`</td><td>通用</td><td>获取所有迁移类全限定名列表（含 DIRECTORY 编译的与 JAR/CLASSPATH 加载的）</td></tr>
 <tr><td>`void finish()`</td><td>通用</td><td>释放所有资源：清除类字节码、已加载类、关闭 `URLClassLoader`、释放 `MemoryClassLoader`</td></tr>
 <tr><td>`MemoryClassLoader getMemoryClassLoader()`</td><td>DIRECTORY</td><td>获取内存类加载器（懒加载，每次返回同一实例）</td></tr>
@@ -6492,6 +6627,19 @@ public class Migration_2024_01_02_CustomName implements Migration {
 3. 符合条件的类存入 loadedClasses
 </code></pre>
 
+<p><strong>PACKAGED 模式（<code>loadFromZip</code>）</strong>：</p>
+
+<pre><code>
+1. 打开 zip 包，读取 manifest.txt 获取迁移类全限定名清单
+2. 逐个清单中的类名：
+   a. 按包名路径在 zip 中定位 .class 条目（如 com/example/Migration_xxx.class）
+   b. 读取 .class 字节码
+   c. 将字节码注册到 MemoryClassLoader
+   d. 加载类并检查 @MigrationAnnotation 注解与 Migration 接口
+3. 符合条件的类存入 loadedClasses
+4. 关闭 zip 流
+</code></pre>
+
 <p><strong>JAR 模式（<code>loadFromJar</code>）</strong>：</p>
 
 <pre><code>
@@ -6523,6 +6671,9 @@ try {
 
     // 或 DIRECTORY_CLASSES 模式（仅需 JRE，加载预编译 .class）
     // scanner.loadFromDirectoryClasses(&quot;build/migration-classes&quot;);
+
+    // 或 PACKAGED 模式（仅需 JRE，加载预编译 zip 包）
+    // scanner.loadFromZip(&quot;precompiled/migrations.jmigration.zip&quot;);
 
     // 或 JAR 模式
     // scanner.loadFromJar(new File(&quot;migrations.jar&quot;));
@@ -6958,7 +7109,7 @@ schema.create(&quot;posts&quot;, table -&gt; {
 
 <p><code>com.weacsoft.jaravel.vendor.migration.Migrator</code></p>
 
-<p>对齐 Laravel <code>Illuminate\Database\Migrations\Migrator</code>。通过 <code>MigrationScanner</code> 在运行时加载迁移类（DIRECTORY 编译 / JAR 加载 / CLASSPATH 扫描）、反射实例化，按名称排序，与 <code>MigrationRepository</code> 记录比对，执行待运行的迁移或回滚。所有操作完成后调用 <code>finish()</code> 释放资源。</p>
+<p>对齐 Laravel <code>Illuminate\Database\Migrations\Migrator</code>。通过 <code>MigrationScanner</code> 在运行时加载迁移类（DIRECTORY 编译 / DIRECTORY_CLASSES 与 PACKAGED 预编译加载 / JAR 加载 / CLASSPATH 扫描）、反射实例化，按名称排序，与 <code>MigrationRepository</code> 记录比对，执行待运行的迁移或回滚。所有操作完成后调用 <code>finish()</code> 释放资源。</p>
 
 <h6 id="migration-方法文档">方法文档</h6>
 
@@ -7076,7 +7227,7 @@ try {
 
 <p>对齐 Laravel artisan 的 migrate 系列命令。实现 <code>CommandLineRunner</code>，通过启动参数触发迁移命令。</p>
 
-<p>&gt; <strong>重要变更</strong>：不再通过 Spring DI 注入 <code>List&lt;Migration&gt;</code>，而是在运行时创建 <code>MigrationScanner</code>，根据 <code>jaravel.migration.source</code> 配置选择加载方式（DIRECTORY 编译 / JAR 加载 / CLASSPATH 扫描），通过 <code>Migrator</code> 执行迁移，完成后调用 <code>scanner.finish()</code> 释放资源。</p>
+<p>&gt; <strong>重要变更</strong>：不再通过 Spring DI 注入 <code>List&lt;Migration&gt;</code>，而是在运行时创建 <code>MigrationScanner</code>，根据 <code>jaravel.migration.source</code> 配置选择加载方式（DIRECTORY 编译 / DIRECTORY_CLASSES 与 PACKAGED 预编译加载 / JAR 加载 / CLASSPATH 扫描），通过 <code>Migrator</code> 执行迁移，完成后调用 <code>scanner.finish()</code> 释放资源。</p>
 
 <h6 id="migration-执行流程">执行流程</h6>
 
@@ -7084,6 +7235,8 @@ try {
 1. 从 MigrationProperties 获取迁移源类型与相关配置
 2. 创建 MigrationScanner，根据 source 选择加载方式：
    - DIRECTORY：编译目录下所有 .java 文件（需要 JDK）
+   - DIRECTORY_CLASSES：从目录加载预编译 .class 文件（只需要 JRE）
+   - PACKAGED：从预编译 zip 包加载迁移类（只需要 JRE）
    - JAR：从 jar 文件加载预编译迁移类（只需要 JRE）
    - CLASSPATH：从 classpath 扫描迁移类（只需要 JRE）
 3. 创建 Schema、MigrationRepository、Migrator
@@ -7132,7 +7285,7 @@ java -jar app.jar --jaravel.migration-status
 
 <p>Spring Boot 自动装配类。当容器中存在 <code>DataSource</code> 且 <code>jaravel.migration.enabled=true</code>（默认）时，注册 <code>MigrationRunner</code> Bean。</p>
 
-<p>&gt; <strong>重要变更</strong>：不再注入 <code>List&lt;Migration&gt;</code>，也不再注册 <code>Schema</code>、<code>MigrationRepository</code>、<code>Migrator</code> 为 Bean。迁移文件不再是 Spring 组件，而是通过 <code>MigrationScanner</code> 在运行时加载（DIRECTORY 编译 / JAR 加载 / CLASSPATH 扫描）、反射实例化、执行后自动释放。本类仅注册 <code>MigrationRunner</code> 一个 Bean，注入 <code>DataSource</code> 与 <code>MigrationProperties</code>。</p>
+<p>&gt; <strong>重要变更</strong>：不再注入 <code>List&lt;Migration&gt;</code>，也不再注册 <code>Schema</code>、<code>MigrationRepository</code>、<code>Migrator</code> 为 Bean。迁移文件不再是 Spring 组件，而是通过 <code>MigrationScanner</code> 在运行时加载（DIRECTORY 编译 / DIRECTORY_CLASSES 与 PACKAGED 预编译加载 / JAR 加载 / CLASSPATH 扫描）、反射实例化、执行后自动释放。本类仅注册 <code>MigrationRunner</code> 一个 Bean，注入 <code>DataSource</code> 与 <code>MigrationProperties</code>。</p>
 
 <table>
 <tr><th>Bean</th><th>类型</th><th>说明</th></tr>
@@ -7150,8 +7303,10 @@ java -jar app.jar --jaravel.migration-status
 <pre><code>
 jaravel:
   migration:
-    source: DIRECTORY        # 迁移源类型（DIRECTORY / JAR / CLASSPATH）
+    source: DIRECTORY        # 迁移源类型（DIRECTORY / DIRECTORY_CLASSES / PACKAGED / JAR / CLASSPATH）
     directory: migrations   # 迁移 .java 文件所在目录（DIRECTORY 模式）
+    classes-dir: &quot;&quot;         # 预编译 .class 文件目录（DIRECTORY_CLASSES 模式）
+    package-path: &quot;&quot;        # 预编译 zip 包路径（PACKAGED 模式）
     jar-path: &quot;&quot;            # JAR 文件路径（JAR 模式）
     package-in-jar: false   # 构建时是否将迁移目录打包进 jar（CLASSPATH 模式）
     enabled: true           # 是否启用迁移模块
@@ -7161,8 +7316,10 @@ jaravel:
 
 <table>
 <tr><th>属性</th><th>类型</th><th>默认值</th><th>说明</th></tr>
-<tr><td>`jaravel.migration.source`</td><td>`MigrationSource`</td><td>`DIRECTORY`</td><td>迁移源类型，可选 `DIRECTORY` / `DIRECTORY_CLASSES` / `JAR` / `CLASSPATH`</td></tr>
-<tr><td>`jaravel.migration.directory`</td><td>`String`</td><td>`migrations`</td><td>迁移文件所在目录。DIRECTORY 模式下扫描 `.java` 文件并内存编译；DIRECTORY_CLASSES 模式下扫描 `.class` 文件加载</td></tr>
+<tr><td>`jaravel.migration.source`</td><td>`MigrationSource`</td><td>`DIRECTORY`</td><td>迁移源类型，可选 `DIRECTORY` / `DIRECTORY_CLASSES` / `PACKAGED` / `JAR` / `CLASSPATH`</td></tr>
+<tr><td>`jaravel.migration.directory`</td><td>`String`</td><td>`migrations`</td><td>迁移文件所在目录。DIRECTORY 模式下扫描 `.java` 文件并内存编译；亦可指向 DIRECTORY_CLASSES 的 .class 目录（向后兼容）</td></tr>
+<tr><td>`jaravel.migration.classes-dir`</td><td>`String`</td><td>`""`</td><td>预编译 `.class` 文件目录（DIRECTORY_CLASSES 模式）。由 `MigrationPrecompiler` 生成，仅需 JRE</td></tr>
+<tr><td>`jaravel.migration.package-path`</td><td>`String`</td><td>`""`</td><td>预编译 zip 包路径（PACKAGED 模式，`.jmigration.zip`）。由 `MigrationPrecompiler` 生成，仅需 JRE</td></tr>
 <tr><td>`jaravel.migration.jar-path`</td><td>`String`</td><td>`""`</td><td>JAR 文件路径，JAR 模式下加载预编译迁移类的 jar</td></tr>
 <tr><td>`jaravel.migration.package-in-jar`</td><td>`boolean`</td><td>`false`</td><td>构建时是否将迁移目录打包进 jar，用于 CLASSPATH 模式</td></tr>
 <tr><td>`jaravel.migration.enabled`</td><td>`boolean`</td><td>`true`</td><td>是否启用迁移模块</td></tr>
@@ -7181,13 +7338,22 @@ jaravel:
     directory: migrations
 </code></pre>
 
-<p><strong>DIRECTORY_CLASSES 模式</strong>：</p>
+<p><strong>DIRECTORY_CLASSES 模式（只需 JRE）</strong>：</p>
 
 <pre><code>
 jaravel:
   migration:
     source: DIRECTORY_CLASSES
-    directory: build/migration-classes
+    classes-dir: precompiled/migrations
+</code></pre>
+
+<p><strong>PACKAGED 模式（只需 JRE）</strong>：</p>
+
+<pre><code>
+jaravel:
+  migration:
+    source: PACKAGED
+    package-path: precompiled/migrations.jmigration.zip
 </code></pre>
 
 <p><strong>JAR 模式</strong>：</p>
@@ -7228,7 +7394,7 @@ jaravel:
 <p>&gt; Module: <code>migration</code> | Package: <code>com.weacsoft.jaravel.vendor.migration</code> | Version: 0.1.2</p>
 
 <h5 id="migration-overview">Overview</h5>
-<p>migration 模块提供 Laravel 风格的数据库迁移系统，包含 Blueprint（流式建表蓝图）、Schema（DDL 执行器，支持 MySQL/SQLite/H2/SQL Server/PostgreSQL/Oracle 多方言）、Migrator（迁移引擎，支持 migrate/rollback/reset/refresh/status）、MigrationScanner（四种迁移源加载：DIRECTORY 内存编译/DIRECTORY_CLASSES 预编译 class 加载/JAR 加载/CLASSPATH 扫描）、MigrationRepository（迁移记录仓库）、MigrationExecutor（核心执行器，无 SpringBoot 依赖）、MigrationCLI（独立命令行入口）、JdbcExecutor（轻量 JDBC 执行器，替代 JdbcTemplate）和 MigrationRunner（SpringBoot 适配器）。迁移文件通过 @MigrationAnnotation 标记，运行时编译/加载、反射实例化、执行后自动释放。核心逻辑完全独立于 SpringBoot，可通过 MigrationCLI 在纯 Java 环境中运行。</p>
+<p>migration 模块提供 Laravel 风格的数据库迁移系统，包含 Blueprint（流式建表蓝图）、Schema（DDL 执行器，支持 MySQL/SQLite/H2/SQL Server/PostgreSQL/Oracle 多方言）、Migrator（迁移引擎，支持 migrate/rollback/reset/refresh/status）、MigrationScanner（五种迁移源加载：DIRECTORY 内存编译/DIRECTORY_CLASSES 预编译 class 加载/PACKAGED 预编译 zip 包加载/JAR 加载/CLASSPATH 扫描）、MigrationPrecompiler（迁移类预编译器，JDK 环境预编译 .java 为 .class/zip 包）、MigrationPrecompilerMain（预编译命令行工具）、MigrationRepository（迁移记录仓库）、MigrationExecutor（核心执行器，无 SpringBoot 依赖）、MigrationCLI（独立命令行入口）、JdbcExecutor（轻量 JDBC 执行器，替代 JdbcTemplate）和 MigrationRunner（SpringBoot 适配器）。迁移文件通过 @MigrationAnnotation 标记，运行时编译/加载、反射实例化、执行后自动释放。核心逻辑完全独立于 SpringBoot，可通过 MigrationCLI 在纯 Java 环境中运行。</p>
 
 <h5 id="migration-classes--interfaces">Classes & Interfaces</h5>
 
@@ -7476,7 +7642,7 @@ public class Migration_2024_01_01_CreateUsersTable implements Migration {
 <h6 id="migration-migrationsource">MigrationSource</h6>
 <li><strong>Type</strong>: enum</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.migration</code></li>
-<li><strong>Description</strong>: 迁移源类型，支持四种迁移来源。</li>
+<li><strong>Description</strong>: 迁移源类型，支持五种迁移来源。</li>
 
 <h6 id="migration-constants">Constants</h6>
 
@@ -7484,6 +7650,7 @@ public class Migration_2024_01_01_CreateUsersTable implements Migration {
 <tr><th>Constant</th><th>Description</th></tr>
 <tr><td>`DIRECTORY`</td><td>目录模式：从目录读取 .java 文件，运行时内存编译（需要 JDK）</td></tr>
 <tr><td>`DIRECTORY_CLASSES`</td><td>预编译目录模式：从目录加载预编译的 .class 文件（只需要 JRE）</td></tr>
+<tr><td>`PACKAGED`</td><td>预编译打包模式：从预编译 zip 包加载迁移类（只需要 JRE）。zip 包由 MigrationPrecompiler 生成，内含 manifest.txt 与 .class</td></tr>
 <tr><td>`JAR`</td><td>JAR 模式：从 .jar 文件加载预编译的迁移类（只需要 JRE）</td></tr>
 <tr><td>`CLASSPATH`</td><td>Classpath 模式：从当前 classpath 扫描迁移类（内置迁移）</td></tr>
 </table>
@@ -7526,7 +7693,7 @@ migrator.finish();                 // 释放资源
 <h6 id="migration-migrationscanner">MigrationScanner</h6>
 <li><strong>Type</strong>: class</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.migration</code></li>
-<li><strong>Description</strong>: 迁移源扫描器与加载器，支持四种迁移来源模式（DIRECTORY/DIRECTORY_CLASSES/JAR/CLASSPATH）。通过 @MigrationAnnotation 注解自动识别迁移类，无需手动指定包名。</li>
+<li><strong>Description</strong>: 迁移源扫描器与加载器，支持五种迁移来源模式（DIRECTORY/DIRECTORY_CLASSES/PACKAGED/JAR/CLASSPATH）。通过 @MigrationAnnotation 注解自动识别迁移类，无需手动指定包名。DIRECTORY_CLASSES 与 PACKAGED 模式加载的预编译产物由 MigrationPrecompiler 生成。</li>
 
 <h6 id="migration-methods-主要">Methods (主要)</h6>
 
@@ -7538,15 +7705,95 @@ migrator.finish();                 // 释放资源
 <tr><td>`compileFromFile`</td><td>`String filePath`</td><td>`void`</td><td>编译单个 .java 文件</td></tr>
 <tr><td>`loadFromDirectoryClasses`</td><td>`String directory`</td><td>`void`</td><td>从目录加载预编译 .class 文件（DIRECTORY_CLASSES 模式，仅需 JRE）</td></tr>
 <tr><td>`loadFromDirectoryClasses`</td><td>`File dir`</td><td>`void`</td><td>从目录加载预编译 .class 文件</td></tr>
+<tr><td>`loadFromZip`</td><td>`String zipPath`</td><td>`void`</td><td>从预编译 zip 包加载迁移类（PACKAGED 模式，仅需 JRE）。读取 manifest.txt 清单逐个加载 .class</td></tr>
 <tr><td>`loadFromJar`</td><td>`File jarFile`</td><td>`void`</td><td>从 JAR 加载迁移类（JAR 模式）</td></tr>
 <tr><td>`loadFromClasspath`</td><td>无</td><td>`void`</td><td>从 classpath 扫描迁移类（CLASSPATH 模式）</td></tr>
 <tr><td>`getAllMigrationClassNames`</td><td>无</td><td>`List<String>`</td><td>获取所有迁移类全限定名</td></tr>
 <tr><td>`getCompiledClass`</td><td>`String className`</td><td>`Class<?>`</td><td>获取已编译/已加载的类</td></tr>
+<tr><td>`getCompiledClasses`</td><td>无</td><td>`Map<String, byte[]>`</td><td>获取编译后的字节码映射（类名 -> 字节码）。供 MigrationPrecompiler 写出预编译产物</td></tr>
 <tr><td>`getMemoryClassLoader`</td><td>无</td><td>`MemoryClassLoader`</td><td>获取内存类加载器</td></tr>
 <tr><td>`removeMemoryClassLoader`</td><td>无</td><td>`void`</td><td>释放内存类加载器</td></tr>
 <tr><td>`removeAll`</td><td>无</td><td>`void`</td><td>清除所有已编译/已加载的类</td></tr>
 <tr><td>`finish`</td><td>无</td><td>`void`</td><td>释放所有资源</td></tr>
 </table>
+
+<p>---</p>
+
+<h6 id="migration-migrationprecompiler">MigrationPrecompiler</h6>
+<li><strong>Type</strong>: class</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.migration</code></li>
+<li><strong>Description</strong>: 迁移类预编译器。在 JDK 环境中将 <code>.java</code> 迁移源文件预编译为 <code>.class</code> 字节码，并可选打包为 zip 包，供仅需 JRE 的生产环境通过 DIRECTORY_CLASSES 或 PACKAGED 模式加载。内部复用 MigrationScanner 的内存编译逻辑，通过 getCompiledClasses() 获取产物后写出。</li>
+
+<h6 id="migration-methods">Methods</h6>
+
+<table>
+<tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
+<tr><td>`MigrationPrecompiler`</td><td>`String sourceDir`</td><td>构造方法</td><td>创建预编译器，指定迁移 .java 源文件所在目录</td></tr>
+<tr><td>`compileAll`</td><td>`String outputDir, CompileMode mode, String fileName`</td><td>`int`</td><td>预编译所有迁移文件。mode=PACKAGED 打包为 zip，mode=CLASSES 输出散乱 class。返回编译的迁移类数量</td></tr>
+<tr><td>`compileAllToZip`</td><td>`String outputDir, String fileName`</td><td>`int`</td><td>预编译并打包为 zip 包（含 manifest.txt + .class）。等价于 compileAll(outputDir, PACKAGED, fileName)</td></tr>
+<tr><td>`compileAllToClasses`</td><td>`String outputDir`</td><td>`int`</td><td>预编译并输出散乱 .class 文件到目录。等价于 compileAll(outputDir, CLASSES, null)</td></tr>
+</table>
+
+<h6 id="migration-usage-example">Usage Example</h6>
+<pre><code>
+// 编程式预编译
+MigrationPrecompiler precompiler = new MigrationPrecompiler(&quot;migrations&quot;);
+
+// 打包为 zip（PACKAGED 模式产物）
+int count = precompiler.compileAllToZip(&quot;precompiled&quot;, &quot;migrations.jmigration.zip&quot;);
+
+// 或输出散乱 class（DIRECTORY_CLASSES 模式产物）
+// int count = precompiler.compileAllToClasses(&quot;precompiled/migrations&quot;);
+System.out.println(&quot;已预编译 &quot; + count + &quot; 个迁移类&quot;);
+</code></pre>
+
+<p>---</p>
+
+<h6 id="migration-compilemode">CompileMode</h6>
+<li><strong>Type</strong>: enum</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.migration</code></li>
+<li><strong>Description</strong>: 预编译输出模式枚举，决定 MigrationPrecompiler.compileAll 的产物形式。</li>
+
+<h6 id="migration-constants">Constants</h6>
+
+<table>
+<tr><th>Constant</th><th>Description</th></tr>
+<tr><td>`PACKAGED`</td><td>打包模式：将所有 .class 与 manifest.txt 打包为单一 zip 文件（.jmigration.zip），对应运行时 PACKAGED 模式</td></tr>
+<tr><td>`CLASSES`</td><td>散乱模式：将 .class 文件按包结构输出到目录，对应运行时 DIRECTORY_CLASSES 模式</td></tr>
+</table>
+
+<p>---</p>
+
+<h6 id="migration-migrationprecompilermain">MigrationPrecompilerMain</h6>
+<li><strong>Type</strong>: class</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.migration</code></li>
+<li><strong>Description</strong>: 预编译命令行入口，封装 MigrationPrecompiler。无需编写代码即可在 JDK 环境生成预编译产物，仅需 migration.jar + utils.jar。</li>
+
+<h6 id="migration-methods">Methods</h6>
+
+<table>
+<tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
+<tr><td>`main`</td><td>`String[] args`</td><td>`void`</td><td>主入口，解析参数并执行预编译</td></tr>
+</table>
+
+<h6 id="migration-cli-parameters">CLI Parameters</h6>
+
+<table>
+<tr><th>Parameter</th><th>Required</th><th>Default</th><th>Description</th></tr>
+<tr><td>`--source-dir=<path>`</td><td>是</td><td>-</td><td>迁移 .java 源文件所在目录</td></tr>
+<tr><td>`--output-dir=<path>`</td><td>是</td><td>-</td><td>预编译产物输出目录</td></tr>
+<tr><td>`--mode=<mode>`</td><td>否</td><td>`packaged`</td><td>预编译模式：`packaged`（zip 包）/ `classes`（散乱 class）</td></tr>
+<tr><td>`--file-name=<name>`</td><td>否</td><td>`migrations.jmigration.zip`</td><td>zip 包文件名（仅 packaged 模式生效）</td></tr>
+</table>
+
+<h6 id="migration-usage-example">Usage Example</h6>
+<pre><code>
+java -cp migration.jar MigrationPrecompilerMain \
+  --source-dir=migrations \
+  --output-dir=precompiled \
+  --mode=packaged \
+  --file-name=migrations.jmigration.zip
+</code></pre>
 
 <p>---</p>
 
@@ -7635,8 +7882,10 @@ java -jar app.jar --jaravel.migration-status
 <tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr>
 <tr><td>`enabled`</td><td>`boolean`</td><td>`true`</td><td>是否启用迁移模块</td></tr>
 <tr><td>`table`</td><td>`String`</td><td>`"migrations"`</td><td>迁移记录表名</td></tr>
-<tr><td>`source`</td><td>`MigrationSource`</td><td>`DIRECTORY`</td><td>迁移源类型</td></tr>
-<tr><td>`directory`</td><td>`String`</td><td>`"migrations"`</td><td>迁移文件目录（DIRECTORY 模式为 .java 源文件，DIRECTORY_CLASSES 模式为 .class 文件）</td></tr>
+<tr><td>`source`</td><td>`MigrationSource`</td><td>`DIRECTORY`</td><td>迁移源类型（DIRECTORY / DIRECTORY_CLASSES / PACKAGED / JAR / CLASSPATH）</td></tr>
+<tr><td>`directory`</td><td>`String`</td><td>`"migrations"`</td><td>迁移文件目录（DIRECTORY 模式为 .java 源文件；亦可指向 DIRECTORY_CLASSES 的 .class 目录，向后兼容）</td></tr>
+<tr><td>`classesDir`</td><td>`String`</td><td>`""`</td><td>预编译 class 文件目录（DIRECTORY_CLASSES 模式）。由 `MigrationPrecompiler` 生成</td></tr>
+<tr><td>`packagePath`</td><td>`String`</td><td>`""`</td><td>预编译打包文件路径（PACKAGED 模式，`.jmigration.zip`）。由 `MigrationPrecompiler` 生成</td></tr>
 <tr><td>`jarPath`</td><td>`String`</td><td>`""`</td><td>JAR 文件路径（JAR 模式）</td></tr>
 <tr><td>`packageInJar`</td><td>`boolean`</td><td>`false`</td><td>构建时是否将迁移目录打包进 jar</td></tr>
 <tr><td>`autoRun`</td><td>`boolean`</td><td>`false`</td><td>启动时是否自动执行 migrate</td></tr>
@@ -7651,12 +7900,18 @@ jaravel:
     directory: migrations
     auto-run: false
 
-# 预编译目录模式（生产，仅需 JRE）
+# DIRECTORY_CLASSES 模式（生产，只需 JRE）
 jaravel:
   migration:
     source: DIRECTORY_CLASSES
-    directory: build/migration-classes
+    classes-dir: precompiled/migrations
     auto-run: false
+
+# PACKAGED 模式（生产，只需 JRE）
+jaravel:
+  migration:
+    source: PACKAGED
+    package-path: precompiled/migrations.jmigration.zip
 
 # JAR 模式（生产）
 jaravel:
@@ -7719,8 +7974,10 @@ executor.execute(&quot;migrate&quot;);
 <tr><td>`--db-url=<url>`</td><td>是</td><td>-</td><td>数据库 JDBC URL</td></tr>
 <tr><td>`--db-user=<user>`</td><td>是</td><td>-</td><td>数据库用户名</td></tr>
 <tr><td>`--db-password=<pwd>`</td><td>否</td><td>空</td><td>数据库密码</td></tr>
-<tr><td>`--source=<type>`</td><td>否</td><td>DIRECTORY</td><td>迁移源：DIRECTORY/JAR/CLASSPATH</td></tr>
-<tr><td>`--directory=<path>`</td><td>否</td><td>migrations</td><td>迁移文件目录（DIRECTORY）</td></tr>
+<tr><td>`--source=<type>`</td><td>否</td><td>DIRECTORY</td><td>迁移源：DIRECTORY/DIRECTORY_CLASSES/PACKAGED/JAR/CLASSPATH</td></tr>
+<tr><td>`--directory=<path>`</td><td>否</td><td>migrations</td><td>迁移文件目录（DIRECTORY / DIRECTORY_CLASSES）</td></tr>
+<tr><td>`--classes-dir=<path>`</td><td>否</td><td>空</td><td>预编译 .class 文件目录（DIRECTORY_CLASSES）</td></tr>
+<tr><td>`--package-path=<path>`</td><td>否</td><td>空</td><td>预编译 zip 包路径（PACKAGED，`.jmigration.zip`）</td></tr>
 <tr><td>`--jar-path=<path>`</td><td>否</td><td>空</td><td>JAR 路径（JAR）</td></tr>
 <tr><td>`--table=<name>`</td><td>否</td><td>migrations</td><td>迁移记录表名</td></tr>
 </table>
