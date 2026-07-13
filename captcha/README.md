@@ -1278,11 +1278,10 @@ captcha
     .on('afterGet', (captchaKey, captchaData) => {
         console.log('验证码已加载, key:', captchaKey);
     })
-    .on('complete', (captchaKey, captchaInput, rawInput) => {
+    .on('complete', (captchaKey, captchaInput) => {
         console.log('用户完成验证');
         console.log('  captchaKey:', captchaKey);
         console.log('  captchaInput (加密后):', captchaInput);
-        console.log('  rawInput (原始明文):', rawInput);
 
         // 在此处提交到后端验证
         submitToBackend(captchaKey, captchaInput);
@@ -1336,7 +1335,7 @@ async function submitToBackend(captchaKey, captchaInput) {
 | --- | --- | --- |
 | `beforeGet` | `(type)` | 获取验证码前（含刷新场景） |
 | `afterGet` | `(captchaKey, captchaData)` | 验证码加载并渲染完成后 |
-| `complete` | `(captchaKey, captchaInput, rawInput)` | 用户完成前端验证操作后（不提交到后端） |
+| `complete` | `(captchaKey, captchaInput)` | 用户完成前端验证操作后（不提交到后端） |
 
 > **complete 事件触发时机**：
 > - `number`/`arithmetic`：用户在输入框按 **Enter** 键时触发
@@ -1350,7 +1349,6 @@ async function submitToBackend(captchaKey, captchaInput) {
 | --- | --- |
 | `captchaKey` | 验证码标识（字符串），用于提交到后端验证 |
 | `captchaInput` | 加密后的用户输入（Base64 编码的密文），直接传给后端 verify 接口的 `input` 参数 |
-| `rawInput` | 原始明文输入（仅供调试/日志使用，不要直接传给后端） |
 
 ### 14.5 实例方法
 

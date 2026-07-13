@@ -5,6 +5,10 @@
 ## Overview
 jblade 模块是 Laravel Blade 风格的 Java 模板引擎。它将 `.blade.java` 模板文件编译为 Java 类（通过内存编译器），支持模板继承（@extends/@yield/@section）、组件（@component/@slot）、控制结构（@if/@foreach/@for）、变量输出（{{ }}）以及丰富的 Blade 表达式语法（对象方法/属性访问、数组访问、字符串拼接、空合并运算符等）。编译后的模板类继承 BladeTemplate，运行时通过 BladeEngine 渲染。
 
+jblade 支持两种运行模式：
+- **运行时编译模式（默认）**：在运行时通过 `javax.tools.JavaCompiler` 将 `.blade.java` 模板编译为字节码并加载，需要完整的 JDK 环境。
+- **预编译模式**：在开发阶段（有 JDK）使用 `BladePrecompiler` 将所有模板预编译为字节码，输出为打包文件（`.jblade.zip`）或散乱 `.class` 文件。生产环境（仅 JRE）通过 `BladeEngine.fromPrecompiledPackage()` 或 `BladeEngine.fromPrecompiledClasses()` 加载预编译产物，无需 JDK，无需运行时编译。
+
 > **依赖说明**：jblade 通过 Maven 依赖 `utils` 模块复用内存编译基础设施（`MemoryClassLoader`、`MemoryFileManager`、`SourceCodeJavaFileObject` 等，包名 `com.weacsoft.jaravel.vendor.utils.memory.*`）。这些类不再在 jblade 模块中重复定义，由 utils 模块统一提供。`BladeCompiler` 和 `BladeEngine` 直接使用 utils 模块中的 `MemoryClassLoader` 进行模板类的内存编译与加载。
 
 ## Classes & Interfaces
@@ -12,7 +16,7 @@ jblade 模块是 Laravel Blade 风格的 Java 模板引擎。它将 `.blade.java
 ### BladeEngine
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.jblade`
-- **Description**: Blade 模板引擎，负责模板编译、缓存和渲染。采用两级缓存机制：一级为内存 `ConcurrentHashMap`（缓存 `Class<?>`，始终启用），二级为可选的 `CacheStore`（缓存编译后字节码 `byte[]`，跨进程共享）。仅在一二级缓存均未命中时才执行 `BladeCompiler.compile()`，避免重复编译。支持模板继承（父模板自动加载并合并 section）。
+- **Description**: Blade 模板引擎，负责模板编译、缓存和渲染。采用两级缓存机制：一级为内存 `ConcurrentHashMap`（缓存 `Class<?>`，始终启用），二级为可选的 `CacheStore`（缓存编译后字节码 `byte[]`，跨进程共享）。仅在一二级缓存均未命中时才执行 `BladeCompiler.compile()`，避免重复编译。支持模板继承（父模板自动加载并合并 section）。除构造器外，还提供两个静态工厂方法 `fromPrecompiledPackage()` 和 `fromPrecompiledClasses()`，支持从预编译产物加载模板（JRE-only 运行）。在预编译模式下，`loadTemplate()` 优先从已加载字节码获取 `Class`；`compileAndCache()` 在 JDK 不可用时会抛出包含解决方案提示的 `IllegalStateException`。
 
 #### Methods
 
@@ -25,9 +29,11 @@ jblade 模块是 Laravel Blade 风格的 Java 模板引擎。它将 `.blade.java
 | `BladeEngine` | `String templateDir, String suffix, CacheStore cacheStore` | 构造方法 | 指定模板目录、文件后缀和二级缓存 store |
 | `BladeEngine` | `String templateDir, CacheStore cacheStore, MemoryClassLoader classLoader` | 构造方法 | 指定模板目录、二级缓存 store 和类加载器，默认后缀 `.blade.java` |
 | `BladeEngine` | `String templateDir, String suffix, CacheStore cacheStore, MemoryClassLoader classLoader` | 构造方法 | 完整参数构造（全参构造器，其余重载均委托到此） |
+| `fromPrecompiledPackage` | `String packagePath` | `static BladeEngine` | **工厂方法**：从预编译打包文件（`.jblade.zip`）创建引擎，仅需 JRE，无需 JDK。内部通过 `PrecompiledTemplateLoader.loadFromPackage()` 加载字节码 |
+| `fromPrecompiledClasses` | `String classesDir` | `static BladeEngine` | **工厂方法**：从预编译 class 目录创建引擎，仅需 JRE，无需 JDK。内部通过 `PrecompiledTemplateLoader.loadFromDirectory()` 加载字节码 |
 | `render` | `String templateName, Map<String, Object> variables` | `String` | 渲染模板，传入变量，返回渲染结果字符串 |
 | `render` | `String templateName` | `String` | 渲染模板（无变量） |
-| `loadTemplate` | `String templateName` | `BladeTemplate` | 加载（编译 + 缓存）模板，返回模板实例。流程：查一级缓存 → 查二级缓存 → 编译 → 回填缓存 |
+| `loadTemplate` | `String templateName` | `BladeTemplate` | 加载（编译 + 缓存）模板，返回模板实例。流程：查一级缓存 → 查二级缓存 → 编译 → 回填缓存。**预编译模式**下优先从已加载的字节码获取 `Class`，无需运行时编译 |
 | `clearCache` | 无 | `void` | 清除所有缓存：一级缓存（Class）+ 二级缓存（按 key 逐个 `forget`）+ 实例缓存。不会调用 `flush()` 清空整个 store，避免影响其他模块 |
 | `clearTemplate` | `String templateName` | `void` | 清除指定模板的所有缓存（一级 Class + 二级 CacheStore + 实例），不影响其他模板 |
 | `clearTemplateInstanceCache` | 无 | `void` | 仅清除模板实例缓存 |
@@ -61,6 +67,18 @@ System.out.println("一级缓存模板数: " + engine.getClassCacheSize());
 
 // 在控制器中使用（配合 ResponseBuilder）
 return ResponseBuilder.view("user.profile", Map.of("user", user));
+```
+
+JRE-only 运行（预编译模式）：
+
+```java
+// 从预编译打包文件创建引擎（仅需 JRE，无需 JDK）
+BladeEngine engine = BladeEngine.fromPrecompiledPackage("precompiled/templates.jblade.zip");
+String html = engine.render("user.profile", Map.of("user", user));
+
+// 或从预编译 class 目录创建引擎
+BladeEngine engine2 = BladeEngine.fromPrecompiledClasses("precompiled/classes");
+String html2 = engine2.render("welcome", Map.of("name", "Alice"));
 ```
 
 ---
@@ -105,7 +123,7 @@ if (cached instanceof CompiledTemplateData) {
 ### BladeCompiler
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.jblade`
-- **Description**: Blade 模板编译器，将 `.blade.java` 模板文件编译为 Java 源代码并通过内存编译器加载。支持 Blade 语法：@extends、@section/@endsection、@yield、@if/@elseif/@else/@endif、@foreach/@endforeach、@for/@endfor、@component/@endcomponent、@slot/@endslot、@asset（静态资源 URL 生成，运行时委托 `BladeAssetHelper.url()`）、{{ }} 变量输出、{{-- --}} 注释。
+- **Description**: Blade 模板编译器，将 `.blade.java` 模板文件编译为 Java 源代码并通过内存编译器加载。支持 Blade 语法：@extends、@section/@endsection、@yield、@if/@elseif/@else/@endif、@foreach/@endforeach、@for/@endfor、@component/@endcomponent、@slot/@endslot、@asset（静态资源 URL 生成，运行时委托 `BladeAssetHelper.url()`）、{{ }} 变量输出、{{-- --}} 注释。`compile()` 方法已重构：分离文件读取与编译逻辑，新增 `compileSource(templateName, content)` 方法支持直接编译模板内容（供 `BladePrecompiler` 使用）。新增 `getClassLoader()` getter 暴露内部类加载器。
 
 #### Methods
 
@@ -114,7 +132,9 @@ if (cached instanceof CompiledTemplateData) {
 | `BladeCompiler` | `String templateDir, MemoryClassLoader classLoader` | 构造方法 | 指定模板目录和类加载器（默认后缀 .blade.java） |
 | `BladeCompiler` | `String templateDir, MemoryClassLoader classLoader, String suffix` | 构造方法 | 指定模板目录、类加载器和文件后缀 |
 | `compile` | `String templateName` | `String` | 编译模板，返回生成的类全限定名 |
+| `compileSource` | `String templateName, String content` | `String` | **新增**：直接编译模板内容（跳过文件读取），返回类全限定名。供 `BladePrecompiler` 预编译时使用 |
 | `getSuffix` | 无 | `String` | 获取模板文件后缀（默认 `.blade.java`） |
+| `getClassLoader` | 无 | `MemoryClassLoader` | **新增**：获取内部类加载器，供预编译工具提取编译后的字节码 |
 
 #### Constants
 
@@ -301,3 +321,180 @@ Blade 模板中使用 `@asset` 指令：
 ```
 
 > 配合 HTTP 模块的 `StaticResourceRoute` 使用：`BladeAssetHelper` 的 URL 前缀须与 `StaticResourceRoute` 的 `urlPrefix` 一致，`@asset` 生成的 URL 才能被静态资源路由命中并返回对应文件。
+
+---
+
+## 预编译功能
+
+jblade 提供预编译能力，允许在开发阶段（有 JDK）将所有 Blade 模板预编译为字节码，生产环境仅需 JRE 即可运行，无需运行时编译。
+
+### 设计理念
+
+传统运行时编译模式依赖 `javax.tools.JavaCompiler`（仅 JDK 包含），生产环境必须安装完整 JDK。预编译模式将编译阶段前置到开发/构建阶段：
+
+- **开发阶段**：使用 `BladePrecompiler` 或命令行工具 `BladePrecompilerMain` 将所有 `.blade.java` 模板编译为字节码，输出为打包文件或散乱 class 文件
+- **生产环境**：通过 `BladeEngine.fromPrecompiledPackage()` 或 `BladeEngine.fromPrecompiledClasses()` 加载预编译产物，仅依赖 JRE
+
+这样生产环境无需 JDK，减小部署体积，同时避免运行时编译开销。
+
+### 两种编译模式
+
+```java
+public enum CompileMode {
+    PACKAGED,  // 打包为单个文件（.jblade.zip 或自定义后缀）
+    CLASSES    // 散乱 class 文件到目录
+}
+```
+
+| 模式 | 说明 | 适用场景 |
+|------|------|---------|
+| `PACKAGED` | 所有模板字节码与映射关系打包为单个 `.jblade.zip` 文件 | 生产部署，便于分发与版本管理 |
+| `CLASSES` | 每个模板编译为独立的 `.class` 文件，输出到目录 | 调试或需要单独管理 class 文件的场景 |
+
+---
+
+### BladePrecompiler
+
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.jblade`
+- **Description**: Blade 模板预编译工具。在开发阶段（有 JDK）将所有 Blade 模板预编译为字节码，支持打包模式（`PACKAGED`）和散乱 class 模式（`CLASSES`）两种输出。内部使用 `BladeCompiler.compileSource()` 编译模板内容，通过 `PrecompiledTemplateLoader` 保存产物。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `BladePrecompiler` | `String templateDir, String suffix` | 构造方法 | 指定模板目录和文件后缀 |
+| `compileAll` | `String outputDir, CompileMode mode, String packageName, String fileSuffix` | `int` | 预编译所有模板，返回编译的模板数量。`mode` 指定输出模式，`packageName` 仅 packaged 模式使用，`fileSuffix` 默认 `.jblade.zip` |
+| `compileAllToZip` | `String outputDir, String fileName` | `int` | 便利方法：打包模式预编译，输出为指定文件名的 zip 包 |
+| `compileAllToClasses` | `String outputDir` | `int` | 便利方法：散乱 class 模式预编译，输出到指定目录 |
+
+#### Usage Example
+
+```java
+// 打包模式：预编译所有模板为单个 .jblade.zip 文件
+BladePrecompiler precompiler = new BladePrecompiler("templates", ".blade.java");
+int count = precompiler.compileAllToZip("precompiled", "templates.jblade.zip");
+System.out.println("预编译了 " + count + " 个模板");
+
+// 散乱 class 模式：预编译所有模板为独立 .class 文件
+int count2 = precompiler.compileAllToClasses("precompiled/classes");
+
+// 完整参数调用
+int count3 = precompiler.compileAll("precompiled", CompileMode.PACKAGED, "myapp", ".jblade.zip");
+```
+
+---
+
+### BladePrecompiler.CompileMode
+
+- **Type**: enum (nested in BladePrecompiler)
+- **Package**: `com.weacsoft.jaravel.vendor.jblade`
+- **Description**: 预编译输出模式枚举。
+
+#### Constants
+
+| Constant | Description |
+|----------|-------------|
+| `PACKAGED` | 打包为单个文件（`.jblade.zip` 或自定义后缀） |
+| `CLASSES` | 散乱 class 文件到目录 |
+
+---
+
+### PrecompiledTemplateLoader
+
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.jblade`
+- **Description**: 预编译模板加载器，负责从打包文件或目录加载预编译的模板字节码，以及将字节码保存到打包文件或目录。`BladeEngine.fromPrecompiledPackage()` 和 `BladeEngine.fromPrecompiledClasses()` 内部使用此类加载预编译产物。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `loadFromPackage` | `String packagePath` | `PrecompiledBundle` | 从打包文件（`.jblade.zip`）加载预编译模板，返回包含字节码与映射的 bundle |
+| `loadFromDirectory` | `String dirPath` | `PrecompiledBundle` | 从目录加载预编译的散乱 `.class` 文件，返回 bundle |
+| `saveToPackage` | `String packagePath, Map<String,byte[]> bytecodes, Map<String,String> mapping` | `void` | 将字节码与映射保存到打包文件 |
+| `saveToDirectory` | `String dirPath, Map<String,byte[]> bytecodes, Map<String,String> mapping` | `void` | 将字节码与映射保存到目录（散乱 class 文件） |
+
+#### Usage Example
+
+```java
+// 从打包文件加载
+PrecompiledBundle bundle = loader.loadFromPackage("precompiled/templates.jblade.zip");
+
+// 从目录加载
+PrecompiledBundle bundle2 = loader.loadFromDirectory("precompiled/classes");
+
+// 保存到打包文件
+loader.saveToPackage("output/templates.jblade.zip", bytecodes, mapping);
+
+// 保存到目录
+loader.saveToDirectory("output/classes", bytecodes, mapping);
+```
+
+---
+
+### PrecompiledTemplateLoader.PrecompiledBundle
+
+- **Type**: static nested class
+- **Package**: `com.weacsoft.jaravel.vendor.jblade`
+- **Description**: 预编译模板包，包含类字节码与模板名到类名的映射。由 `PrecompiledTemplateLoader` 的加载方法返回，供 `BladeEngine` 在预编译模式下使用。
+
+#### Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `classBytecodes` | `Map<String, byte[]>` | 类名 → 字节码映射 |
+| `templateToClassMapping` | `Map<String, String>` | 模板名 → 类名映射 |
+
+---
+
+### BladePrecompilerMain
+
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.jblade`
+- **Description**: 预编译命令行工具入口。在开发阶段通过命令行将所有 Blade 模板预编译为字节码，支持打包模式与散乱 class 模式。
+
+#### CLI Parameters
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `--template-dir=<path>` | 是 | - | 模板文件目录 |
+| `--suffix=<suffix>` | 否 | `.blade.java` | 模板文件后缀 |
+| `--output-dir=<path>` | 是 | - | 输出目录 |
+| `--mode=<mode>` | 否 | `packaged` | 编译模式：`packaged` 或 `classes` |
+| `--package-name=<name>` | 否 | - | 包名（仅 packaged 模式） |
+| `--file-suffix=<suffix>` | 否 | `.jblade.zip` | 打包文件后缀（仅 packaged 模式） |
+
+#### Usage Example
+
+```bash
+# 打包模式：预编译所有模板为 .jblade.zip 文件
+java -cp jblade.jar com.weacsoft.jaravel.vendor.jblade.BladePrecompilerMain \
+  --template-dir=templates \
+  --suffix=.blade.java \
+  --output-dir=precompiled \
+  --mode=packaged \
+  --package-name=myapp \
+  --file-suffix=.jblade.zip
+
+# 散乱 class 模式：预编译所有模板为独立 .class 文件
+java -cp jblade.jar com.weacsoft.jaravel.vendor.jblade.BladePrecompilerMain \
+  --template-dir=templates \
+  --suffix=.blade.java \
+  --output-dir=precompiled/classes \
+  --mode=classes
+```
+
+#### JRE-only 运行示例
+
+预编译完成后，生产环境仅需 JRE 即可运行：
+
+```java
+// 从打包文件创建引擎（仅需 JRE）
+BladeEngine engine = BladeEngine.fromPrecompiledPackage("precompiled/templates.jblade.zip");
+String html = engine.render("users.list", Map.of("users", userList));
+
+// 从 class 目录创建引擎（仅需 JRE）
+BladeEngine engine = BladeEngine.fromPrecompiledClasses("precompiled/classes");
+String html = engine.render("welcome", Map.of("name", "Alice"));
+```

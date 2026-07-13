@@ -294,6 +294,11 @@ WireRequest wireReq = WireRequest.fromJson(
 | `injectWireAssets` (static) | `String html, String updateUrl, String snapshot, boolean injectJs` | `String` | 将 Wire 资源注入到 HTML 的 `</body>` 前，显式指定是否注入 wire.js。`injectJs=false` 时只注入 wire:config 配置标签，不注入 `<script src="...">` 标签 |
 | `renderWirePage` (static) | `String templateName, Map<String,Object> data, String updateUrl` | `String` | 完整的 Wire 初始渲染：渲染模板 + 注入 Wire 资源。是否注入 wire.js 受 `isAutoInjectJs()` 控制 |
 | `renderWirePage` (static) | `String templateName, Map<String,Object> data, String updateUrl, boolean injectJs` | `String` | 完整的 Wire 初始渲染：渲染模板 + 注入 Wire 资源，显式指定是否注入 wire.js |
+| `addExcludedSections` (static) | `String... sectionNames` | `void` | 添加排除的 section 名（可变参数）。被排除的 section 不会被 `<!--wire:section-start/end:name-->` 标记包裹，从而不被前端 wire.js 识别为可更新区域 |
+| `removeExcludedSection` (static) | `String sectionName` | `void` | 移除单个排除的 section 名 |
+| `getExcludedSections` (static) | 无 | `List<String>` | 获取当前排除的 section 名列表 |
+| `clearExcludedSections` (static) | 无 | `void` | 清空排除列表 |
+| `isExcluded` (static) | `String sectionName` | `boolean` | 检查指定 section 名是否在排除列表中 |
 
 #### Injected Wire Assets
 
@@ -382,6 +387,49 @@ String jsContent = WireManager.getWireJsContent();
 // 可修改其中的静态资源请求路径后内联到页面：
 // html = html.replace("</body>", "<script>" + jsContent + "</script></body>");
 // 或通过自定义路由提供修改后的 JS 内容
+
+// 11. Section 排除列表（让某些 section 不被 wire.js 识别为可更新区域）
+WireManager.addExcludedSections("header", "footer");  // header/footer 不被标记为可更新区域
+WireManager.isExcluded("header");                     // true
+WireManager.removeExcludedSection("header");          // 移除单个排除
+WireManager.clearExcludedSections();                  // 清空排除列表
+```
+
+---
+
+### Wire (Frontend Global Object)
+- **Type**: 全局对象（wire.js 运行时）
+- **Description**: wire.js 暴露的全局对象 `Wire`，提供前端事件系统。通过 `Wire.on` / `Wire.off` 注册/移除事件监听器，可在 Wire 生命周期钩子中执行自定义逻辑（如 DOM 更新后刷新第三方 UI 框架组件）。事件监听器全局生效，对所有 Wire 组件实例触发。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `on` | `String event, Function callback` | 无 | 注册事件监听器。`event` 为事件名，`callback` 为回调函数（参数随事件类型不同） |
+| `off` | `String event, Function callback` | 无 | 移除指定事件监听器。不传 `callback` 时移除该事件的所有监听器 |
+
+#### Events
+
+| Event | Parameters | Description |
+|-------|------------|-------------|
+| `beforeUpdate` | `(component, action, params)` | 发送更新请求前触发。`component` 为当前 wire 组件对象，`action` 为即将执行的 action 名称，`params` 为 action 参数 |
+| `afterUpdate` | `(component, data, sections)` | DOM 更新完成后触发。`component` 为当前 wire 组件对象，`data` 为服务端返回的完整响应数据，`sections` 为本次更新的 section 列表 |
+
+#### Usage Example
+
+```javascript
+// mdui 框架在 DOM 更新后刷新组件
+Wire.on('afterUpdate', function(component, data, sections) {
+    mdui.mutation();  // 重新扫描并初始化 mdui 组件
+});
+
+// 更新前可以做些准备工作
+Wire.on('beforeUpdate', function(component, action, params) {
+    console.log('即将执行 action:', action);
+});
+
+// 移除事件监听器
+Wire.off('afterUpdate', afterUpdateHandler);
 ```
 
 ---
@@ -399,6 +447,7 @@ String jsContent = WireManager.getWireJsContent();
 | `enabled` | `boolean` | `true` | 是否启用自动装配 |
 | `autoInjectJs` | `boolean` | `true` | 是否自动注入 wire.js 的 script 标签。设为 `false` 后渲染时只注入 wire:config 配置标签 |
 | `jsPath` | `String` | `"/static/wire.js"` | wire.js 的外部引用路径（注入到 HTML 中的 script src） |
+| `excludedSections` | `List<String>` | `[]`（空列表） | 排除的 section 名列表。被排除的 section 不会被 `<!--wire:section-start/end:name-->` 标记包裹，前端 wire.js 不会识别为可更新区域 |
 
 #### Usage Example
 
@@ -409,6 +458,9 @@ jaravel:
     enabled: true
     auto-inject-js: false       # 关闭自动注入，手动引入 wire.js
     js-path: /assets/wire.js    # 自定义 JS 引用路径
+    excluded-sections:          # 排除的 section（不被 wire.js 识别为可更新区域）
+      - header
+      - footer
 ```
 
 ---
@@ -416,7 +468,7 @@ jaravel:
 ### WireAutoConfiguration (SpringBoot)
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.wire.springboot`
-- **Description**: Wire 模块 SpringBoot 自动装配。当 `jaravel.wire.enabled=true`（默认）时，自动读取配置并应用到 `WireManager`：将 `autoInjectJs` 和 `jsPath` 配置项设置到 `WireManager` 的静态字段中。设为 `auto-inject-js=false` 后，Wire 渲染时只注入 wire:config 配置标签，开发者需自行在页面中引入 wire.js（可使用 `WireManager.getWireJsContent()` 获取 JS 内容）。
+- **Description**: Wire 模块 SpringBoot 自动装配。当 `jaravel.wire.enabled=true`（默认）时，自动读取配置并应用到 `WireManager`：将 `autoInjectJs`、`jsPath` 和 `excludedSections` 配置项设置到 `WireManager` 的静态字段中。设为 `auto-inject-js=false` 后，Wire 渲染时只注入 wire:config 配置标签，开发者需自行在页面中引入 wire.js（可使用 `WireManager.getWireJsContent()` 获取 JS 内容）。
 - **Annotations**: `@AutoConfiguration`, `@ConditionalOnClass(WireManager.class)`, `@ConditionalOnProperty(prefix = "jaravel.wire", name = "enabled", havingValue = "true", matchIfMissing = true)`, `@EnableConfigurationProperties(WireProperties.class)`
 
 #### Behavior
@@ -425,6 +477,7 @@ jaravel:
 |--------|----------------------|------|
 | `autoInjectJs` | `WireManager.setAutoInjectJs(...)` | 控制是否自动注入 wire.js 的 script 标签 |
 | `jsPath` | `WireManager.setJsPath(...)` | wire.js 的外部引用路径 |
+| `excludedSections` | `WireManager.addExcludedSections(...)` | 排除的 section 名列表，不被前端 wire.js 识别为可更新区域 |
 
 #### Usage Example
 
@@ -483,6 +536,18 @@ WireService.from(...)   →   .once(...)             →   .responseWire()    //
 | `wire:loading` | 加载状态元素 |
 | `wire:update="/url"` | 覆盖 update URL |
 | `wire:param-xxx="value"` | 为 action 附加参数 |
+
+### 前端事件系统速查
+
+| 方法 | 说明 |
+| --- | --- |
+| `Wire.on(event, callback)` | 注册事件监听器，支持 `beforeUpdate` / `afterUpdate` |
+| `Wire.off(event, callback)` | 移除事件监听器（不传 callback 移除该事件所有监听器） |
+
+| 事件 | 参数 | 触发时机 |
+| --- | --- | --- |
+| `beforeUpdate` | `(component, action, params)` | 发送更新请求前 |
+| `afterUpdate` | `(component, data, sections)` | DOM 更新完成后 |
 
 ---
 

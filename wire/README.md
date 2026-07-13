@@ -37,8 +37,10 @@
   - [9.5 wire:target / wire:loading / wire:update](#95-wiretarget--wireloading--wireupdate)
 - [10. 认证过期无感重定向](#10-认证过期无感重定向)
 - [11. 手动控制 wire.js 注入](#11-手动控制-wirejs-注入)
-- [12. 完整控制器示例](#12-完整控制器示例)
-- [13. 线程安全说明](#13-线程安全说明)
+- [12. 前端事件系统](#12-前端事件系统)
+- [13. Section 排除列表](#13-section-排除列表)
+- [14. 完整控制器示例](#14-完整控制器示例)
+- [15. 线程安全说明](#15-线程安全说明)
 
 ---
 
@@ -764,6 +766,7 @@ public class WireProperties {
     private boolean enabled = true;
     private boolean autoInjectJs = true;
     private String jsPath = "/static/wire.js";
+    private List<String> excludedSections = new ArrayList<>();
     // getter/setter...
 }
 
@@ -777,15 +780,116 @@ public class WireAutoConfiguration {
     public WireAutoConfiguration(WireProperties properties) {
         WireManager.setAutoInjectJs(properties.isAutoInjectJs());
         WireManager.setJsPath(properties.getJsPath());
+        WireManager.addExcludedSections(properties.getExcludedSections().toArray(new String[0]));
     }
 }
 ```
 
-> 非 SpringBoot 环境下，可在应用启动时手动调用 `WireManager.setAutoInjectJs(false)` 和 `WireManager.setJsPath(...)` 进行配置。
+> 非 SpringBoot 环境下，可在应用启动时手动调用 `WireManager.setAutoInjectJs(false)`、`WireManager.setJsPath(...)` 和 `WireManager.addExcludedSections(...)` 进行配置。
 
 ---
 
-## 12. 完整控制器示例
+## 12. 前端事件系统
+
+`wire.js` 暴露全局对象 `Wire`，提供前端事件系统。通过 `Wire.on` / `Wire.off` 注册和移除事件监听器，可在 Wire 生命周期钩子中执行自定义逻辑——典型场景是 DOM 更新后刷新第三方 UI 框架组件（如 mdui 的 `mdui.mutation()`）。事件监听器全局生效，对所有 Wire 组件实例触发。
+
+### 12.1 API
+
+| 方法 | 参数 | 返回 | 说明 |
+| --- | --- | --- | --- |
+| `Wire.on` | `String event, Function callback` | 无 | 注册事件监听器，支持多次调用注册多个监听器 |
+| `Wire.off` | `String event, Function callback` | 无 | 移除指定事件监听器。不传 `callback` 时移除该事件的所有监听器 |
+
+### 12.2 支持的事件
+
+| 事件 | 参数 | 触发时机 |
+| --- | --- | --- |
+| `beforeUpdate` | `(component, action, params)` | 发送更新请求前触发 |
+| `afterUpdate` | `(component, data, sections)` | DOM 更新完成后触发 |
+
+**参数说明**：
+
+- `beforeUpdate`：
+  - `component`：当前 wire 组件对象
+  - `action`：即将执行的 action 名称
+  - `params`：action 参数
+- `afterUpdate`：
+  - `component`：当前 wire 组件对象
+  - `data`：服务端返回的完整响应数据
+  - `sections`：本次更新的 section 列表
+
+### 12.3 使用示例
+
+```javascript
+// mdui 框架在 DOM 更新后刷新组件
+Wire.on('afterUpdate', function(component, data, sections) {
+    mdui.mutation();  // 重新扫描并初始化 mdui 组件
+});
+
+// 更新前可以做些准备工作
+Wire.on('beforeUpdate', function(component, action, params) {
+    console.log('即将执行 action:', action);
+});
+
+// 移除事件监听器
+Wire.off('afterUpdate', afterUpdateHandler);
+```
+
+---
+
+## 13. Section 排除列表
+
+`WireManager` 新增排除列表功能，可以让某些 section/slot 不被 `<!--wire:section-start/end:name-->` 标记包裹，从而不被前端 `wire.js` 识别为可更新区域。适用于 header、footer 等不需要局部更新的全局区域。
+
+### 13.1 设计原理
+
+不修改 jblade 本身，通过后处理渲染结果移除排除 section 的 `<!--wire:section-start/end:name-->` 标记。被排除的 section 仍会正常渲染 HTML，但不会被 wire.js 纳入局部更新范围。
+
+### 13.2 API
+
+| 方法 | 参数 | 返回 | 说明 |
+| --- | --- | --- | --- |
+| `addExcludedSections` (static) | `String... sectionNames` | `void` | 添加排除的 section 名（可变参数） |
+| `removeExcludedSection` (static) | `String sectionName` | `void` | 移除单个排除的 section 名 |
+| `getExcludedSections` (static) | 无 | `List<String>` | 获取当前排除的 section 名列表 |
+| `clearExcludedSections` (static) | 无 | `void` | 清空排除列表 |
+| `isExcluded` (static) | `String sectionName` | `boolean` | 检查指定 section 名是否在排除列表中 |
+
+### 13.3 SpringBoot 配置
+
+通过 `application.yml` 配置，由 `WireAutoConfiguration` 自动应用到 `WireManager`：
+
+```yaml
+jaravel:
+  wire:
+    excluded-sections:
+      - header
+      - footer
+```
+
+| 配置项 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `jaravel.wire.excluded-sections` | `List<String>` | `[]`（空列表） | 排除的 section 名列表，不被前端 wire.js 识别为可更新区域 |
+
+### 13.4 编程式控制
+
+```java
+// 添加排除的 section
+WireManager.addExcludedSections("header", "footer");
+
+// 检查是否被排除
+WireManager.isExcluded("header");   // true
+
+// 移除单个排除
+WireManager.removeExcludedSection("header");
+
+// 清空排除列表
+WireManager.clearExcludedSections();
+```
+
+---
+
+## 14. 完整控制器示例
 
 一个完整的计数器 + 列表示例，展示 `WireService` 流式 API 的典型用法：
 
@@ -898,7 +1002,7 @@ router.post("/api/wire/demo", demoController::update);
 
 ---
 
-## 13. 线程安全说明
+## 15. 线程安全说明
 
 | 类 | 线程安全性 | 说明 |
 | --- | --- | --- |
@@ -930,6 +1034,9 @@ jaravel:
     enabled: true                # 是否启用自动装配（默认 true）
     auto-inject-js: true         # 是否自动注入 wire.js 的 script 标签（默认 true）
     js-path: /static/wire.js     # wire.js 的外部引用路径（默认 /static/wire.js）
+    excluded-sections:           # 排除的 section（不被 wire.js 识别为可更新区域）
+      - header
+      - footer
 ```
 
 | 配置项 | 类型 | 默认值 | 说明 |
@@ -937,6 +1044,7 @@ jaravel:
 | `jaravel.wire.enabled` | `boolean` | `true` | 是否启用 Wire 自动装配 |
 | `jaravel.wire.auto-inject-js` | `boolean` | `true` | 是否自动注入 wire.js。设为 `false` 后只注入 wire:config 配置标签 |
 | `jaravel.wire.js-path` | `String` | `/static/wire.js` | wire.js 的外部引用路径 |
+| `jaravel.wire.excluded-sections` | `List<String>` | `[]`（空列表） | 排除的 section 名列表，不被前端 wire.js 识别为可更新区域 |
 
 > 配置由 `WireAutoConfiguration` 在应用启动时自动应用到 `WireManager`。详见[第 11 节](#11-手动控制-wirejs-注入)。
 

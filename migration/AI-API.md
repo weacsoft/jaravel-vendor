@@ -3,7 +3,7 @@
 > Module: `migration` | Package: `com.weacsoft.jaravel.vendor.migration` | Version: 0.1.2
 
 ## Overview
-migration 模块提供 Laravel 风格的数据库迁移系统，包含 Blueprint（流式建表蓝图）、Schema（DDL 执行器，支持 MySQL/SQLite/H2/SQL Server 多方言）、Migrator（迁移引擎，支持 migrate/rollback/reset/refresh/status）、MigrationScanner（三种迁移源加载：DIRECTORY 内存编译/JAR 加载/CLASSPATH 扫描）、MigrationRepository（迁移记录仓库）、MigrationExecutor（核心执行器，无 SpringBoot 依赖）、MigrationCLI（独立命令行入口）、JdbcExecutor（轻量 JDBC 执行器，替代 JdbcTemplate）和 MigrationRunner（SpringBoot 适配器）。迁移文件通过 @MigrationAnnotation 标记，运行时编译/加载、反射实例化、执行后自动释放。核心逻辑完全独立于 SpringBoot，可通过 MigrationCLI 在纯 Java 环境中运行。
+migration 模块提供 Laravel 风格的数据库迁移系统，包含 Blueprint（流式建表蓝图）、Schema（DDL 执行器，支持 MySQL/SQLite/H2/SQL Server 多方言）、Migrator（迁移引擎，支持 migrate/rollback/reset/refresh/status）、MigrationScanner（四种迁移源加载：DIRECTORY 内存编译/DIRECTORY_CLASSES 预编译 class 加载/JAR 加载/CLASSPATH 扫描）、MigrationRepository（迁移记录仓库）、MigrationExecutor（核心执行器，无 SpringBoot 依赖）、MigrationCLI（独立命令行入口）、JdbcExecutor（轻量 JDBC 执行器，替代 JdbcTemplate）和 MigrationRunner（SpringBoot 适配器）。迁移文件通过 @MigrationAnnotation 标记，运行时编译/加载、反射实例化、执行后自动释放。核心逻辑完全独立于 SpringBoot，可通过 MigrationCLI 在纯 Java 环境中运行。JDK 不可用时提供 4 种解决方案的错误提示。
 
 ## Package Structure
 
@@ -256,13 +256,14 @@ public class Migration_2024_01_01_CreateUsersTable implements Migration {
 ### MigrationSource
 - **Type**: enum
 - **Package**: `com.weacsoft.jaravel.vendor.migration.engine`
-- **Description**: 迁移源类型，支持三种迁移来源。
+- **Description**: 迁移源类型，支持四种迁移来源。
 
 #### Constants
 
 | Constant | Description |
 |----------|-------------|
 | `DIRECTORY` | 目录模式：从目录读取 .java 文件，运行时内存编译（需要 JDK） |
+| `DIRECTORY_CLASSES` | 预编译 class 目录模式：从目录加载预编译 .class 文件（只需要 JRE） |
 | `JAR` | JAR 模式：从 .jar 文件加载预编译的迁移类（只需要 JRE） |
 | `CLASSPATH` | Classpath 模式：从当前 classpath 扫描迁移类（内置迁移） |
 
@@ -303,7 +304,7 @@ migrator.finish();                 // 释放资源
 ### MigrationScanner
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.migration.engine`
-- **Description**: 迁移源扫描器与加载器，支持三种迁移来源模式（DIRECTORY/JAR/CLASSPATH）。通过 @MigrationAnnotation 注解自动识别迁移类，无需手动指定包名。
+- **Description**: 迁移源扫描器与加载器，支持四种迁移来源模式（DIRECTORY/DIRECTORY_CLASSES/JAR/CLASSPATH）。通过 @MigrationAnnotation 注解自动识别迁移类，无需手动指定包名。JDK 不可用时提供 4 种解决方案的错误提示。
 
 #### Methods (主要)
 
@@ -313,6 +314,8 @@ migrator.finish();                 // 释放资源
 | `compileFromDirectory` | `File dir` | `void` | 编译目录下所有 .java 文件 |
 | `compileFromFile` | `File file` | `void` | 编译单个 .java 文件 |
 | `compileFromFile` | `String filePath` | `void` | 编译单个 .java 文件 |
+| `loadFromDirectoryClasses` | `String dirPath` | `void` | **新增**：从目录加载预编译 .class 文件（DIRECTORY_CLASSES 模式，仅需 JRE） |
+| `loadFromDirectoryClasses` | `File dir` | `void` | **新增**：从目录加载预编译 .class 文件 |
 | `loadFromJar` | `File jarFile` | `void` | 从 JAR 加载迁移类（JAR 模式） |
 | `loadFromClasspath` | 无 | `void` | 从 classpath 扫描迁移类（CLASSPATH 模式） |
 | `getAllMigrationClassNames` | 无 | `List<String>` | 获取所有迁移类全限定名 |
@@ -407,19 +410,25 @@ java -jar app.jar --jaravel.migration-status
 | `enabled` | `boolean` | `true` | 是否启用迁移模块 |
 | `table` | `String` | `"migrations"` | 迁移记录表名 |
 | `source` | `MigrationSource` | `DIRECTORY` | 迁移源类型 |
-| `directory` | `String` | `"migrations"` | 迁移 .java 文件目录（DIRECTORY 模式） |
+| `directory` | `String` | `"migrations"` | 迁移文件目录（DIRECTORY 模式为 .java 文件，DIRECTORY_CLASSES 模式为 .class 文件） |
 | `jarPath` | `String` | `""` | JAR 文件路径（JAR 模式） |
 | `packageInJar` | `boolean` | `false` | 构建时是否将迁移目录打包进 jar |
 | `autoRun` | `boolean` | `false` | 启动时是否自动执行 migrate |
 
 #### Usage Example
 ```yaml
-# application.yml - 目录模式（开发）
+# application.yml - 目录模式（开发，需 JDK）
 jaravel:
   migration:
     source: DIRECTORY
     directory: migrations
     auto-run: false
+
+# 预编译 class 目录模式（生产，仅需 JRE）
+jaravel:
+  migration:
+    source: DIRECTORY_CLASSES
+    directory: precompiled/migrations
 
 # JAR 模式（生产）
 jaravel:
@@ -480,8 +489,8 @@ executor.execute("migrate");
 | `--db-url=<url>` | 是 | - | 数据库 JDBC URL |
 | `--db-user=<user>` | 是 | - | 数据库用户名 |
 | `--db-password=<pwd>` | 否 | 空 | 数据库密码 |
-| `--source=<type>` | 否 | DIRECTORY | 迁移源：DIRECTORY/JAR/CLASSPATH |
-| `--directory=<path>` | 否 | migrations | 迁移文件目录（DIRECTORY） |
+| `--source=<type>` | 否 | DIRECTORY | 迁移源：DIRECTORY/DIRECTORY_CLASSES/JAR/CLASSPATH |
+| `--directory=<path>` | 否 | migrations | 迁移文件目录（DIRECTORY 为 .java，DIRECTORY_CLASSES 为 .class） |
 | `--jar-path=<path>` | 否 | 空 | JAR 路径（JAR） |
 | `--table=<name>` | 否 | migrations | 迁移记录表名 |
 

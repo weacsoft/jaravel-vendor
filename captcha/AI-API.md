@@ -1146,7 +1146,7 @@ CaptchaProperties coreProps = springBootProps.toCoreProperties();
 |-------|------------|-------------|
 | `beforeGet` | `(type)` | 获取验证码前触发（含刷新场景）。`type` 为验证码类型字符串 |
 | `afterGet` | `(captchaKey, captchaData)` | 验证码加载并渲染完成后触发。`captchaKey` 为验证码标识，`captchaData` 为后端返回的完整数据对象 |
-| `complete` | `(captchaKey, captchaInput, rawInput)` | 用户完成前端验证操作后触发（不提交到后端）。`captchaInput` 为加密后的用户输入，`rawInput` 为原始明文输入 |
+| `complete` | `(captchaKey, captchaInput)` | 用户完成前端验证操作后触发（不提交到后端）。`captchaKey` 为验证码标识，`captchaInput` 为加密后的用户输入（Base64 密文） |
 
 > **complete 事件触发时机**：
 > - `number`/`arithmetic`：用户在输入框按 Enter 键时触发
@@ -1176,18 +1176,6 @@ CaptchaProperties coreProps = springBootProps.toCoreProperties();
 |--------|-----------|--------|-------------|
 | `_complete` | 无 | `Promise<void>` | 内部方法，替代原 `verify()`。用户完成前端验证操作时由组件内部调用。不提交到后端，不判断准确与否。仅触发 `complete` 事件并禁用交互（防止修改已完成的数据） |
 
-#### complete 事件参数格式
-
-不同验证码类型的 `rawInput`（原始明文输入）格式：
-
-| Type | rawInput 格式 | 示例 |
-|------|---------------|------|
-| `number` | 纯文本字符串 | `"AB23"` |
-| `arithmetic` | 纯文本字符串 | `"17"` |
-| `slider` | JSON（含 `value` 和 `trajectory`） | `{"value":123,"trajectory":[{"t":0,"v":0},{"t":50,"v":5}]}` |
-| `rotate` | JSON（含 `value` 和 `trajectory`） | `{"value":90,"trajectory":[{"t":0,"v":0},{"t":50,"v":3}]}` |
-| `click` | JSON（含 `clicks` 坐标数组） | `{"clicks":[{"x":120,"y":80},{"x":200,"y":150}]}` |
-
 #### Usage Example
 
 ```html
@@ -1214,10 +1202,9 @@ captcha
     .on('afterGet', (captchaKey, captchaData) => {
         console.log('验证码已加载, key:', captchaKey);
     })
-    .on('complete', (captchaKey, captchaInput, rawInput) => {
+    .on('complete', (captchaKey, captchaInput) => {
         console.log('用户完成验证, key:', captchaKey);
         console.log('加密后的输入:', captchaInput);
-        console.log('原始明文输入:', rawInput);
 
         // 业务方在此决定后续处理：提交到后端验证
         submitToBackend(captchaKey, captchaInput);
@@ -1261,7 +1248,7 @@ async function getCaptchaParams() {
 }
 
 // 4. 移除事件监听器
-const myCallback = (key, input, raw) => { /* ... */ };
+const myCallback = (key, input) => { /* ... */ };
 captcha.on('complete', myCallback);
 // 之后移除
 captcha.off('complete', myCallback);
