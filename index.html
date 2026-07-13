@@ -3406,6 +3406,7 @@ router.serveStatic(&quot;/static&quot;, List.of(&quot;file:./public/&quot;, &quo
 <li><a href="#jblade-11-使用示例">11. 使用示例</a></li>
 <li><a href="#jblade-12-线程安全说明">12. 线程安全说明</a></li>
 <li><a href="#jblade-13-静态资源-url-生成asset">13. 静态资源 URL 生成（@asset）</a></li>
+<li><a href="#jblade-14-预编译功能">14. 预编译功能</a></li>
 
 <p>---</p>
 
@@ -3480,7 +3481,7 @@ template.render() -&gt; 输出 HTML 字符串
 <tr><td>`org.springframework:spring-core`</td><td>`ClassPathResource` 读取 classpath 模板文件</td></tr>
 </table>
 
-<p>&gt; 运行环境要求：JDK 17+（需使用 JDK 而非 JRE，因为依赖 <code>javax.tools.JavaCompiler</code>），Spring Boot 3.2.5（Spring 6.x）。</p>
+<p>&gt; 运行环境要求：JDK 17+（需使用 JDK 而非 JRE，因为依赖 <code>javax.tools.JavaCompiler</code>），Spring Boot 3.2.5（Spring 6.x）。若运行环境仅有 JRE，可使用 <a href="#jblade-14-预编译功能">预编译功能</a> 在开发时预编译模板，运行时无需 JDK。</p>
 
 <p>---</p>
 
@@ -3492,7 +3493,10 @@ com.weacsoft.jaravel.vendor
 │   ├── BladeEngine              // 模板引擎（入口，含 CompiledTemplateData 内部类）
 │   ├── BladeCompiler            // 模板编译器（Blade -&gt; Java 源码 -&gt; 字节码，含表达式编译引擎）
 │   ├── BladeTemplate            // 编译后模板的抽象基类（含 PHP 辅助函数）
-│   └── BladeContext             // 执行上下文（变量/Section/组件）
+│   ├── BladeContext             // 执行上下文（变量/Section/组件）
+│   ├── BladePrecompiler         // 预编译工具（开发时预编译模板，支持 PACKAGED/CLASSES 两种模式）
+│   ├── PrecompiledTemplateLoader // 预编译产物加载器（运行时加载预编译模板，JRE-only）
+│   └── BladePrecompilerMain     // 预编译命令行工具
 └── utils
     ├── StringUtils              // 命名转换工具（驼峰/下划线/帕斯卡）
     └── memory
@@ -3545,6 +3549,8 @@ com.weacsoft.jaravel.vendor
 <tr><td>`int getTemplateInstanceCacheSize()`</td><td>获取模板实例缓存大小</td></tr>
 <tr><td>`int getClassCacheSize()`</td><td>获取一级缓存中的模板数量（`Class<?>` 缓存大小）</td></tr>
 <tr><td>`String getSuffix()`</td><td>获取模板文件后缀（默认 `.blade.java`）</td></tr>
+<tr><td>`static BladeEngine fromPrecompiledPackage(String path)`</td><td>JRE-only 工厂方法。从预编译打包文件（zip）加载模板，无需 JDK。`path` 为预编译产物路径（由 `BladePrecompiler` 的 PACKAGED 模式生成）</td></tr>
+<tr><td>`static BladeEngine fromPrecompiledClasses(String dir)`</td><td>JRE-only 工厂方法。从预编译散乱 class 目录加载模板，无需 JDK。`dir` 为预编译产物目录（由 `BladePrecompiler` 的 CLASSES 模式生成）</td></tr>
 </table>
 
 <h6 id="jblade-渲染流程">渲染流程</h6>
@@ -4443,6 +4449,133 @@ jaravel:
 </code></pre>
 
 <p>&gt; <strong>关键点</strong>：<code>BladeAssetHelper</code> 的 URL 前缀必须与 <code>StaticResourceRoute</code> 的 <code>urlPrefix</code> 保持一致，否则 <code>@asset</code> 生成的 URL 将无法被静态资源路由命中。<code>StaticResourceRoute</code> 支持多目录回退查找（按顺序匹配第一个命中的文件）。</p>
+
+<p>---</p>
+
+<h5 id="jblade-14-预编译功能">14. 预编译功能</h5>
+
+<p>jblade 默认在运行时通过 <code>javax.tools.JavaCompiler</code> 内存编译 Blade 模板，这要求运行环境必须是 JDK（JRE 中不包含编译器）。<strong>预编译功能</strong>允许在开发阶段（JDK 环境）预先将所有 Blade 模板编译为字节码，运行时仅需 JRE 即可加载和渲染模板，无需 JDK。</p>
+
+<p>&gt; <strong>适用场景</strong>：生产部署环境仅有 JRE、容器镜像精简（不含 JDK）、Docker 多阶段构建中将编译与运行分离等场景。</p>
+
+<h6 id="jblade-预编译架构">预编译架构</h6>
+
+<pre><code>
+开发阶段（JDK 环境）                      运行阶段（JRE 环境）
+┌─────────────────────┐                ┌─────────────────────────┐
+│  BladePrecompiler   │                │  BladeEngine             │
+│  ───────────────    │                │  ──────────────          │
+│  1. 扫描模板目录     │   预编译产物    │  fromPrecompiledPackage()│
+│  2. BladeCompiler   │ ──────────&gt;   │  或                       │
+│     编译为字节码     │  zip 或 .class │  fromPrecompiledClasses() │
+│  3. 输出产物文件     │                │       │                  │
+└─────────────────────┘                │       ▼                  │
+                                       │  PrecompiledTemplateLoader│
+                                       │  加载预编译字节码           │
+                                       │       │                  │
+                                       │       ▼                  │
+                                       │  渲染模板（无需 JDK）      │
+                                       └─────────────────────────┘
+</code></pre>
+
+<h6 id="jblade-bladeprecompiler">BladePrecompiler</h6>
+
+<p><code>com.weacsoft.jaravel.vendor.jblade.BladePrecompiler</code></p>
+
+<p>预编译工具类，在开发阶段（需 JDK）将模板目录中的所有 Blade 模板预编译为字节码产物。支持两种输出模式：</p>
+
+<table>
+<tr><th>模式</th><th>说明</th><th>产物格式</th><th>对应加载方法</th></tr>
+<tr><td>`PACKAGED`</td><td>将所有编译后的 `.class` 文件打包为一个 zip 文件</td><td>单个 zip 文件</td><td>`BladeEngine.fromPrecompiledPackage(path)`</td></tr>
+<tr><td>`CLASSES`</td><td>将编译后的 `.class` 文件以散乱形式输出到目录</td><td>目录中的 .class 文件</td><td>`BladeEngine.fromPrecompiledClasses(dir)`</td></tr>
+</table>
+
+<p>&gt; <strong>模式选择建议</strong>：PACKAGED 模式产物为单个 zip 文件，便于传输和管理，适合生产部署；CLASSES 模式产物为散乱 class 文件，便于调试和查看单个模板的编译结果，适合开发阶段。</p>
+
+<h6 id="jblade-precompiledtemplateloader">PrecompiledTemplateLoader</h6>
+
+<p><code>com.weacsoft.jaravel.vendor.jblade.PrecompiledTemplateLoader</code></p>
+
+<p>预编译产物加载器，在运行时（仅需 JRE）加载预编译阶段生成的字节码。由 <code>BladeEngine.fromPrecompiledPackage()</code> 和 <code>BladeEngine.fromPrecompiledClasses()</code> 内部调用，通常无需手动使用。</p>
+
+<li><strong>PACKAGED 模式加载</strong>：解压 zip 文件，读取其中的 <code>.class</code> 文件字节码，注册到 <code>MemoryClassLoader</code></li>
+<li><strong>CLASSES 模式加载</strong>：扫描目录中的 <code>.class</code> 文件，读取字节码，注册到 <code>MemoryClassLoader</code></li>
+
+<h6 id="jblade-bladeengine-工厂方法">BladeEngine 工厂方法</h6>
+
+<p><code>BladeEngine</code> 提供两个 JRE-only 静态工厂方法，直接从预编译产物创建引擎实例，无需 JDK：</p>
+
+<pre><code>
+// 方式一：从预编译打包文件（zip）创建引擎
+BladeEngine engine = BladeEngine.fromPrecompiledPackage("/path/to/templates.zip");
+
+// 方式二：从预编译散乱 class 目录创建引擎
+BladeEngine engine = BladeEngine.fromPrecompiledClasses("/path/to/precompiled-classes/");
+
+// 创建后使用方式与普通 BladeEngine 完全一致
+String html = engine.render("users.list", Map.of("users", userList));
+</code></pre>
+
+<p>&gt; 预编译模式创建的 <code>BladeEngine</code> 不支持 <code>clearCache()</code> 后重新编译（因为运行时无 JDK）。模板更新需重新执行预编译流程。</p>
+
+<h6 id="jblade-bladeprecompilermain">BladePrecompilerMain —— 命令行工具</h6>
+
+<p><code>com.weacsoft.jaravel.vendor.jblade.BladePrecompilerMain</code></p>
+
+<p>预编译命令行工具，可在不编写代码的情况下直接执行预编译。适用于 CI/CD 流水线或构建脚本中。</p>
+
+<pre><code>
+# 编译模板目录 templates 中的所有模板，输出为 zip 包
+java -cp jblade.jar com.weacsoft.jaravel.vendor.jblade.BladePrecompilerMain \
+    --template-dir templates \
+    --output /path/to/templates.zip \
+    --mode PACKAGED
+
+# 编译为散乱 class 目录
+java -cp jblade.jar com.weacsoft.jaravel.vendor.jblade.BladePrecompilerMain \
+    --template-dir templates \
+    --output /path/to/precompiled-classes/ \
+    --mode CLASSES
+</code></pre>
+
+<h6 id="jblade-bladecompiler-jdk-不可用处理">BladeCompiler —— JDK 不可用时的友好错误信息</h6>
+
+<p>当运行环境为 JRE（无 <code>javax.tools.JavaCompiler</code>）且未使用预编译模式时，<code>BladeCompiler</code> 在尝试编译模板时会检测到 JDK 不可用，并抛出包含<strong>友好错误信息</strong>的异常，提示用户使用预编译功能：</p>
+
+<pre><code>
+// JRE 环境下未预编译，直接使用 BladeEngine 时的错误信息示例：
+// IllegalStateException: JavaCompiler 不可用，当前运行环境可能为 JRE 而非 JDK。
+// 请使用预编译功能：
+//   1. 在 JDK 环境中使用 BladePrecompiler 预编译模板
+//   2. 运行时使用 BladeEngine.fromPrecompiledPackage() 或 fromPrecompiledClasses() 加载
+//   3. 或使用 BladePrecompilerMain 命令行工具执行预编译
+</code></pre>
+
+<h6 id="jblade-预编译完整流程示例">预编译完整流程示例</h6>
+
+<pre><code>
+// ========== 开发阶段：预编译（需 JDK） ==========
+
+// 方式一：代码中调用 BladePrecompiler
+BladePrecompiler precompiler = new BladePrecompiler("templates", ".blade.java");
+// 编译为 zip 包
+precompiler.precompile("/path/to/templates.zip", BladePrecompiler.Mode.PACKAGED);
+// 或编译为散乱 class 目录
+// precompiler.precompile("/path/to/precompiled-classes/", BladePrecompiler.Mode.CLASSES);
+
+// 方式二：使用命令行工具
+// java -cp jblade.jar BladePrecompilerMain --template-dir templates --output templates.zip --mode PACKAGED
+
+
+// ========== 运行阶段：加载预编译产物（仅需 JRE） ==========
+
+// 从 zip 包加载
+BladeEngine engine = BladeEngine.fromPrecompiledPackage("/path/to/templates.zip");
+
+// 渲染模板（与普通模式完全一致）
+String html = engine.render("welcome", Map.of("name", "World"));
+</code></pre>
+
 <h4>类和方法</h4>
 <p>&gt; Module: <code>jblade</code> | Package: <code>com.weacsoft.jaravel.vendor.jblade</code> | Version: 0.1.2</p>
 
@@ -4479,6 +4612,8 @@ jaravel:
 <tr><td>`getTemplateInstanceCacheSize`</td><td>无</td><td>`int`</td><td>获取模板实例缓存大小</td></tr>
 <tr><td>`getClassCacheSize`</td><td>无</td><td>`int`</td><td>获取一级缓存中的模板数量（`Class<?>` 缓存大小）</td></tr>
 <tr><td>`getSuffix`</td><td>无</td><td>`String`</td><td>获取模板文件后缀（默认 `.blade.java`）</td></tr>
+<tr><td>`fromPrecompiledPackage`</td><td>`String path`</td><td>`static BladeEngine`</td><td>JRE-only 工厂方法。从预编译打包文件（zip）加载模板，无需 JDK</td></tr>
+<tr><td>`fromPrecompiledClasses`</td><td>`String dir`</td><td>`static BladeEngine`</td><td>JRE-only 工厂方法。从预编译散乱 class 目录加载模板，无需 JDK</td></tr>
 </table>
 
 <h6 id="jblade-usage-example">Usage Example</h6>
@@ -4550,7 +4685,7 @@ if (cached instanceof CompiledTemplateData) {
 <h6 id="jblade-bladecompiler">BladeCompiler</h6>
 <li><strong>Type</strong>: class</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.jblade</code></li>
-<li><strong>Description</strong>: Blade 模板编译器，将 <code>.blade.java</code> 模板文件编译为 Java 源代码并通过内存编译器加载。支持 Blade 语法：@extends、@section/@endsection、@yield、@if/@elseif/@else/@endif、@foreach/@endforeach、@for/@endfor、@component/@endcomponent、@slot/@endslot、@asset（静态资源 URL 生成，运行时委托 <code>BladeAssetHelper.url()</code>）、{{ }} 变量输出、{{-- --}} 注释。</li>
+<li><strong>Description</strong>: Blade 模板编译器，将 <code>.blade.java</code> 模板文件编译为 Java 源代码并通过内存编译器加载。支持 Blade 语法：@extends、@section/@endsection、@yield、@if/@elseif/@else/@endif、@foreach/@endforeach、@for/@endfor、@component/@endcomponent、@slot/@endslot、@asset（静态资源 URL 生成，运行时委托 <code>BladeAssetHelper.url()</code>）、{{ }} 变量输出、{{-- --}} 注释。当 JDK 不可用（JRE 环境）时，编译器会检测到 <code>javax.tools.JavaCompiler</code> 缺失并抛出包含友好错误信息的异常，提示用户使用 <a href="#jblade-14-预编译功能">预编译功能</a>。</li>
 
 <h6 id="jblade-methods">Methods</h6>
 
@@ -4779,6 +4914,66 @@ BladeAssetHelper.url(&quot;/js/app.js&quot;);     // &quot;/static/js/app.js&quo
 </code></pre>
 
 <p>&gt; 配合 HTTP 模块的 <code>StaticResourceRoute</code> 使用：<code>BladeAssetHelper</code> 的 URL 前缀须与 <code>StaticResourceRoute</code> 的 <code>urlPrefix</code> 一致，<code>@asset</code> 生成的 URL 才能被静态资源路由命中并返回对应文件。</p>
+
+<p>---</p>
+
+<h6 id="jblade-bladeprecompiler">BladePrecompiler</h6>
+<li><strong>Type</strong>: class</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.jblade</code></li>
+<li><strong>Description</strong>: 预编译工具类，在开发阶段（需 JDK）将模板目录中的所有 Blade 模板预编译为字节码产物。支持 PACKAGED（打包 zip）和 CLASSES（散乱 class）两种输出模式。运行时通过 <code>BladeEngine.fromPrecompiledPackage()</code> 或 <code>BladeEngine.fromPrecompiledClasses()</code> 加载预编译产物，使运行环境无需 JDK。</li>
+
+<h6 id="jblade-methods">Methods</h6>
+
+<table>
+<tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
+<tr><td>`BladePrecompiler`</td><td>`String templateDir, String suffix`</td><td>构造方法</td><td>指定模板目录和文件后缀</td></tr>
+<tr><td>`precompile`</td><td>`String outputPath, Mode mode`</td><td>`void`</td><td>执行预编译。`mode` 为 `PACKAGED`（输出 zip）或 `CLASSES`（输出散乱 class 目录）</td></tr>
+</table>
+
+<h6 id="jblade-constants">Constants</h6>
+
+<table>
+<tr><th>Constant</th><th>Type</th><th>Description</th></tr>
+<tr><td>`Mode.PACKAGED`</td><td>enum</td><td>打包模式：将编译后的 `.class` 文件打包为 zip</td></tr>
+<tr><td>`Mode.CLASSES`</td><td>enum</td><td>散乱模式：将编译后的 `.class` 文件输出到目录</td></tr>
+</table>
+
+<h6 id="jblade-usage-example">Usage Example</h6>
+<pre><code>
+BladePrecompiler precompiler = new BladePrecompiler(&quot;templates&quot;, &quot;.blade.java&quot;);
+precompiler.precompile(&quot;/path/to/templates.zip&quot;, BladePrecompiler.Mode.PACKAGED);
+</code></pre>
+
+<p>---</p>
+
+<h6 id="jblade-precompiledtemplateloader">PrecompiledTemplateLoader</h6>
+<li><strong>Type</strong>: class</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.jblade</code></li>
+<li><strong>Description</strong>: 预编译产物加载器，在运行时（仅需 JRE）加载预编译阶段生成的字节码。由 <code>BladeEngine.fromPrecompiledPackage()</code> 和 <code>BladeEngine.fromPrecompiledClasses()</code> 内部调用，通常无需手动使用。支持从 zip 包或散乱 class 目录加载字节码并注册到 <code>MemoryClassLoader</code>。</li>
+
+<h6 id="jblade-methods">Methods</h6>
+
+<table>
+<tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
+<tr><td>`loadFromPackage`</td><td>`String path, MemoryClassLoader classLoader`</td><td>`void`</td><td>从 zip 包加载预编译字节码到类加载器</td></tr>
+<tr><td>`loadFromClasses`</td><td>`String dir, MemoryClassLoader classLoader`</td><td>`void`</td><td>从散乱 class 目录加载预编译字节码到类加载器</td></tr>
+</table>
+
+<p>---</p>
+
+<h6 id="jblade-bladeprecompilermain">BladePrecompilerMain</h6>
+<li><strong>Type</strong>: class</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.jblade</code></li>
+<li><strong>Description</strong>: 预编译命令行工具，可在不编写代码的情况下直接执行预编译。适用于 CI/CD 流水线或构建脚本中。支持 <code>--template-dir</code>、<code>--output</code>、<code>--mode</code> 参数。</li>
+
+<h6 id="jblade-usage-example">Usage Example</h6>
+<pre><code>
+java -cp jblade.jar com.weacsoft.jaravel.vendor.jblade.BladePrecompilerMain \
+    --template-dir templates \
+    --output /path/to/templates.zip \
+    --mode PACKAGED
+</code></pre>
+
 </section>
 <h2 id="data">数据层</h2>
 <p class="module-desc">多数据源、数据库迁移、模型缓存、队列。</p>
@@ -5706,7 +5901,7 @@ Auth.login(user);
 <h3>migration — 数据库迁移</h3>
 <p class="module-desc">Laravel 风格迁移系统，独立于 SpringBoot 运行，支持 MySQL/SQLite/H2</p>
 <h4>简介</h4>
-<p>&gt; Jaravel-Vendor 的数据库迁移模块，提供 Laravel 风格的 Blueprint 流式建表、<code>up()</code> / <code>down()</code> 迁移引擎、<code>migrate</code> / <code>rollback</code> / <code>reset</code> / <code>refresh</code> / <code>status</code> 命令，以及 MySQL、SQLite、H2、SQL Server、PostgreSQL、Oracle 多数据库方言自动适配，并通过 <code>TableMigrator</code> 提供跨库表迁移能力。支持 DIRECTORY / JAR / CLASSPATH 三种迁移源模式，适配开发与生产部署。<strong>核心逻辑独立于 SpringBoot，可通过 <code>MigrationCLI</code> 在纯 Java 环境中运行</strong>。包名统一为 <code>com.weacsoft.jaravel.vendor.migration</code>。</p>
+<p>&gt; Jaravel-Vendor 的数据库迁移模块，提供 Laravel 风格的 Blueprint 流式建表、<code>up()</code> / <code>down()</code> 迁移引擎、<code>migrate</code> / <code>rollback</code> / <code>reset</code> / <code>refresh</code> / <code>status</code> 命令，以及 MySQL、SQLite、H2、SQL Server、PostgreSQL、Oracle 多数据库方言自动适配，并通过 <code>TableMigrator</code> 提供跨库表迁移能力。支持 DIRECTORY / DIRECTORY_CLASSES / JAR / CLASSPATH 四种迁移源模式，适配开发与生产部署。<strong>核心逻辑独立于 SpringBoot，可通过 <code>MigrationCLI</code> 在纯 Java 环境中运行</strong>。包名统一为 <code>com.weacsoft.jaravel.vendor.migration</code>。</p>
 
 <p>---</p>
 
@@ -5782,11 +5977,12 @@ Auth.login(user);
 
 <p>单次 <code>up()</code> 可连续调用多次 <code>Schema.create()</code> 或 <code>Schema.table()</code> 处理多张表，<code>down()</code> 应对称地删除/回滚所有在 <code>up()</code> 中创建或修改的表。</p>
 
-<h6 id="migration-三种迁移源模式">三种迁移源模式</h6>
+<h6 id="migration-四种迁移源模式">四种迁移源模式</h6>
 
-<p>模块支持三种迁移来源（<code>MigrationSource</code> 枚举），适配不同的部署环境：</p>
+<p>模块支持四种迁移来源（<code>MigrationSource</code> 枚举），适配不同的部署环境：</p>
 
 <li><strong>DIRECTORY</strong>：从目录读取 <code>.java</code> 文件，运行时内存编译（需要 JDK）</li>
+<li><strong>DIRECTORY_CLASSES</strong>：从目录加载预编译的 <code>.class</code> 文件（只需要 JRE，无需 JDK）</li>
 <li><strong>JAR</strong>：从 <code>.jar</code> 文件加载预编译迁移类（只需要 JRE）</li>
 <li><strong>CLASSPATH</strong>：从 classpath 扫描内置迁移类（只需要 JRE）</li>
 
@@ -5817,7 +6013,7 @@ Auth.login(user);
 <tr><td>`org.slf4j:slf4j-api`</td><td>日志门面</td></tr>
 </table>
 
-<p>&gt; 运行环境要求：JDK 17+（DIRECTORY 模式）或 JRE 17+（JAR / CLASSPATH 模式），Spring Boot 3.2.5（Spring 6.x），容器中需存在 <code>javax.sql.DataSource</code> Bean。</p>
+<p>&gt; 运行环境要求：JDK 17+（DIRECTORY 模式）或 JRE 17+（DIRECTORY_CLASSES / JAR / CLASSPATH 模式），Spring Boot 3.2.5（Spring 6.x），容器中需存在 <code>javax.sql.DataSource</code> Bean。</p>
 
 <p>---</p>
 
@@ -5827,8 +6023,8 @@ Auth.login(user);
 com.weacsoft.jaravel.vendor.migration
 ├── Migration                    // 迁移接口（up/down/getName）
 ├── MigrationAnnotation          // 迁移类标记注解（替代 @Component）
-├── MigrationSource              // 迁移源类型枚举（DIRECTORY / JAR / CLASSPATH）
-├── MigrationScanner             // 迁移源扫描器与加载器（支持三种模式）
+├── MigrationSource              // 迁移源类型枚举（DIRECTORY / DIRECTORY_CLASSES / JAR / CLASSPATH）
+├── MigrationScanner             // 迁移源扫描器与加载器（支持四种模式）
 ├── MigrationGenerator           // 迁移类源码生成器（make:migration）
 ├── Schema                       // 表结构构建器（create/table/drop/rename/hasTable/hasColumn）
 ├── Blueprint                    // 表结构蓝图（流式 API，CREATE 与 ALTER 模式）
@@ -5845,33 +6041,35 @@ com.weacsoft.jaravel.vendor.migration
 
 <p><code>com.weacsoft.jaravel.vendor.migration.MigrationSource</code></p>
 
-<p>定义三种迁移来源，适配不同的部署场景：</p>
+<p>定义四种迁移来源，适配不同的部署场景：</p>
 
 <table>
 <tr><th>枚举值</th><th>说明</th><th>运行环境</th><th>加载方法</th></tr>
 <tr><td>`DIRECTORY`</td><td>从目录读取 `.java` 文件，运行时内存编译</td><td>JDK</td><td>`MigrationScanner.compileFromDirectory()`</td></tr>
+<tr><td>`DIRECTORY_CLASSES`</td><td>从目录加载预编译的 `.class` 文件</td><td>JRE</td><td>`MigrationScanner.loadFromDirectoryClasses()`</td></tr>
 <tr><td>`JAR`</td><td>从 `.jar` 文件加载预编译的迁移类</td><td>JRE</td><td>`MigrationScanner.loadFromJar()`</td></tr>
 <tr><td>`CLASSPATH`</td><td>从当前 classpath 扫描迁移类（内置迁移）</td><td>JRE</td><td>`MigrationScanner.loadFromClasspath()`</td></tr>
 </table>
 
-<p>三种模式均通过 <code>@MigrationAnnotation</code> 注解自动识别迁移类，无需手动指定包名。</p>
+<p>四种模式均通过 <code>@MigrationAnnotation</code> 注解自动识别迁移类，无需手动指定包名。</p>
 
 <p>---</p>
 
 <h5 id="migration-4-迁移源模式">4. 迁移源模式</h5>
 
-<p><code>migration</code> 模块支持三种迁移来源模式，通过 <code>jaravel.migration.source</code> 配置项切换，适配不同的部署环境（开发 / 生产 / 内置迁移）。</p>
+<p><code>migration</code> 模块支持四种迁移来源模式，通过 <code>jaravel.migration.source</code> 配置项切换，适配不同的部署环境（开发 / 生产 / 内置迁移）。</p>
 
 <h6 id="migration-模式总览">模式总览</h6>
 
 <table>
 <tr><th>模式</th><th>说明</th><th>需要</th><th>配置</th></tr>
 <tr><td>`DIRECTORY`</td><td>从目录读取 `.java` 文件，运行时内存编译</td><td>JDK</td><td>`jaravel.migration.source=DIRECTORY`</td></tr>
+<tr><td>`DIRECTORY_CLASSES`</td><td>从目录加载预编译的 `.class` 文件</td><td>JRE</td><td>`jaravel.migration.source=DIRECTORY_CLASSES`</td></tr>
 <tr><td>`JAR`</td><td>从 `.jar` 文件加载预编译迁移类</td><td>JRE</td><td>`jaravel.migration.source=JAR`</td></tr>
 <tr><td>`CLASSPATH`</td><td>从 classpath 扫描内置迁移类</td><td>JRE</td><td>`jaravel.migration.source=CLASSPATH`</td></tr>
 </table>
 
-<p>三种模式均通过 <code>@MigrationAnnotation</code> 注解自动识别迁移类，无需手动指定包名。</p>
+<p>四种模式均通过 <code>@MigrationAnnotation</code> 注解自动识别迁移类，无需手动指定包名。</p>
 
 <h6 id="migration-directory-模式（目录模式）">DIRECTORY 模式（目录模式）</h6>
 
@@ -5888,6 +6086,24 @@ jaravel:
     source: DIRECTORY
     directory: migrations
 </code></pre>
+
+<h6 id="migration-directory_classes-模式（预编译目录模式）">DIRECTORY_CLASSES 模式（预编译目录模式）</h6>
+
+<p>从指定目录加载预编译的 <code>.class</code> 文件，无需运行时编译。只需要 JRE 环境，无需 JDK。适用于在开发阶段（JDK 环境）预编译迁移类后，在生产环境（JRE 环境）直接加载的场景。</p>
+
+<li>适用场景：生产部署，迁移类已预编译为 .class 文件但未打包为 jar</li>
+<li>配置项：<code>jaravel.migration.directory</code>（默认 <code>migrations</code>，指向 .class 文件所在目录）</li>
+<li>加载方法：<code>MigrationScanner.loadFromDirectoryClasses()</code></li>
+<li>递归扫描目录中所有 <code>.class</code> 文件（跳过内部类），通过 <code>@MigrationAnnotation</code> 识别迁移类</li>
+
+<pre><code>
+jaravel:
+  migration:
+    source: DIRECTORY_CLASSES
+    directory: build/migration-classes
+</code></pre>
+
+<p>&gt; <strong>与 DIRECTORY 模式的关系</strong>：DIRECTORY 模式从 <code>.java</code> 源文件运行时编译（需 JDK），DIRECTORY_CLASSES 模式从已编译的 <code>.class</code> 文件加载（仅需 JRE）。开发阶段使用 DIRECTORY 模式修改即时生效，生产部署时预编译为 .class 后切换到 DIRECTORY_CLASSES 模式。</p>
 
 <h6 id="migration-jar-模式">JAR 模式</h6>
 
@@ -5921,16 +6137,17 @@ jaravel:
 
 <h6 id="migration-自动包名检测">自动包名检测</h6>
 
-<p>三种迁移源模式均支持<strong>自动包名检测</strong>：迁移文件可以使用任意包名，<code>MigrationScanner</code> 会自动识别并加载。无需手动配置包扫描路径。</p>
+<p>四种迁移源模式均支持<strong>自动包名检测</strong>：迁移文件可以使用任意包名，<code>MigrationScanner</code> 会自动识别并加载。无需手动配置包扫描路径。</p>
 
 <li>DIRECTORY 模式：从 <code>.java</code> 源文件中解析 <code>package</code> 声明提取包名</li>
-<li>JAR / CLASSPATH 模式：扫描所有 <code>.class</code> 文件，通过 <code>@MigrationAnnotation</code> 注解判断是否为迁移类，自动识别任意包名</li>
+<li>DIRECTORY_CLASSES / JAR / CLASSPATH 模式：扫描所有 <code>.class</code> 文件，通过 <code>@MigrationAnnotation</code> 注解判断是否为迁移类，自动识别任意包名</li>
 
 <h6 id="migration-模式选择建议">模式选择建议</h6>
 
 <table>
 <tr><th>场景</th><th>推荐模式</th><th>运行环境</th></tr>
 <tr><td>本地开发</td><td>`DIRECTORY`</td><td>JDK</td></tr>
+<tr><td>生产部署（预编译 class 目录）</td><td>`DIRECTORY_CLASSES`</td><td>JRE</td></tr>
 <tr><td>生产部署（迁移类独立 jar）</td><td>`JAR`</td><td>JRE</td></tr>
 <tr><td>框架内置迁移</td><td>`CLASSPATH`</td><td>JRE</td></tr>
 </table>
@@ -5945,13 +6162,13 @@ jaravel:
 
 <table>
 <tr><th>Profile</th><th>激活方式</th><th>运行环境</th><th>支持的迁移源模式</th></tr>
-<tr><td>`jdk-mode`</td><td>默认（未指定 `-Djre-only` 时激活）</td><td>完整 JDK</td><td>DIRECTORY / JAR / CLASSPATH</td></tr>
-<tr><td>`jre-mode`</td><td>`-Djre-only`</td><td>仅 JRE</td><td>JAR / CLASSPATH</td></tr>
+<tr><td>`jdk-mode`</td><td>默认（未指定 `-Djre-only` 时激活）</td><td>完整 JDK</td><td>DIRECTORY / DIRECTORY_CLASSES / JAR / CLASSPATH</td></tr>
+<tr><td>`jre-mode`</td><td>`-Djre-only`</td><td>仅 JRE</td><td>DIRECTORY_CLASSES / JAR / CLASSPATH</td></tr>
 </table>
 
 <h6 id="migration-jdk-mode（默认）">jdk-mode（默认）</h6>
 
-<p>完整 JDK 环境，<code>javax.tools.JavaCompiler</code> 由 JDK 提供，支持全部三种迁移源模式（包括 DIRECTORY 内存编译）。</p>
+<p>完整 JDK 环境，<code>javax.tools.JavaCompiler</code> 由 JDK 提供，支持全部四种迁移源模式（包括 DIRECTORY 内存编译和 DIRECTORY_CLASSES 预编译 class 加载）。</p>
 
 <pre><code>
 # 默认构建，使用 JDK
@@ -5960,14 +6177,28 @@ mvn clean package
 
 <h6 id="migration-jre-mode">jre-mode</h6>
 
-<p>仅 JRE 环境，不包含编译器，因此不支持 DIRECTORY 内存编译模式，仅支持 JAR 与 CLASSPATH 模式。</p>
+<p>仅 JRE 环境，不包含编译器，因此不支持 DIRECTORY 内存编译模式，支持 DIRECTORY_CLASSES（预编译 class 目录）、JAR 与 CLASSPATH 模式。</p>
 
 <pre><code>
 # JRE 模式构建
 mvn clean package -Djre-only
 </code></pre>
 
-<p>&gt; 注意：使用 <code>jre-mode</code> 构建时，若配置 <code>jaravel.migration.source=DIRECTORY</code>，运行时会因无法获取 <code>JavaCompiler</code> 而抛出 <code>IllegalStateException</code>。</p>
+<p>&gt; 注意：使用 <code>jre-mode</code> 构建时，若配置 <code>jaravel.migration.source=DIRECTORY</code>，运行时会因无法获取 <code>JavaCompiler</code> 而抛出 <code>IllegalStateException</code>。此时可改用 DIRECTORY_CLASSES 模式加载预编译的 class 文件。</p>
+
+<h6 id="migration-jdk-不可用时的解决方案">JDK 不可用时的解决方案</h6>
+
+<p>当运行环境仅有 JRE（无法获取 <code>javax.tools.JavaCompiler</code>）时，<code>DIRECTORY</code> 模式不可用。以下提供四种替代方案：</p>
+
+<table>
+<tr><th>方案</th><th>迁移源模式</th><th>说明</th></tr>
+<tr><td>1. 预编译 class 目录</td><td>`DIRECTORY_CLASSES`</td><td>在 JDK 环境中预编译迁移 .java 为 .class，生产环境通过 `DIRECTORY_CLASSES` 模式从目录加载。无需打包为 jar</td></tr>
+<tr><td>2. 打包为独立 jar</td><td>`JAR`</td><td>在 JDK 环境中编译迁移类并打包为独立 jar，生产环境通过 `JAR` 模式加载</td></tr>
+<tr><td>3. 内置到 classpath</td><td>`CLASSPATH`</td><td>将迁移类与框架一起打包，生产环境通过 `CLASSPATH` 模式从 classpath 扫描</td></tr>
+<tr><td>4. 升级为 JDK</td><td>`DIRECTORY`</td><td>将运行环境升级为完整 JDK，继续使用 `DIRECTORY` 模式运行时编译</td></tr>
+</table>
+
+<p>&gt; <strong>推荐</strong>：方案 1（DIRECTORY_CLASSES）最为灵活，无需打包步骤，只需将预编译的 .class 文件复制到生产环境目录即可。方案 2 和 3 适合已使用 jar 打包流程的项目。方案 4 适合容器镜像不受限的场景。</p>
 
 <h6 id="migration-构建时打包迁移目录（classpath-模式）">构建时打包迁移目录（CLASSPATH 模式）</h6>
 
@@ -6184,7 +6415,7 @@ public class Migration_2024_01_02_CustomName implements Migration {
 }
 </code></pre>
 
-<p>&gt; 三种迁移源模式均通过 <code>@MigrationAnnotation</code> 自动识别迁移类，迁移文件可使用任意包名，无需手动配置包扫描路径。</p>
+<p>&gt; 四种迁移源模式均通过 <code>@MigrationAnnotation</code> 自动识别迁移类，迁移文件可使用任意包名，无需手动配置包扫描路径。</p>
 
 <p>---</p>
 
@@ -6192,7 +6423,7 @@ public class Migration_2024_01_02_CustomName implements Migration {
 
 <p><code>com.weacsoft.jaravel.vendor.migration.MigrationScanner</code></p>
 
-<p>迁移源扫描器与加载器，支持三种迁移来源模式（DIRECTORY / JAR / CLASSPATH）。三种模式均通过 <code>@MigrationAnnotation</code> 注解自动识别迁移类，无需手动指定包名。</p>
+<p>迁移源扫描器与加载器，支持四种迁移来源模式（DIRECTORY / DIRECTORY_CLASSES / JAR / CLASSPATH）。四种模式均通过 <code>@MigrationAnnotation</code> 注解自动识别迁移类，无需手动指定包名。</p>
 
 <h6 id="migration-核心数据结构">核心数据结构</h6>
 
@@ -6210,6 +6441,8 @@ public class Migration_2024_01_02_CustomName implements Migration {
 <tr><th>方法签名</th><th>适用模式</th><th>说明</th></tr>
 <tr><td>`void compileFromDirectory(String directory)`</td><td>DIRECTORY</td><td>编译指定目录下所有 `.java` 文件（内存编译），扫描仅一级不递归</td></tr>
 <tr><td>`void compileFromDirectory(File dir)`</td><td>DIRECTORY</td><td>同上，接收 `File` 参数</td></tr>
+<tr><td>`void loadFromDirectoryClasses(String directory)`</td><td>DIRECTORY_CLASSES</td><td>从目录加载预编译的 `.class` 文件，递归扫描，跳过内部类。仅需 JRE，无需 JDK</td></tr>
+<tr><td>`void loadFromDirectoryClasses(File dir)`</td><td>DIRECTORY_CLASSES</td><td>同上，接收 `File` 参数</td></tr>
 <tr><td>`void loadFromJar(File jarFile)`</td><td>JAR</td><td>从 JAR 文件加载预编译迁移类，使用 `URLClassLoader`，扫描所有 `.class`（跳过 `META-INF` 与内部类）</td></tr>
 <tr><td>`void loadFromClasspath()`</td><td>CLASSPATH</td><td>从当前 classpath 扫描迁移类，支持目录（递归）与 JAR 文件</td></tr>
 <tr><td>`Class<?> getCompiledClass(String className)`</td><td>通用</td><td>获取已编译或已加载的类，优先从 `compiledClasses` 查找，其次 `loadedClasses`</td></tr>
@@ -6232,6 +6465,18 @@ public class Migration_2024_01_02_CustomName implements Migration {
    c. 移除 @Component 注解与 import（兼容旧迁移文件）
    d. 使用 JavaCompiler + MemoryFileManager 内存编译
    e. 将字节码存入 compiledClasses
+</code></pre>
+
+<p><strong>DIRECTORY_CLASSES 模式（<code>loadFromDirectoryClasses</code>）</strong>：</p>
+
+<pre><code>
+1. 递归扫描目录下所有 .class 文件（跳过内部类，即 $ 符号的类）
+2. 逐个文件：
+   a. 读取 .class 字节码
+   b. 从字节码中解析类名（含包名）
+   c. 将字节码注册到 MemoryClassLoader
+   d. 加载类并检查 @MigrationAnnotation 注解与 Migration 接口
+3. 符合条件的类存入 loadedClasses
 </code></pre>
 
 <p><strong>JAR 模式（<code>loadFromJar</code>）</strong>：</p>
@@ -6260,8 +6505,11 @@ public class Migration_2024_01_02_CustomName implements Migration {
 <pre><code>
 MigrationScanner scanner = new MigrationScanner();
 try {
-    // DIRECTORY 模式
+    // DIRECTORY 模式（需 JDK）
     scanner.compileFromDirectory(&quot;migrations&quot;);
+
+    // 或 DIRECTORY_CLASSES 模式（仅需 JRE，加载预编译 .class）
+    // scanner.loadFromDirectoryClasses(&quot;build/migration-classes&quot;);
 
     // 或 JAR 模式
     // scanner.loadFromJar(new File(&quot;migrations.jar&quot;));
@@ -6900,8 +7148,8 @@ jaravel:
 
 <table>
 <tr><th>属性</th><th>类型</th><th>默认值</th><th>说明</th></tr>
-<tr><td>`jaravel.migration.source`</td><td>`MigrationSource`</td><td>`DIRECTORY`</td><td>迁移源类型，可选 `DIRECTORY` / `JAR` / `CLASSPATH`</td></tr>
-<tr><td>`jaravel.migration.directory`</td><td>`String`</td><td>`migrations`</td><td>迁移 `.java` 文件所在目录，DIRECTORY 模式下由 `MigrationScanner` 扫描并内存编译</td></tr>
+<tr><td>`jaravel.migration.source`</td><td>`MigrationSource`</td><td>`DIRECTORY`</td><td>迁移源类型，可选 `DIRECTORY` / `DIRECTORY_CLASSES` / `JAR` / `CLASSPATH`</td></tr>
+<tr><td>`jaravel.migration.directory`</td><td>`String`</td><td>`migrations`</td><td>迁移文件所在目录。DIRECTORY 模式下扫描 `.java` 文件并内存编译；DIRECTORY_CLASSES 模式下扫描 `.class` 文件加载</td></tr>
 <tr><td>`jaravel.migration.jar-path`</td><td>`String`</td><td>`""`</td><td>JAR 文件路径，JAR 模式下加载预编译迁移类的 jar</td></tr>
 <tr><td>`jaravel.migration.package-in-jar`</td><td>`boolean`</td><td>`false`</td><td>构建时是否将迁移目录打包进 jar，用于 CLASSPATH 模式</td></tr>
 <tr><td>`jaravel.migration.enabled`</td><td>`boolean`</td><td>`true`</td><td>是否启用迁移模块</td></tr>
@@ -6918,6 +7166,15 @@ jaravel:
   migration:
     source: DIRECTORY
     directory: migrations
+</code></pre>
+
+<p><strong>DIRECTORY_CLASSES 模式</strong>：</p>
+
+<pre><code>
+jaravel:
+  migration:
+    source: DIRECTORY_CLASSES
+    directory: build/migration-classes
 </code></pre>
 
 <p><strong>JAR 模式</strong>：</p>
@@ -6958,7 +7215,7 @@ jaravel:
 <p>&gt; Module: <code>migration</code> | Package: <code>com.weacsoft.jaravel.vendor.migration</code> | Version: 0.1.2</p>
 
 <h5 id="migration-overview">Overview</h5>
-<p>migration 模块提供 Laravel 风格的数据库迁移系统，包含 Blueprint（流式建表蓝图）、Schema（DDL 执行器，支持 MySQL/SQLite/H2/SQL Server/PostgreSQL/Oracle 多方言）、Migrator（迁移引擎，支持 migrate/rollback/reset/refresh/status）、MigrationScanner（三种迁移源加载：DIRECTORY 内存编译/JAR 加载/CLASSPATH 扫描）、MigrationRepository（迁移记录仓库）、MigrationExecutor（核心执行器，无 SpringBoot 依赖）、MigrationCLI（独立命令行入口）、JdbcExecutor（轻量 JDBC 执行器，替代 JdbcTemplate）和 MigrationRunner（SpringBoot 适配器）。迁移文件通过 @MigrationAnnotation 标记，运行时编译/加载、反射实例化、执行后自动释放。核心逻辑完全独立于 SpringBoot，可通过 MigrationCLI 在纯 Java 环境中运行。</p>
+<p>migration 模块提供 Laravel 风格的数据库迁移系统，包含 Blueprint（流式建表蓝图）、Schema（DDL 执行器，支持 MySQL/SQLite/H2/SQL Server/PostgreSQL/Oracle 多方言）、Migrator（迁移引擎，支持 migrate/rollback/reset/refresh/status）、MigrationScanner（四种迁移源加载：DIRECTORY 内存编译/DIRECTORY_CLASSES 预编译 class 加载/JAR 加载/CLASSPATH 扫描）、MigrationRepository（迁移记录仓库）、MigrationExecutor（核心执行器，无 SpringBoot 依赖）、MigrationCLI（独立命令行入口）、JdbcExecutor（轻量 JDBC 执行器，替代 JdbcTemplate）和 MigrationRunner（SpringBoot 适配器）。迁移文件通过 @MigrationAnnotation 标记，运行时编译/加载、反射实例化、执行后自动释放。核心逻辑完全独立于 SpringBoot，可通过 MigrationCLI 在纯 Java 环境中运行。</p>
 
 <h5 id="migration-classes--interfaces">Classes & Interfaces</h5>
 
@@ -7206,13 +7463,14 @@ public class Migration_2024_01_01_CreateUsersTable implements Migration {
 <h6 id="migration-migrationsource">MigrationSource</h6>
 <li><strong>Type</strong>: enum</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.migration</code></li>
-<li><strong>Description</strong>: 迁移源类型，支持三种迁移来源。</li>
+<li><strong>Description</strong>: 迁移源类型，支持四种迁移来源。</li>
 
 <h6 id="migration-constants">Constants</h6>
 
 <table>
 <tr><th>Constant</th><th>Description</th></tr>
 <tr><td>`DIRECTORY`</td><td>目录模式：从目录读取 .java 文件，运行时内存编译（需要 JDK）</td></tr>
+<tr><td>`DIRECTORY_CLASSES`</td><td>预编译目录模式：从目录加载预编译的 .class 文件（只需要 JRE）</td></tr>
 <tr><td>`JAR`</td><td>JAR 模式：从 .jar 文件加载预编译的迁移类（只需要 JRE）</td></tr>
 <tr><td>`CLASSPATH`</td><td>Classpath 模式：从当前 classpath 扫描迁移类（内置迁移）</td></tr>
 </table>
@@ -7255,7 +7513,7 @@ migrator.finish();                 // 释放资源
 <h6 id="migration-migrationscanner">MigrationScanner</h6>
 <li><strong>Type</strong>: class</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.migration</code></li>
-<li><strong>Description</strong>: 迁移源扫描器与加载器，支持三种迁移来源模式（DIRECTORY/JAR/CLASSPATH）。通过 @MigrationAnnotation 注解自动识别迁移类，无需手动指定包名。</li>
+<li><strong>Description</strong>: 迁移源扫描器与加载器，支持四种迁移来源模式（DIRECTORY/DIRECTORY_CLASSES/JAR/CLASSPATH）。通过 @MigrationAnnotation 注解自动识别迁移类，无需手动指定包名。</li>
 
 <h6 id="migration-methods-主要">Methods (主要)</h6>
 
@@ -7265,6 +7523,8 @@ migrator.finish();                 // 释放资源
 <tr><td>`compileFromDirectory`</td><td>`File dir`</td><td>`void`</td><td>编译目录下所有 .java 文件</td></tr>
 <tr><td>`compileFromFile`</td><td>`File file`</td><td>`void`</td><td>编译单个 .java 文件</td></tr>
 <tr><td>`compileFromFile`</td><td>`String filePath`</td><td>`void`</td><td>编译单个 .java 文件</td></tr>
+<tr><td>`loadFromDirectoryClasses`</td><td>`String directory`</td><td>`void`</td><td>从目录加载预编译 .class 文件（DIRECTORY_CLASSES 模式，仅需 JRE）</td></tr>
+<tr><td>`loadFromDirectoryClasses`</td><td>`File dir`</td><td>`void`</td><td>从目录加载预编译 .class 文件</td></tr>
 <tr><td>`loadFromJar`</td><td>`File jarFile`</td><td>`void`</td><td>从 JAR 加载迁移类（JAR 模式）</td></tr>
 <tr><td>`loadFromClasspath`</td><td>无</td><td>`void`</td><td>从 classpath 扫描迁移类（CLASSPATH 模式）</td></tr>
 <tr><td>`getAllMigrationClassNames`</td><td>无</td><td>`List<String>`</td><td>获取所有迁移类全限定名</td></tr>
@@ -7363,7 +7623,7 @@ java -jar app.jar --jaravel.migration-status
 <tr><td>`enabled`</td><td>`boolean`</td><td>`true`</td><td>是否启用迁移模块</td></tr>
 <tr><td>`table`</td><td>`String`</td><td>`"migrations"`</td><td>迁移记录表名</td></tr>
 <tr><td>`source`</td><td>`MigrationSource`</td><td>`DIRECTORY`</td><td>迁移源类型</td></tr>
-<tr><td>`directory`</td><td>`String`</td><td>`"migrations"`</td><td>迁移 .java 文件目录（DIRECTORY 模式）</td></tr>
+<tr><td>`directory`</td><td>`String`</td><td>`"migrations"`</td><td>迁移文件目录（DIRECTORY 模式为 .java 源文件，DIRECTORY_CLASSES 模式为 .class 文件）</td></tr>
 <tr><td>`jarPath`</td><td>`String`</td><td>`""`</td><td>JAR 文件路径（JAR 模式）</td></tr>
 <tr><td>`packageInJar`</td><td>`boolean`</td><td>`false`</td><td>构建时是否将迁移目录打包进 jar</td></tr>
 <tr><td>`autoRun`</td><td>`boolean`</td><td>`false`</td><td>启动时是否自动执行 migrate</td></tr>
@@ -7371,11 +7631,18 @@ java -jar app.jar --jaravel.migration-status
 
 <h6 id="migration-usage-example">Usage Example</h6>
 <pre><code>
-# application.yml - 目录模式（开发）
+# application.yml - 目录模式（开发，需 JDK）
 jaravel:
   migration:
     source: DIRECTORY
     directory: migrations
+    auto-run: false
+
+# 预编译目录模式（生产，仅需 JRE）
+jaravel:
+  migration:
+    source: DIRECTORY_CLASSES
+    directory: build/migration-classes
     auto-run: false
 
 # JAR 模式（生产）
@@ -22706,7 +22973,7 @@ verify(captchaKey, userInput)
 <tr><th>事件名</th><th>回调参数</th><th>触发时机</th><th>说明</th></tr>
 <tr><td>`beforeGet`</td><td>`type: String`</td><td>发起获取验证码请求**之前**</td><td>`type` 为验证码类型（`number`/`arithmetic`/`slider`/`rotate`）。可用于显示加载状态、记录埋点等</td></tr>
 <tr><td>`afterGet`</td><td>`captchaKey: String`, `captchaData: Object`</td><td>获取验证码请求成功**之后**</td><td>`captchaKey` 为验证码标识，`captchaData` 为后端返回的完整验证码数据（含 `imageBase64`、`token`、`extra` 等）。可用于自定义渲染、缓存数据等</td></tr>
-<tr><td>`complete`</td><td>`captchaKey: String`, `captchaInput: String`, `rawInput: *`</td><td>用户完成验证码操作（如点击提交、拖动结束）</td><td>`captchaKey` 为验证码标识，`captchaInput` 为格式化后的用户输入值（滑动/旋转启用轨迹时为 JSON 字符串），`rawInput` 为原始用户输入（如纯数字值或轨迹对象）。业务方在此事件中决定是否验证及后续处理</td></tr>
+<tr><td>`complete`</td><td>`captchaKey: String`, `captchaInput: String`</td><td>用户完成验证码操作（如点击提交、拖动结束）</td><td>`captchaKey` 为验证码标识，`captchaInput` 为格式化后的用户输入值（滑动/旋转启用轨迹时为 JSON 字符串）。业务方在此事件中决定是否验证及后续处理</td></tr>
 </table>
 
 <h6 id="captcha-145-per-instance-配置覆盖">14.5 per-instance 配置覆盖</h6>
@@ -22758,11 +23025,10 @@ captcha.on('afterGet', function(captchaKey, captchaData) {
     renderCaptchaImage(captchaData.imageBase64);
 });
 
-captcha.on('complete', function(captchaKey, captchaInput, rawInput) {
+captcha.on('complete', function(captchaKey, captchaInput) {
     console.log('用户完成操作:');
     console.log('  captchaKey:', captchaKey);
     console.log('  captchaInput (格式化):', captchaInput);
-    console.log('  rawInput (原始):', rawInput);
 
     // 业务方自行决定验证逻辑
     // 例如：提交到业务接口进行验证
@@ -23853,6 +24119,8 @@ CaptchaProperties coreProps = springBootProps.toCoreProperties();
 <li><a href="#wire-wireresponse">WireResponse</a></li>
 <li><a href="#wire-wireservice">WireService</a></li>
 <li><a href="#wire-使用示例">使用示例</a></li>
+<li><a href="#wire-前端事件系统wirejs">前端事件系统（wire.js）</a></li>
+<li><a href="#wire-section-排除列表">Section 排除列表</a></li>
 <li><a href="#wire-设计理念">设计理念</a></li>
 
 <p>---</p>
@@ -23893,6 +24161,7 @@ jaravel:
     enabled: true              # 是否启用 Wire 模块自动装配
     auto-inject-js: true       # 是否自动注入 wire.js（默认 true）
     js-path: /wire.js          # wire.js 的引用路径（默认 /wire.js）
+    excluded-sections: ""      # Wire 更新排除的 Section 列表（逗号分隔，默认空）
 </code></pre>
 
 <table>
@@ -23900,6 +24169,7 @@ jaravel:
 <tr><td>`jaravel.wire.enabled`</td><td>`boolean`</td><td>`true`</td><td>是否启用 Wire 模块自动装配。设为 `false` 则不创建 Wire 相关 Bean</td></tr>
 <tr><td>`jaravel.wire.auto-inject-js`</td><td>`boolean`</td><td>`true`</td><td>是否在渲染的 HTML 中自动注入 wire.js 的 `<script>` 标签。设为 `false` 时需手动在页面中引入 wire.js</td></tr>
 <tr><td>`jaravel.wire.js-path`</td><td>`String`</td><td>`/wire.js`</td><td>wire.js 的引用路径。可自定义为 CDN 地址或反向代理路径，如 `https://cdn.example.com/wire.js`</td></tr>
+<tr><td>`jaravel.wire.excluded-sections`</td><td>`String`</td><td>`""`</td><td>Wire 更新响应中排除的 Section 名称列表（逗号分隔）。排除的 Section 不会包含在更新响应中返回给前端。运行时也可通过 `WireManager` 的 API 动态管理</td></tr>
 </table>
 
 <p>---</p>
@@ -23928,6 +24198,11 @@ private WireManager wireManager;
 <tr><td>`String getJsPath()`</td><td>获取当前 wire.js 的引用路径</td></tr>
 <tr><td>`String injectWireAssets(String html, String updateUrl, String snapshot, boolean injectJs)`</td><td>向 HTML 中注入 Wire 资源。`html` 为原始 HTML 内容，`updateUrl` 为前端发起更新请求的 URL，`snapshot` 为页面快照数据（可为 null），`injectJs` 控制是否注入 wire.js 的 `<script>` 标签。返回注入后的完整 HTML</td></tr>
 <tr><td>`String renderWirePage(String templateName, Map<String, Object> data, String updateUrl, boolean injectJs)`</td><td>渲染 Wire 页面。使用 jblade 模板引擎渲染指定模板，注入 Wire 资源后返回完整 HTML。`templateName` 为模板名，`data` 为模板数据，`updateUrl` 为更新请求 URL，`injectJs` 控制是否注入 wire.js</td></tr>
+<tr><td>`void addExcludedSections(String... sections)`</td><td>添加一个或多个 Section 到排除列表。排除的 Section 不会出现在 Wire 更新响应中</td></tr>
+<tr><td>`void removeExcludedSection(String section)`</td><td>从排除列表中移除指定的 Section</td></tr>
+<tr><td>`Set<String> getExcludedSections()`</td><td>获取当前排除列表（不可变视图）</td></tr>
+<tr><td>`void clearExcludedSections()`</td><td>清空排除列表</td></tr>
+<tr><td>`boolean isExcluded(String section)`</td><td>判断指定 Section 是否在排除列表中</td></tr>
 </table>
 
 <p>---</p>
@@ -24038,6 +24313,111 @@ public String serveWireJs() {
 
 <p>---</p>
 
+<h5 id="wire-前端事件系统wirejs">前端事件系统（wire.js）</h5>
+
+<p>wire.js 提供 <code>Wire.on(event, callback)</code> / <code>Wire.off(event, callback)</code> 事件系统，允许业务方在 Wire 更新生命周期的关键节点注入自定义逻辑。事件系统为全局单例模式，注册后对所有 Wire 组件的更新操作生效。</p>
+
+<table>
+<tr><th>方法</th><th>参数</th><th>说明</th></tr>
+<tr><td>`Wire.on(event, callback)`</td><td>`event: String`, `callback: Function`</td><td>注册事件监听器。同一事件可注册多个监听器，按注册顺序依次调用</td></tr>
+<tr><td>`Wire.off(event, callback)`</td><td>`event: String`, `callback: Function`</td><td>移除已注册的事件监听器。需传入与 `on` 时相同的回调引用</td></tr>
+</table>
+
+<h6 id="wire-事件列表">事件列表</h6>
+
+<table>
+<tr><th>事件名</th><th>回调参数</th><th>触发时机</th><th>说明</th></tr>
+<tr><td>`beforeUpdate`</td><td>`component: String`, `action: String`, `params: Object`</td><td>发送更新请求**之前**</td><td>`component` 为组件标识，`action` 为触发的动作名称，`params` 为请求参数。可用于请求前预处理、参数修改、加载状态展示等</td></tr>
+<tr><td>`afterUpdate`</td><td>`component: String`, `data: Object`, `sections: Object`</td><td>DOM 更新完成**之后**</td><td>`component` 为组件标识，`data` 为服务端返回的响应数据，`sections` 为已更新的 DOM 区域映射。可用于 DOM 更新后的后续处理，如重新初始化第三方 UI 组件</td></tr>
+</table>
+
+<h6 id="wire-典型用途-mdui-集成">典型用途：mdui 框架集成</h6>
+
+<p>最常见的用途是在 DOM 更新完成后调用 UI 框架的初始化方法。例如使用 <a href="https://www.mdui.org/">mdui</a> 材料设计框架时，Wire 更新 DOM 后需调用 <code>mdui.mutation()</code> 重新初始化新增的组件：</p>
+
+<pre><code>
+// 在 Wire DOM 更新后重新初始化 mdui 组件
+Wire.on('afterUpdate', function(component, data, sections) {
+    // DOM 已更新，调用 mdui.mutation() 重新初始化组件
+    if (typeof mdui !== 'undefined') {
+        mdui.mutation();
+    }
+});
+
+// 请求前可做预处理
+Wire.on('beforeUpdate', function(component, action, params) {
+    console.log('组件:', component, '动作:', action);
+    // 可在此显示加载状态等
+    showLoading();
+});
+
+// 移除监听（需保持回调引用一致）
+// Wire.off('afterUpdate', afterUpdateHandler);
+</code></pre>
+
+<p>&gt; <strong>设计说明</strong>：<code>afterUpdate</code> 事件在 Wire 完成 DOM 区域替换之后触发，此时新的 HTML 片段已插入页面。第三方 UI 框架（如 mdui、Material Components 等）通常需要在此阶段扫描新增 DOM 节点并重新初始化组件实例，否则动态插入的组件不会生效。</p>
+
+<p>---</p>
+
+<h5 id="wire-section-排除列表">Section 排除列表</h5>
+
+<p><code>WireManager</code> 提供 Section 排除列表机制，允许在 Wire 更新响应中排除特定的 <code>wire:section</code> 标记区域。排除的 Section 不会包含在更新响应中返回给前端，适用于某些区域不需要参与 Wire 局部更新的场景（如全页静态内容、第三方组件区域等）。</p>
+
+<h6 id="wire-排除列表-api">排除列表 API</h6>
+
+<table>
+<tr><th>方法签名</th><th>说明</th></tr>
+<tr><td>`void addExcludedSections(String... sections)`</td><td>添加一个或多个 Section 到排除列表。参数为 Section 名称（可变参数）</td></tr>
+<tr><td>`void removeExcludedSection(String section)`</td><td>从排除列表中移除指定的 Section</td></tr>
+<tr><td>`Set<String> getExcludedSections()`</td><td>获取当前排除列表（不可变视图）</td></tr>
+<tr><td>`void clearExcludedSections()`</td><td>清空排除列表</td></tr>
+<tr><td>`boolean isExcluded(String section)`</td><td>判断指定 Section 是否在排除列表中</td></tr>
+</table>
+
+<h6 id="wire-springboot-配置">SpringBoot 配置</h6>
+
+<p>通过 <code>jaravel.wire.excluded-sections</code> 配置项可在 SpringBoot 中声明全局排除列表（逗号分隔）：</p>
+
+<pre><code>
+jaravel:
+  wire:
+    enabled: true
+    auto-inject-js: true
+    js-path: /wire.js
+    excluded-sections: sidebar,footer,advertisement
+</code></pre>
+
+<p>也可在运行时通过 <code>WireManager</code> 的 API 动态管理排除列表：</p>
+
+<pre><code>
+@Autowired
+private WireManager wireManager;
+
+// 运行时添加排除 Section
+wireManager.addExcludedSections("sidebar", "footer");
+
+// 检查是否已排除
+if (wireManager.isExcluded("sidebar")) {
+    // sidebar 不会出现在 Wire 更新响应中
+}
+
+// 运行时移除排除
+wireManager.removeExcludedSection("footer");
+
+// 清空排除列表（恢复全部 Section 参与 Wire 更新）
+wireManager.clearExcludedSections();
+</code></pre>
+
+<h6 id="wire-设计原理">设计原理</h6>
+
+<p>排除列表采用<strong>后处理</strong>方式实现：<strong>不修改 jblade 模板编译器</strong>，而是在 <code>WireManager</code> 构建更新响应时，通过后处理移除被排除的 <code>wire:section</code> 标记区域。这种设计确保了：</p>
+
+<li><strong>jblade 零侵入</strong>：模板编译器无需感知 Wire 的排除逻辑，保持模块独立性</li>
+<li><strong>运行时可配置</strong>：排除列表可在运行时动态调整，无需重新编译模板</li>
+<li><strong>配置优先级</strong>：SpringBoot 配置初始化排除列表，运行时 API 可在此基础上增删</li>
+
+<p>---</p>
+
 <h5 id="wire-设计理念">设计理念</h5>
 
 <li><strong>服务端渲染优先</strong>：所有页面内容由服务端通过 jblade 模板引擎渲染，保证 SEO 友好和首屏加载速度</li>
@@ -24057,13 +24437,14 @@ public String serveWireJs() {
 <li><strong>Type</strong>: class</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.wire</code></li>
 <li><strong>Annotations</strong>: <code>@ConfigurationProperties(prefix = &quot;jaravel.wire&quot;)</code></li>
-<li><strong>Description</strong>: Wire 模块配置属性，前缀 <code>jaravel.wire</code>。包含 <code>enabled</code>（是否启用）、<code>autoInjectJs</code>（是否自动注入 wire.js）、<code>jsPath</code>（wire.js 引用路径）三个配置项。</li>
+<li><strong>Description</strong>: Wire 模块配置属性，前缀 <code>jaravel.wire</code>。包含 <code>enabled</code>（是否启用）、<code>autoInjectJs</code>（是否自动注入 wire.js）、<code>jsPath</code>（wire.js 引用路径）、<code>excludedSections</code>（Wire 更新排除的 Section 列表）四个配置项。</li>
 
 <table>
 <tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr>
 <tr><td>`enabled`</td><td>`boolean`</td><td>`true`</td><td>是否启用 Wire 模块自动装配</td></tr>
 <tr><td>`autoInjectJs`</td><td>`boolean`</td><td>`true`</td><td>是否在渲染的 HTML 中自动注入 wire.js 的 `<script>` 标签</td></tr>
 <tr><td>`jsPath`</td><td>`String`</td><td>`"/wire.js"`</td><td>wire.js 的引用路径，可自定义为 CDN 地址</td></tr>
+<tr><td>`excludedSections`</td><td>`String`</td><td>`""`</td><td>Wire 更新响应中排除的 Section 名称列表（逗号分隔）。排除的 Section 不会包含在更新响应中返回给前端</td></tr>
 </table>
 
 </section>
