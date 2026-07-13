@@ -161,7 +161,7 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
 <div class="layout">
 <div class="sidebar">
 <h2>jaravel-vendor</h2>
-<div class="version">v0.1.0 · 27 模块 · 463 测试</div>
+<div class="version">v0.1.2 · 28 模块 · 463 测试</div>
 <nav>
 <a href="#overview" class="group">框架总览</a>
 <a href="#core" class="group">核心模块</a>
@@ -201,6 +201,7 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
 <a href="#cat-springboot" class="sub" title="SpringBoot 集成核心，自动装配路由/中间件/响应">springboot — SpringBoot 适配</a>
 <a href="#cat-wechat-sdk" class="sub" title="公众号/小程序支持，AccessToken 缓存，OAuth 授权">wechat-sdk — 微信 SDK</a>
 <a href="#cat-captcha" class="sub" title="图片数字/算术/滑动/旋转验证码，核心层无 SpringBoot 依赖，可独立使用">captcha — 验证码模块</a>
+<a href="#cat-wire" class="sub" title="Laravel Livewire 风格反应式 UI，wire.js 自动注入，服务端渲染模板">wire — Wire 渲染模块</a>
 <a href="#cat-starter" class="sub" title="引入所有模块的便捷 starter">starter — 聚合启动器</a>
 </nav>
 </div>
@@ -209,9 +210,9 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
 <h1>jaravel-vendor</h1>
 <div class="subtitle">Laravel 风格的 Java Web 框架 · 路由/模板/ORM/认证/缓存/事件/CLI/插件热加载/远程执行</div>
 <div class="meta">
-<span>27 个模块</span>
+<span>28 个模块</span>
 <span>463 个测试</span>
-<span>v0.1.0</span>
+<span>v0.1.2</span>
 </div>
 </div>
 <h2 id="overview">框架总览</h2>
@@ -239,9 +240,10 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
 <tr><td>**远程执行**</td><td>P2SP 远程方法调用，TCP/HTTP 双模式，树形中继转发</td></tr>
 <tr><td>**静态资源**</td><td>Router.serveStatic() 静态目录服务，MIME 推断，路径穿越防护</td></tr>
 <tr><td>**微信 SDK**</td><td>公众号/小程序，AccessToken 缓存，OAuth 授权</td></tr>
+<tr><td>**Wire 渲染**</td><td>Laravel Livewire 风格的反应式 UI，wire.js 自动注入，服务端渲染模板</td></tr>
 </table>
 
-<h5 id="overview-模块总览（27-个模块）">模块总览（27 个模块）</h5>
+<h5 id="overview-模块总览（28-个模块）">模块总览（28 个模块）</h5>
 
 <table>
 <tr><th>分类</th><th>模块</th><th>说明</th></tr>
@@ -253,7 +255,7 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
 <tr><td>CLI</td><td>artisan, schedule</td><td>命令行、定时任务</td></tr>
 <tr><td>热加载</td><td>plugin-jar-core, plugin-java-core, plugin-jar-multi-tenant</td><td>JAR 热加载→Java文件→多租户</td></tr>
 <tr><td>远程执行</td><td>plugin-jar-remote-server, plugin-jar-remote-client</td><td>TCP→HTTP→树形→热加载结合</td></tr>
-<tr><td>其他</td><td>springboot, wechat-sdk, captcha, starter</td><td>适配、微信、验证码、聚合</td></tr>
+<tr><td>其他</td><td>springboot, wechat-sdk, captcha, wire, starter</td><td>适配、微信、验证码、Wire 渲染、聚合</td></tr>
 </table>
 
 <h5 id="overview-架构原则">架构原则</h5>
@@ -265,10 +267,56 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
 <li><strong>热加载</strong>：引入 <code>plugin-jar-core</code> 即可在任何 SpringBoot 项目中使用 JAR 插件热加载</li>
 <li><strong>远程执行</strong>：引入 <code>plugin-jar-remote-server</code> + <code>plugin-jar-remote-client</code> 即可实现分布式方法调用（无需 plugin-jar-core，通过 BeanResolver 从 Spring 容器获取 Bean）</li>
 <li><strong>两者结合</strong>：远程执行 + 热加载 = 分布式插件热更新，子节点自动同步新版本插件</li>
+<li><strong>SpringBoot 双版本兼容</strong>：热加载插件模块（plugin-jar-core, plugin-java-core）编译期不依赖 javax/jakarta Servlet API，通过 <code>NativeWebRequest</code> 抽象层 + 反射在运行时适配宿主版本，同一构件可运行在 SB 2.7（Spring 5.3, javax.servlet）和 SB 3.x（Spring 6, jakarta.servlet）环境中</li>
+
+<h6 id="overview-配置重构v012">配置重构（v0.1.2）</h6>
+
+<p><strong>v0.1.2 对 jaravel 的配置体系进行了重构</strong>，采用类似 Laravel <code>config/app.php</code> 的中央配置模式，通过 <code>@Import</code> 注解显式控制各功能模块的启用，而非依赖约定自动激活。</p>
+
+<p><strong>设计理念</strong>：大部分功能应<strong>显式启用/激活</strong>，而非约定自动生效。这使开发者对框架行为有完全的可见性和控制力，避免「引入依赖即自动激活所有功能」带来的意外行为。</p>
+
+<p><strong>中央配置类</strong>：</p>
+
+<table>
+<tr><th>配置类</th><th>包路径</th><th>说明</th></tr>
+<tr><td>`config/App.java`</td><td>`com.weacsoft.jaravel.vendor.config`</td><td>中央配置入口，类似 Laravel 的 `config/app.php`。通过 `@Import` 显式导入各模块配置类，控制功能启用。用户通过修改此类决定加载哪些模块</td></tr>
+<tr><td>`config/view/ViewConfig.java`</td><td>`com.weacsoft.jaravel.vendor.config.view`</td><td>视图引擎配置。控制 jblade 模板引擎的初始化与注册</td></tr>
+<tr><td>`config/database/DatabaseConfig.java`</td><td>`com.weacsoft.jaravel.vendor.config.database`</td><td>数据库配置。控制多数据源管理、Eloquent ORM 集成等数据层功能的启用</td></tr>
+<tr><td>`config/wire/WireConfig.java`</td><td>`com.weacsoft.jaravel.vendor.config.wire`</td><td>Wire 模块配置。控制 Wire 渲染模块（Livewire 风格反应式 UI）的启用与配置</td></tr>
+</table>
+
+<p><strong>使用方式</strong>：</p>
+
+<pre><code>
+// config/App.java —— 中央配置入口
+@Configuration
+@Import({
+    ViewConfig.class,           // 显式启用视图引擎
+    DatabaseConfig.class,       // 显式启用数据库层
+    WireConfig.class,           // 显式启用 Wire 渲染模块
+    // 如需启用其他模块，在此添加对应的 @Import
+})
+public class App {
+    // 中央配置，类似 Laravel 的 config/app.php
+    // 用户通过修改此类控制框架加载哪些功能模块
+}
+</code></pre>
+
+<p><strong>与旧版的区别</strong>：</p>
+
+<table>
+<tr><th>对比项</th><th>旧版（v0.1.0 及之前）</th><th>新版（v0.1.2）</th></tr>
+<tr><td>功能激活方式</td><td>引入依赖即自动激活（约定优于配置）</td><td>需在 `App.java` 中通过 `@Import` 显式导入（显式控制）</td></tr>
+<tr><td>配置可见性</td><td>各模块独立自动装配，用户难以全局概览</td><td>中央 `App.java` 集中管理所有已启用的模块，一目了然</td></tr>
+<tr><td>功能裁剪</td><td>需排除特定 AutoConfiguration 类</td><td>注释掉对应的 `@Import` 即可禁用模块</td></tr>
+<tr><td>模块配置</td><td>分散在各模块的 Properties 类</td><td>统一在 `config/` 目录下按模块组织（view/database/wire）</td></tr>
+</table>
+
+<p>&gt; <strong>注意</strong>：此配置重构不影响各模块的 <code>application.yml</code> 配置项（如 <code>jaravel.wire.enabled</code>、<code>jaravel.captcha.enabled</code> 等），这些配置项仍然有效。重构主要影响的是<strong>模块的自动装配激活方式</strong>：从「依赖即激活」改为「<code>@Import</code> 显式激活」。</p>
 
 <h6 id="overview-测试覆盖">测试覆盖</h6>
 
-<p>全部 27 个模块均有单元测试，共 463 个测试用例，覆盖核心功能、边界条件和异常处理。</p>
+<p>全部 28 个模块均有单元测试，共 463 个测试用例，覆盖核心功能、边界条件和异常处理。</p>
 
 </section>
 <h2 id="core">核心模块</h2>
@@ -323,7 +371,7 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
 &lt;dependency&gt;
     &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
     &lt;artifactId&gt;core&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 </code></pre>
 
@@ -922,7 +970,7 @@ try {
 <tr><td>`FormRequest`</td><td>单线程使用</td><td>子类通常为每次请求新建实例，不应跨请求共享</td></tr>
 </table>
 <h4>类和方法</h4>
-<p>&gt; Module: <code>core</code> | Package: <code>com.weacsoft.jaravel.vendor.core</code> | Version: 0.1.0</p>
+<p>&gt; Module: <code>core</code> | Package: <code>com.weacsoft.jaravel.vendor.core</code> | Version: 0.1.2</p>
 
 <h5 id="core-overview">Overview</h5>
 <p>core 模块是 jaravel-vendor 框架的基础设施层，提供 Facade 门面机制、Spring 上下文访问、配置仓库（Config）、服务提供者（ServiceProvider）两阶段引导、Laravel 风格的表单校验（Validator/FormRequest/Rules）以及 Str/Arr 字符串与数组工具。它模仿 Laravel 的核心设计理念，在 Spring Boot 之上提供一套静态门面 API。</p>
@@ -1445,7 +1493,7 @@ Map&lt;String, Object&gt; valid = v.validate(); // 失败抛 ValidationException
 &lt;dependency&gt;
     &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
     &lt;artifactId&gt;utils&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 </code></pre>
 
@@ -1755,7 +1803,7 @@ public class MemoryCompileExample {
 <tr><td>`MemoryClassLoader`</td><td>需外部同步</td><td>`findClass()` 读取 `Map`（若为 `ConcurrentHashMap` 则读取线程安全），但 `defineClass()` 对同一类名重复调用会抛出异常。应在单线程内加载，加载后的 `Class` 对象可安全并发使用</td></tr>
 </table>
 <h4>类和方法</h4>
-<p>&gt; Module: <code>utils</code> | Package: <code>com.weacsoft.jaravel.vendor.utils</code> | Version: 0.1.0</p>
+<p>&gt; Module: <code>utils</code> | Package: <code>com.weacsoft.jaravel.vendor.utils</code> | Version: 0.1.2</p>
 
 <h5 id="utils-overview">Overview</h5>
 <p>utils 模块提供通用的内存编译工具，包含 MemoryClassLoader、MemoryFileManager 和 SourceCodeJavaFileObject 三个核心类。它们协同工作，将 Java 源代码字符串在内存中编译为 class 字节码并直接加载，无需写入磁盘文件。这套机制被 jblade 模板引擎和 migration 迁移系统等用于动态编译和加载 Java 代码。</p>
@@ -1944,7 +1992,7 @@ compiler.getTask(null, fileManager, null, null, null, List.of(source)).call();
 &lt;dependency&gt;
     &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
     &lt;artifactId&gt;http&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 </code></pre>
 
@@ -2783,7 +2831,7 @@ jaravel:
 
 <p><code>@asset(&#x27;相对路径&#x27;)</code> 会拼接配置的 <code>urlPrefix</code>（默认 <code>/static</code>），渲染为完整 URL。资源目录与 URL 前缀保持一致即可正确服务模板引用的资源。</p>
 <h4>类和方法</h4>
-<p>&gt; Module: <code>http</code> | Package: <code>com.weacsoft.jaravel.vendor</code> | Version: 0.1.0</p>
+<p>&gt; Module: <code>http</code> | Package: <code>com.weacsoft.jaravel.vendor</code> | Version: 0.1.2</p>
 
 <h5 id="http-overview">Overview</h5>
 <p>http 模块提供 Laravel 风格的 HTTP 处理层，包含中间件管道（Middleware）、请求（Request）与响应（Response）抽象、路由系统（Route/Router）、控制器接口（Controllers）、静态资源目录服务（StaticResource）以及一组内置中间件（VerifyCsrfToken、TrustProxies、EncryptCookies、TrimStrings、ConvertEmptyStringsToNull）。它将 Servlet API 封装为对齐 Laravel 的 Request/Response 对象，支持链式中间件管道、路由分组，并通过 <code>Router.serveStatic()</code> 提供对齐 Laravel <code>public</code> 目录与 <code>asset()</code> 辅助函数的静态资源服务。</p>
@@ -3420,7 +3468,7 @@ template.render() -&gt; 输出 HTML 字符串
 &lt;dependency&gt;
     &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
     &lt;artifactId&gt;jblade&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 </code></pre>
 
@@ -4396,7 +4444,7 @@ jaravel:
 
 <p>&gt; <strong>关键点</strong>：<code>BladeAssetHelper</code> 的 URL 前缀必须与 <code>StaticResourceRoute</code> 的 <code>urlPrefix</code> 保持一致，否则 <code>@asset</code> 生成的 URL 将无法被静态资源路由命中。<code>StaticResourceRoute</code> 支持多目录回退查找（按顺序匹配第一个命中的文件）。</p>
 <h4>类和方法</h4>
-<p>&gt; Module: <code>jblade</code> | Package: <code>com.weacsoft.jaravel.vendor.jblade</code> | Version: 0.1.0</p>
+<p>&gt; Module: <code>jblade</code> | Package: <code>com.weacsoft.jaravel.vendor.jblade</code> | Version: 0.1.2</p>
 
 <h5 id="jblade-overview">Overview</h5>
 <p>jblade 模块是 Laravel Blade 风格的 Java 模板引擎。它将 <code>.blade.java</code> 模板文件编译为 Java 类（通过内存编译器），支持模板继承（@extends/@yield/@section）、组件（@component/@slot）、控制结构（@if/@foreach/@for）、变量输出（{{ }}）以及丰富的 Blade 表达式语法（对象方法/属性访问、数组访问、字符串拼接、空合并运算符等）。编译后的模板类继承 BladeTemplate，运行时通过 BladeEngine 渲染。</p>
@@ -4811,7 +4859,7 @@ public class User extends BaseModel&lt;User, Long&gt; {
 &lt;dependency&gt;
     &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
     &lt;artifactId&gt;database&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 </code></pre>
 
@@ -5510,7 +5558,7 @@ public Response login(@RequestBody LoginRequest req, UserProvider provider) {
 
 <p>&gt; <strong>注意</strong>：<code>BaseModel</code> 的实例方法（<code>save()</code>、<code>replicate()</code>）可在 <code>new</code> 创建的普通实例上调用，这些实例为线程局部对象，不应跨线程共享。所有实际的数据库操作均委托给 Spring 单例完成，单例本身线程安全。</p>
 <h4>类和方法</h4>
-<p>&gt; Module: <code>database</code> | Package: <code>com.weacsoft.jaravel.vendor.database</code> | Version: 0.1.0</p>
+<p>&gt; Module: <code>database</code> | Package: <code>com.weacsoft.jaravel.vendor.database</code> | Version: 0.1.2</p>
 
 <h5 id="database-overview">Overview</h5>
 <p>database 模块提供 Laravel Eloquent 风格的 ORM 基础设施，基于 gaarason/database-all 构建。核心包含 BaseModel（Eloquent 模型基类，合并实体定义与查询职责于单一类）、@DataSource 注解（指定模型使用的数据源，对齐 Laravel <code>$connection</code>）和 EloquentUserProvider（基于 Eloquent 的用户提供者，对齐 Laravel EloquentUserProvider）。业务 Model 继承 BaseModel 并加 @Repository 即可像 Laravel 一样使用 find/all/query/save/replicate 等 API。</p>
@@ -5750,7 +5798,7 @@ Auth.login(user);
 &lt;dependency&gt;
     &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
     &lt;artifactId&gt;migration&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 </code></pre>
 
@@ -5975,7 +6023,7 @@ jaravel:
 mvn clean package -pl migration,utils -am
 
 # 执行迁移
-java -cp migration/target/migration-0.1.0.jar:utils/target/utils-0.1.0.jar:mysql-connector.jar \
+java -cp migration/target/migration-0.1.2.jar:utils/target/utils-0.1.2.jar:mysql-connector.jar \
   com.weacsoft.jaravel.vendor.migration.MigrationCLI \
   --db-url=jdbc:mysql://localhost:3306/mydb \
   --db-user=root \
@@ -6894,7 +6942,7 @@ jaravel:
 <tr><td>`MigrationGenerator`</td><td>线程安全</td><td>静态方法，无共享可变状态，可安全并发调用（但同一文件路径并发写入会失败）</td></tr>
 </table>
 <h4>类和方法</h4>
-<p>&gt; Module: <code>migration</code> | Package: <code>com.weacsoft.jaravel.vendor.migration</code> | Version: 0.1.0</p>
+<p>&gt; Module: <code>migration</code> | Package: <code>com.weacsoft.jaravel.vendor.migration</code> | Version: 0.1.2</p>
 
 <h5 id="migration-overview">Overview</h5>
 <p>migration 模块提供 Laravel 风格的数据库迁移系统，包含 Blueprint（流式建表蓝图）、Schema（DDL 执行器，支持 MySQL/SQLite/H2/SQL Server 多方言）、Migrator（迁移引擎，支持 migrate/rollback/reset/refresh/status）、MigrationScanner（三种迁移源加载：DIRECTORY 内存编译/JAR 加载/CLASSPATH 扫描）、MigrationRepository（迁移记录仓库）、MigrationExecutor（核心执行器，无 SpringBoot 依赖）、MigrationCLI（独立命令行入口）、JdbcExecutor（轻量 JDBC 执行器，替代 JdbcTemplate）和 MigrationRunner（SpringBoot 适配器）。迁移文件通过 @MigrationAnnotation 标记，运行时编译/加载、反射实例化、执行后自动释放。核心逻辑完全独立于 SpringBoot，可通过 MigrationCLI 在纯 Java 环境中运行。</p>
@@ -7497,7 +7545,7 @@ java -cp migration.jar:utils.jar:mysql-connector.jar \
 &lt;dependency&gt;
     &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
     &lt;artifactId&gt;model-cache&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 </code></pre>
 
@@ -7538,13 +7586,13 @@ com.weacsoft.jaravel.vendor.modelcache
 &lt;dependency&gt;
     &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
     &lt;artifactId&gt;model-cache&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 &lt;!-- cache 模块（必需，提供 CacheManager） --&gt;
 &lt;dependency&gt;
     &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
     &lt;artifactId&gt;cache&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 </code></pre>
 
@@ -7797,7 +7845,7 @@ ModelCache（门面，静态 API）
 <li><strong>版本号并发</strong>：<code>increment</code> 为非原子 get-then-put（cache 模块实现），高并发失效时版本号可能跳跃，但不影响正确性（跳跃仍使旧缓存失效）。</li>
 <li><strong>查询缓存一致性</strong>：<code>invalidate(Class, id)</code> 仅失效主键查询键，查询缓存（<code>findAll</code>/<code>query</code>）可能含旧数据。需整体失效时调用 <code>invalidate(Class)</code>。</li>
 <h4>类和方法</h4>
-<p>&gt; Module: <code>model-cache</code> | Package: <code>com.weacsoft.jaravel.vendor.modelcache</code> | Version: 0.1.0</p>
+<p>&gt; Module: <code>model-cache</code> | Package: <code>com.weacsoft.jaravel.vendor.modelcache</code> | Version: 0.1.2</p>
 
 <h5 id="model-cache-overview">Overview</h5>
 <p>model-cache 是 Jaravel-Vendor 的可选模型缓存模块，参考 Laravel <code>laravel-model-caching</code> 方案。通过 <code>@CachableModel</code> 注解在 Model 类上手动开启查询缓存，采用版本号机制实现缓存失效（无需 tag 支持）。核心包含 CachableModel（注解）、ModelCacheProperties（配置）、ModelCacheService（核心服务，版本化缓存读写/失效）、ModelCache（静态门面）和 ModelCacheAutoConfiguration（自动装配）。基于 <code>cache</code> 模块的 CacheStore / CacheManager，TTL 统一为秒。</p>
@@ -8267,7 +8315,7 @@ event (QueueDispatcher 接口)
               └── DatabaseQueueWorker (消费 QueueDriver)
 </code></pre>
 <h4>类和方法</h4>
-<p>&gt; Module: <code>queue-database</code> | Package: <code>com.weacsoft.jaravel.vendor.queue.database</code> | Version: 0.1.0</p>
+<p>&gt; Module: <code>queue-database</code> | Package: <code>com.weacsoft.jaravel.vendor.queue.database</code> | Version: 0.1.2</p>
 
 <h5 id="queue-database-overview">Overview</h5>
 
@@ -8670,7 +8718,7 @@ event (QueueDispatcher interface)
 &lt;dependency&gt;
     &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
     &lt;artifactId&gt;auth&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 </code></pre>
 
@@ -9504,7 +9552,7 @@ public Response logout() {
 <tr><td>`SessionGuard` 可变状态</td><td>ThreadLocal 隔离</td><td>请求级</td></tr>
 </table>
 <h4>类和方法</h4>
-<p>&gt; Module: <code>auth</code> | Package: <code>com.weacsoft.jaravel.vendor.auth</code> | Version: 0.1.0</p>
+<p>&gt; Module: <code>auth</code> | Package: <code>com.weacsoft.jaravel.vendor.auth</code> | Version: 0.1.2</p>
 
 <h5 id="auth-overview">Overview</h5>
 <p>auth 模块提供 Laravel 风格的认证系统，包含 AuthManager（多守卫管理器）、AuthGuard 契约、SessionGuard（Session 驱动守卫）、UserProvider 契约、Authenticatable 契约、GuardFactory 插件机制、Auth 门面、Authenticate 认证中间件和 AuthLifecycleFilter 生命周期过滤器。支持通过 GuardFactory 插件式扩展新的 Guard 驱动（如 JWT），第三方模块可在不修改 auth 模块的前提下扩展。</p>
@@ -9927,7 +9975,7 @@ jwt 模块（插件）
 &lt;dependency&gt;
     &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
     &lt;artifactId&gt;jwt&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 </code></pre>
 
@@ -11162,7 +11210,7 @@ public Response logout() {
 
 <p>&gt; <strong>关键约束</strong>：<code>JwtGuard</code> 实例<strong>必须</strong>通过 <code>AuthManager.guard(String)</code> 获取，不可跨请求缓存或共享，否则其内部的可变状态会串态。<code>JwtService</code> 与 <code>JwtTokenResponseFilter</code> 作为无状态单例可安全地在任意线程共享调用。</p>
 <h4>类和方法</h4>
-<p>&gt; Module: <code>jwt</code> | Package: <code>com.weacsoft.jaravel.vendor.jwt</code> | Version: 0.1.0</p>
+<p>&gt; Module: <code>jwt</code> | Package: <code>com.weacsoft.jaravel.vendor.jwt</code> | Version: 0.1.2</p>
 
 <h5 id="jwt-overview">Overview</h5>
 <p>jwt 模块是 JWT 认证插件，对齐 Laravel tymon/jwt-auth。提供 JwtService（token 签发/解析/校验/黑名单/刷新/宽限期）、JwtGuard（JWT 守卫，从请求头解析 Bearer token 并认证用户）、JwtConfig（配置）与 JwtTokenResponseFilter（响应过滤器，自动将新 token 写入响应 header）。通过 GuardFactory 插件式注册到 AuthManager，引入 jwt 模块即自动启用 JWT 认证能力。</p>
@@ -11748,7 +11796,7 @@ Auth.guard(&quot;web&quot;).logout();             // 登出，销毁 Redis Sessi
 <li><code>RedisSessionStore</code> — Redis Session 存储（<code>@ConditionalOnMissingBean</code>，便于业务方覆盖）</li>
 <li><code>RedisSessionGuardRegistrar</code> — 注册器，通过 <code>AuthManager.registerGuardDriver(&quot;redis-session&quot;, ...)</code> 将 <code>redis-session</code> guard 驱动注册到 <code>AuthManager</code>。注册后，guard 配置中 <code>driver=redis-session</code> 的守卫将使用 <code>RedisSessionGuard</code>。</li>
 <h4>类和方法</h4>
-<p>&gt; Module: <code>session-redis</code> | Package: <code>com.weacsoft.jaravel.vendor.session.redis</code> | Version: 0.1.0</p>
+<p>&gt; Module: <code>session-redis</code> | Package: <code>com.weacsoft.jaravel.vendor.session.redis</code> | Version: 0.1.2</p>
 
 <h5 id="session-redis-overview">Overview</h5>
 
@@ -11934,7 +11982,7 @@ Cache（门面，静态 API）
 &lt;dependency&gt;
     &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
     &lt;artifactId&gt;cache&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 </code></pre>
 
@@ -12028,7 +12076,7 @@ long remaining = Cache.decrement(&quot;stock:100&quot;, 1);
 
 // 读取或回填
 Object config = Cache.remember(&quot;app:config&quot;, 300, () -&gt; loadConfigFromDb());
-Object forever = Cache.rememberForever(&quot;app:version&quot;, () -&gt; &quot;0.1.0&quot;);
+Object forever = Cache.rememberForever(&quot;app:version&quot;, () -&gt; &quot;0.1.2&quot;);
 
 // 清空
 Cache.flush();
@@ -12537,7 +12585,7 @@ Object value = Cache.store(&quot;database&quot;).get(&quot;user:1&quot;);
 <tr><td>`CacheProperties`</td><td>配置只读</td><td>Spring Boot 配置属性绑定，启动后只读</td></tr>
 </table>
 <h4>类和方法</h4>
-<p>&gt; Module: <code>cache</code> | Package: <code>com.weacsoft.jaravel.vendor.cache</code> | Version: 0.1.0</p>
+<p>&gt; Module: <code>cache</code> | Package: <code>com.weacsoft.jaravel.vendor.cache</code> | Version: 0.1.2</p>
 
 <h5 id="cache-overview">Overview</h5>
 <p>cache 模块提供 Laravel 风格的缓存系统，包含 CacheManager（多仓库管理器）、CacheStore（高级缓存操作契约）、CacheDriver（底层存储契约）、DefaultCacheStore（默认仓库实现，带前缀隔离）、ArrayCacheDriver（内存驱动）、FileCacheDriver（文件驱动）、DatabaseCacheDriver（数据库驱动）和 Cache 门面。支持 put/get/has/forget/flush/pull/add/increment/decrement/putMany/getMany/remember/rememberForever 等完整语义，TTL 统一为秒。redis 驱动位于独立的 <code>redis-cache</code> 模块。</p>
@@ -12911,7 +12959,7 @@ jaravel:
 &lt;dependency&gt;
     &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
     &lt;artifactId&gt;event&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 </code></pre>
 
@@ -13515,7 +13563,7 @@ jaravel:
 
 <p><code>invokeWithRetry</code> 方法无共享可变状态，<code>listener</code> 与 <code>event</code> 由调用方保证可见性（通过线程池提交时的 happens-before 关系）。重试通过 <code>Thread.sleep</code> 实现，在队列线程池的工作线程中阻塞等待，不影响其它队列。所有重试耗尽后仅记录错误日志，不会中断其它监听器的执行。</p>
 <h4>类和方法</h4>
-<p>&gt; Module: <code>event</code> | Package: <code>com.weacsoft.jaravel.vendor.event</code> | Version: 0.1.0</p>
+<p>&gt; Module: <code>event</code> | Package: <code>com.weacsoft.jaravel.vendor.event</code> | Version: 0.1.2</p>
 
 <h5 id="event-overview">Overview</h5>
 <p>event 模块提供 Laravel 风格的事件系统，包含 Event（事件标记接口）、Listener（监听器函数式接口）、Dispatcher（事件调度器契约）、EventDispatcher（默认实现，支持同步/异步分发）、QueueManager（多队列管理器，每队列独立线程池）、QueueDispatcher（持久化队列分发器契约）、ShouldQueue（标记异步执行）、@ListensTo（自动注册注解）、EventServiceProvider（服务提供者基类）和 EventFacade（门面）。支持自动重试、延迟执行、多队列隔离和持久化队列降级。</p>
@@ -14048,7 +14096,7 @@ public void executeWithLock(String taskName) {
 
 <p>该模块是其他 Redis 相关模块（redis-cache、session-redis）的基础依赖，提供统一的 Redis 连接管理能力，避免每个模块各自创建连接池。</p>
 <h4>类和方法</h4>
-<p>&gt; Module: <code>redis-config</code> | Package: <code>com.weacsoft.jaravel.vendor.redis</code> | Version: 0.1.0</p>
+<p>&gt; Module: <code>redis-config</code> | Package: <code>com.weacsoft.jaravel.vendor.redis</code> | Version: 0.1.2</p>
 
 <h5 id="redis-config-overview">Overview</h5>
 <p>redis-config 模块提供 Laravel 风格的 Redis 连接管理，基于 Lettuce 客户端实现。核心包含 RedisManager（多命名连接管理器，支持 standalone/sentinel/cluster 三种模式）、RedisProperties（配置属性，对齐 Laravel <code>config/database.php</code> redis 段）、RedisAutoConfiguration（自动装配）和 RedisLockProviderImpl（基于 Redis 的分布式锁实现）。连接在首次访问时惰性创建，进程生命周期内复用，所有连接线程安全可共享。</p>
@@ -14349,7 +14397,7 @@ Object cached = Cache.get(&quot;user:123&quot;);
 <li><code>RedisCacheDriver</code> — Redis 缓存驱动（<code>@ConditionalOnMissingBean</code>，便于业务方覆盖），使用 <code>cache</code> 命名连接</li>
 <li><code>RedisCacheRegistrar</code> — 注册器，通过 <code>CacheManager.addStore(&quot;redis&quot;, ...)</code> 将 Redis 缓存驱动动态注册为 <code>redis</code> store，使用全局缓存前缀</li>
 <h4>类和方法</h4>
-<p>&gt; Module: <code>redis-cache</code> | Package: <code>com.weacsoft.jaravel.vendor.redis.cache</code> | Version: 0.1.0</p>
+<p>&gt; Module: <code>redis-cache</code> | Package: <code>com.weacsoft.jaravel.vendor.redis.cache</code> | Version: 0.1.2</p>
 
 <h5 id="redis-cache-overview">Overview</h5>
 
@@ -14733,7 +14781,7 @@ java -jar app.jar artisan make:all User --force
 
 <p><code>make:all</code> 命令对每个子生成任务独立处理：单个文件已存在时记为「跳过」并继续后续生成，不会中断整体流程；带 <code>--force</code> 时全部覆盖。</p>
 <h4>类和方法</h4>
-<p>&gt; Module: <code>artisan</code> | Package: <code>com.weacsoft.jaravel.vendor.artisan</code> | Version: 0.1.0</p>
+<p>&gt; Module: <code>artisan</code> | Package: <code>com.weacsoft.jaravel.vendor.artisan</code> | Version: 0.1.2</p>
 
 <h5 id="artisan-overview">Overview</h5>
 
@@ -15312,7 +15360,7 @@ public Schedule schedule(Schedule schedule) {
 <li><code>Schedule</code> — 任务注册表（<code>@ConditionalOnMissingBean</code>）</li>
 <li><code>ScheduleRunner</code> — 任务执行器（<code>@ConditionalOnMissingBean</code>），通过 <code>ObjectProvider</code> 可选注入 <code>ArtisanApplication</code> 和 <code>RedisLockProvider</code>，当二者不存在时对应功能降级。</li>
 <h4>类和方法</h4>
-<p>&gt; Module: <code>schedule</code> | Package: <code>com.weacsoft.jaravel.vendor.schedule</code> | Version: 0.1.0</p>
+<p>&gt; Module: <code>schedule</code> | Package: <code>com.weacsoft.jaravel.vendor.schedule</code> | Version: 0.1.2</p>
 
 <h5 id="schedule-overview">Overview</h5>
 
@@ -15521,6 +15569,8 @@ jaravel:
 <li><a href="#plugin-jar-core-路由注册模式">路由注册模式</a></li>
 <li><a href="#plugin-jar-core-核心-api">核心 API</a></li>
 <li><a href="#plugin-jar-core-hotpluginmanager-方法列表">HotPluginManager 方法列表</a></li>
+<li><a href="#plugin-jar-core-共享接口（v012-新增）">共享接口（v0.1.2 新增）</a></li>
+<li><a href="#plugin-jar-core-sharedinterfacedescriptor">SharedInterfaceDescriptor</a></li>
 <li><a href="#plugin-jar-core-字节数组模式内存插件">字节数组模式（内存插件）</a></li>
 <li><a href="#plugin-jar-core-插件开发指南">插件开发指南</a></li>
 <li><a href="#plugin-jar-core-添加-maven-依赖">添加 Maven 依赖</a></li>
@@ -15544,9 +15594,11 @@ jaravel:
 <li><strong>三级 ClassLoader 隔离 + 共享接口热更新</strong>：主 ClassLoader / SharedClassLoader（可热替换）/ PluginClassLoader（每插件一个）三层隔离，插件间互不干扰，共享接口 JAR 可热更新而无需重启应用。</li>
 <li><strong>插件自动注册 Spring Bean + 动态路由映射</strong>：通过 <code>@PluginComponent</code> 标注的类自动注册为 Spring Bean，通过 <code>@PluginMapping</code> 标注的方法自动注册为 HTTP 路由，无需手动配置。</li>
 <li><strong>插件间依赖注入</strong>：通过 <code>Application.getService()</code> 代理，动态从 Spring 容器获取目标插件的服务实例，实现跨插件调用。</li>
+<li><strong>共享接口（v0.1.2 新增）</strong>：全手动指定的跨插件调用机制，通过 <code>registerSharedInterface</code> / <code>invokeSharedInterface</code> 以字符串 + Map 方式完成反射调用，开发时无需包含目标接口类。</li>
 <li><strong>双路由注册模式</strong>：支持自动注册（<code>auto-register=true</code>，插件启用时自动注册 <code>@PluginMapping</code> 路由）与手动注册（<code>auto-register=false</code>，通过 <code>@PluginRoute</code> 标记可用路由并使用 <code>registerAvailableRoute()</code> 按需注册）两种模式。</li>
 <li><strong>手动路由注册/注销</strong>：提供 <code>registerRoute()</code> / <code>unregisterRoute()</code> 方法，以及 <code>getAvailableRoutes()</code> / <code>registerAvailableRoute()</code> 手动注册 API，支持以方法调用方式（非 REST API）动态注册和注销路由。</li>
 <li><strong>Jaravel Request/Response 集成</strong>：当 jaravel 可用时，插件方法可直接使用 jaravel 的 <code>Request</code>/<code>Response</code> 而非 Servlet API，通过 <code>PluginIntegration</code> 接口自动检测并适配，同一份插件代码可同时运行于 jaravel 与纯 Spring Boot 环境。</li>
+<li><strong>SpringBoot 2.7 / 3.x 双版本兼容</strong>：编译期不依赖 <code>javax.servlet</code> 或 <code>jakarta.servlet</code>，通过 Spring 的 <code>NativeWebRequest</code> 抽象层 + 反射在运行时适配宿主的 Servlet 版本，同一构件可无缝运行在 SB 2.7（Spring 5.3, javax.servlet）和 SB 3.x（Spring 6, jakarta.servlet）环境中。</li>
 <li><strong>ASM 字节码扫描依赖与路由</strong>：使用 ASM 9.7 在不加载类的前提下扫描插件 JAR 的字节码，提取 <code>@PluginComponent</code> 组件类、<code>@SharedService</code> 共享依赖和 <code>@PluginMapping</code> / <code>@PluginRoute</code> 路由映射。</li>
 <li><strong>元数据持久化</strong>：重启后自动恢复插件状态。支持 JSON 文件（默认）和数据库两种持久化模式，仅落盘文件可自动持久化恢复。</li>
 <li><strong>内存 JAR 加载</strong>：支持从内存字节（<code>byte[]</code>）直接加载插件 JAR，不要求 <code>.jar</code> 落盘。但仅落盘文件（<code>persist=true</code>）可自动持久化恢复。</li>
@@ -15562,11 +15614,13 @@ jaravel:
 &lt;dependency&gt;
     &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
     &lt;artifactId&gt;plugin-jar-core&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 </code></pre>
 
-<p>该模块传递依赖 Spring Boot Web、Spring Boot AutoConfigure、Jackson（JSON 序列化）与 ASM（字节码扫描）。</p>
+<p>该模块将 Spring 相关依赖声明为 <code>provided</code> 作用域，编译时使用 Spring 5.3（最低公共兼容版本），运行时由宿主应用提供实际的 Spring 版本。同时提供 <code>spring.factories</code>（SB 2.7）和 <code>AutoConfiguration.imports</code>（SB 3.x）双自动配置注册文件，确保同一构件在两个版本下均能自动装配。</p>
+
+<p>&gt; <strong>SpringBoot 2.7 / 3.x 双版本兼容</strong>：模块编译期不引入 <code>javax.servlet</code> 或 <code>jakarta.servlet</code> 依赖，通过 Spring 的 <code>NativeWebRequest</code> 抽象层处理 HTTP 请求/响应，运行时通过反射适配宿主的实际 Servlet API 版本。JDK 9+ API（如 <code>Set.of()</code>、<code>Files.readString()</code>、<code>String.isBlank()</code>）已替换为 JDK 8 兼容写法。因此无需区分版本，同一 JAR 可同时运行在 SB 2.7 和 SB 3.x 环境中。</p>
 
 <p>---</p>
 <h4>使用示例</h4>
@@ -15644,7 +15698,7 @@ jaravel:
 
 <h6 id="plugin-jar-core-路由代理机制">路由代理机制</h6>
 
-<p>插件路由不直接注册到 Spring MVC 的 <code>@RequestMapping</code>，而是通过统一的 <code>PluginRouteHandler</code> 代理处理：</p>
+<p>插件路由不直接注册到 Spring MVC 的 <code>@RequestMapping</code>，而是通过统一的 <code>PluginRouteHandler</code> 代理处理。为兼容 SpringBoot 2.7（javax.servlet）和 3.x（jakarta.servlet），<code>handleRequest</code> 接收 Spring 的 <code>NativeWebRequest</code> 而非具体的 Servlet 类型：</p>
 
 <pre><code>
 HTTP 请求
@@ -15653,19 +15707,25 @@ HTTP 请求
 Spring MVC (RequestMappingHandlerMapping)
   │  匹配到插件路由 → 委托给 PluginRouteHandler Bean
   ▼
-PluginRouteHandler.handleRequest(HttpServletRequest, HttpServletResponse)
+PluginRouteHandler.handleRequest(NativeWebRequest webRequest)
   │
-  ├── 1. 从请求中提取路径变量（path variables）
-  ├── 2. 在 routeRegistry（ConcurrentHashMap）中查找 RouteInfo
+  ├── 1. 通过反射从 nativeRequest 提取 HTTP 方法（兼容 SB2/SB3）
+  ├── 2. 通过 webRequest.getDescription() 提取请求路径
+  ├── 3. 在 routeRegistry（ConcurrentHashMap）中查找 RouteInfo
   │      RouteInfo 包含：path / method / beanName / methodName / produces
-  ├── 3. 通过 beanRegistrar 从 Spring 容器获取插件 Bean 实例
-  ├── 4. 反射查找 Bean 的目标方法（findMethod）
-  ├── 5. 解析方法参数（resolveArguments：路径变量 / 请求参数 / 默认值）
-  ├── 6. 反射调用插件方法
-  └── 7. 将返回值按 produces 类型写入 HTTP 响应（writeResponse）
+  ├── 4. 通过 beanRegistrar 从 Spring 容器获取插件 Bean 实例
+  ├── 5. 反射查找 Bean 的目标方法（findMethod）
+  ├── 6. 解析方法参数（resolveArguments）：
+  │      ├── Servlet 原生请求类型 → type.isInstance(nativeRequest) 匹配（兼容 javax/jakarta）
+  │      ├── jaravel Request → integration.createPluginRequest() 创建
+  │      └── 简单类型 → 从请求参数/路径变量解析
+  ├── 7. 反射调用插件方法
+  └── 8. 返回值由 Spring @ResponseBody 自动序列化（或交给 integration 处理）
 </code></pre>
 
 <p><code>PluginRouteRegistrar</code> 负责将插件路由注册到 Spring MVC 的 <code>RequestMappingHandlerMapping</code>，注册时创建 <code>RequestMappingInfo</code>（路径 + HTTP 方法），并映射到统一的 <code>PluginRouteHandler</code> Bean。注销时移除对应的 <code>RequestMappingInfo</code>。</p>
+
+<p>&gt; <strong>兼容性说明</strong>：<code>NativeWebRequest</code> 是 Spring 5.0+ 提供的抽象层，其 <code>getNativeRequest()</code> / <code>getNativeResponse()</code> 方法在运行时返回实际的 Servlet 请求/响应对象（SB 2.7 下为 <code>javax.servlet.http.HttpServletRequest</code>，SB 3.x 下为 <code>jakarta.servlet.http.HttpServletRequest</code>）。通过 <code>type.isInstance(nativeRequest)</code> 进行运行时类型匹配，避免编译期对任一 Servlet API 的硬依赖。</p>
 
 <h6 id="plugin-jar-core-插件间调用">插件间调用</h6>
 
@@ -15818,6 +15878,97 @@ private HotPluginManager hotPluginManager;
 <tr><td>`Object getServiceFromPlugin(String pluginId, String beanName)`</td><td>跨插件获取服务。从 Spring 容器中按 beanName 获取指定插件注册的 Bean 实例</td></tr>
 </table>
 
+<h6 id="plugin-jar-core-共享接口（v012-新增）">共享接口（v0.1.2 新增）</h6>
+
+<p>共享接口（Shared Interface）是 v0.1.2 引入的跨插件调用机制。与 <code>@SharedService</code> 注解驱动的自动注册不同，共享接口采用<strong>全手动指定</strong>的方式：调用方显式注册接口的元信息（接口名、插件 ID、Bean 名、方法名），通过字符串驱动的反射封装完成跨插件方法调用，参数和返回值均使用 <code>Map&lt;String, Object&gt;</code> 传递。</p>
+
+<p><strong>设计理念</strong>：</p>
+<li><strong>全手动指定</strong>：不依赖注解自动发现，由调用方显式注册接口元信息，控制粒度更细</li>
+<li><strong>字符串驱动</strong>：接口名、Bean 名、方法名均为字符串，无需在编译期包含目标接口类</li>
+<li><strong>反射封装</strong>：内部通过反射查找并调用目标方法，调用方无需关心 ClassLoader 隔离细节</li>
+<li><strong>Map 传参</strong>：参数和返回值统一使用 <code>Map&lt;String, Object&gt;</code>，避免类型耦合</li>
+<li><strong>开发时无需包含目标类</strong>：由于使用字符串 + Map，调用方项目在编译期不需要引入目标接口的 JAR 依赖</li>
+
+<table>
+<tr><th>方法签名</th><th>说明</th></tr>
+<tr><td>`void registerSharedInterface(String interfaceName, String pluginId, String beanName, String methodName)`</td><td>注册共享接口。`interfaceName` 为接口逻辑名（调用时使用），`pluginId` 为目标插件 ID，`beanName` 为插件中注册的 Bean 名称，`methodName` 为要调用的方法名。同一 interfaceName 重复注册会覆盖旧注册</td></tr>
+<tr><td>`Map<String, Object> invokeSharedInterface(String interfaceName, Map<String, Object> args)`</td><td>调用共享接口。按 `interfaceName` 查找已注册的接口元信息，通过反射从目标插件的 Bean 上调用指定方法，传入 `args` 作为参数。返回方法执行结果的 Map。接口未注册或调用异常时返回包含 `error` 字段的 Map</td></tr>
+<tr><td>`List<SharedInterfaceDescriptor> getSharedInterfaces()`</td><td>列出所有已注册的共享接口描述符</td></tr>
+<tr><td>`SharedInterfaceDescriptor getSharedInterface(String interfaceName)`</td><td>获取指定名称的共享接口描述符。不存在返回 null</td></tr>
+<tr><td>`boolean unregisterSharedInterface(String interfaceName)`</td><td>注销共享接口。按 `interfaceName` 移除注册记录，返回是否移除成功</td></tr>
+</table>
+
+<h6 id="plugin-jar-core-共享接口使用示例">共享接口使用示例</h6>
+
+<pre><code>
+@Autowired
+private HotPluginManager hotPluginManager;
+
+// 1. 注册共享接口（指定目标插件的 Bean 和方法）
+hotPluginManager.registerSharedInterface(
+    "payment.pay",           // interfaceName: 接口逻辑名
+    "payment-plugin",        // pluginId: 目标插件 ID
+    "paymentService",        // beanName: 插件中注册的 Bean 名
+    "pay"                    // methodName: 要调用的方法名
+);
+
+// 2. 调用共享接口（无需引入目标接口的 JAR 依赖）
+Map&lt;String, Object&gt; args = new HashMap&lt;&gt;();
+args.put("orderId", "ORDER-001");
+args.put("amount", new BigDecimal("99.50"));
+
+Map&lt;String, Object&gt; result = hotPluginManager.invokeSharedInterface("payment.pay", args);
+// result.get("success") -&gt; true/false
+// result.get("transactionId") -&gt; "TXN-xxx"
+
+// 3. 查询已注册的共享接口
+List&lt;SharedInterfaceDescriptor&gt; interfaces = hotPluginManager.getSharedInterfaces();
+SharedInterfaceDescriptor desc = hotPluginManager.getSharedInterface("payment.pay");
+// desc.getInterfaceName() -&gt; "payment.pay"
+// desc.getPluginId() -&gt; "payment-plugin"
+// desc.getBeanName() -&gt; "paymentService"
+// desc.getMethodName() -&gt; "pay"
+
+// 4. 注销共享接口
+hotPluginManager.unregisterSharedInterface("payment.pay");
+</code></pre>
+
+<h6 id="plugin-jar-core-sharedinterfacedescriptor">SharedInterfaceDescriptor</h6>
+
+<p><code>com.weacsoft.jaravel.vendor.plugin.jar.model.SharedInterfaceDescriptor</code></p>
+
+<p>共享接口描述符模型类，封装一个已注册共享接口的全部元信息。</p>
+
+<table>
+<tr><th>Field</th><th>Type</th><th>Description</th></tr>
+<tr><td>`interfaceName`</td><td>`String`</td><td>接口逻辑名，调用 `invokeSharedInterface` 时使用此名称查找。唯一标识一个共享接口</td></tr>
+<tr><td>`pluginId`</td><td>`String`</td><td>目标插件 ID，标识接口实现所在的插件</td></tr>
+<tr><td>`beanName`</td><td>`String`</td><td>插件中注册的 Bean 名称，通过 `getServiceFromPlugin` 获取目标 Bean 实例</td></tr>
+<tr><td>`methodName`</td><td>`String`</td><td>要调用的方法名，通过反射在目标 Bean 上查找并调用此方法</td></tr>
+<tr><td>`description`</td><td>`String`</td><td>接口描述（可选），用于文档化目的</td></tr>
+</table>
+
+<h6 id="plugin-jar-core-application-共享接口">Application 共享接口代理</h6>
+
+<p><code>Application</code> 代理类同样提供了共享接口的便捷方法，插件代码可通过 <code>Application</code> 静态调用直接注册和调用共享接口，无需注入 <code>HotPluginManager</code>：</p>
+
+<table>
+<tr><th>方法签名</th><th>说明</th></tr>
+<tr><td>`static void registerSharedInterface(String interfaceName, String pluginId, String beanName, String methodName)`</td><td>注册共享接口（静态代理，委托给 `HotPluginManager`）</td></tr>
+<tr><td>`static Map<String, Object> invokeSharedInterface(String interfaceName, Map<String, Object> args)`</td><td>调用共享接口（静态代理，委托给 `HotPluginManager`）</td></tr>
+<tr><td>`static List<SharedInterfaceDescriptor> getSharedInterfaces()`</td><td>列出所有已注册的共享接口（静态代理）</td></tr>
+</table>
+
+<pre><code>
+// 在插件代码中直接使用 Application 静态方法（无需注入 HotPluginManager）
+Application.registerSharedInterface("user.info", "user-plugin", "userService", "getUserInfo");
+
+Map&lt;String, Object&gt; args = Map.of("userId", 12345);
+Map&lt;String, Object&gt; userInfo = Application.invokeSharedInterface("user.info", args);
+// userInfo.get("name") -&gt; "张三"
+// userInfo.get("email") -&gt; "zhangsan@example.com"
+</code></pre>
+
 <h6 id="plugin-jar-core-查询与持久化恢复">查询与持久化恢复</h6>
 
 <table>
@@ -15831,7 +15982,7 @@ private HotPluginManager hotPluginManager;
 
 <pre><code>
 // 1. 初始化共享 ClassLoader（通常在启动时由自动装配完成）
-hotPluginManager.initSharedClassLoader(Path.of(&quot;shared-api.jar&quot;), &quot;0.1.0&quot;);
+hotPluginManager.initSharedClassLoader(Path.of(&quot;shared-api.jar&quot;), &quot;0.1.2&quot;);
 
 // 2. 从文件注册插件（持久化）
 String pluginId = hotPluginManager.registerPluginFromPath(
@@ -15918,7 +16069,7 @@ manager.reloadPluginFromBytes(&quot;my-plugin&quot;, newJarBytes);
     &lt;dependency&gt;
         &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
         &lt;artifactId&gt;plugin-jar-core&lt;/artifactId&gt;
-        &lt;version&gt;0.1.0&lt;/version&gt;
+        &lt;version&gt;0.1.2&lt;/version&gt;
         &lt;scope&gt;provided&lt;/scope&gt;
     &lt;/dependency&gt;
 &lt;/dependencies&gt;
@@ -16076,7 +16227,7 @@ public interface MetadataPersistence {
 &lt;dependency&gt;
     &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
     &lt;artifactId&gt;plugin-jar-database&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 </code></pre>
 
@@ -16113,15 +16264,17 @@ public interface PluginIntegration {
     List&lt;Path&gt; getAdditionalSharedJars();
 
     /** 创建 jaravel Request（jaravel 不可用时返回 null） */
-    Object createPluginRequest(HttpServletRequest servletRequest);
+    Object createPluginRequest(Object servletRequest);
 
     /** 写入 jaravel Response（返回 false 表示使用默认逻辑） */
-    boolean writePluginResponse(Object result, HttpServletResponse response, String produces);
+    boolean writePluginResponse(Object result, Object servletResponse, String produces);
 
     /** 读取配置值（jaravel 可用时委托 Config.get()，否则从 Spring Environment 读取） */
     &lt;T&gt; T getConfigValue(String key, T defaultValue);
 }
 </code></pre>
+
+<p>&gt; <strong>双版本兼容</strong>：<code>createPluginRequest</code> 和 <code>writePluginResponse</code> 的参数类型为 <code>Object</code> 而非 <code>HttpServletRequest</code>/<code>HttpServletResponse</code>，运行时实际传入的是宿主环境的 Servlet 请求/响应对象（SB 2.7 下为 <code>javax.servlet.http.*</code>，SB 3.x 下为 <code>jakarta.servlet.http.*</code>）。实现方可通过反射或 <code>instanceof</code> 判断具体类型。</p>
 
 <table>
 <tr><th>方法签名</th><th>说明</th></tr>
@@ -16129,8 +16282,8 @@ public interface PluginIntegration {
 <tr><td>`void onPluginDisabled(String pluginId)`</td><td>插件禁用时回调。可在此清理插件持有的资源引用</td></tr>
 <tr><td>`Set<String> getSharedPackagePrefixes()`</td><td>返回插件 ClassLoader 可见的共享包前缀集合。匹配这些前缀的类将从 `SharedClassLoader` 加载</td></tr>
 <tr><td>`List<Path> getAdditionalSharedJars()`</td><td>返回额外的共享 JAR 路径列表，这些 JAR 将被加入 `SharedClassLoader`</td></tr>
-<tr><td>`Object createPluginRequest(HttpServletRequest servletRequest)`</td><td>创建 jaravel `Request` 对象。当 jaravel 可用时将 Servlet 请求包装为 jaravel `Request` 返回；jaravel 不可用时返回 `null`，此时插件方法参数解析回退到默认逻辑</td></tr>
-<tr><td>`boolean writePluginResponse(Object result, HttpServletResponse response, String produces)`</td><td>写入 jaravel `Response` 返回值。当插件方法返回 jaravel `Response` 且 jaravel 可用时，由该方法处理响应写入并返回 `true`；返回 `false` 表示使用默认响应写入逻辑</td></tr>
+<tr><td>`Object createPluginRequest(Object servletRequest)`</td><td>创建 jaravel `Request` 对象。`servletRequest` 运行时为宿主的 Servlet 请求（javax/jakarta），当 jaravel 可用时包装为 jaravel `Request` 返回；jaravel 不可用时返回 `null`</td></tr>
+<tr><td>`boolean writePluginResponse(Object result, Object servletResponse, String produces)`</td><td>写入 jaravel `Response` 返回值。`servletResponse` 运行时为宿主的 Servlet 响应（javax/jakarta），由该方法处理响应写入并返回 `true`；返回 `false` 表示使用默认响应写入逻辑</td></tr>
 <tr><td>`<T> T getConfigValue(String key, T defaultValue)`</td><td>读取配置值。jaravel 可用时委托给 `Config.get()`，纯 Spring Boot 环境下从 Spring `Environment` 读取。`defaultValue` 在配置不存在时返回</td></tr>
 </table>
 
@@ -16157,16 +16310,16 @@ public PluginIntegration pluginIntegration(AuthManager authManager,
 
         @Override
         public Set&lt;String&gt; getSharedPackagePrefixes() {
-            return Set.of(
+            return new HashSet&lt;&gt;(Arrays.asList(
                 &quot;com.weacsoft.jaravel.vendor.auth&quot;,
                 &quot;com.weacsoft.jaravel.vendor.cache&quot;,
                 &quot;com.weacsoft.jaravel.vendor.database&quot;
-            );
+            ));
         }
 
         @Override
         public List&lt;Path&gt; getAdditionalSharedJars() {
-            return List.of(Path.of(&quot;libs/auth-1.0.0.jar&quot;));
+            return Collections.singletonList(Paths.get(&quot;libs/auth-1.0.0.jar&quot;));
         }
     };
 }
@@ -16200,16 +16353,16 @@ public class UserService {
 <li><code>createPluginRequest()</code> - 当 jaravel 可用时创建 <code>Request</code> 对象（返回 <code>null</code> 表示 jaravel 不可用）。</li>
 <li><code>writePluginResponse()</code> - 当 jaravel 可用时处理 <code>Response</code> 返回值（返回 <code>false</code> 表示使用默认响应写入逻辑）。</li>
 
-<p><strong>插件方法参数解析顺序</strong>：</p>
+<p><strong>插件方法参数解析顺序</strong>（通过 <code>resolveArguments</code> 实现，使用 <code>NativeWebRequest</code> 抽象）：</p>
 
-<li>参数类型为 <code>HttpServletRequest</code> → 直接传入 Servlet 请求对象。</li>
+<li>参数类型为 Servlet 原生请求类型 → 通过 <code>type.isInstance(nativeRequest)</code> 运行时匹配（兼容 javax/jakarta），直接传入。</li>
 <li>参数类型为 jaravel <code>Request</code> 且 integration 可用 → 调用 <code>createPluginRequest()</code> 创建并传入。</li>
-<li>简单类型（<code>String</code>/<code>int</code>/<code>long</code>/<code>boolean</code> 等）→ 从请求参数解析。</li>
+<li>简单类型（<code>String</code>/<code>int</code>/<code>long</code>/<code>boolean</code> 等）→ 从请求参数或路径变量解析。</li>
 
 <p><strong>返回值处理</strong>：</p>
 
-<li>当插件方法返回 jaravel <code>Response</code> 且 <code>writePluginResponse()</code> 返回 <code>true</code> 时，由 integration 接管响应写入。</li>
-<li>否则按 <code>produces</code> 类型使用默认逻辑写入响应（如 JSON 序列化、字符串直写等）。</li>
+<li>优先交给 <code>PluginIntegration.writePluginResponse()</code> 处理（当 jaravel 可用且返回值为 jaravel <code>Response</code> 时）。</li>
+<li>否则通过 <code>@ResponseBody</code> 注解由 Spring MVC 自动序列化返回值（JSON / 字符串等）。</li>
 
 <p>&gt; 这种设计使同一份插件代码既能在 jaravel 环境下使用 <code>Request</code>/<code>Response</code> 的高级 API，也能在纯 Spring Boot 环境下以简单类型运行，无需修改代码。</p>
 
@@ -16290,7 +16443,7 @@ com.weacsoft.jaravel.vendor.plugin.jar
 │
 ├── registrar                           # Bean 与路由注册器
 │   ├── PluginBeanRegistrar             # 插件 Bean 注册器（注册/注销 Spring Bean）
-│   ├── PluginRouteHandler              # 路由处理器（代理处理 HTTP 请求，反射调用插件方法）
+│   ├── PluginRouteHandler              # 路由处理器（NativeWebRequest 代理，兼容 SB2/SB3）
 │   └── PluginRouteRegistrar            # 路由注册器（注册/注销 Spring MVC 路由映射）
 │
 └── scanner                             # ASM 字节码扫描器
@@ -16312,12 +16465,12 @@ com.weacsoft.jaravel.vendor.plugin.jar
 <tr><td>`SharedDependencyScanner`</td><td>ASM 字节码扫描器，在不加载类的前提下提取组件类、共享依赖和路由映射</td></tr>
 <tr><td>`PluginBeanRegistrar`</td><td>插件 Bean 注册器，通过 `DefaultListableBeanFactory` 动态注册/注销插件 Bean</td></tr>
 <tr><td>`PluginRouteRegistrar`</td><td>路由注册器，通过 `RequestMappingHandlerMapping` 动态注册/注销 Spring MVC 路由</td></tr>
-<tr><td>`PluginRouteHandler`</td><td>路由处理器，代理处理所有插件路由的 HTTP 请求，反射调用插件方法并写入响应</td></tr>
+<tr><td>`PluginRouteHandler`</td><td>路由处理器，通过 `NativeWebRequest` 代理处理所有插件路由的 HTTP 请求（兼容 SB2/SB3），反射调用插件方法，返回值由 `@ResponseBody` 序列化</td></tr>
 <tr><td>`JsonMetadataPersistence`</td><td>JSON 文件持久化实现，将插件元数据存储为 `metadata.json`</td></tr>
 <tr><td>`Application`</td><td>插件间调用代理，通过静态方法 `getService()` 跨插件获取服务实例</td></tr>
 </table>
 <h4>类和方法</h4>
-<p>&gt; Module: <code>plugin-jar-core</code> | Package: <code>com.weacsoft.jaravel.vendor.plugin.jar</code> | Version: 0.1.0</p>
+<p>&gt; Module: <code>plugin-jar-core</code> | Package: <code>com.weacsoft.jaravel.vendor.plugin.jar</code> | Version: 0.1.2</p>
 
 <h5 id="plugin-jar-core-overview">Overview</h5>
 
@@ -16369,32 +16522,43 @@ pluginManager.unload(pluginId);
 <h6 id="plugin-jar-core-pluginintegration">PluginIntegration</h6>
 <li><strong>Type</strong>: interface</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.plugin.jar.integration</code></li>
-<li><strong>Description</strong>: 插件集成接口，定义插件与主应用集成的回调方法。由 <code>DefaultPluginIntegration</code> 提供默认实现，业务方可自定义实现以扩展集成行为。</li>
+<li><strong>Description</strong>: 插件集成接口，定义插件与主应用集成的回调方法。由 <code>DefaultPluginIntegration</code> 提供默认实现，业务方可自定义实现以扩展集成行为。接口方法中 Servlet 相关参数为 <code>Object</code> 类型（运行时为 javax/jakarta Servlet 对象），确保双版本兼容。</li>
 
 <h6 id="plugin-jar-core-methods">Methods</h6>
 
 <table>
 <tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
-<tr><td>`onEnable`</td><td>`PluginInfo pluginInfo, ClassLoader classLoader`</td><td>`void`</td><td>插件启用时回调，注册 Bean 和路由</td></tr>
-<tr><td>`onDisable`</td><td>`PluginInfo pluginInfo`</td><td>`void`</td><td>插件禁用时回调，注销 Bean 和路由</td></tr>
-<tr><td>`onUnload`</td><td>`PluginInfo pluginInfo`</td><td>`void`</td><td>插件卸载时回调，清理资源</td></tr>
+<tr><td>`onPluginEnabled`</td><td>`String pluginId, ConfigurableApplicationContext context`</td><td>`void`</td><td>插件启用时回调，可向插件上下文注入服务</td></tr>
+<tr><td>`onPluginDisabled`</td><td>`String pluginId`</td><td>`void`</td><td>插件禁用时回调</td></tr>
+<tr><td>`getSharedPackagePrefixes`</td><td>-</td><td>`Set<String>`</td><td>返回插件可见的共享包前缀集合</td></tr>
+<tr><td>`getAdditionalSharedJars`</td><td>-</td><td>`List<Path>`</td><td>返回额外的共享 JAR 路径列表</td></tr>
+<tr><td>`createPluginRequest`</td><td>`Object servletRequest`</td><td>`Object`</td><td>创建 jaravel Request 对象（jaravel 不可用时返回 null）</td></tr>
+<tr><td>`writePluginResponse`</td><td>`Object result, Object servletResponse, String produces`</td><td>`boolean`</td><td>写入 jaravel Response（返回 false 使用默认逻辑）</td></tr>
+<tr><td>`getConfigValue`</td><td>`String key, T defaultValue`</td><td>`<T> T`</td><td>读取配置值（jaravel 可用时委托 Config.get()）</td></tr>
 </table>
 
 <h6 id="plugin-jar-core-usage-example">Usage Example</h6>
 <pre><code>
 public class CustomPluginIntegration implements PluginIntegration {
     @Override
-    public void onEnable(PluginInfo info, ClassLoader classLoader) {
-        // 自定义启用逻辑
+    public void onPluginEnabled(String pluginId, ConfigurableApplicationContext context) {
+        // 自定义启用逻辑，可注入服务
     }
     @Override
-    public void onDisable(PluginInfo info) {
+    public void onPluginDisabled(String pluginId) {
         // 自定义禁用逻辑
     }
     @Override
-    public void onUnload(PluginInfo info) {
-        // 自定义卸载逻辑
+    public Object createPluginRequest(Object servletRequest) {
+        // 返回 null 使用默认请求处理
+        return null;
     }
+    @Override
+    public boolean writePluginResponse(Object result, Object servletResponse, String produces) {
+        // 返回 false 使用默认响应写入
+        return false;
+    }
+    // ... 其他方法
 }
 </code></pre>
 
@@ -16402,15 +16566,16 @@ public class CustomPluginIntegration implements PluginIntegration {
 <li><strong>Type</strong>: class</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.plugin.jar.integration</code></li>
 <li><strong>Implements</strong>: <code>com.weacsoft.jaravel.vendor.plugin.jar.integration.PluginIntegration</code></li>
-<li><strong>Description</strong>: 默认插件集成实现。<code>onEnable</code> 时通过 <code>PluginBeanRegistrar</code> 注册插件组件为 Spring Bean，通过 <code>PluginRouteRegistrar</code> 注册路由到路由系统；<code>onDisable</code> 时反向注销。</li>
+<li><strong>Description</strong>: 默认插件集成实现（空操作）。所有方法均为空体：<code>createPluginRequest()</code> 返回 <code>null</code>，<code>writePluginResponse()</code> 返回 <code>false</code>，<code>getSharedPackagePrefixes()</code> 返回空集合，<code>getConfigValue()</code> 从 Spring Environment 读取。用于 jaravel 不可用的纯 Spring Boot 场景，由 <code>PluginJarAutoConfiguration</code> 默认注册。</li>
 
 <h6 id="plugin-jar-core-methods">Methods</h6>
 
 <table>
 <tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
-<tr><td>`onEnable`</td><td>`PluginInfo pluginInfo, ClassLoader classLoader`</td><td>`void`</td><td>注册 Bean 和路由</td></tr>
-<tr><td>`onDisable`</td><td>`PluginInfo pluginInfo`</td><td>`void`</td><td>注销 Bean 和路由</td></tr>
-<tr><td>`onUnload`</td><td>`PluginInfo pluginInfo`</td><td>`void`</td><td>清理插件资源</td></tr>
+<tr><td>`onPluginEnabled`</td><td>`String pluginId, ConfigurableApplicationContext context`</td><td>`void`</td><td>空操作</td></tr>
+<tr><td>`onPluginDisabled`</td><td>`String pluginId`</td><td>`void`</td><td>空操作</td></tr>
+<tr><td>`createPluginRequest`</td><td>`Object servletRequest`</td><td>`Object`</td><td>返回 null（jaravel 不可用）</td></tr>
+<tr><td>`writePluginResponse`</td><td>`Object result, Object servletResponse, String produces`</td><td>`boolean`</td><td>返回 false（使用默认逻辑）</td></tr>
 </table>
 
 <h6 id="plugin-jar-core-pluginbeanregistrar">PluginBeanRegistrar</h6>
@@ -16466,16 +16631,19 @@ routeRegistrar.unregisterRoutes(pluginInfo);
 <h6 id="plugin-jar-core-pluginroutehandler">PluginRouteHandler</h6>
 <li><strong>Type</strong>: class</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.plugin.jar.registrar</code></li>
-<li><strong>Description</strong>: 插件路由处理器。封装插件路由的请求处理逻辑，持有目标 Bean 实例和 Method，通过反射调用处理方法并返回结果。</li>
+<li><strong>Description</strong>: 插件路由处理器 —— 所有插件 HTTP 请求的统一入口。通过 <code>PluginRouteRegistrar</code> 动态注册到 Spring MVC，所有插件路由请求由 <code>handleRequest(NativeWebRequest)</code> 统一分发。使用 <code>NativeWebRequest</code> 替代 <code>HttpServletRequest</code>/<code>HttpServletResponse</code>，消除对 javax/jakarta Servlet API 的编译期依赖，使同一构件可运行在 SpringBoot 2.7 和 3.x 环境。返回值通过 <code>@ResponseBody</code> 交给 Spring 自动序列化。</li>
 
 <h6 id="plugin-jar-core-methods">Methods</h6>
 
 <table>
 <tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
-<tr><td>`PluginRouteHandler`</td><td>`Object bean, Method method`</td><td>-</td><td>构造路由处理器</td></tr>
-<tr><td>`handle`</td><td>`Request request`</td><td>`Object`</td><td>处理请求，反射调用目标方法</td></tr>
-<tr><td>`getBean`</td><td>-</td><td>`Object`</td><td>获取目标 Bean 实例</td></tr>
-<tr><td>`getMethod`</td><td>-</td><td>`Method`</td><td>获取目标方法</td></tr>
+<tr><td>`PluginRouteHandler`</td><td>`PluginBeanRegistrar beanRegistrar, PluginIntegration integration`</td><td>-</td><td>构造路由处理器</td></tr>
+<tr><td>`handleRequest`</td><td>`NativeWebRequest webRequest`</td><td>`Object`</td><td>处理请求：提取 HTTP 方法和路径 → 查找 RouteInfo → 反射调用插件方法 → 返回值由 @ResponseBody 序列化</td></tr>
+<tr><td>`resolveArguments`</td><td>`Method method, NativeWebRequest webRequest`</td><td>`Object[]`</td><td>解析插件方法参数：Servlet 原生请求（type.isInstance 匹配）→ jaravel Request → 请求参数/路径变量</td></tr>
+<tr><td>`registerRouteInfo`</td><td>`RouteInfo route`</td><td>`void`</td><td>注册路由信息到路由表</td></tr>
+<tr><td>`getRouteInfo`</td><td>`String method, String path`</td><td>`RouteInfo`</td><td>查询已注册的路由信息，不存在返回 null</td></tr>
+<tr><td>`unregisterRouteInfo`</td><td>`String method, String path`</td><td>`void`</td><td>从路由表中注销指定路由</td></tr>
+<tr><td>`getAllRouteKeys`</td><td>-</td><td>`List<String>`</td><td>获取所有已注册路由的 key 列表</td></tr>
 </table>
 
 <h6 id="plugin-jar-core-plugininfo">PluginInfo</h6>
@@ -16656,7 +16824,7 @@ jaravel:
 <li><strong>Type</strong>: class</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.plugin.jar.autoconfigure</code></li>
 <li><strong>Annotations</strong>: <code>@AutoConfiguration</code>, <code>@ConditionalOnWebApplication</code>, <code>@EnableConfigurationProperties(PluginJarProperties.class)</code>, <code>@ConditionalOnProperty(prefix = &quot;jaravel.plugin-jar&quot;, name = &quot;enabled&quot;, havingValue = &quot;true&quot;, matchIfMissing = true)</code></li>
-<li><strong>Description</strong>: JAR 插件自动装配。创建 <code>PluginBeanRegistrar</code>、<code>PluginRouteRegistrar</code>、<code>SharedDependencyScanner</code>、<code>MetadataPersistence</code>、<code>PluginIntegration</code>、<code>HotPluginManager</code> Bean。若 <code>autoScan=true</code>，启动时扫描插件目录并自动加载/启用插件。</li>
+<li><strong>Description</strong>: JAR 插件自动装配。创建 <code>PluginBeanRegistrar</code>、<code>PluginRouteRegistrar</code>、<code>SharedDependencyScanner</code>、<code>MetadataPersistence</code>、<code>PluginIntegration</code>、<code>HotPluginManager</code> Bean。若 <code>autoScan=true</code>，启动时扫描插件目录并自动加载/启用插件。使用 <code>@AutoConfiguration</code> 注解（SB 2.7+ 可用），同时通过 <code>META-INF/spring.factories</code>（SB 2.7）和 <code>META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports</code>（SB 3.x）双文件注册，确保自动装配在两个版本下均生效。</li>
 
 <h6 id="plugin-jar-core-methods">Methods</h6>
 
@@ -16859,12 +17027,12 @@ public String createData(@RequestBody String data) { ... }
 &lt;dependency&gt;
     &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
     &lt;artifactId&gt;plugin-jar-core&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 &lt;dependency&gt;
     &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
     &lt;artifactId&gt;plugin-jar-database&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 </code></pre>
 
@@ -17270,7 +17438,7 @@ com.weacsoft.jaravel.vendor.plugin.jar.database.autoconfigure.PluginJarDatabaseA
 
 <p>引入依赖后，Spring Boot 会自动加载该自动装配类，无需手动 <code>@Import</code> 或 <code>@ComponentScan</code>。</p>
 <h4>类和方法</h4>
-<p>&gt; Module: <code>plugin-jar-database</code> | Package: <code>com.weacsoft.jaravel.vendor.plugin.jar.database</code> | Version: 0.1.0</p>
+<p>&gt; Module: <code>plugin-jar-database</code> | Package: <code>com.weacsoft.jaravel.vendor.plugin.jar.database</code> | Version: 0.1.2</p>
 
 <h5 id="plugin-jar-database-overview">Overview</h5>
 
@@ -17467,6 +17635,7 @@ pluginManager.enable(&quot;my-plugin&quot;);
 <li><strong>共享注解</strong>：复用 <code>plugin-jar-core</code> 的 <code>@PluginComponent</code> / <code>@PluginMapping</code> 注解，与 JAR 插件体系保持一致。</li>
 <li><strong>线程安全</strong>：使用 <code>ReadWriteLock</code> 保护所有状态变更操作（注册、启用、禁用、重载），支持并发读。</li>
 <li><strong>Spring Boot AutoConfiguration</strong>：通过 <code>PluginJavaAutoConfiguration</code> 开箱即用，引入依赖并配置即可启用。</li>
+<li><strong>SpringBoot 2.7 / 3.x 双版本兼容</strong>：与 <code>plugin-jar-core</code> 保持一致的兼容策略，编译期使用 Spring 5.3 + <code>provided</code> 作用域，运行时适配宿主版本。JDK 9+ API 已替换为 JDK 8 兼容写法，同一 JAR 可运行在 SB 2.7 和 SB 3.x 环境。</li>
 
 <p>---</p>
 
@@ -17478,11 +17647,13 @@ pluginManager.enable(&quot;my-plugin&quot;);
 &lt;dependency&gt;
     &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
     &lt;artifactId&gt;plugin-java-core&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 </code></pre>
 
 <p>&gt; <strong>注意</strong>：此模块依赖 <code>plugin-jar-core</code>（共享注解和注册器）。<code>plugin-java-core</code> 复用了 <code>plugin-jar-core</code> 的 <code>@PluginComponent</code> / <code>@PluginMapping</code> 注解，以及 <code>PluginBeanRegistrar</code> / <code>PluginRouteRegistrar</code> 注册器，因此运行环境中必须存在 <code>plugin-jar-core</code> 提供的 Bean。</p>
+
+<p>&gt; <strong>双版本兼容</strong>：与 <code>plugin-jar-core</code> 相同，此模块同样提供 <code>spring.factories</code> + <code>AutoConfiguration.imports</code> 双注册文件，编译期使用 Spring 5.3 <code>provided</code> 依赖，运行时适配宿主的 SpringBoot 版本（2.7 或 3.x）。</p>
 
 <p>---</p>
 <h4>使用示例</h4>
@@ -17876,7 +18047,7 @@ src/main/resources/META-INF/spring/
     # 注册 PluginJavaAutoConfiguration 为 Spring Boot 自动装配类
 </code></pre>
 <h4>类和方法</h4>
-<p>&gt; Module: <code>plugin-java-core</code> | Package: <code>com.weacsoft.jaravel.vendor.plugin.java</code> | Version: 0.1.0</p>
+<p>&gt; Module: <code>plugin-java-core</code> | Package: <code>com.weacsoft.jaravel.vendor.plugin.java</code> | Version: 0.1.2</p>
 
 <h5 id="plugin-java-core-overview">Overview</h5>
 
@@ -18138,7 +18309,7 @@ jaravel:
 <li><strong>Type</strong>: class</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.plugin.java.autoconfigure</code></li>
 <li><strong>Annotations</strong>: <code>@AutoConfiguration</code>, <code>@ConditionalOnWebApplication</code>, <code>@EnableConfigurationProperties(PluginJavaProperties.class)</code>, <code>@ConditionalOnProperty(prefix = &quot;jaravel.plugin-java&quot;, name = &quot;enabled&quot;, havingValue = &quot;true&quot;, matchIfMissing = true)</code>, <code>@ConditionalOnBean(PluginBeanRegistrar.class)</code></li>
-<li><strong>Description</strong>: Java 文件插件自动装配。当 Web 应用环境且 <code>PluginBeanRegistrar</code>（来自 plugin-jar-core）存在时，创建 <code>JavaFilePluginManager</code> Bean。若 <code>autoScan=true</code>，启动时扫描源目录下的所有子目录，每个子目录作为一个插件注册并启用。</li>
+<li><strong>Description</strong>: Java 文件插件自动装配。当 Web 应用环境且 <code>PluginBeanRegistrar</code>（来自 plugin-jar-core）存在时，创建 <code>JavaFilePluginManager</code> Bean。若 <code>autoScan=true</code>，启动时扫描源目录下的所有子目录，每个子目录作为一个插件注册并启用。与 <code>plugin-jar-core</code> 相同，通过 <code>spring.factories</code> + <code>AutoConfiguration.imports</code> 双文件注册，兼容 SB 2.7 和 3.x。</li>
 
 <h6 id="plugin-java-core-methods">Methods</h6>
 
@@ -18184,7 +18355,7 @@ public class UserController {
 <p class="module-desc">tenant@plugin 多租户插件隔离，每个租户独立 ClassLoader 和路由前缀</p>
 <h4>简介</h4>
 <p>&gt; 包名：com.weacsoft.jaravel.vendor.plugin.jar.multitenant</p>
-<p>&gt; 版本：0.1.0</p>
+<p>&gt; 版本：0.1.2</p>
 
 <p>JAR 插件多租户支持模块。引入后自动激活多租户插件模式，同一 JAR 可按租户隔离地重复加载，Bean 名称和路由路径自动按租户前缀化。</p>
 
@@ -18209,7 +18380,7 @@ public class UserController {
 &lt;dependency&gt;
     &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
     &lt;artifactId&gt;plugin-jar-multi-tenant&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 </code></pre>
 
@@ -18243,7 +18414,7 @@ try {
 }
 </code></pre>
 <h4>类和方法</h4>
-<p>&gt; Module: <code>plugin-jar-multi-tenant</code> | Package: <code>com.weacsoft.jaravel.vendor.plugin.jar.multitenant</code> | Version: 0.1.0</p>
+<p>&gt; Module: <code>plugin-jar-multi-tenant</code> | Package: <code>com.weacsoft.jaravel.vendor.plugin.jar.multitenant</code> | Version: 0.1.2</p>
 
 <h5 id="plugin-jar-multi-tenant-overview">Overview</h5>
 
@@ -18300,7 +18471,7 @@ jaravel:
 <li><strong>Type</strong>: class</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.plugin.jar.multitenant</code></li>
 <li><strong>Extends</strong>: <code>com.weacsoft.jaravel.vendor.plugin.jar.manager.HotPluginManager</code></li>
-<li><strong>Description</strong>: 租户感知的热插件管理器。继承 <code>HotPluginManager</code>，在 <code>enablePlugin</code> 和 <code>disablePlugin</code> 前后注入 <code>TenantContext</code>，使下游的 <code>TenantAwarePluginBeanRegistrar</code> 和 <code>TenantAwarePluginRouteRegistrar</code> 能感知当前租户并自动前缀化。工作原理：从 pluginId 提取租户 ID，通过 <code>TenantContext.setCurrentTenant</code> 注入 ThreadLocal，调用父类方法使内部 Bean 注册和路由注册读取 ThreadLocal 进行前缀化，finally 块中 <code>TenantContext.clear()</code> 清理 ThreadLocal。当 pluginId 不含分隔符时，行为与父类完全一致。同时重写 <code>getServiceFromPlugin</code> 和 <code>unregisterRoute</code>，使用前缀化的名称/路径查找和清理，解决父类用原始名称查找导致的问题。还提供 <code>registerPluginForTenant</code>、<code>enablePluginForTenant</code> 等便捷方法，自动拼接 <code>tenantId + separator + pluginId</code>。</li>
+<li><strong>Description</strong>: 租户感知的热插件管理器。继承 <code>HotPluginManager</code>，在 <code>enablePlugin</code> 和 <code>disablePlugin</code> 前后注入 <code>TenantContext</code>，使下游的 <code>TenantAwarePluginBeanRegistrar</code> 和 <code>TenantAwarePluginRouteRegistrar</code> 能感知当前租户并自动前缀化。工作原理：从 pluginId 提取租户 ID，通过 <code>TenantContext.setCurrentTenant</code> 注入 ThreadLocal，调用父类方法使内部 Bean 注册和路由注册读取 ThreadLocal 进行前缀化，finally 块中 <code>TenantContext.clear()</code> 清理 ThreadLocal。当 pluginId 不含分隔符时，行为与父类完全一致。同时重写 <code>getServiceFromPlugin</code> 和 <code>unregisterRoute</code>，使用前缀化的名称/路径查找和清理，解决父类用原始名称查找导致的问题。还提供 <code>registerPluginForTenant</code>、<code>enablePluginForTenant</code> 等便捷方法，自动拼接 <code>tenantId + separator + pluginId</code>。v0.1.2 起，共享接口（<code>registerSharedInterface</code> / <code>invokeSharedInterface</code>）在多租户场景下同样自动处理 Bean 名称前缀化，调用方传入带租户前缀的 pluginId 即可。</li>
 
 <h6 id="plugin-jar-multi-tenant-methods">Methods</h6>
 
@@ -18320,6 +18491,11 @@ jaravel:
 <tr><td>`getPluginForTenant`</td><td>`String tenantId, String pluginId`</td><td>`PluginInfo`</td><td>获取指定租户的插件信息，自动拼接完整 pluginId 后调用父类 `getPlugin`，不存在返回 null</td></tr>
 <tr><td>`getPluginsByTenant`</td><td>`String tenantId`</td><td>`List<PluginInfo>`</td><td>获取指定租户的所有插件，遍历所有插件筛选 pluginId 以 `tenantId + separator` 开头的插件</td></tr>
 <tr><td>`getSeparator`</td><td>-</td><td>`String`</td><td>返回租户分隔符</td></tr>
+<tr><td>`registerSharedInterface`</td><td>`String interfaceName, String pluginId, String beanName, String methodName`</td><td>`void`</td><td>注册共享接口（继承父类）。在多租户场景下，`pluginId` 应为带租户前缀的完整 ID（如 `studentA@blog`），`beanName` 会被自动前缀化（如 `studentA:blogService`）用于查找</td></tr>
+<tr><td>`invokeSharedInterface`</td><td>`String interfaceName, Map<String, Object> args`</td><td>`Map<String, Object>`</td><td>调用共享接口（继承父类）。在多租户场景下自动使用前缀化的 Bean 名称查找目标 Bean，确保调用到正确租户的插件实例</td></tr>
+<tr><td>`getSharedInterfaces`</td><td>-</td><td>`List<SharedInterfaceDescriptor>`</td><td>列出所有已注册的共享接口（继承父类），包含多租户场景下注册的所有接口</td></tr>
+<tr><td>`getSharedInterface`</td><td>`String interfaceName`</td><td>`SharedInterfaceDescriptor`</td><td>获取指定共享接口描述符（继承父类），不存在返回 null</td></tr>
+<tr><td>`unregisterSharedInterface`</td><td>`String interfaceName`</td><td>`boolean`</td><td>注销共享接口（继承父类），返回是否移除成功</td></tr>
 </table>
 
 <h6 id="plugin-jar-multi-tenant-usage-example">Usage Example</h6>
@@ -18340,6 +18516,45 @@ String fullId = ((TenantAwareHotPluginManager) pluginManager)
 List&lt;PluginInfo&gt; tenantPlugins = ((TenantAwareHotPluginManager) pluginManager)
         .getPluginsByTenant(&quot;studentA&quot;);
 </code></pre>
+
+<h6 id="plugin-jar-multi-tenant-共享接口v012-新增">多租户共享接口（v0.1.2 新增）</h6>
+
+<p>在多租户场景下，<code>TenantAwareHotPluginManager</code> 自动处理共享接口的 Bean 名称前缀化。当通过 <code>registerSharedInterface</code> 注册接口时，传入的 <code>pluginId</code> 应为带租户前缀的完整 ID（如 <code>studentA@blog</code>），系统会自动从中提取租户 ID 并对 <code>beanName</code> 进行前缀化（如 <code>studentA:blogService</code>），确保在调用 <code>invokeSharedInterface</code> 时能从正确的租户插件中获取 Bean 实例。</p>
+
+<p><strong>核心机制</strong>：多租户共享接口的注册和调用流程与普通模式完全一致，差异在于 <code>TenantAwareHotPluginManager</code> 内部重写了 Bean 查找逻辑，自动使用前缀化的 Bean 名称从 Spring 容器获取目标实例，调用方无需感知租户前缀化的存在。</p>
+
+<pre><code>
+// 多租户场景下注册和调用共享接口
+TenantAwareHotPluginManager mtManager = (TenantAwareHotPluginManager) pluginManager;
+
+// 为租户 studentA 的 blog 插件注册共享接口
+// pluginId 使用带租户前缀的完整 ID
+mtManager.registerSharedInterface(
+    "studentA.blog.getPost",     // interfaceName
+    "studentA@blog",             // pluginId（带租户前缀）
+    "blogService",               // beanName（系统自动前缀化为 studentA:blogService）
+    "getPost"                    // methodName
+);
+
+// 为租户 studentB 的 blog 插件注册同名接口（不同 pluginId）
+mtManager.registerSharedInterface(
+    "studentB.blog.getPost",     // interfaceName（不同名称区分租户）
+    "studentB@blog",             // pluginId
+    "blogService",               // beanName（系统自动前缀化为 studentB:blogService）
+    "getPost"                    // methodName
+);
+
+// 调用租户 A 的共享接口
+Map&lt;String, Object&gt; args = Map.of("postId", 123);
+Map&lt;String, Object&gt; resultA = mtManager.invokeSharedInterface("studentA.blog.getPost", args);
+// 自动从 studentA:blogService Bean 上调用 getPost 方法
+
+// 调用租户 B 的共享接口
+Map&lt;String, Object&gt; resultB = mtManager.invokeSharedInterface("studentB.blog.getPost", args);
+// 自动从 studentB:blogService Bean 上调用 getPost 方法
+</code></pre>
+
+<p>&gt; <strong>注意</strong>：多租户场景下，不同租户的同名接口应使用不同的 <code>interfaceName</code>（如 <code>studentA.blog.getPost</code> 和 <code>studentB.blog.getPost</code>），避免接口名冲突。<code>beanName</code> 在注册时使用原始名称即可，系统会自动处理前缀化。</p>
 
 <h6 id="plugin-jar-multi-tenant-tenantawarepluginbeanregistrar">TenantAwarePluginBeanRegistrar</h6>
 <li><strong>Type</strong>: class</li>
@@ -18468,7 +18683,7 @@ String fullId = TenantNaming.buildPluginId(&quot;studentA&quot;, &quot;blog&quot
 <p class="module-desc">远程执行服务端，TCP 协议帧，反射调用 Bean 方法，握手认证，通过 BeanResolver 与热加载解耦</p>
 <h4>简介</h4>
 <p>&gt; 包名：com.weacsoft.jaravel.vendor.plugin.jar.remote.server</p>
-<p>&gt; 版本：0.1.0</p>
+<p>&gt; 版本：0.1.2</p>
 
 <p>JAR 插件远程执行服务端（P2SP 子节点）。通过 TCP 或 HTTP 接收远程方法调用请求，在本地执行插件方法。</p>
 
@@ -18668,7 +18883,7 @@ executeWithRelay(request)
 <li>树形路由元数据字段（<code>sourceNodeId</code>/<code>visitedNodes</code>/<code>maxHops</code>/<code>currentHop</code>）在扁平模式下保持默认值，不影响原有逻辑。</li>
 <li>现有 <code>MSG_EXECUTE_REQUEST</code> 消息类型照常处理；树形转发使用独立的 <code>MSG_RELAY_REQUEST</code>/<code>MSG_RELAY_RESPONSE</code> 消息类型，互不干扰。</li>
 <h4>类和方法</h4>
-<p>&gt; Module: <code>plugin-jar-remote-server</code> | Package: <code>com.weacsoft.jaravel.vendor.plugin.jar.remote</code> | Version: 0.1.0</p>
+<p>&gt; Module: <code>plugin-jar-remote-server</code> | Package: <code>com.weacsoft.jaravel.vendor.plugin.jar.remote</code> | Version: 0.1.2</p>
 
 <h5 id="plugin-jar-remote-server-overview">Overview</h5>
 
@@ -19074,7 +19289,7 @@ public class TcpRemoteTransport implements RemoteTransport {
 <p class="module-desc">远程执行客户端，TCP/HTTP 双传输，协调器路由，动态代理，多子服务器负载均衡</p>
 <h4>简介</h4>
 <p>&gt; 包名：com.weacsoft.jaravel.vendor.plugin.jar.remote.client</p>
-<p>&gt; 版本：0.1.0</p>
+<p>&gt; 版本：0.1.2</p>
 
 <p>JAR 插件远程执行客户端（P2SP 主节点）。管理子服务器注册表，通过 TCP 或 HTTP 将方法调用分派到远程子服务器执行，实现主从业务处理。</p>
 
@@ -19242,7 +19457,7 @@ dispatcher.registerChild(&quot;node-A1&quot;, &quot;192.168.1.13&quot;, 9703, &q
 System.out.println(dispatcher.dumpTree());
 </code></pre>
 <h4>类和方法</h4>
-<p>&gt; Module: <code>plugin-jar-remote-client</code> | Package: <code>com.weacsoft.jaravel.vendor.plugin.jar.remote.client</code> | Version: 0.1.0</p>
+<p>&gt; Module: <code>plugin-jar-remote-client</code> | Package: <code>com.weacsoft.jaravel.vendor.plugin.jar.remote.client</code> | Version: 0.1.2</p>
 
 <h5 id="plugin-jar-remote-client-overview">Overview</h5>
 
@@ -19982,7 +20197,7 @@ System.out.println(dispatcher.dumpTree());
 &lt;dependency&gt;
     &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
     &lt;artifactId&gt;springboot&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 </code></pre>
 
@@ -20387,7 +20602,7 @@ public class MyApp { ... }
 <tr><td>`ResponseReturnValueHandler`</td><td>线程安全</td><td>无实例字段，`handleReturnValue` 仅操作方法参数，每请求独立</td></tr>
 </table>
 <h4>类和方法</h4>
-<p>&gt; Module: <code>springboot</code> | Package: <code>com.weacsoft.jaravel.vendor.springboot</code> | Version: 0.1.0</p>
+<p>&gt; Module: <code>springboot</code> | Package: <code>com.weacsoft.jaravel.vendor.springboot</code> | Version: 0.1.2</p>
 
 <h5 id="springboot-overview">Overview</h5>
 
@@ -20592,7 +20807,7 @@ jaravel:
 &lt;dependency&gt;
     &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
     &lt;artifactId&gt;wechat-sdk&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 </code></pre>
 
@@ -20860,7 +21075,7 @@ Map&lt;String, Object&gt; result = miniProgramService.sendTemplateMessage(
 <tr><td>`WechatProperties`</td><td>Spring Boot 配置属性绑定，启动后只读</td></tr>
 </table>
 <h4>类和方法</h4>
-<p>&gt; Module: <code>wechat-sdk</code> | Package: <code>com.weacsoft.jaravel.vendor.wechat</code> | Version: 0.1.0</p>
+<p>&gt; Module: <code>wechat-sdk</code> | Package: <code>com.weacsoft.jaravel.vendor.wechat</code> | Version: 0.1.2</p>
 
 <h5 id="wechat-sdk-overview">Overview</h5>
 
@@ -21137,6 +21352,7 @@ private MiniProgramService miniService;
 <li><a href="#captcha-11-水印">11. 水印</a></li>
 <li><a href="#captcha-12-存储选择">12. 存储选择</a></li>
 <li><a href="#captcha-13-自定义验证码类型">13. 自定义验证码类型</a></li>
+<li><a href="#captcha-14-前端事件系统">14. 前端事件系统（v0.1.2 新增）</a></li>
 
 <p>---</p>
 
@@ -21206,7 +21422,7 @@ private MiniProgramService miniService;
 &lt;dependency&gt;
     &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
     &lt;artifactId&gt;captcha&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 </code></pre>
 
@@ -21218,7 +21434,7 @@ private MiniProgramService miniService;
 &lt;dependency&gt;
     &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
     &lt;artifactId&gt;captcha&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 &lt;!-- 无需引入 spring-boot，核心层可独立运行 --&gt;
 </code></pre>
@@ -21229,7 +21445,7 @@ private MiniProgramService miniService;
 &lt;dependency&gt;
     &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
     &lt;artifactId&gt;captcha&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 &lt;!-- 引入 spring-boot-starter 即可触发自动装配 --&gt;
 </code></pre>
@@ -21242,12 +21458,12 @@ private MiniProgramService miniService;
 &lt;dependency&gt;
     &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
     &lt;artifactId&gt;captcha&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 &lt;dependency&gt;
     &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
     &lt;artifactId&gt;cache&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 </code></pre>
 
@@ -22325,8 +22541,152 @@ verify(captchaKey, userInput)
 </code></pre>
 
 <p>&gt; <code>AbstractCaptcha</code> 还提供丰富的图像工具方法供子类复用：<code>createImage</code>、<code>createArgbImage</code>、<code>randomColor</code>、<code>drawRandomBackground</code>、<code>loadBackgroundImage</code>（加载自定义背景图）、<code>addNoise</code>、<code>addInterfereLines</code>、<code>addArcInterference</code>（弧线干扰）、<code>drawText</code>（支持配置化字体/大小/旋转）、<code>applyWatermark</code>（叠加文字 / 图片水印）、<code>toBase64</code>、<code>randomString</code>（支持自定义字符集）等。各方法签名详见 <a href="AI-API.md">AI-API.md</a>。</p>
+
+<p>---</p>
+
+<h5 id="captcha-14-前端事件系统">14. 前端事件系统（v0.1.2 新增）</h5>
+
+<p><strong>v0.1.2 重构了验证码前端交互模型</strong>，引入了事件驱动的 API 设计。移除了旧版的自动验证和回调机制，改为通过事件系统让业务方完全掌控验证码的生成、验证和后续处理流程。</p>
+
+<h6 id="captcha-141-设计理念变更">14.1 设计理念变更</h6>
+
+<table>
+<tr><th>变更项</th><th>旧版（v0.1.0 及之前）</th><th>新版（v0.1.2）</th></tr>
+<tr><td>验证提交</td><td>前端自动提交验证到后端 `verifyUrl`</td><td>前端**不提交验证到后端**，由业务方在 `complete` 事件中决定后续处理</td></tr>
+<tr><td>回调机制</td><td>`onSuccess` / `onFail` / `onComplete` 回调</td><td>统一事件系统 `on(event, callback)` / `off(event, callback)`</td></tr>
+<tr><td>自动验证</td><td>`autoVerify` 自动触发验证</td><td>移除，验证逻辑完全由业务方控制</td></tr>
+<tr><td>验证方法</td><td>`verify()` / `verifyUrl`</td><td>移除，验证码输入值通过 `complete` 事件回调参数传递</td></tr>
+<tr><td>配置覆盖</td><td>仅全局配置</td><td>新增 `config` 配置项支持 per-instance 后端配置覆盖</td></tr>
+</table>
+
+<p>&gt; <strong>核心理念</strong>：前端验证码组件只负责「生成」和「采集用户输入」，不再负责「验证」。验证逻辑由业务方在 <code>complete</code> 事件中自行实现（如提交到业务接口、与后端 answer 比对等），使验证码组件与业务逻辑彻底解耦。</p>
+
+<h6 id="captcha-142-移除的-api">14.2 移除的 API</h6>
+
+<p>以下 API 在 v0.1.2 中已移除，不再可用：</p>
+
+<table>
+<tr><th>移除项</th><th>说明</th></tr>
+<tr><td>`autoVerify`</td><td>移除自动验证开关。验证码完成操作后不再自动向后端提交验证</td></tr>
+<tr><td>`onSuccess(callback)`</td><td>移除成功回调。改用 `on('complete', callback)` 并在回调中自行判断</td></tr>
+<tr><td>`onFail(callback)`</td><td>移除失败回调。改用 `on('complete', callback)` 并在回调中自行判断</td></tr>
+<tr><td>`onComplete(callback)`</td><td>移除完成回调。改用 `on('complete', callback)`</td></tr>
+<tr><td>`verify()`</td><td>移除前端验证方法。验证由业务方在 `complete` 事件中处理</td></tr>
+<tr><td>`verifyUrl`</td><td>移除验证 URL 配置。前端不再自动发起验证请求</td></tr>
+</table>
+
+<h6 id="captcha-143-新事件系统">14.3 新事件系统</h6>
+
+<p>v0.1.2 引入统一的事件监听/移除 API：</p>
+
+<table>
+<tr><th>方法</th><th>参数</th><th>说明</th></tr>
+<tr><td>`on(event, callback)`</td><td>`event: String`, `callback: Function`</td><td>注册事件监听器。同一事件可注册多个监听器，按注册顺序依次调用</td></tr>
+<tr><td>`off(event, callback)`</td><td>`event: String`, `callback: Function`</td><td>移除已注册的事件监听器。需传入与 `on` 时相同的回调引用</td></tr>
+</table>
+
+<h6 id="captcha-144-事件列表">14.4 事件列表</h6>
+
+<table>
+<tr><th>事件名</th><th>回调参数</th><th>触发时机</th><th>说明</th></tr>
+<tr><td>`beforeGet`</td><td>`type: String`</td><td>发起获取验证码请求**之前**</td><td>`type` 为验证码类型（`number`/`arithmetic`/`slider`/`rotate`）。可用于显示加载状态、记录埋点等</td></tr>
+<tr><td>`afterGet`</td><td>`captchaKey: String`, `captchaData: Object`</td><td>获取验证码请求成功**之后**</td><td>`captchaKey` 为验证码标识，`captchaData` 为后端返回的完整验证码数据（含 `imageBase64`、`token`、`extra` 等）。可用于自定义渲染、缓存数据等</td></tr>
+<tr><td>`complete`</td><td>`captchaKey: String`, `captchaInput: String`, `rawInput: *`</td><td>用户完成验证码操作（如点击提交、拖动结束）</td><td>`captchaKey` 为验证码标识，`captchaInput` 为格式化后的用户输入值（滑动/旋转启用轨迹时为 JSON 字符串），`rawInput` 为原始用户输入（如纯数字值或轨迹对象）。业务方在此事件中决定是否验证及后续处理</td></tr>
+</table>
+
+<h6 id="captcha-145-per-instance-配置覆盖">14.5 per-instance 配置覆盖</h6>
+
+<p>v0.1.2 新增 <code>config</code> 配置项，支持在每个验证码实例上覆盖后端全局配置：</p>
+
+<pre><code>
+// 创建验证码实例时传入 per-instance 配置
+const captcha = new CaptchaWidget({
+    type: 'slider',
+    updateUrl: '/captcha/generate',
+    config: {
+        // 覆盖后端配置（仅对当前实例生效）
+        width: 200,
+        height: 60,
+        tolerance: 8.0,
+        'trajectory-enabled': true,
+        'min-trajectory-points': 6
+    }
+});
+</code></pre>
+
+<p><code>config</code> 中的配置项会作为请求参数发送到后端生成接口，后端在生成验证码时将这些参数与全局配置合并（per-instance 优先），实现同一页面中不同验证码实例使用不同视觉参数或验证策略。</p>
+
+<h6 id="captcha-146-使用示例">14.6 使用示例</h6>
+
+<pre><code>
+// 1. 创建验证码实例
+const captcha = new CaptchaWidget({
+    type: 'slider',
+    updateUrl: '/captcha/generate',
+    config: {
+        width: 200,
+        height: 60,
+        'trajectory-enabled': true
+    }
+});
+
+// 2. 监听事件
+captcha.on('beforeGet', function(type) {
+    console.log('正在获取验证码, 类型:', type);
+    showLoading();
+});
+
+captcha.on('afterGet', function(captchaKey, captchaData) {
+    console.log('验证码已生成, key:', captchaKey);
+    hideLoading();
+    // 自定义渲染验证码图片
+    renderCaptchaImage(captchaData.imageBase64);
+});
+
+captcha.on('complete', function(captchaKey, captchaInput, rawInput) {
+    console.log('用户完成操作:');
+    console.log('  captchaKey:', captchaKey);
+    console.log('  captchaInput (格式化):', captchaInput);
+    console.log('  rawInput (原始):', rawInput);
+
+    // 业务方自行决定验证逻辑
+    // 例如：提交到业务接口进行验证
+    fetch('/api/verify-captcha', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            captchaKey: captchaKey,
+            captchaInput: captchaInput
+        })
+    }).then(res =&gt; res.json()).then(result =&gt; {
+        if (result.success) {
+            console.log('验证通过');
+            proceedToNextStep();
+        } else {
+            console.log('验证失败, 重新获取');
+            captcha.get();
+        }
+    });
+});
+
+// 3. 获取验证码
+captcha.get();
+
+// 4. 移除事件监听（如需要）
+// captcha.off('beforeGet', beforeGetHandler);
+</code></pre>
+
+<h6 id="captcha-147-迁移指南">14.7 从旧版迁移</h6>
+
+<p>从 v0.1.0 及之前版本迁移到 v0.1.2：</p>
+
+<li><strong>移除 <code>autoVerify</code> / <code>verifyUrl</code> / <code>verify()</code></strong>：不再需要前端自动验证。在 <code>complete</code> 事件中自行实现验证逻辑</li>
+<li><strong>替换回调为事件</strong>：<code>onSuccess(cb)</code> → <code>on('complete', cb)</code> 并在回调中判断验证结果；<code>onFail(cb)</code> → 在 <code>complete</code> 回调的验证失败分支中处理；<code>onComplete(cb)</code> → <code>on('complete', cb)</code></li>
+<li><strong>利用 <code>config</code> 覆盖</strong>：如需 per-instance 配置，通过 <code>config</code> 参数传入，不再需要创建多个全局配置</li>
+<li><strong>利用 <code>beforeGet</code> / <code>afterGet</code></strong>：实现加载状态管理和自定义渲染</li>
+
 <h4>类和方法</h4>
-<p>&gt; Module: <code>captcha</code> | Package: <code>com.weacsoft.jaravel.vendor.captcha</code> | Version: 0.1.0</p>
+<p>&gt; Module: <code>captcha</code> | Package: <code>com.weacsoft.jaravel.vendor.captcha</code> | Version: 0.1.2</p>
 
 <h5 id="captcha-overview">Overview</h5>
 <p>captcha 模块提供四种验证码（图片数字 <code>number</code>、算术 <code>arithmetic</code>、滑动 <code>slider</code>、旋转 <code>rotate</code>），核心层为纯 Java 实现（基于 <code>java.awt</code> 与 <code>java.util.Base64</code>），无 SpringBoot 依赖，可独立使用。采用模板方法模式：<code>AbstractCaptcha</code> 封装生成/验证流程，子类只需实现 <code>doGenerate</code> 与 <code>doVerify</code>。存储通过 <code>CaptchaStore</code> SPI 解耦，内置 <code>MemoryCaptchaStore</code>（内存）与 <code>CacheStoreCaptchaStore</code>（适配 jaravel cache 模块）。<code>CaptchaManager</code> 统一管理多类型注册与调用，并提供无状态 token 验证能力。SpringBoot 3 适配层提供自动装配与 <code>@ConfigurationProperties</code> 绑定。</p>
@@ -23354,6 +23714,244 @@ CaptchaProperties coreProps = springBootProps.toCoreProperties();
 // coreProps.getWatermarkPosition() == &quot;bottom-right&quot;
 </code></pre>
 </section>
+<section id="cat-wire">
+<h3>wire — Wire 渲染模块</h3>
+<p class="module-desc">Laravel Livewire 风格反应式 UI，wire.js 自动注入，服务端渲染模板</p>
+<h4>简介</h4>
+<p>&gt; 包名：<code>com.weacsoft.jaravel.vendor.wire</code></p>
+<p>&gt; artifactId：<code>wire</code></p>
+<p>&gt; 版本：0.1.2</p>
+
+<p>Wire 模块提供 Laravel Livewire 风格的反应式 UI 能力。通过在服务端渲染 Blade 模板并自动注入 <code>wire.js</code> 客户端脚本，实现页面局部无刷新更新。前端通过 <code>wire.js</code> 发起 AJAX 请求到指定的 update URL，服务端重新渲染模板并返回更新后的 HTML 片段，前端自动替换对应区域。</p>
+
+<p>本模块与 jblade 模板引擎深度集成，支持在模板中使用 Wire 组件语法。通过 <code>WireManager</code> 统一管理 wire.js 资源的注入策略，支持自动注入和手动控制两种模式。</p>
+
+<p>---</p>
+
+<h5 id="wire-目录">目录</h5>
+
+<li><a href="#wire-核心特性">核心特性</a></li>
+<li><a href="#wire-依赖引入">依赖引入</a></li>
+<li><a href="#wire-配置说明">配置说明</a></li>
+<li><a href="#wire-核心-api">核心 API</a></li>
+<li><a href="#wire-wiremanager">WireManager</a></li>
+<li><a href="#wire-wireresponse">WireResponse</a></li>
+<li><a href="#wire-wireservice">WireService</a></li>
+<li><a href="#wire-使用示例">使用示例</a></li>
+<li><a href="#wire-设计理念">设计理念</a></li>
+
+<p>---</p>
+
+<h5 id="wire-核心特性">核心特性</h5>
+
+<li><strong>Livewire 风格反应式 UI</strong>：服务端渲染模板 + 客户端 wire.js 自动发起更新请求，实现无刷新页面更新</li>
+<li><strong>wire.js 自动注入</strong>：默认在渲染的 HTML 页面中自动注入 <code>&lt;script&gt;</code> 标签引用 wire.js，开箱即用</li>
+<li><strong>手动注入控制</strong>：支持通过 <code>injectJs</code> 参数手动控制是否注入 wire.js，适用于 CDN 引用或自定义加载场景</li>
+<li><strong>自定义 JS 路径</strong>：支持通过 <code>setJsPath()</code> 自定义 wire.js 的引用路径，适配 CDN 或反向代理部署</li>
+<li><strong>wire.js 内容获取</strong>：提供 <code>getWireJsContent()</code> 直接获取 wire.js 完整内容，可用于内联嵌入或自定义响应</li>
+<li><strong>快照机制</strong>：支持在注入时携带页面快照数据，便于前端状态恢复</li>
+<li><strong>SpringBoot 自动装配</strong>：引入依赖后自动创建 <code>WireManager</code>、<code>WireService</code> 等核心 Bean</li>
+
+<p>---</p>
+
+<h5 id="wire-依赖引入">依赖引入</h5>
+
+<pre><code>
+&lt;dependency&gt;
+    &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
+    &lt;artifactId&gt;wire&lt;/artifactId&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
+&lt;/dependency&gt;
+</code></pre>
+
+<p>本模块依赖 jblade 模板引擎和 http 模块（Request/Response）。引入后通过 <code>WireAutoConfiguration</code> 自动装配核心组件。</p>
+
+<p>---</p>
+
+<h5 id="wire-配置说明">配置说明</h5>
+
+<p>配置前缀为 <code>jaravel.wire</code>，对应 <code>WireProperties</code>：</p>
+
+<pre><code>
+jaravel:
+  wire:
+    enabled: true              # 是否启用 Wire 模块自动装配
+    auto-inject-js: true       # 是否自动注入 wire.js（默认 true）
+    js-path: /wire.js          # wire.js 的引用路径（默认 /wire.js）
+</code></pre>
+
+<table>
+<tr><th>配置项</th><th>类型</th><th>默认值</th><th>说明</th></tr>
+<tr><td>`jaravel.wire.enabled`</td><td>`boolean`</td><td>`true`</td><td>是否启用 Wire 模块自动装配。设为 `false` 则不创建 Wire 相关 Bean</td></tr>
+<tr><td>`jaravel.wire.auto-inject-js`</td><td>`boolean`</td><td>`true`</td><td>是否在渲染的 HTML 中自动注入 wire.js 的 `<script>` 标签。设为 `false` 时需手动在页面中引入 wire.js</td></tr>
+<tr><td>`jaravel.wire.js-path`</td><td>`String`</td><td>`/wire.js`</td><td>wire.js 的引用路径。可自定义为 CDN 地址或反向代理路径，如 `https://cdn.example.com/wire.js`</td></tr>
+</table>
+
+<p>---</p>
+
+<h5 id="wire-核心-api">核心 API</h5>
+
+<h6 id="wire-wiremanager">WireManager</h6>
+
+<p><code>com.weacsoft.jaravel.vendor.wire.WireManager</code></p>
+
+<p>Wire 模块的核心管理器，由 <code>WireAutoConfiguration</code> 自动装配为 Spring Bean。负责 wire.js 资源管理、HTML 注入和模板渲染。</p>
+
+<pre><code>
+@Autowired
+private WireManager wireManager;
+</code></pre>
+
+<h6 id="wire-wiremanager-方法列表">WireManager 方法列表</h6>
+
+<table>
+<tr><th>方法签名</th><th>说明</th></tr>
+<tr><td>`String getWireJsContent()`</td><td>返回 wire.js 的完整 JavaScript 内容。可用于内联嵌入 HTML、自定义响应端点或调试</td></tr>
+<tr><td>`void setAutoInjectJs(boolean autoInjectJs)`</td><td>设置是否自动注入 wire.js。运行时覆盖 `jaravel.wire.auto-inject-js` 配置</td></tr>
+<tr><td>`boolean isAutoInjectJs()`</td><td>获取当前是否启用自动注入 wire.js</td></tr>
+<tr><td>`void setJsPath(String jsPath)`</td><td>设置 wire.js 的引用路径。运行时覆盖 `jaravel.wire.js-path` 配置</td></tr>
+<tr><td>`String getJsPath()`</td><td>获取当前 wire.js 的引用路径</td></tr>
+<tr><td>`String injectWireAssets(String html, String updateUrl, String snapshot, boolean injectJs)`</td><td>向 HTML 中注入 Wire 资源。`html` 为原始 HTML 内容，`updateUrl` 为前端发起更新请求的 URL，`snapshot` 为页面快照数据（可为 null），`injectJs` 控制是否注入 wire.js 的 `<script>` 标签。返回注入后的完整 HTML</td></tr>
+<tr><td>`String renderWirePage(String templateName, Map<String, Object> data, String updateUrl, boolean injectJs)`</td><td>渲染 Wire 页面。使用 jblade 模板引擎渲染指定模板，注入 Wire 资源后返回完整 HTML。`templateName` 为模板名，`data` 为模板数据，`updateUrl` 为更新请求 URL，`injectJs` 控制是否注入 wire.js</td></tr>
+</table>
+
+<p>---</p>
+
+<h6 id="wire-wireresponse">WireResponse</h6>
+
+<p><code>com.weacsoft.jaravel.vendor.wire.WireResponse</code></p>
+
+<p>Wire 响应工具类，封装 Wire 页面的响应构建逻辑。提供便捷的静态方法或实例方法用于在控制器中返回 Wire 渲染结果。</p>
+
+<table>
+<tr><th>方法签名</th><th>说明</th></tr>
+<tr><td>`static WireResponse wire(String templateName, Map<String, Object> data, String updateUrl)`</td><td>创建 Wire 响应。使用默认的自动注入策略（由配置决定是否注入 wire.js）</td></tr>
+<tr><td>`static WireResponse wire(String templateName, Map<String, Object> data, String updateUrl, boolean injectJs)`</td><td>创建 Wire 响应。`injectJs` 参数手动控制是否注入 wire.js，覆盖全局配置</td></tr>
+</table>
+
+<p>---</p>
+
+<h6 id="wire-wireservice">WireService</h6>
+
+<p><code>com.weacsoft.jaravel.vendor.wire.WireService</code></p>
+
+<p>Wire 服务类，提供更高层次的 Wire 页面响应能力。由 <code>WireAutoConfiguration</code> 自动装配。</p>
+
+<table>
+<tr><th>方法签名</th><th>说明</th></tr>
+<tr><td>`Object responseWire()`</td><td>返回默认的 Wire 响应对象。使用默认配置（自动注入 wire.js）</td></tr>
+<tr><td>`Object responseWire(boolean injectJs)`</td><td>返回 Wire 响应对象。`injectJs` 参数手动控制是否注入 wire.js，覆盖全局配置</td></tr>
+</table>
+
+<p>---</p>
+
+<h5 id="wire-使用示例">使用示例</h5>
+
+<h6 id="wire-基本用法">基本用法</h6>
+
+<pre><code>
+import com.weacsoft.jaravel.vendor.wire.WireManager;
+import com.weacsoft.jaravel.vendor.wire.WireResponse;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/counter")
+public class CounterController {
+
+    @Autowired
+    private WireManager wireManager;
+
+    // 渲染 Wire 页面（自动注入 wire.js）
+    @GetMapping
+    public Object renderPage() {
+        return WireResponse.wire("counter", Map.of("count", 0), "/counter/update");
+    }
+
+    // 手动控制不注入 wire.js（前端通过 CDN 引用）
+    @GetMapping("/cdn")
+    public Object renderPageWithCdn() {
+        return WireResponse.wire("counter", Map.of("count", 0), "/counter/update", false);
+    }
+
+    // Wire 更新端点：服务端重新渲染模板并返回 HTML 片段
+    @PostMapping("/update")
+    public String update(@RequestParam int count) {
+        return wireManager.renderWirePage("counter", Map.of("count", count + 1),
+                "/counter/update", false);
+    }
+}
+</code></pre>
+
+<h6 id="wire-手动注入-wirejs">手动注入 wire.js</h6>
+
+<pre><code>
+// 获取 wire.js 完整内容（可用于自定义端点）
+String jsContent = wireManager.getWireJsContent();
+
+// 手动向 HTML 注入 Wire 资源
+String rawHtml = "&lt;html&gt;&lt;body&gt;&lt;div id='app'&gt;...&lt;/div&gt;&lt;/body&gt;&lt;/html&gt;";
+String htmlWithWire = wireManager.injectWireAssets(
+    rawHtml,           // 原始 HTML
+    "/app/update",     // 更新请求 URL
+    null,              // 快照数据（可选）
+    true               // 是否注入 wire.js
+);
+</code></pre>
+
+<h6 id="wire-自定义-js-路径">自定义 JS 路径</h6>
+
+<pre><code>
+// 运行时修改 wire.js 引用路径（适配 CDN 部署）
+wireManager.setJsPath("https://cdn.example.com/wire.js");
+wireManager.setAutoInjectJs(true);
+
+// 或通过配置文件
+// jaravel.wire.js-path: https://cdn.example.com/wire.js
+// jaravel.wire.auto-inject-js: true
+</code></pre>
+
+<h6 id="wire-wirejs-端点">wire.js 端点</h6>
+
+<pre><code>
+// 提供 wire.js 的访问端点
+@GetMapping("/wire.js")
+public String serveWireJs() {
+    return wireManager.getWireJsContent();
+}
+</code></pre>
+
+<p>---</p>
+
+<h5 id="wire-设计理念">设计理念</h5>
+
+<li><strong>服务端渲染优先</strong>：所有页面内容由服务端通过 jblade 模板引擎渲染，保证 SEO 友好和首屏加载速度</li>
+<li><strong>渐进增强</strong>：wire.js 为增强层，关闭 JavaScript 时页面仍可正常访问（退化为传统表单提交）</li>
+<li><strong>注入可控</strong>：提供从全局配置到方法级参数的多层次注入控制，适配不同部署场景（内联、本地路径、CDN）</li>
+<li><strong>与 jblade 深度集成</strong>：Wire 页面直接使用 jblade 模板语法，无需学习新的模板语言</li>
+
+<p>---</p>
+
+<h6 id="wire-wireautoconfiguration">WireAutoConfiguration</h6>
+<li><strong>Type</strong>: class</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.wire</code></li>
+<li><strong>Annotations</strong>: <code>@AutoConfiguration</code>, <code>@ConditionalOnProperty(prefix = &quot;jaravel.wire&quot;, name = &quot;enabled&quot;, havingValue = &quot;true&quot;, matchIfMissing = true)</code>, <code>@EnableConfigurationProperties(WireProperties.class)</code></li>
+<li><strong>Description</strong>: Wire 模块自动装配。当 <code>jaravel.wire.enabled=true</code>（默认 true）时自动创建 <code>WireManager</code>、<code>WireService</code> 等核心 Bean。引入 wire 模块依赖后自动激活，可通过配置禁用。</li>
+
+<h6 id="wire-wireproperties">WireProperties</h6>
+<li><strong>Type</strong>: class</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.wire</code></li>
+<li><strong>Annotations</strong>: <code>@ConfigurationProperties(prefix = &quot;jaravel.wire&quot;)</code></li>
+<li><strong>Description</strong>: Wire 模块配置属性，前缀 <code>jaravel.wire</code>。包含 <code>enabled</code>（是否启用）、<code>autoInjectJs</code>（是否自动注入 wire.js）、<code>jsPath</code>（wire.js 引用路径）三个配置项。</li>
+
+<table>
+<tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr>
+<tr><td>`enabled`</td><td>`boolean`</td><td>`true`</td><td>是否启用 Wire 模块自动装配</td></tr>
+<tr><td>`autoInjectJs`</td><td>`boolean`</td><td>`true`</td><td>是否在渲染的 HTML 中自动注入 wire.js 的 `<script>` 标签</td></tr>
+<tr><td>`jsPath`</td><td>`String`</td><td>`"/wire.js"`</td><td>wire.js 的引用路径，可自定义为 CDN 地址</td></tr>
+</table>
+
+</section>
 <section id="cat-starter">
 <h3>starter — 聚合启动器</h3>
 <p class="module-desc">引入所有模块的便捷 starter</p>
@@ -23398,7 +23996,7 @@ CaptchaProperties coreProps = springBootProps.toCoreProperties();
 &lt;dependency&gt;
     &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
     &lt;artifactId&gt;starter&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 </code></pre>
 
@@ -23501,7 +24099,7 @@ Spring Environment（application.yml）
     &lt;dependency&gt;
         &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
         &lt;artifactId&gt;starter&lt;/artifactId&gt;
-        &lt;version&gt;0.1.0&lt;/version&gt;
+        &lt;version&gt;0.1.2&lt;/version&gt;
     &lt;/dependency&gt;
 &lt;/dependencies&gt;
 </code></pre>
@@ -23649,7 +24247,7 @@ router.post(&quot;/users&quot;, request -&gt; {
 &lt;dependency&gt;
     &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
     &lt;artifactId&gt;jwt&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 </code></pre>
 
@@ -23742,7 +24340,7 @@ Config.get(&quot;server.port&quot;); // 8080（仅 yml 中有）
 
 <p>&gt; 总体而言，starter 装配的所有组件均遵循&quot;启动阶段写入、运行时只读&quot;的模式，运行时并发安全。唯一需注意的是 <code>Config.set</code> 的运行时写入，若在高并发场景频繁调用，建议外部加锁或在启动阶段完成所有配置写入。</p>
 <h4>类和方法</h4>
-<p>&gt; Module: <code>starter</code> | Package: <code>com.weacsoft.jaravel.vendor.springboot</code> | Version: 0.1.0</p>
+<p>&gt; Module: <code>starter</code> | Package: <code>com.weacsoft.jaravel.vendor.springboot</code> | Version: 0.1.2</p>
 
 <h5 id="starter-overview">Overview</h5>
 
@@ -23787,7 +24385,7 @@ Config.get(&quot;server.port&quot;); // 8080（仅 yml 中有）
 &lt;dependency&gt;
     &lt;groupId&gt;com.weacsoft.jaravel&lt;/groupId&gt;
     &lt;artifactId&gt;jaravel-starter&lt;/artifactId&gt;
-    &lt;version&gt;0.1.0&lt;/version&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
 &lt;/dependency&gt;
 </code></pre>
 
