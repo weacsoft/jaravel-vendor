@@ -88,13 +88,28 @@ public class BladeCompiler {
         String templatePath = templateDir + File.separator + templateName.replace(".", File.separator) + suffix;
         // 优先从文件系统 ./resources/ 目录加载（支持前端独立更新）
         InputStream resource = resolveTemplateStream(templatePath);
-        String employees = null;
+        String content;
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(resource))) {
-            employees = reader
+            content = reader
                     .lines()
                     .collect(Collectors.joining("\n"));
         }
-        String content = employees;
+        return compileSource(templateName, content);
+    }
+
+    /**
+     * 编译给定的模板内容（不读取文件，直接编译源码）。
+     * <p>
+     * 供 {@link BladePrecompiler} 等工具使用，可从任意来源读取模板内容后调用此方法编译。
+     * 编译后的字节码存入关联的 {@link MemoryClassLoader}，可通过
+     * {@code getClassLoader().getCompiledClasses()} 获取。
+     *
+     * @param templateName 模板名（用于生成类名，如 "welcome"、"docs.index"）
+     * @param content      模板文件内容
+     * @return 编译后的类全限定名
+     * @throws IOException 如果源代码为空
+     */
+    public String compileSource(String templateName, String content) throws IOException {
         String className = generateClassName(templateName);
         String sourceCode = generateJavaCode(className, content);
         if (sourceCode.isEmpty()) {
@@ -131,6 +146,18 @@ public class BladeCompiler {
             }
         }
         return fullClassName;
+    }
+
+    /**
+     * 获取关联的内存类加载器。
+     * <p>
+     * 编译后的模板字节码存于此类加载器中，可通过
+     * {@code getClassLoader().getCompiledClasses()} 获取字节码映射（类名 -> 字节码）。
+     *
+     * @return 内存类加载器
+     */
+    public MemoryClassLoader getClassLoader() {
+        return classLoader;
     }
 
     private String generateClassName(String templateName) {

@@ -1,6 +1,6 @@
 # jwt AI-API Reference
 
-> Module: `jwt` | Package: `com.weacsoft.jaravel.vendor.jwt` | Version: 0.1.1
+> Module: `jwt` | Package: `com.weacsoft.jaravel.vendor.jwt` | Version: 0.1.2
 
 ## Overview
 jwt 模块是 JWT 认证插件，对齐 Laravel tymon/jwt-auth。提供 JwtService（token 签发/解析/校验/黑名单/刷新/宽限期）、JwtGuard（JWT 守卫，从请求头解析 Bearer token 并认证用户）、JwtConfig（配置）与 JwtTokenResponseFilter（响应过滤器，自动将新 token 写入响应 header）。通过 GuardFactory 插件式注册到 AuthManager，引入 jwt 模块即自动启用 JWT 认证能力。

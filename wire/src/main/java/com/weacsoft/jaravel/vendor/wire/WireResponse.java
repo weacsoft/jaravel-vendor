@@ -98,7 +98,7 @@ public class WireResponse {
      * <ul>
      *   <li>模板渲染结果（带 wire:section 标记）</li>
      *   <li>{@code <script wire:config>} 配置（含 snapshot 和 updateUrl）</li>
-     *   <li>{@code <script src="/static/wire.js">} 前端运行时</li>
+     *   <li>{@code <script src="/static/wire.js">} 前端运行时（受 WireManager.isAutoInjectJs() 控制）</li>
      * </ul>
      *
      * @param templateName 模板名
@@ -116,6 +116,23 @@ public class WireResponse {
      */
     public static Response wire(String templateName, Map<String, Object> data) {
         return wire(templateName, data, "/wire/update");
+    }
+
+    /**
+     * 初始页面渲染，显式指定是否注入 wire.js。
+     * <p>
+     * 当 injectJs=false 时，只注入 wire:config 配置标签，开发者需自行在页面中引入 wire.js。
+     * 可配合 {@link WireManager#getWireJsContent()} 获取 JS 内容进行自定义处理。
+     *
+     * @param templateName 模板名
+     * @param data         模板数据
+     * @param updateUrl    Wire 更新 URL
+     * @param injectJs     是否注入 wire.js 的 script 标签
+     * @return HTML 响应
+     */
+    public static Response wire(String templateName, Map<String, Object> data, String updateUrl, boolean injectJs) {
+        String html = WireManager.renderWirePage(templateName, data, updateUrl, injectJs);
+        return ResponseBuilder.html(html);
     }
 
     /**

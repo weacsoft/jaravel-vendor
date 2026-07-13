@@ -1,7 +1,7 @@
 # plugin-jar-remote-server
 
 > 包名：com.weacsoft.jaravel.vendor.plugin.jar.remote.server
-> 版本：0.1.1
+> 版本：0.1.2
 
 JAR 插件远程执行服务端（P2SP 子节点）。通过 TCP 或 HTTP 接收远程方法调用请求，在本地执行插件方法。
 

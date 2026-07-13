@@ -1,6 +1,6 @@
 # migration AI-API Reference
 
-> Module: `migration` | Package: `com.weacsoft.jaravel.vendor.migration` | Version: 0.1.1
+> Module: `migration` | Package: `com.weacsoft.jaravel.vendor.migration` | Version: 0.1.2
 
 ## Overview
 migration 模块提供 Laravel 风格的数据库迁移系统，包含 Blueprint（流式建表蓝图）、Schema（DDL 执行器，支持 MySQL/SQLite/H2/SQL Server 多方言）、Migrator（迁移引擎，支持 migrate/rollback/reset/refresh/status）、MigrationScanner（三种迁移源加载：DIRECTORY 内存编译/JAR 加载/CLASSPATH 扫描）、MigrationRepository（迁移记录仓库）、MigrationExecutor（核心执行器，无 SpringBoot 依赖）、MigrationCLI（独立命令行入口）、JdbcExecutor（轻量 JDBC 执行器，替代 JdbcTemplate）和 MigrationRunner（SpringBoot 适配器）。迁移文件通过 @MigrationAnnotation 标记，运行时编译/加载、反射实例化、执行后自动释放。核心逻辑完全独立于 SpringBoot，可通过 MigrationCLI 在纯 Java 环境中运行。

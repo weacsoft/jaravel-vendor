@@ -1,11 +1,13 @@
 # captcha AI-API Reference
 
-> Module: `captcha` | Package: `com.weacsoft.jaravel.vendor.captcha` | Version: 0.1.1
+> Module: `captcha` | Package: `com.weacsoft.jaravel.vendor.captcha` | Version: 0.1.2
 
 ## Overview
-captcha 模块提供四种验证码（图片数字 `number`、算术 `arithmetic`、滑动 `slider`、旋转 `rotate`），核心层为纯 Java 实现（基于 `java.awt` 与 `java.util.Base64`），无 SpringBoot 依赖，可独立使用。采用模板方法模式：`AbstractCaptcha` 封装生成/验证流程，子类只需实现 `doGenerate` 与 `doVerify`。存储通过 `CaptchaStore` SPI 解耦，内置 `MemoryCaptchaStore`（内存）与 `CacheStoreCaptchaStore`（适配 jaravel cache 模块）。`CaptchaManager` 统一管理多类型注册与调用，并提供无状态 token 验证能力。SpringBoot 3 适配层提供自动装配与 `@ConfigurationProperties` 绑定。
+captcha 模块提供五种验证码（图片数字 `number`、算术 `arithmetic`、滑动 `slider`、旋转 `rotate`、文字点选 `click`），核心层为纯 Java 实现（基于 `java.awt` 与 `java.util.Base64`），无 SpringBoot 依赖，可独立使用。采用模板方法模式：`AbstractCaptcha` 封装生成/验证流程，子类只需实现 `doGenerate` 与 `doVerify`。存储通过 `CaptchaStore` SPI 解耦，内置 `MemoryCaptchaStore`（内存）与 `CacheStoreCaptchaStore`（适配 jaravel cache 模块）。`CaptchaManager` 统一管理多类型注册与调用，并提供无状态 token 验证能力。SpringBoot 3 适配层提供自动装配与 `@ConfigurationProperties` 绑定。
 
-滑动与旋转验证码支持**轨迹行为分析**：通过 `TrajectoryValidator` 校验用户拖动轨迹的人类行为特征（点数、时长、连续性、非匀速、加速度多样性），防范自动化脚本直接提交最终值。视觉呈现（字体、字符集、旋转角度、弧线干扰等）高度可配置，配置项集中在 `CaptchaProperties`。滑动与旋转验证码支持**自定义背景图**（通过文件路径或 base64 数据指定），四种验证码均支持叠加**文字水印与图片水印**（可配置内容、字体、颜色、位置、旋转角度、透明度、缩放比例），水印在验证码内容绘制完成后由 `AbstractCaptcha.applyWatermark()` 统一叠加。
+前端提供 `jaravel-captcha.js` 库（零依赖），封装验证码 UI 构建、事件绑定、轨迹采集与加密。前端采用**事件驱动模式**：用户完成验证操作后触发 `complete` 事件（不自动提交到后端），由业务方在事件回调中决定后续处理（如提交到后端验证、绑定到表单等）。支持 `on`/`off` 方法注册/移除事件监听器，支持 `beforeGet`、`afterGet`、`complete` 三个事件。
+
+滑动与旋转验证码支持**轨迹行为分析**：通过 `TrajectoryValidator` 校验用户拖动轨迹的人类行为特征（点数、时长、连续性、非匀速、加速度多样性），防范自动化脚本直接提交最终值。视觉呈现（字体、字符集、旋转角度、弧线干扰等）高度可配置，配置项集中在 `CaptchaProperties`。滑动与旋转验证码支持**自定义背景图**（通过文件路径或 base64 数据指定），五种验证码均支持叠加**文字水印与图片水印**（可配置内容、字体、颜色、位置、旋转角度、透明度、缩放比例），水印在验证码内容绘制完成后由 `AbstractCaptcha.applyWatermark()` 统一叠加。
 
 ## Package Structure
 
@@ -24,15 +26,15 @@ captcha 模块提供四种验证码（图片数字 `number`、算术 `arithmetic
 ### Captcha
 - **Type**: interface
 - **Package**: `com.weacsoft.jaravel.vendor.captcha.generator`
-- **Description**: 验证码接口。所有验证码类型（图片数字、算术、滑动、旋转等）实现此接口。核心层不依赖 SpringBoot，可独立使用。
+- **Description**: 验证码接口。所有验证码类型（图片数字、算术、滑动、旋转、文字点选等）实现此接口。核心层不依赖 SpringBoot，可独立使用。
 
 #### Methods
 
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
 | `generate` | `String captchaKey` | `CaptchaResult` | 生成验证码。`captchaKey` 为验证码唯一标识（用于后续验证时查找），返回验证码结果（含 base64 图片、token 等） |
-| `verify` | `String captchaKey, String userInput` | `boolean` | 验证用户提交的答案。`captchaKey` 为验证码标识，`userInput` 为用户输入（数字验证码填字符，滑动填 x 坐标或 JSON，旋转填角度或 JSON；启用轨迹验证时滑动/旋转需提交 JSON，详见 [SliderCaptcha](#slidercaptcha) / [RotateCaptcha](#rotatecaptcha)） |
-| `getType` | 无 | `String` | 返回验证码类型名称（如 `"number"`、`"arithmetic"`、`"slider"`、`"rotate"`） |
+| `verify` | `String captchaKey, String userInput` | `boolean` | 验证用户提交的答案。`captchaKey` 为验证码标识，`userInput` 为用户输入（数字验证码填字符，滑动填 x 坐标或 JSON，旋转填角度或 JSON，点击填 JSON 坐标或分号分隔坐标串；启用轨迹验证时滑动/旋转需提交 JSON，详见 [SliderCaptcha](#slidercaptcha) / [RotateCaptcha](#rotatecaptcha) / [ClickCaptcha](#clickcaptcha)） |
+| `getType` | 无 | `String` | 返回验证码类型名称（如 `"number"`、`"arithmetic"`、`"slider"`、`"rotate"`、`"click"`） |
 
 #### Usage Example
 ```java
@@ -349,6 +351,13 @@ captchaStore.remove("my-key");
 | `interfereCount` | `int` | `30` | 干扰线数量 |
 | `noiseCount` | `int` | `50` | 噪点数量 |
 
+##### 点击验证码配置
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `clickTargetCount` | `int` | `3` | 文字点选验证码中需要点击的目标文字数量（1~8，自动限制范围） |
+| `clickDecoyCount` | `int` | `3` | 文字点选验证码中的干扰（迷惑）文字数量（0~10，自动限制范围） |
+
 ##### 视觉配置
 
 | Property | Type | Default | Description |
@@ -468,7 +477,7 @@ CaptchaManager manager = new CaptchaManager(new MemoryCaptchaStore(), properties
 ### CaptchaManager
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.captcha`
-- **Description**: 验证码管理器，统一管理多种验证码类型的注册与调用。内部维护 `type -> Captcha` 映射（`LinkedHashMap` 保持注册顺序），提供按类型生成/验证的入口，并通过 `createDefault()` 提供开箱即用的默认管理器（注册数字、算术、滑动、旋转四种）。核心层不依赖 Spring，可独立使用；SpringBoot 兼容层可将其包装为 Bean。
+- **Description**: 验证码管理器，统一管理多种验证码类型的注册与调用。内部维护 `type -> Captcha` 映射（`LinkedHashMap` 保持注册顺序），提供按类型生成/验证的入口，并通过 `createDefault()` 提供开箱即用的默认管理器（注册数字、算术、滑动、旋转、文字点选五种）。核心层不依赖 Spring，可独立使用；SpringBoot 兼容层可将其包装为 Bean。
 
 #### Constructors
 
@@ -494,7 +503,7 @@ CaptchaManager manager = new CaptchaManager(new MemoryCaptchaStore(), properties
 
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
-| `createDefault` | 无 | `CaptchaManager` | 创建默认管理器：使用内存存储与默认配置，注册数字、算术、滑动、旋转四种验证码（共享同一 store 与 properties） |
+| `createDefault` | 无 | `CaptchaManager` | 创建默认管理器：使用内存存储与默认配置，注册数字、算术、滑动、旋转、文字点选五种验证码（共享同一 store 与 properties） |
 
 #### Usage Example
 ```java
@@ -502,7 +511,7 @@ CaptchaManager manager = new CaptchaManager(new MemoryCaptchaStore(), properties
 CaptchaManager manager = CaptchaManager.createDefault();
 
 // 查看已注册类型
-Set<String> types = manager.getTypes();  // [number, arithmetic, slider, rotate]
+Set<String> types = manager.getTypes();  // [number, arithmetic, slider, rotate, click]
 
 // 生成与验证
 CaptchaResult result = manager.generate("number", uuid);
@@ -780,10 +789,86 @@ boolean ok2 = captcha.verify("my-key", "90");
 
 ---
 
+### ClickCaptcha
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.captcha.generator`
+- **Description**: 文字点选验证码：在背景图上随机生成若干汉字（目标文字 + 干扰文字），要求用户按提示顺序依次点击指定文字。类型名 `"click"`。出于安全考虑，**不再**向前端返回每个文字的坐标位置，前端无法获知文字的具体落点，需完全依赖用户视觉识别后点击。答案为需要点击的目标文字坐标，以分号分隔的坐标对（如 `"x1,y1;x2,y2;x3,y3"`），坐标顺序与提示文字顺序一致。验证时比对用户点击坐标与目标坐标的距离是否在容差范围内。支持水印（`applyWatermark()` 在文字绘制完成后叠加）。
+- **Extends**: `AbstractCaptcha`
+- **Type Name**: `"click"`
+
+#### Constructors
+
+| Constructor | Parameters | Description |
+|-------------|-----------|-------------|
+| `ClickCaptcha` | 无 | 默认构造：使用 `MemoryCaptchaStore` 与默认配置 |
+| `ClickCaptcha` | `CaptchaProperties properties` | 指定配置构造（使用 `MemoryCaptchaStore`） |
+| `ClickCaptcha` | `CaptchaStore store, CaptchaProperties properties` | 指定存储与配置构造 |
+
+#### doVerify 输入格式
+
+`doVerify(String answer, String userInput)` 的 `userInput` 支持两种格式：
+
+| 格式 | 适用场景 | 示例 |
+|------|----------|------|
+| JSON 字符串 | 推荐（前端 `jaravel-captcha.js` 默认提交） | `{"clicks":[{"x":120,"y":80},{"x":200,"y":150},{"x":300,"y":100}]}` |
+| 分号分隔坐标字符串 | 向后兼容 | `"120,80;200,150;300,100"` |
+
+#### Behavior
+
+| 项 | 说明 |
+| --- | --- |
+| 答案 | 目标文字坐标，分号分隔（`"x1,y1;x2,y2;x3,y3"`），顺序与提示文字一致 |
+| 用户输入 | 用户点击的坐标序列（JSON 或分号分隔字符串） |
+| 验证规则 | 依次比对每一对点击坐标与目标坐标，距离需 ≤ 容差半径（`tolerance`，点击验证码最小 20 像素）。任一坐标不匹配返回 `false` |
+| `imageBase64` | 包含所有展示文字的背景图（base64 PNG）。背景来源：优先使用 `loadBackgroundImage()` 加载自定义背景图，未配置时使用浅色渐变背景 |
+| `extra.prompt` | 点选提示文字，如 `"请依次点击：天、地、人"` |
+| `extra.clickCount` | 需要点击的文字数量（等于 `clickTargetCount`） |
+| `extra.width` | 图片宽度（前端用于坐标换算） |
+| `extra.height` | 图片高度（前端用于坐标换算） |
+| 文字池 | 千字文节选汉字（`天地玄黄宇宙洪荒...`），排除常见易混淆字 |
+
+#### Configuration
+
+点击验证码的配置通过 `CaptchaProperties` 的以下属性控制：
+
+| 属性 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `clickTargetCount` | `int` | `3` | 需要点击的目标文字数量（1~8，自动限制范围） |
+| `clickDecoyCount` | `int` | `3` | 干扰文字数量（0~10，自动限制范围） |
+| `width` | `int` | `160` | 画布宽度（建议点击验证码设为 300+） |
+| `height` | `int` | `50` | 画布高度（建议点击验证码设为 150+） |
+| `tolerance` | `double` | `5.0` | 点击容差半径（像素，点击验证码最小 20） |
+
+#### Usage Example
+```java
+CaptchaProperties props = CaptchaProperties.createDefault();
+props.setWidth(300);
+props.setHeight(180);
+props.setClickTargetCount(3);
+props.setClickDecoyCount(5);
+props.setTolerance(25);
+
+ClickCaptcha captcha = new ClickCaptcha(store, props);
+CaptchaResult result = captcha.generate("my-key");
+
+String image = result.getImageBase64();                // 包含所有文字的背景图
+String prompt = (String) result.getExtra().get("prompt"); // "请依次点击：天、地、人"
+int clickCount = (int) result.getExtra().get("clickCount"); // 3
+
+// 前端提交 JSON 格式的点击坐标
+boolean ok = captcha.verify("my-key",
+        "{\"clicks\":[{\"x\":120,\"y\":80},{\"x\":200,\"y\":150},{\"x\":300,\"y\":100}]}");
+
+// 或分号分隔坐标字符串（向后兼容）
+boolean ok2 = captcha.verify("my-key", "120,80;200,150;300,100");
+```
+
+---
+
 ### CaptchaAutoConfiguration
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.captcha.springboot`
-- **Description**: 验证码 SpringBoot 自动装配。当 `jaravel.captcha.enabled=true`（默认）时自动创建 `CaptchaManager` Bean，注册四种验证码类型（数字、算术、滑动、旋转）。根据是否引入 jaravel cache 模块智能选择存储：有 cache 模块使用 `CacheStoreCaptchaStore`（跨进程），无则使用 `MemoryCaptchaStore`（内存）。
+- **Description**: 验证码 SpringBoot 自动装配。当 `jaravel.captcha.enabled=true`（默认）时自动创建 `CaptchaManager` Bean，注册五种验证码类型（数字、算术、滑动、旋转、文字点选）。根据是否引入 jaravel cache 模块智能选择存储：有 cache 模块使用 `CacheStoreCaptchaStore`（跨进程），无则使用 `MemoryCaptchaStore`（内存）。
 - **Annotations**: `@AutoConfiguration`, `@ConditionalOnClass(CaptchaManager.class)`, `@ConditionalOnProperty(prefix = "jaravel.captcha", name = "enabled", havingValue = "true", matchIfMissing = true)`, `@EnableConfigurationProperties(CaptchaProperties.class)`
 
 #### Inner Configurations
@@ -799,7 +884,7 @@ boolean ok2 = captcha.verify("my-key", "90");
 |------|-----------|--------|-------------|
 | `captchaStore`（MemoryStoreConfig） | 无 | `CaptchaStore` | 内存存储（`@Bean`, `@ConditionalOnMissingBean`） |
 | `captchaStore`（CacheStoreConfig） | `ObjectProvider<CacheStore> cacheStoreProvider` | `CaptchaStore` | CacheStore 适配存储或回退内存（`@Bean`, `@ConditionalOnMissingBean`） |
-| `captchaManager` | `CaptchaProperties properties, ObjectProvider<CaptchaStore> captchaStoreProvider` | `CaptchaManager` | 验证码管理器，注册四种验证码类型（`@Bean`, `@ConditionalOnMissingBean`）；存储为 null 时回退 `MemoryCaptchaStore`；通过 `properties.toCoreProperties()` 转换为核心层配置 |
+| `captchaManager` | `CaptchaProperties properties, ObjectProvider<CaptchaStore> captchaStoreProvider` | `CaptchaManager` | 验证码管理器，注册五种验证码类型（`@Bean`, `@ConditionalOnMissingBean`）；存储为 null 时回退 `MemoryCaptchaStore`；通过 `properties.toCoreProperties()` 转换为核心层配置 |
 
 #### Usage Example
 ```java
@@ -847,6 +932,13 @@ jaravel:
 | `tolerance` | `double` | `5.0` | 滑动/旋转验证的容差范围 |
 | `noise` | `int` | `50` | 噪点数量（对应核心层 `noiseCount`） |
 | `interfereLines` | `int` | `30` | 干扰线数量（对应核心层 `interfereCount`） |
+
+##### 点击验证码配置
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `clickTargetCount` | `int` | `3` | 文字点选验证码中需要点击的目标文字数量（1~8） |
+| `clickDecoyCount` | `int` | `3` | 文字点选验证码中的干扰文字数量（0~10） |
 
 ##### 视觉配置
 
@@ -911,6 +1003,8 @@ jaravel:
 | `tolerance` | `tolerance` | 同名直传 |
 | `noise` | `noiseCount` | 名称映射 |
 | `interfereLines` | `interfereCount` | 名称映射 |
+| `clickTargetCount` | `clickTargetCount` | 同名直传 |
+| `clickDecoyCount` | `clickDecoyCount` | 同名直传 |
 | `fontFamily` | `fontFamily` | 同名直传 |
 | `fontStyle` | `fontStyle` | 同名直传 |
 | `minFontSize` | `minFontSize` | 同名直传 |
@@ -993,4 +1087,191 @@ CaptchaProperties coreProps = springBootProps.toCoreProperties();
 // coreProps.getBackgroundImagePath() == "captcha/backgrounds/scene1.jpg"
 // coreProps.getWatermarkText() == "© MyCorp"
 // coreProps.getWatermarkPosition() == "bottom-right"
+```
+
+---
+
+## Frontend JavaScript API
+
+前端提供 `jaravel-captcha.js` 库（零依赖），包含两部分：`JaravelCaptcha`（加解密工具）和 `Captcha`（OOP 验证码组件）。前端采用**事件驱动模式**，用户完成验证操作后触发 `complete` 事件（不自动提交到后端），由业务方决定后续处理。
+
+### JaravelCaptcha（加解密工具）
+- **Type**: 全局对象（IIFE 模块）
+- **Description**: 验证码加解密工具，向后兼容。支持三种加密模式：`none`（纯 Base64）、`aes`（AES-CBC）、`rsa`（RSA-OAEP）。当 Web Crypto API 不可用时，`aes`/`rsa` 自动降级为 `none`，仅在控制台输出警告。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `encrypt` | `String plaintext, String type, String key` | `Promise<string>` | 加密数据。`type` 为 `'none'`/`'aes'`/`'rsa'`，返回 Base64 编码的密文 |
+| `decrypt` | `String ciphertext, String type, String key` | `Promise<string>` | 解密数据。返回明文 |
+| `fetchCaptcha` | `String apiUrl, String type` | `Promise<Object>` | 从后端获取验证码。返回 `{ captchaKey, type, imageBase64, expireTime, extra }` |
+| `submitCaptcha` | `String apiUrl, String type, String captchaKey, String input, String encType, String encKey` | `Promise<boolean>` | 提交验证码验证（向后兼容，业务方也可自行实现提交逻辑） |
+| `isWebCryptoAvailable` | 无 | `boolean` | 检测 Web Crypto API 是否可用 |
+
+---
+
+### Captcha（OOP 验证码组件）
+- **Type**: class
+- **Description**: OOP 验证码前端组件。自动构建 UI、绑定事件、采集轨迹、加密用户输入。支持 5 种验证码类型：`number`/`arithmetic`/`slider`/`rotate`/`click`。用户完成验证操作后触发 `complete` 事件，不自动提交到后端，由业务方在事件回调中处理后续逻辑（如提交到后端验证、绑定到表单等）。
+
+#### Static Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `init` | `String containerId, Object options` | `Captcha` | 初始化验证码组件，返回 Captcha 实例。等同于 `new Captcha(containerId, options)` |
+
+#### Options
+
+构造函数 `new Captcha(containerId, options)` 的 `options` 参数：
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `type` | `String` | `'number'` | 验证码类型：`'number'`/`'arithmetic'`/`'slider'`/`'rotate'`/`'click'` |
+| `apiUrl` | `String` | `'/api/captcha/generate'` | 生成验证码的 API 地址（GET 请求，附 `?type=` 查询参数） |
+| `encryptionType` | `String` | `'none'` | 加密类型：`'none'`（纯 Base64）/`'aes'`（AES-CBC）/`'rsa'`（RSA-OAEP）。Web Crypto 不可用时自动降级为 `none` |
+| `encryptionKey` | `String` | `null` | 加密密钥（AES 为对称密钥字符串，RSA 为 Base64 公钥，`none` 忽略） |
+| `config` | `Object` | `null` | per-instance 后端配置覆盖（如 `{clickTargetCount: 6, length: 6}`），作为查询参数传给 generate API |
+
+#### Instance Methods — 事件系统
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `on` | `String event, Function callback` | `Captcha`（this） | 注册事件监听器，支持链式调用。`callback` 不是函数时忽略 |
+| `off` | `String event, Function callback` | `Captcha`（this） | 移除事件监听器。不传 `callback` 则移除该事件的所有监听器 |
+
+#### Events
+
+| Event | Parameters | Description |
+|-------|------------|-------------|
+| `beforeGet` | `(type)` | 获取验证码前触发（含刷新场景）。`type` 为验证码类型字符串 |
+| `afterGet` | `(captchaKey, captchaData)` | 验证码加载并渲染完成后触发。`captchaKey` 为验证码标识，`captchaData` 为后端返回的完整数据对象 |
+| `complete` | `(captchaKey, captchaInput, rawInput)` | 用户完成前端验证操作后触发（不提交到后端）。`captchaInput` 为加密后的用户输入，`rawInput` 为原始明文输入 |
+
+> **complete 事件触发时机**：
+> - `number`/`arithmetic`：用户在输入框按 Enter 键时触发
+> - `slider`：用户拖动滑块松开时触发
+> - `rotate`：用户拖动旋转手柄松开时触发
+> - `click`：用户依次点击完所有目标文字时触发
+
+#### Instance Methods — 数据获取
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `getCaptchaKey` | 无 | `String\|null` | 获取当前验证码标识。未加载时返回 `null` |
+| `getCaptchaInput` | 无 | `Promise<string>` | 获取用户输入（加密后）。可在 `complete` 事件回调中调用，也可在外部主动调用。返回 Base64 编码的加密密文 |
+
+#### Instance Methods — 生命周期
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `show` | 无 | `void` | 显示验证码组件 |
+| `hide` | 无 | `void` | 隐藏验证码组件 |
+| `refresh` | 无 | `void` | 刷新验证码（重新生成并渲染）。触发 `beforeGet` → 加载 → `afterGet` 事件链。防止并发刷新 |
+| `destroy` | 无 | `void` | 销毁组件，清理 DOM 和所有事件监听器，恢复容器原有内容 |
+
+#### Internal Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `_complete` | 无 | `Promise<void>` | 内部方法，替代原 `verify()`。用户完成前端验证操作时由组件内部调用。不提交到后端，不判断准确与否。仅触发 `complete` 事件并禁用交互（防止修改已完成的数据） |
+
+#### complete 事件参数格式
+
+不同验证码类型的 `rawInput`（原始明文输入）格式：
+
+| Type | rawInput 格式 | 示例 |
+|------|---------------|------|
+| `number` | 纯文本字符串 | `"AB23"` |
+| `arithmetic` | 纯文本字符串 | `"17"` |
+| `slider` | JSON（含 `value` 和 `trajectory`） | `{"value":123,"trajectory":[{"t":0,"v":0},{"t":50,"v":5}]}` |
+| `rotate` | JSON（含 `value` 和 `trajectory`） | `{"value":90,"trajectory":[{"t":0,"v":0},{"t":50,"v":3}]}` |
+| `click` | JSON（含 `clicks` 坐标数组） | `{"clicks":[{"x":120,"y":80},{"x":200,"y":150}]}` |
+
+#### Usage Example
+
+```html
+<!-- 引入 jaravel-captcha.js -->
+<script src="/static/jaravel-captcha.js"></script>
+
+<!-- 容器 -->
+<div id="captcha-container"></div>
+
+<script>
+// 1. 基本用法 — 滑动验证码 + 事件驱动
+const captcha = Captcha.init('captcha-container', {
+    type: 'slider',
+    apiUrl: '/api/captcha/generate',
+    encryptionType: 'aes',
+    encryptionKey: 'my-secret-key'
+});
+
+// 注册事件监听器（链式调用）
+captcha
+    .on('beforeGet', (type) => {
+        console.log('正在获取验证码，类型:', type);
+    })
+    .on('afterGet', (captchaKey, captchaData) => {
+        console.log('验证码已加载, key:', captchaKey);
+    })
+    .on('complete', (captchaKey, captchaInput, rawInput) => {
+        console.log('用户完成验证, key:', captchaKey);
+        console.log('加密后的输入:', captchaInput);
+        console.log('原始明文输入:', rawInput);
+
+        // 业务方在此决定后续处理：提交到后端验证
+        submitToBackend(captchaKey, captchaInput);
+    });
+
+// 2. 文字点选验证码 + per-instance 配置覆盖
+const clickCaptcha = Captcha.init('click-container', {
+    type: 'click',
+    apiUrl: '/api/captcha/generate',
+    config: {
+        clickTargetCount: 4,
+        clickDecoyCount: 6,
+        width: 300,
+        height: 180
+    }
+}).on('complete', async (captchaKey, captchaInput) => {
+    // 提交到后端验证
+    const resp = await fetch('/api/captcha/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            type: 'click',
+            captchaKey: captchaKey,
+            input: captchaInput
+        })
+    });
+    const result = await resp.json();
+    if (result.code === 200) {
+        console.log('验证通过');
+    } else {
+        console.log('验证失败，刷新验证码');
+        clickCaptcha.refresh();
+    }
+});
+
+// 3. 外部主动获取加密输入
+async function getCaptchaParams() {
+    const key = captcha.getCaptchaKey();
+    const input = await captcha.getCaptchaInput();
+    return { captchaKey: key, captchaInput: input };
+}
+
+// 4. 移除事件监听器
+const myCallback = (key, input, raw) => { /* ... */ };
+captcha.on('complete', myCallback);
+// 之后移除
+captcha.off('complete', myCallback);
+// 或移除 complete 事件的所有监听器
+captcha.off('complete');
+
+// 5. 生命周期管理
+captcha.show();      // 显示
+captcha.hide();      // 隐藏
+captcha.refresh();   // 刷新
+captcha.destroy();   // 销毁
+</script>
 ```

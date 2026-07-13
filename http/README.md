@@ -62,7 +62,7 @@
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>http</artifactId>
-    <version>0.1.1</version>
+    <version>0.1.2</version>
 </dependency>
 ```
 

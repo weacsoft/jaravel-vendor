@@ -311,9 +311,22 @@ public class WireService {
      * 直接生成 Wire 初始页面响应（HTML）。
      * <p>
      * 等同于 {@code WireResponse.wire(templateName, data, updateUrl)}。
+     * 是否注入 wire.js 受 {@link WireManager#isAutoInjectJs()} 控制。
      */
     public Response responseWire() {
         return WireResponse.wire(templateName, data, updateUrl);
+    }
+
+    /**
+     * 直接生成 Wire 初始页面响应（HTML），显式指定是否注入 wire.js。
+     * <p>
+     * 当 injectJs=false 时，只注入 wire:config 配置标签，开发者需自行引入 wire.js。
+     *
+     * @param injectJs 是否注入 wire.js 的 script 标签
+     * @return HTML 响应
+     */
+    public Response responseWire(boolean injectJs) {
+        return WireResponse.wire(templateName, data, updateUrl, injectJs);
     }
 
     /**

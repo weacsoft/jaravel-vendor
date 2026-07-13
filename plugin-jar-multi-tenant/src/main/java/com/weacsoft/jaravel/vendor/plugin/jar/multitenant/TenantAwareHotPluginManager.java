@@ -3,6 +3,7 @@ package com.weacsoft.jaravel.vendor.plugin.jar.multitenant;
 import com.weacsoft.jaravel.vendor.plugin.jar.integration.PluginIntegration;
 import com.weacsoft.jaravel.vendor.plugin.jar.manager.HotPluginManager;
 import com.weacsoft.jaravel.vendor.plugin.jar.model.PluginInfo;
+import com.weacsoft.jaravel.vendor.plugin.jar.model.SharedInterfaceDescriptor;
 import com.weacsoft.jaravel.vendor.plugin.jar.persistence.MetadataPersistence;
 import com.weacsoft.jaravel.vendor.plugin.jar.registrar.PluginBeanRegistrar;
 import com.weacsoft.jaravel.vendor.plugin.jar.registrar.PluginRouteRegistrar;
@@ -146,6 +147,25 @@ public class TenantAwareHotPluginManager extends HotPluginManager {
             log.warn("获取插件服务失败: pluginId={}, beanName={}", pluginId, beanName, e);
             return null;
         }
+    }
+
+    /**
+     * 获取共享接口对应的 Bean 实例，自动使用前缀化的 Bean 名称查找。
+     * <p>
+     * 多租户模式下，Bean 实际以前缀化名称注册（如 "studentA:blogController"），
+     * 因此查找时需要将 descriptor 中的原始 Bean 名称前缀化。
+     *
+     * @param descriptor 共享接口描述符
+     * @return Bean 实例
+     * @throws Exception 获取失败时抛出
+     */
+    @Override
+    protected Object lookupSharedInterfaceBean(SharedInterfaceDescriptor descriptor) throws Exception {
+        String tenantId = TenantNaming.extractTenant(descriptor.getPluginId(), separator);
+        String lookupBeanName = (tenantId != null)
+                ? TenantNaming.prefixBeanName(tenantId, descriptor.getBeanName())
+                : descriptor.getBeanName();
+        return beanRegistrar.getApplicationContext().getBean(lookupBeanName);
     }
 
     /**

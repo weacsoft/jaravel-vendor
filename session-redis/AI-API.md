@@ -1,6 +1,6 @@
 # session-redis AI-API Reference
 
-> Module: `session-redis` | Package: `com.weacsoft.jaravel.vendor.session.redis` | Version: 0.1.1
+> Module: `session-redis` | Package: `com.weacsoft.jaravel.vendor.session.redis` | Version: 0.1.2
 
 ## Overview
 

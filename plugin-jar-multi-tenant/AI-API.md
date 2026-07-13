@@ -1,12 +1,14 @@
 # plugin-jar-multi-tenant AI-API Reference
 
-> Module: `plugin-jar-multi-tenant` | Package: `com.weacsoft.jaravel.vendor.plugin.jar.multitenant` | Version: 0.1.1
+> Module: `plugin-jar-multi-tenant` | Package: `com.weacsoft.jaravel.vendor.plugin.jar.multitenant` | Version: 0.1.2
 
 ## Overview
 
 plugin-jar-multi-tenant 模块为 JAR 插件系统提供多租户隔离能力。通过引入本模块，系统自动以租户感知版本替换原版（plugin-jar-core）的 `PluginBeanRegistrar`、`PluginRouteRegistrar` 和 `HotPluginManager`，使不同租户可加载同名插件而不发生 Bean 或路由冲突。
 
 核心机制：插件 ID 采用 `tenantId + separator + basePluginId` 格式（如 `studentA@blog`），在启用/禁用插件时由 `TenantAwareHotPluginManager` 从 pluginId 提取租户 ID 并注入 `TenantContext`（ThreadLocal），下游的 `TenantAwarePluginBeanRegistrar` 和 `TenantAwarePluginRouteRegistrar` 读取上下文对 Bean 名称和路由路径自动前缀化。命名规则由 `TenantNaming` 统一封装：Bean 名称形如 `studentA:blogController`，路由路径形如 `/studentA/blog/list`。
+
+共享接口支持：`TenantAwareHotPluginManager` 重写父类 `lookupSharedInterfaceBean()` 方法，在多租户场景下自动将共享接口描述符中的 Bean 名称前缀化（如 `blogController` → `studentA:blogController`），反射调用逻辑复用父类的 `invokeSharedInterface`（模板方法模式）。注册共享接口时使用原始 Bean 名称，调用时由多租户管理器自动处理前缀化，调用方无感知。
 
 向后兼容：当 pluginId 不含分隔符时（如 `blog`），`TenantNaming.extractTenant` 返回 null，不设置租户上下文，行为与原版完全一致（单例插件模式）。当通过 `MultiTenantProperties.enabled=false` 禁用本模块时，多租户自动装配不生效，系统回退到默认 `PluginJarAutoConfiguration`。
 
@@ -55,7 +57,7 @@ jaravel:
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.plugin.jar.multitenant`
 - **Extends**: `com.weacsoft.jaravel.vendor.plugin.jar.manager.HotPluginManager`
-- **Description**: 租户感知的热插件管理器。继承 `HotPluginManager`，在 `enablePlugin` 和 `disablePlugin` 前后注入 `TenantContext`，使下游的 `TenantAwarePluginBeanRegistrar` 和 `TenantAwarePluginRouteRegistrar` 能感知当前租户并自动前缀化。工作原理：从 pluginId 提取租户 ID，通过 `TenantContext.setCurrentTenant` 注入 ThreadLocal，调用父类方法使内部 Bean 注册和路由注册读取 ThreadLocal 进行前缀化，finally 块中 `TenantContext.clear()` 清理 ThreadLocal。当 pluginId 不含分隔符时，行为与父类完全一致。同时重写 `getServiceFromPlugin` 和 `unregisterRoute`，使用前缀化的名称/路径查找和清理，解决父类用原始名称查找导致的问题。还提供 `registerPluginForTenant`、`enablePluginForTenant` 等便捷方法，自动拼接 `tenantId + separator + pluginId`。
+- **Description**: 租户感知的热插件管理器。继承 `HotPluginManager`，在 `enablePlugin` 和 `disablePlugin` 前后注入 `TenantContext`，使下游的 `TenantAwarePluginBeanRegistrar` 和 `TenantAwarePluginRouteRegistrar` 能感知当前租户并自动前缀化。工作原理：从 pluginId 提取租户 ID，通过 `TenantContext.setCurrentTenant` 注入 ThreadLocal，调用父类方法使内部 Bean 注册和路由注册读取 ThreadLocal 进行前缀化，finally 块中 `TenantContext.clear()` 清理 ThreadLocal。当 pluginId 不含分隔符时，行为与父类完全一致。同时重写 `getServiceFromPlugin` 和 `unregisterRoute`，使用前缀化的名称/路径查找和清理，解决父类用原始名称查找导致的问题。重写 `lookupSharedInterfaceBean`，在多租户场景下自动将共享接口描述符中的 Bean 名称前缀化（如 `blogController` → `studentA:blogController`），反射调用逻辑复用父类的 `invokeSharedInterface`，实现模板方法模式。还提供 `registerPluginForTenant`、`enablePluginForTenant` 等便捷方法，自动拼接 `tenantId + separator + pluginId`。
 
 #### Methods
 
@@ -65,6 +67,7 @@ jaravel:
 | `enablePlugin` | `String pluginId` | `boolean` | 启用插件，自动注入租户上下文后委托父类执行（覆写父类） |
 | `disablePlugin` | `String pluginId` | `boolean` | 禁用插件，自动注入租户上下文后委托父类执行（覆写父类） |
 | `getServiceFromPlugin` | `String pluginId, String beanName` | `Object` | 从指定插件获取服务 Bean，自动使用前缀化的 Bean 名称查找（覆写父类），不存在返回 null |
+| `lookupSharedInterfaceBean`（protected） | `SharedInterfaceDescriptor descriptor` | `Object` | 获取共享接口对应的 Bean 实例（覆写父类）。多租户模式下从 `descriptor.getPluginId()` 提取租户 ID，将 `descriptor.getBeanName()` 前缀化为 `tenantId:beanName`（如 `studentA:blogController`）后从 Spring 容器查找。非多租户 pluginId（不含分隔符）时使用原始 Bean 名称，行为与父类一致。反射调用逻辑复用父类 `invokeSharedInterface`，实现模板方法模式 |
 | `unregisterRoute` | `String pluginId, String path, String httpMethod` | `boolean` | 注销单条路由，额外用前缀化路径清理 routeHandler（覆写父类） |
 | `registerRouteAlias` | `String pluginId, String existingPath, String aliasPath, String httpMethod` | `boolean` | 为已注册的路由注册别名路径，自动注入租户上下文（覆写父类） |
 | `registerRouteAlias` | `String pluginId, String existingPath, String aliasPath` | `boolean` | 为已注册的路由注册别名路径（自动检测 HTTP 方法），自动注入租户上下文（覆写父类） |
@@ -93,6 +96,22 @@ String fullId = ((TenantAwareHotPluginManager) pluginManager)
 // 获取该租户所有插件
 List<PluginInfo> tenantPlugins = ((TenantAwareHotPluginManager) pluginManager)
         .getPluginsByTenant("studentA");
+
+// ===== 共享接口（多租户场景） =====
+// 注册共享接口：pluginId 含租户前缀，Bean 名称使用原始名称
+pluginManager.registerSharedInterface(
+    "studentA.blog.list",    // 接口名称
+    "studentA@blog",         // 含租户的 pluginId
+    "blogController",        // 原始 Bean 名（调用时自动前缀化为 studentA:blogController）
+    "list",
+    "获取 studentA 的博客列表");
+
+// 通过 Application 在插件侧调用（无需关心前缀化细节）
+Map<String, Object> result = Application.invokeSharedInterface(
+    "studentA.blog.list", Map.of("page", 1, "size", 10));
+
+// 查询所有共享接口
+List<SharedInterfaceDescriptor> interfaces = pluginManager.getSharedInterfaces();
 ```
 
 ### TenantAwarePluginBeanRegistrar

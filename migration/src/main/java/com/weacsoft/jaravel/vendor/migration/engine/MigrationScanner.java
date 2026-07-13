@@ -34,12 +34,14 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * 迁移源扫描器与加载器，支持三种迁移来源模式。
+ * 迁移源扫描器与加载器，支持四种迁移来源模式。
  * <p>
- * <b>三种模式</b>：
+ * <b>四种模式</b>：
  * <ul>
  *   <li><b>DIRECTORY</b>（目录模式）：扫描目录下的 {@code .java} 文件，运行时内存编译（需要 JDK）。
  *       通过 {@link #compileFromDirectory(String)} 加载。</li>
+ *   <li><b>DIRECTORY_CLASSES</b>（预编译目录模式）：从目录加载预编译的 {@code .class} 文件（只需 JRE）。
+ *       通过 {@link #loadFromDirectoryClasses(String)} 加载，使用 {@link URLClassLoader}。</li>
  *   <li><b>JAR</b>（JAR 模式）：从 {@code .jar} 文件加载预编译的迁移类（只需要 JRE）。
  *       通过 {@link #loadFromJar(File)} 加载，使用 {@link URLClassLoader}。</li>
  *   <li><b>CLASSPATH</b>（Classpath 模式）：从当前 classpath 扫描迁移类（内置迁移）。
@@ -211,7 +213,15 @@ public class MigrationScanner {
             // 获取系统编译器
             JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
             if (compiler == null) {
-                throw new IllegalStateException("无法获取 Java 编译器，请确保使用 JDK 而非 JRE 运行程序");
+                throw new IllegalStateException(
+                    "无法获取 Java 编译器，当前运行环境为 JRE 而非 JDK。\n" +
+                    "迁移文件源码模式(DIRECTORY)需要 JDK 运行环境。\n" +
+                    "解决方案：\n" +
+                    "1. 使用 JDK 运行程序\n" +
+                    "2. 使用 JAR 模式：将迁移文件预编译为 JAR，通过 loadFromJar() 加载\n" +
+                    "3. 使用 CLASSPATH 模式：将迁移类编译到 classpath 中，通过 loadFromClasspath() 加载\n" +
+                    "4. 使用预编译目录模式：将迁移 .java 文件编译为 .class 文件放到目录，通过 loadFromDirectoryClasses() 加载"
+                );
             }
 
             DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
@@ -259,6 +269,85 @@ public class MigrationScanner {
      */
     public void compileFromFile(String filePath) throws Exception {
         compileFromFile(new File(filePath));
+    }
+
+    // ==================== 预编译目录模式 ====================
+
+    /**
+     * 从目录加载预编译的 .class 文件（JRE 模式，无需 JDK）。
+     * <p>
+     * 递归扫描目录下所有 {@code .class} 文件，通过 {@link URLClassLoader} 加载，
+     * 检查 {@link MigrationAnnotation} 标记，自动识别迁移类。
+     * <p>
+     * 适用于：开发阶段用 JDK 编译迁移 .java 文件为 .class，运行时只需 JRE。
+     *
+     * @param dirPath 目录路径
+     * @throws Exception 加载异常
+     */
+    public void loadFromDirectoryClasses(String dirPath) throws Exception {
+        loadFromDirectoryClasses(new File(dirPath));
+    }
+
+    /**
+     * 从目录加载预编译的 .class 文件。
+     *
+     * @param dir 目录
+     * @throws Exception 加载异常
+     */
+    public void loadFromDirectoryClasses(File dir) throws Exception {
+        if (dir == null || !dir.exists() || !dir.isDirectory()) {
+            throw new RuntimeException("目录不存在或不是目录: " + (dir != null ? dir.getAbsolutePath() : "null"));
+        }
+
+        URL dirUrl = dir.toURI().toURL();
+        jarClassLoader = new URLClassLoader(new URL[]{dirUrl}, getClass().getClassLoader());
+
+        int count = 0;
+        List<File> classFiles = new ArrayList<>();
+        collectClassFiles(dir, classFiles);
+
+        log.info("[migration] 扫描到 {} 个 .class 文件: {}", classFiles.size(), dir.getAbsolutePath());
+
+        for (File classFile : classFiles) {
+            // 将文件路径转换为类全限定名
+            String relativePath = dir.toURI().relativize(classFile.toURI()).getPath();
+            String className = relativePath
+                .replace('/', '.')
+                .replace('\\', '.')
+                .substring(0, relativePath.length() - ".class".length());
+
+            // 跳过内部类
+            if (className.contains("$")) {
+                continue;
+            }
+
+            try {
+                Class<?> clazz = jarClassLoader.loadClass(className);
+                if (isMigrationClass(clazz)) {
+                    loadedClasses.put(className, clazz);
+                    count++;
+                    log.info("[migration] 从目录加载迁移类: {}", className);
+                }
+            } catch (Throwable e) {
+                log.debug("[migration] 跳过无法加载的类: {} - {}", className, e.getMessage());
+            }
+        }
+        log.info("[migration] 从目录加载了 {} 个迁移类: {}", count, dir.getAbsolutePath());
+    }
+
+    /**
+     * 递归收集目录下的所有 .class 文件。
+     */
+    private void collectClassFiles(File dir, List<File> result) {
+        File[] files = dir.listFiles();
+        if (files == null) return;
+        for (File file : files) {
+            if (file.isDirectory()) {
+                collectClassFiles(file, result);
+            } else if (file.getName().endsWith(".class")) {
+                result.add(file);
+            }
+        }
     }
 
     // ==================== JAR 模式 ====================

@@ -83,7 +83,7 @@ template.render() -> 输出 HTML 字符串
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>jblade</artifactId>
-    <version>0.1.1</version>
+    <version>0.1.2</version>
 </dependency>
 ```
 

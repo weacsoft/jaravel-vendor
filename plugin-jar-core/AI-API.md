@@ -1,6 +1,6 @@
 # plugin-jar-core AI-API Reference
 
-> Module: `plugin-jar-core` | Package: `com.weacsoft.jaravel.vendor.plugin.jar` | Version: 0.1.1
+> Module: `plugin-jar-core` | Package: `com.weacsoft.jaravel.vendor.plugin.jar` | Version: 0.1.2
 
 ## Overview
 
@@ -29,6 +29,34 @@ plugin-jar-core 模块是 JAR 插件系统的核心，提供 JAR 包形式插件
 | `getEnabledPlugins` | - | `List<PluginInfo>` | 获取所有已启用插件信息 |
 | `isLoaded` | `String pluginId` | `boolean` | 检查插件是否已加载 |
 | `isEnabled` | `String pluginId` | `boolean` | 检查插件是否已启用 |
+| `registerSharedInterface` | `String interfaceName, String pluginId, String beanName, String methodName` | `boolean` | 注册共享接口（全手动指定，全部字符串）。要求插件已启用且 Bean 已注册，注册成功返回 true |
+| `registerSharedInterface` | `String interfaceName, String pluginId, String beanName, String methodName, String description` | `boolean` | 注册共享接口（带可选描述）。其余行为同上 |
+| `unregisterSharedInterface` | `String interfaceName` | `boolean` | 注销共享接口。接口存在并移除成功返回 true，不存在返回 false |
+| `getSharedInterfaces` | - | `List<SharedInterfaceDescriptor>` | 获取所有已注册的共享接口描述列表（返回副本） |
+| `getSharedInterface` | `String interfaceName` | `SharedInterfaceDescriptor` | 获取指定共享接口描述符，不存在返回 null |
+| `invokeSharedInterface` | `String interfaceName, Map<String, Object> args` | `Map<String, Object>` | 通过共享接口名称反射调用目标方法，参数和返回值均用 Map 表示 |
+| `lookupSharedInterfaceBean`（protected） | `SharedInterfaceDescriptor descriptor` | `Object` | 获取共享接口对应的 Bean 实例。子类可重写以自定义 Bean 查找逻辑（如多租户前缀化 Bean 名称） |
+
+#### invokeSharedInterface 参数解析逻辑
+
+`invokeSharedInterface` 根据目标方法的参数数量自动解析传入的 `args` Map：
+
+| 方法参数情况 | 解析规则 |
+|-------------|---------|
+| 0 参数 | 直接调用，忽略 args |
+| 1 个 `Map` 类型参数 | 将整个 `args` Map 传入 |
+| 1 个其他类型参数 | 从 args 中取 `"data"` 键对应的值；若不存在则取第一个值，并按目标类型转换 |
+| 多参数 | 按 `Parameter.getName()` 参数名从 args 中匹配取值 |
+
+返回值转换规则：
+
+| 方法返回值 | 转换结果 |
+|-----------|---------|
+| `null` 或 `void` | 返回空 Map `{}` |
+| `Map` | 直接返回该 Map |
+| 其他类型 | 包装为 `{"data": result}` |
+
+> 调用过程中发生异常时返回 `{"error": message}`，不向外抛出异常。
 
 #### Usage Example
 ```java
@@ -46,6 +74,23 @@ pluginManager.reload(pluginId);
 
 // 卸载插件
 pluginManager.unload(pluginId);
+
+// ===== 共享接口 =====
+// 注册共享接口（全手动指定）
+pluginManager.registerSharedInterface(
+    "admin.service.list", pluginId, "blogController", "list", "获取博客列表");
+
+// 反射调用共享接口（参数和返回值均为 Map）
+Map<String, Object> args = new HashMap<>();
+args.put("page", 1);
+args.put("size", 10);
+Map<String, Object> result = pluginManager.invokeSharedInterface("admin.service.list", args);
+
+// 查询所有共享接口
+List<SharedInterfaceDescriptor> interfaces = pluginManager.getSharedInterfaces();
+
+// 注销共享接口
+pluginManager.unregisterSharedInterface("admin.service.list");
 ```
 
 ### PluginIntegration
@@ -221,6 +266,50 @@ PluginExecutionHelper.invokeAndSetResult(result, loadedClass);
 | `getHttpMethod` | - | `HttpMethod` | 获取 HTTP 方法 |
 | `getProduces` | - | `String` | 获取响应内容类型 |
 
+### SharedInterfaceDescriptor
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.plugin.jar.model`
+- **Description**: 共享接口描述符。描述一个通过全手动指定方式注册的共享接口：指定插件中的某个 Bean 的某个方法作为可被其他模块反射调用的共享接口。开发时无需包含目标类，运行时通过反射调用，请求参数和返回参数都用 Map 表示。由 `HotPluginManager.registerSharedInterface()` 创建并注册到共享接口注册表。
+
+#### Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `interfaceName` | `String` | 共享接口名称（全局唯一，如 `"admin.service.list"`） |
+| `pluginId` | `String` | 提供方插件 ID（如 `"studentA@blog"`） |
+| `beanName` | `String` | Bean 名称（如 `"blogController"`） |
+| `methodName` | `String` | 方法名（如 `"list"`） |
+| `description` | `String` | 可选描述 |
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `SharedInterfaceDescriptor` | - | - | 无参构造 |
+| `SharedInterfaceDescriptor` | `String interfaceName, String pluginId, String beanName, String methodName` | - | 构造共享接口描述符（不含描述） |
+| `SharedInterfaceDescriptor` | `String interfaceName, String pluginId, String beanName, String methodName, String description` | - | 构造共享接口描述符（含描述） |
+| `getInterfaceName` | - | `String` | 获取共享接口名称 |
+| `setInterfaceName` | `String interfaceName` | `void` | 设置共享接口名称 |
+| `getPluginId` | - | `String` | 获取提供方插件 ID |
+| `setPluginId` | `String pluginId` | `void` | 设置提供方插件 ID |
+| `getBeanName` | - | `String` | 获取 Bean 名称 |
+| `setBeanName` | `String beanName` | `void` | 设置 Bean 名称 |
+| `getMethodName` | - | `String` | 获取方法名 |
+| `setMethodName` | `String methodName` | `void` | 设置方法名 |
+| `getDescription` | - | `String` | 获取描述 |
+| `setDescription` | `String description` | `void` | 设置描述 |
+
+#### Usage Example
+```java
+// 由 HotPluginManager.registerSharedInterface() 内部创建，通常无需手动构造
+SharedInterfaceDescriptor descriptor = new SharedInterfaceDescriptor(
+    "admin.service.list", "studentA@blog", "blogController", "list", "获取博客列表");
+
+// 也可通过 HotPluginManager 获取
+SharedInterfaceDescriptor desc = pluginManager.getSharedInterface("admin.service.list");
+System.out.println(desc.getPluginId() + ":" + desc.getBeanName() + "." + desc.getMethodName());
+```
+
 ### PluginClassLoader
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.plugin.jar.classloader`
@@ -360,18 +449,30 @@ jaravel:
 ## Annotations
 
 ### @Application
-- **Type**: annotation
+- **Type**: annotation / final class
 - **Package**: `com.weacsoft.jaravel.vendor.plugin.jar.annotation`
 - **Target**: `TYPE`
 - **Retention**: `RUNTIME`
-- **Description**: 标注插件主应用类。插件 JAR 中标注此注解的类作为插件入口，加载时被识别为插件主类。可指定插件 ID 和版本。
+- **Description**: 标注插件主应用类。插件 JAR 中标注此注解的类作为插件入口，加载时被识别为插件主类。可指定插件 ID 和版本。同时 `Application` 也是一个 final 工具类，作为插件互调代理，提供静态方法供插件代码跨插件获取服务、注册和调用共享接口。主程序在初始化 `HotPluginManager` 后通过 `Application.setManagerRef()` 注入管理器引用，插件代码通过静态方法委托给管理器执行。由于 `Application` 由主程序 ClassLoader 加载（共享包前缀），插件 ClassLoader 会将本类的加载委托给共享 ClassLoader，从而保证全进程唯一实例。
 
-#### Attributes
+#### Annotation Attributes
 
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `id` | `String` | `""` | 插件 ID，为空时使用 JAR 文件名 |
 | `version` | `String` | `"1.0.0"` | 插件版本 |
+
+#### Static Methods（共享接口相关）
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `setManagerRef`（static） | `HotPluginManagerRef ref` | `void` | 注入插件管理器引用。主程序在创建 `HotPluginManager` 后调用 |
+| `getService`（static） | `String pluginId, Class<T> serviceType, String beanName` | `T` | 从指定插件获取服务 Bean，不存在返回 null，类型不匹配抛出 ClassCastException |
+| `registerSharedInterface`（static） | `String interfaceName, String pluginId, String beanName, String methodName` | `boolean` | 注册共享接口（插件侧调用入口）。全手动指定，全部字符串。委托给 `HotPluginManagerRef.registerSharedInterface()` |
+| `invokeSharedInterface`（static） | `String interfaceName, Map<String, Object> args` | `Map<String, Object>` | 通过共享接口名称调用方法（请求参数和返回参数都用 Map）。args 为 null 时使用空 Map。委托给 `HotPluginManagerRef.invokeSharedInterface()` |
+| `getSharedInterfaces`（static） | - | `List<SharedInterfaceDescriptor>` | 获取所有已注册的共享接口。委托给 `HotPluginManagerRef.getSharedInterfaces()` |
+
+> 上述静态方法在 `managerRef` 未注入时抛出 `IllegalStateException("HotPluginManagerRef 未注入")`。
 
 #### Usage Example
 ```java
@@ -380,6 +481,39 @@ public class MyPluginApplication {
     // 插件主类
 }
 ```
+
+共享接口调用示例（插件代码中）：
+
+```java
+import com.weacsoft.jaravel.vendor.plugin.jar.annotation.Application;
+
+// 1. 注册共享接口（通常在插件启用后由插件自身或主程序注册）
+Application.registerSharedInterface(
+    "admin.service.list", "my-plugin", "blogController", "list");
+
+// 2. 通过共享接口名称调用（参数和返回值均为 Map）
+Map<String, Object> args = new HashMap<>();
+args.put("page", 1);
+args.put("size", 10);
+Map<String, Object> result = Application.invokeSharedInterface("admin.service.list", args);
+
+// 3. 查询所有共享接口
+List<SharedInterfaceDescriptor> interfaces = Application.getSharedInterfaces();
+```
+
+### Application.HotPluginManagerRef
+- **Type**: interface（内部接口）
+- **Package**: `com.weacsoft.jaravel.vendor.plugin.jar.annotation.Application`
+- **Description**: 管理器引用接口，由 `HotPluginManager` 实现。抽象为接口以避免插件代码直接依赖 `HotPluginManager` 具体类。主程序通过 `Application.setManagerRef()` 注入实现类实例，插件代码通过 `Application` 静态方法间接调用本接口方法。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `getServiceFromPlugin` | `String pluginId, String beanName` | `Object` | 从指定插件获取 Bean，不存在返回 null |
+| `registerSharedInterface` | `String interfaceName, String pluginId, String beanName, String methodName` | `boolean` | 注册共享接口（全手动指定） |
+| `invokeSharedInterface` | `String interfaceName, Map<String, Object> args` | `Map<String, Object>` | 通过共享接口名称反射调用，返回参数 Map |
+| `getSharedInterfaces` | - | `List<SharedInterfaceDescriptor>` | 获取所有共享接口描述列表 |
 
 ### @PluginComponent
 - **Type**: annotation

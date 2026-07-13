@@ -3,6 +3,8 @@ package com.weacsoft.jaravel.vendor.jblade;
 import com.weacsoft.jaravel.vendor.cache.CacheStore;
 import com.weacsoft.jaravel.vendor.utils.memory.MemoryClassLoader;
 
+import javax.tools.JavaCompiler;
+import javax.tools.ToolProvider;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.io.Writer;
@@ -43,6 +45,16 @@ public class BladeEngine {
     private final MemoryClassLoader memoryClassLoader;
     /** 是否启用二级缓存 */
     private final boolean useCacheStore;
+
+    // ===== 预编译模式字段 =====
+    /** 预编译模式：从打包文件加载 */
+    private String precompiledPackagePath;
+    /** 预编译模式：从目录加载 class 文件 */
+    private String precompiledClassesDir;
+    /** 是否使用预编译模式 */
+    private boolean precompiledMode = false;
+    /** 预编译模板名 -> 类全限定名映射 */
+    private Map<String, String> precompiledTemplateMapping;
 
     public BladeEngine(String templateDir) {
         this(templateDir, DEFAULT_SUFFIX, null, null);
@@ -131,6 +143,103 @@ public class BladeEngine {
 
     public MemoryClassLoader getMemoryClassLoader() {
         return memoryClassLoader;
+    }
+
+    // ===== 预编译模式工厂方法 =====
+
+    /**
+     * 创建使用预编译打包文件的 BladeEngine。
+     * <p>
+     * 运行时从指定的 .jblade.zip 文件加载模板字节码，无需 JDK。
+     * 预编译产物通过 {@link BladePrecompiler} 生成。
+     *
+     * @param packagePath 预编译打包文件路径（.jblade.zip）
+     * @return 预编译模式的 BladeEngine
+     */
+    public static BladeEngine fromPrecompiledPackage(String packagePath) {
+        BladeEngine engine = new BladeEngine("");
+        engine.precompiledPackagePath = packagePath;
+        engine.precompiledMode = true;
+        engine.loadPrecompiled();
+        return engine;
+    }
+
+    /**
+     * 创建使用预编译 class 目录的 BladeEngine。
+     * <p>
+     * 运行时从指定目录加载 .class 文件，无需 JDK。
+     * 预编译产物通过 {@link BladePrecompiler} 生成。
+     *
+     * @param classesDir 预编译 class 文件目录路径
+     * @return 预编译模式的 BladeEngine
+     */
+    public static BladeEngine fromPrecompiledClasses(String classesDir) {
+        BladeEngine engine = new BladeEngine("");
+        engine.precompiledClassesDir = classesDir;
+        engine.precompiledMode = true;
+        engine.loadPrecompiled();
+        return engine;
+    }
+
+    /**
+     * 是否使用预编译模式。
+     *
+     * @return true 表示当前引擎使用预编译模式加载模板
+     */
+    public boolean isPrecompiledMode() {
+        return precompiledMode;
+    }
+
+    /**
+     * 获取预编译模板名->类名映射（预编译模式下非 null）。
+     *
+     * @return 模板名映射，非预编译模式返回 null
+     */
+    public Map<String, String> getPrecompiledTemplateMapping() {
+        return precompiledTemplateMapping;
+    }
+
+    /**
+     * 加载预编译产物到内存。
+     * <p>
+     * 将所有字节码加载到 MemoryClassLoader，并建立模板名->类名映射。
+     * 在工厂方法中调用，完成后即可通过 loadTemplate 渲染模板。
+     */
+    private void loadPrecompiled() {
+        try {
+            PrecompiledTemplateLoader.PrecompiledBundle bundle;
+            if (precompiledPackagePath != null) {
+                bundle = PrecompiledTemplateLoader.loadBundleFromPackage(precompiledPackagePath);
+            } else if (precompiledClassesDir != null) {
+                bundle = PrecompiledTemplateLoader.loadBundleFromDirectory(precompiledClassesDir);
+            } else {
+                throw new IllegalStateException("预编译模式未配置加载路径");
+            }
+            // 将所有字节码加载到 MemoryClassLoader
+            memoryClassLoader.getCompiledClasses().putAll(bundle.classBytecodes);
+            this.precompiledTemplateMapping = bundle.templateToClassMapping;
+        } catch (IOException e) {
+            throw new RuntimeException("加载预编译模板失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 从预编译的字节码中加载模板类。
+     *
+     * @param templateName 模板名
+     * @return 模板 Class 对象
+     * @throws ClassNotFoundException 如果预编译产物中未找到该模板
+     */
+    private Class<?> loadFromPrecompiled(String templateName) throws ClassNotFoundException {
+        String className = precompiledTemplateMapping.get(templateName);
+        if (className == null) {
+            throw new ClassNotFoundException(
+                    "预编译模板中未找到模板: " + templateName +
+                    "。可用模板: " + precompiledTemplateMapping.keySet()
+            );
+        }
+        // 字节码已在 loadPrecompiled() 时加载到 memoryClassLoader
+        return memoryClassLoader.loadClass(className);
     }
 
     /**
@@ -319,8 +428,9 @@ public class BladeEngine {
      * 流程：
      * <ol>
      *   <li>查一级缓存（ConcurrentHashMap），命中则直接返回 Class；</li>
-     *   <li>查二级缓存（CacheStore），命中则加载字节码到 MemoryClassLoader；</li>
-     *   <li>缓存未命中时调用 {@link BladeCompiler#compile} 编译模板；</li>
+     *   <li>预编译模式：从已加载的预编译字节码获取 Class（无需 JDK）；</li>
+     *   <li>非预编译模式：查二级缓存（CacheStore），命中则加载字节码到 MemoryClassLoader；</li>
+     *   <li>非预编译模式且缓存未命中时调用 {@link BladeCompiler#compile} 编译模板（需要 JDK）；</li>
      *   <li>编译后将字节码存入二级缓存（如果启用）；</li>
      *   <li>Class 存入一级缓存；</li>
      *   <li>创建或获取 BladeTemplate 实例（实例缓存）。</li>
@@ -341,13 +451,19 @@ public class BladeEngine {
             synchronized (this) {
                 templateClass = templateClassCache.get(templateName);
                 if (templateClass == null) {
-                    // 2. 查二级缓存（CacheStore）
-                    if (useCacheStore) {
-                        templateClass = loadFromCacheStore(templateName);
-                    }
-                    // 3. 缓存未命中，编译模板
-                    if (templateClass == null) {
-                        templateClass = compileAndCache(templateName);
+                    if (precompiledMode) {
+                        // 预编译模式：从已加载的字节码获取类
+                        templateClass = loadFromPrecompiled(templateName);
+                    } else {
+                        // 非预编译模式：原有逻辑
+                        // 2. 查二级缓存（CacheStore）
+                        if (useCacheStore) {
+                            templateClass = loadFromCacheStore(templateName);
+                        }
+                        // 3. 缓存未命中，编译模板
+                        if (templateClass == null) {
+                            templateClass = compileAndCache(templateName);
+                        }
                     }
                     // 存入一级缓存
                     templateClassCache.put(templateName, templateClass);
@@ -401,6 +517,17 @@ public class BladeEngine {
      * @return 编译后的 Class
      */
     private Class<?> compileAndCache(String templateName) throws IOException, ClassNotFoundException {
+        // 检查 JDK 是否可用
+        JavaCompiler javaCompiler = ToolProvider.getSystemJavaCompiler();
+        if (javaCompiler == null) {
+            throw new IllegalStateException(
+                    "无法获取Java编译器。运行时环境为JRE而非JDK。\n" +
+                    "解决方案：\n" +
+                    "1. 使用JDK运行\n" +
+                    "2. 使用预编译模式：BladeEngine.fromPrecompiledPackage() 或 fromPrecompiledClasses()\n" +
+                    "3. 运行 BladePrecompiler 预编译模板后部署"
+            );
+        }
         // 编译模板（读取文件 + 生成源码 + JavaC 编译）
         String className = compiler.compile(templateName);
         // 从 MemoryClassLoader 加载 Class

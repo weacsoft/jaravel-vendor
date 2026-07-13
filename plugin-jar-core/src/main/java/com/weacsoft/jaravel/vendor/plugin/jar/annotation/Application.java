@@ -1,5 +1,10 @@
 package com.weacsoft.jaravel.vendor.plugin.jar.annotation;
 
+import com.weacsoft.jaravel.vendor.plugin.jar.model.SharedInterfaceDescriptor;
+
+import java.util.List;
+import java.util.Map;
+
 /**
  * 插件互调代理类。
  * <p>
@@ -62,6 +67,56 @@ public final class Application {
     }
 
     /**
+     * 注册共享接口（全手动指定）。
+     * <p>
+     * 全部使用字符串指定，开发时无需包含目标类，运行时从所有模块中查找并反射调用。
+     *
+     * @param interfaceName 共享接口名称（全局唯一，如 "admin.service.list"）
+     * @param pluginId      提供方插件 ID
+     * @param beanName      Bean 名称
+     * @param methodName    方法名
+     * @return true=注册成功
+     */
+    public static boolean registerSharedInterface(String interfaceName, String pluginId,
+                                                   String beanName, String methodName) {
+        HotPluginManagerRef ref = managerRef;
+        if (ref == null) {
+            throw new IllegalStateException("HotPluginManagerRef 未注入");
+        }
+        return ref.registerSharedInterface(interfaceName, pluginId, beanName, methodName);
+    }
+
+    /**
+     * 通过共享接口名称调用方法。
+     * <p>
+     * 请求参数和返回参数都用 Map 表示。
+     *
+     * @param interfaceName 共享接口名称
+     * @param args          请求参数 Map
+     * @return 返回参数 Map
+     */
+    public static Map<String, Object> invokeSharedInterface(String interfaceName, Map<String, Object> args) {
+        HotPluginManagerRef ref = managerRef;
+        if (ref == null) {
+            throw new IllegalStateException("HotPluginManagerRef 未注入");
+        }
+        return ref.invokeSharedInterface(interfaceName, args != null ? args : new java.util.HashMap<>());
+    }
+
+    /**
+     * 获取所有已注册的共享接口。
+     *
+     * @return 共享接口描述列表
+     */
+    public static List<SharedInterfaceDescriptor> getSharedInterfaces() {
+        HotPluginManagerRef ref = managerRef;
+        if (ref == null) {
+            throw new IllegalStateException("HotPluginManagerRef 未注入");
+        }
+        return ref.getSharedInterfaces();
+    }
+
+    /**
      * 管理器引用接口，由 {@code HotPluginManager} 实现。
      * <p>
      * 抽象为接口以避免插件代码直接依赖 {@code HotPluginManager} 具体类。
@@ -76,5 +131,33 @@ public final class Application {
          * @return Bean 实例，不存在返回 {@code null}
          */
         Object getServiceFromPlugin(String pluginId, String beanName);
+
+        /**
+         * 注册共享接口。
+         *
+         * @param interfaceName 共享接口名称（全局唯一）
+         * @param pluginId      提供方插件 ID
+         * @param beanName      Bean 名称
+         * @param methodName    方法名
+         * @return true=注册成功
+         */
+        boolean registerSharedInterface(String interfaceName, String pluginId,
+                                         String beanName, String methodName);
+
+        /**
+         * 通过共享接口名称反射调用。
+         *
+         * @param interfaceName 共享接口名称
+         * @param args          请求参数 Map
+         * @return 返回参数 Map
+         */
+        Map<String, Object> invokeSharedInterface(String interfaceName, Map<String, Object> args);
+
+        /**
+         * 获取所有共享接口。
+         *
+         * @return 共享接口描述列表
+         */
+        List<SharedInterfaceDescriptor> getSharedInterfaces();
     }
 }

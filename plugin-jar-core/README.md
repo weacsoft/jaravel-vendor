@@ -21,6 +21,12 @@ JAR 插件系统核心库，提供动态加载/卸载 JAR 插件、三级 ClassL
 - [路由注册模式](#路由注册模式)
 - [核心 API](#核心-api)
   - [HotPluginManager 方法列表](#hotpluginmanager-方法列表)
+- [共享接口](#共享接口)
+  - [设计理念](#设计理念)
+  - [注册共享接口](#注册共享接口)
+  - [调用共享接口](#调用共享接口)
+  - [共享接口 API 一览](#共享接口-api-一览)
+  - [多租户场景](#多租户场景)
 - [字节数组模式（内存插件）](#字节数组模式内存插件)
 - [插件开发指南](#插件开发指南)
   - [添加 Maven 依赖](#添加-maven-依赖)
@@ -44,6 +50,7 @@ JAR 插件系统核心库，提供动态加载/卸载 JAR 插件、三级 ClassL
 - **三级 ClassLoader 隔离 + 共享接口热更新**：主 ClassLoader / SharedClassLoader（可热替换）/ PluginClassLoader（每插件一个）三层隔离，插件间互不干扰，共享接口 JAR 可热更新而无需重启应用。
 - **插件自动注册 Spring Bean + 动态路由映射**：通过 `@PluginComponent` 标注的类自动注册为 Spring Bean，通过 `@PluginMapping` 标注的方法自动注册为 HTTP 路由，无需手动配置。
 - **插件间依赖注入**：通过 `Application.getService()` 代理，动态从 Spring 容器获取目标插件的服务实例，实现跨插件调用。
+- **共享接口（字符串驱动反射调用）**：通过 `Application.registerSharedInterface()` / `invokeSharedInterface()`，插件可将以全字符串指定的 Bean 方法注册为全局共享接口，其他模块通过接口名称即可反射调用，参数和返回值统一用 Map 表示，无需编译期依赖目标类。
 - **双路由注册模式**：支持自动注册（`auto-register=true`，插件启用时自动注册 `@PluginMapping` 路由）与手动注册（`auto-register=false`，通过 `@PluginRoute` 标记可用路由并使用 `registerAvailableRoute()` 按需注册）两种模式。
 - **手动路由注册/注销**：提供 `registerRoute()` / `unregisterRoute()` 方法，以及 `getAvailableRoutes()` / `registerAvailableRoute()` 手动注册 API，支持以方法调用方式（非 REST API）动态注册和注销路由。
 - **Jaravel Request/Response 集成**：当 jaravel 可用时，插件方法可直接使用 jaravel 的 `Request`/`Response` 而非 Servlet API，通过 `PluginIntegration` 接口自动检测并适配，同一份插件代码可同时运行于 jaravel 与纯 Spring Boot 环境。
@@ -62,7 +69,7 @@ JAR 插件系统核心库，提供动态加载/卸载 JAR 插件、三级 ClassL
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>plugin-jar-core</artifactId>
-    <version>0.1.1</version>
+    <version>0.1.2</version>
 </dependency>
 ```
 
@@ -311,6 +318,17 @@ private HotPluginManager hotPluginManager;
 |---|---|
 | `Object getServiceFromPlugin(String pluginId, String beanName)` | 跨插件获取服务。从 Spring 容器中按 beanName 获取指定插件注册的 Bean 实例 |
 
+#### 共享接口
+
+| 方法签名 | 说明 |
+|---|---|
+| `boolean registerSharedInterface(String interfaceName, String pluginId, String beanName, String methodName)` | 注册共享接口（全手动指定，全部字符串）。要求插件已启用且 Bean 已注册。详见 [共享接口](#共享接口) |
+| `boolean registerSharedInterface(String interfaceName, String pluginId, String beanName, String methodName, String description)` | 注册共享接口（带可选描述） |
+| `boolean unregisterSharedInterface(String interfaceName)` | 注销共享接口。接口存在并移除返回 true |
+| `List<SharedInterfaceDescriptor> getSharedInterfaces()` | 获取所有已注册的共享接口描述列表 |
+| `SharedInterfaceDescriptor getSharedInterface(String interfaceName)` | 获取指定共享接口描述符，不存在返回 null |
+| `Map<String, Object> invokeSharedInterface(String interfaceName, Map<String, Object> args)` | 通过共享接口名称反射调用目标方法，参数和返回值均用 Map 表示 |
+
 #### 查询与持久化恢复
 
 | 方法签名 | 说明 |
@@ -323,7 +341,7 @@ private HotPluginManager hotPluginManager;
 
 ```java
 // 1. 初始化共享 ClassLoader（通常在启动时由自动装配完成）
-hotPluginManager.initSharedClassLoader(Path.of("shared-api.jar"), "0.1.1");
+hotPluginManager.initSharedClassLoader(Path.of("shared-api.jar"), "0.1.2");
 
 // 2. 从文件注册插件（持久化）
 String pluginId = hotPluginManager.registerPluginFromPath(
@@ -355,7 +373,204 @@ hotPluginManager.uninstallPlugin("my-plugin");
 // 9. 查询插件信息
 List<PluginInfo> all = hotPluginManager.getAllPlugins();
 PluginInfo info = hotPluginManager.getPlugin("my-plugin");
+
+// 10. 共享接口（详见下方"共享接口"章节）
+hotPluginManager.registerSharedInterface(
+    "admin.service.list", "my-plugin", "blogController", "list", "获取博客列表");
+Map<String, Object> result = hotPluginManager.invokeSharedInterface(
+    "admin.service.list", Map.of("page", 1, "size", 10));
 ```
+
+---
+
+## 共享接口
+
+共享接口（Shared Interface）是一种轻量级的插件间调用机制。插件可以将自身某个 Bean 的某个方法注册为"共享接口"，其他模块（插件或主程序）通过全局唯一的接口名称即可反射调用，而无需在编译期依赖目标插件的具体类。
+
+### 设计理念
+
+共享接口的设计围绕以下四个核心原则：
+
+| 原则 | 说明 |
+|------|------|
+| **全手动指定** | 注册时全部使用字符串指定（接口名、插件 ID、Bean 名、方法名），不需要注解扫描，不需要接口预定义。开发时无需包含目标类 |
+| **字符串驱动** | 调用方只需知道接口名称字符串（如 `"admin.service.list"`），不依赖任何具体类型，实现真正的解耦 |
+| **反射封装** | 运行时由 `HotPluginManager` 通过反射查找 Bean 和方法并调用，调用方无需处理反射细节 |
+| **Map 传参** | 请求参数和返回值统一用 `Map<String, Object>` 表示，避免跨插件/跨模块的类型依赖问题，适合 JSON 友好的场景 |
+
+与 `Application.getService()` 的区别：
+
+| 维度 | `Application.getService()` | 共享接口 |
+|------|---------------------------|---------|
+| 依赖 | 编译期需要目标服务接口类 | 完全无依赖，仅靠字符串名称 |
+| 调用方式 | 获取 Bean 实例后直接调用方法 | 通过接口名称反射调用 |
+| 参数/返回 | 强类型 | `Map<String, Object>` |
+| 适用场景 | 同一团队、可共享接口 JAR | 跨团队、松耦合、动态发现 |
+
+### 注册共享接口
+
+注册共享接口使用 `HotPluginManager.registerSharedInterface()` 或 `Application.registerSharedInterface()`。注册前要求目标插件已启用且对应 Bean 已注册到 Spring 容器。
+
+```java
+import com.weacsoft.jaravel.vendor.plugin.jar.annotation.Application;
+
+// ===== 方式一：主程序侧通过 HotPluginManager 注册 =====
+@Autowired
+private HotPluginManager hotPluginManager;
+
+// 前提：插件 "blog-plugin" 已启用，其中 blogController Bean 已注册
+hotPluginManager.registerSharedInterface(
+    "admin.service.list",        // 接口名称（全局唯一）
+    "blog-plugin",               // 提供方插件 ID
+    "blogController",            // Bean 名称
+    "list",                      // 方法名
+    "获取博客列表"                 // 可选描述
+);
+
+// ===== 方式二：插件侧通过 Application 静态方法注册 =====
+// 插件代码中无需注入 HotPluginManager，直接调用 Application
+Application.registerSharedInterface(
+    "admin.service.list", "blog-plugin", "blogController", "list");
+```
+
+注册成功后，可通过 `getSharedInterfaces()` 查看所有已注册的共享接口：
+
+```java
+List<SharedInterfaceDescriptor> interfaces = hotPluginManager.getSharedInterfaces();
+interfaces.forEach(d -> System.out.println(
+    d.getInterfaceName() + " -> " + d.getPluginId() + ":" + d.getBeanName() + "." + d.getMethodName()));
+// 输出: admin.service.list -> blog-plugin:blogController.list
+```
+
+### 调用共享接口
+
+调用共享接口使用 `HotPluginManager.invokeSharedInterface()` 或 `Application.invokeSharedInterface()`，传入接口名称和参数 Map，返回值也是 Map。
+
+```java
+import com.weacsoft.jaravel.vendor.plugin.jar.annotation.Application;
+
+// ===== 方式一：主程序侧通过 HotPluginManager 调用 =====
+Map<String, Object> args = new HashMap<>();
+args.put("page", 1);
+args.put("size", 10);
+Map<String, Object> result = hotPluginManager.invokeSharedInterface("admin.service.list", args);
+
+// ===== 方式二：插件侧通过 Application 静态方法调用 =====
+Map<String, Object> result2 = Application.invokeSharedInterface(
+    "admin.service.list", Map.of("page", 1, "size", 10));
+```
+
+**参数解析规则**（根据目标方法的参数数量自动适配）：
+
+| 方法参数情况 | 解析规则 | 示例 |
+|-------------|---------|------|
+| 0 参数 | 直接调用，忽略 args | `public Map list()` |
+| 1 个 `Map` 参数 | 将整个 args Map 传入 | `public Map list(Map<String, Object> params)` |
+| 1 个其他类型参数 | 从 args 中取 `"data"` 键；不存在则取第一个值，按目标类型转换 | `public String getTitle(String data)` |
+| 多参数 | 按参数名（`Parameter.getName()`）从 args 中匹配取值 | `public Map list(int page, int size)` |
+
+**返回值转换规则**：
+
+| 方法返回值 | 转换结果 |
+|-----------|---------|
+| `null` 或 `void` | 返回空 Map `{}` |
+| `Map` | 直接返回该 Map |
+| 其他类型 | 包装为 `{"data": result}` |
+
+> 调用过程中发生异常时返回 `{"error": message}`，不向外抛出异常。
+
+**完整示例**：目标插件中有一个如下方法：
+
+```java
+@PluginComponent("blogController")
+public class BlogController {
+
+    // 多参数方法：按参数名 page、size 匹配
+    public Map<String, Object> list(int page, int size) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("page", page);
+        data.put("size", size);
+        data.put("items", List.of("post-1", "post-2"));
+        return data;
+    }
+
+    // 接收 Map 参数的方法
+    public Map<String, Object> search(Map<String, Object> params) {
+        return Map.of("keyword", params.get("keyword"), "results", List.of());
+    }
+
+    // 无参方法
+    public String ping() {
+        return "pong";
+    }
+}
+```
+
+注册并调用：
+
+```java
+// 注册
+hotPluginManager.registerSharedInterface("blog.list", "blog-plugin", "blogController", "list");
+hotPluginManager.registerSharedInterface("blog.search", "blog-plugin", "blogController", "search");
+hotPluginManager.registerSharedInterface("blog.ping", "blog-plugin", "blogController", "ping");
+
+// 调用 list（多参数，按参数名匹配）
+Map<String, Object> r1 = Application.invokeSharedInterface(
+    "blog.list", Map.of("page", 1, "size", 10));
+// r1 = {page=1, size=10, items=[post-1, post-2]}  （方法返回 Map，直接返回）
+
+// 调用 search（1 个 Map 参数，传入整个 args）
+Map<String, Object> r2 = Application.invokeSharedInterface(
+    "blog.search", Map.of("keyword", "hello"));
+// r2 = {keyword=hello, results=[]}
+
+// 调用 ping（0 参数）
+Map<String, Object> r3 = Application.invokeSharedInterface("blog.ping", new HashMap<>());
+// r3 = {data=pong}  （返回 String，包装为 {"data": "pong"}）
+```
+
+### 共享接口 API 一览
+
+| API | 所属 | 说明 |
+|-----|------|------|
+| `HotPluginManager.registerSharedInterface(name, pluginId, bean, method)` | HotPluginManager | 注册共享接口 |
+| `HotPluginManager.registerSharedInterface(name, pluginId, bean, method, desc)` | HotPluginManager | 注册共享接口（带描述） |
+| `HotPluginManager.unregisterSharedInterface(name)` | HotPluginManager | 注销共享接口 |
+| `HotPluginManager.getSharedInterfaces()` | HotPluginManager | 获取所有共享接口 |
+| `HotPluginManager.getSharedInterface(name)` | HotPluginManager | 获取指定共享接口描述 |
+| `HotPluginManager.invokeSharedInterface(name, args)` | HotPluginManager | 反射调用共享接口 |
+| `Application.registerSharedInterface(name, pluginId, bean, method)` | Application（static） | 插件侧注册入口 |
+| `Application.invokeSharedInterface(name, args)` | Application（static） | 插件侧调用入口 |
+| `Application.getSharedInterfaces()` | Application（static） | 插件侧查询入口 |
+
+`SharedInterfaceDescriptor` 字段：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `interfaceName` | `String` | 共享接口名称（全局唯一，如 `"admin.service.list"`） |
+| `pluginId` | `String` | 提供方插件 ID（如 `"studentA@blog"`） |
+| `beanName` | `String` | Bean 名称（如 `"blogController"`） |
+| `methodName` | `String` | 方法名（如 `"list"`） |
+| `description` | `String` | 可选描述 |
+
+### 多租户场景
+
+引入 `plugin-jar-multi-tenant` 模块后，`TenantAwareHotPluginManager` 会重写 `lookupSharedInterfaceBean()` 方法，在多租户模式下自动将 Bean 名称前缀化（如 `blogController` → `studentA:blogController`），反射调用逻辑复用父类。注册共享接口时使用原始 Bean 名称，调用时由多租户管理器自动处理前缀化，调用方无感知。
+
+```java
+// 多租户场景下注册共享接口（pluginId 含租户前缀）
+hotPluginManager.registerSharedInterface(
+    "studentA.blog.list",       // 接口名称
+    "studentA@blog",            // 含租户的 pluginId
+    "blogController",           // 原始 Bean 名（查找时自动前缀化为 studentA:blogController）
+    "list");
+
+// 调用时无需关心租户前缀化细节
+Map<String, Object> result = Application.invokeSharedInterface(
+    "studentA.blog.list", Map.of("page", 1));
+```
+
+详见 [plugin-jar-multi-tenant](../plugin-jar-multi-tenant/README.md) 模块文档。
 
 ---
 
@@ -408,7 +623,7 @@ manager.reloadPluginFromBytes("my-plugin", newJarBytes);
     <dependency>
         <groupId>io.github.lijialong1313</groupId>
         <artifactId>plugin-jar-core</artifactId>
-        <version>0.1.1</version>
+        <version>0.1.2</version>
         <scope>provided</scope>
     </dependency>
 </dependencies>
@@ -563,7 +778,7 @@ public interface MetadataPersistence {
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>plugin-jar-database</artifactId>
-    <version>0.1.1</version>
+    <version>0.1.2</version>
 </dependency>
 ```
 
@@ -768,7 +983,8 @@ com.weacsoft.jaravel.vendor.plugin.jar
 ├── model                               # 数据模型
 │   ├── PluginInfo                      # 插件元数据（pluginId/version/state/依赖/路由等）
 │   ├── PluginInfo.State                # 插件状态枚举（UPLOADED/ENABLED/DISABLED）
-│   └── RouteInfo                       # 路由信息（path/method/beanName/methodName/produces）
+│   ├── RouteInfo                       # 路由信息（path/method/beanName/methodName/produces）
+│   └── SharedInterfaceDescriptor       # 共享接口描述符（interfaceName/pluginId/beanName/methodName/description）
 │
 ├── persistence                         # 元数据持久化
 │   ├── MetadataPersistence             # 持久化接口（save/load/loadAll/delete）
@@ -792,7 +1008,7 @@ com.weacsoft.jaravel.vendor.plugin.jar
 
 | 类 | 职责 |
 |---|---|
-| `HotPluginManager` | 插件系统核心管理器，协调 ClassLoader、Bean 注册器、路由注册器、持久化等组件，提供全部插件管理 API |
+| `HotPluginManager` | 插件系统核心管理器，协调 ClassLoader、Bean 注册器、路由注册器、持久化等组件，提供全部插件管理 API 与共享接口注册/调用能力 |
 | `PluginClassLoader` | 插件级类加载器，实现三级隔离的类加载顺序（Application 代理 → 共享包 → 插件自身 → 父委托） |
 | `SharedClassLoader` | 共享类加载器，加载共享接口 JAR 和注解类，支持整体热替换 |
 | `SharedDependencyScanner` | ASM 字节码扫描器，在不加载类的前提下提取组件类、共享依赖和路由映射 |
@@ -800,4 +1016,5 @@ com.weacsoft.jaravel.vendor.plugin.jar
 | `PluginRouteRegistrar` | 路由注册器，通过 `RequestMappingHandlerMapping` 动态注册/注销 Spring MVC 路由 |
 | `PluginRouteHandler` | 路由处理器，代理处理所有插件路由的 HTTP 请求，反射调用插件方法并写入响应 |
 | `JsonMetadataPersistence` | JSON 文件持久化实现，将插件元数据存储为 `metadata.json` |
-| `Application` | 插件间调用代理，通过静态方法 `getService()` 跨插件获取服务实例 |
+| `SharedInterfaceDescriptor` | 共享接口描述符，封装接口名、插件 ID、Bean 名、方法名和描述 |
+| `Application` | 插件间调用代理，通过静态方法 `getService()` 跨插件获取服务实例，通过 `registerSharedInterface()` / `invokeSharedInterface()` 注册和调用共享接口 |

@@ -84,7 +84,7 @@ Laravel 的 `Authenticatable` 接口包含 `getAuthPassword()`，`UserProvider` 
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>auth</artifactId>
-    <version>0.1.1</version>
+    <version>0.1.2</version>
 </dependency>
 ```
 

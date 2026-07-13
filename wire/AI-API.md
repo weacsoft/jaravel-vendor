@@ -1,6 +1,6 @@
 # wire AI-API Reference
 
-> Module: `wire` | Package: `com.weacsoft.jaravel.vendor.wire` | Version: 0.1.1
+> Module: `wire` | Package: `com.weacsoft.jaravel.vendor.wire` | Version: 0.1.2
 
 ## Overview
 wire 模块是 Jaravel-Vendor 的全栈响应式 UI 框架，对齐 Laravel Livewire。它通过服务端渲染（`WireManager`）+ 前端局部更新（`wire.js`）实现「服务端渲染 + 前端局部更新」的开发模式。核心包含四个类：`WireService`（流式上下文，串联请求解析、默认值填充、action 分派、响应构建）、`WireResponse`（语义化响应构建器，覆盖 wire/update/redirect/error/of 全部场景）、`WireRequest`（从前端 POST 的 JSON 中解析 snapshot/action/params/sections）、`WireManager`（无状态工具类，负责 Wire 模式渲染、section 提取和快照编解码）。组件状态以 Base64 JSON（snapshot）在客户端流转，服务端无状态，天然支持水平扩展。
@@ -32,7 +32,8 @@ wire 模块是 Jaravel-Vendor 的全栈响应式 UI 框架，对齐 Laravel Live
 | `getAction` | 无 | `String` | 获取当前 action 名称 |
 | `toData` | 无 | `Map<String,Object>` | 分派 action 处理器并返回最终的 data Map |
 | `toSections` | 无 | `List<String>` | 获取要更新的 section 列表。如果请求中没有指定 sections，则使用模板的默认 section |
-| `responseWire` | 无 | `Response` | 直接生成 Wire 初始页面响应（HTML）。等同于 `WireResponse.wire(templateName, data, updateUrl)` |
+| `responseWire` | 无 | `Response` | 直接生成 Wire 初始页面响应（HTML）。等同于 `WireResponse.wire(templateName, data, updateUrl)`。是否注入 wire.js 受 `WireManager.isAutoInjectJs()` 控制 |
+| `responseWire` | `boolean injectJs` | `Response` | 直接生成 Wire 初始页面响应（HTML），显式指定是否注入 wire.js。`injectJs=false` 时只注入 wire:config 配置标签 |
 | `responseUpdate` | 无 | `Response` | 分派 action 处理器并生成 Wire 更新响应（JSON）。等同于 `WireResponse.update(templateName, data, sections)`，但自动分派 action |
 | `responseOf` | 无 | `WireResponse` | 分派 action 处理器并返回全能构建器，可继续链式调用 `withRedirect` / `withDispatch` / `withError` |
 
@@ -98,8 +99,9 @@ List<Object> items = ctx.getList("items");
 
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
-| `wire` (static) | `String templateName, Map<String,Object> data, String updateUrl` | `Response` | 初始页面渲染：渲染模板 + 注入 Wire 资源（wire.js + snapshot + updateUrl），返回完整 HTML 页面 |
+| `wire` (static) | `String templateName, Map<String,Object> data, String updateUrl` | `Response` | 初始页面渲染：渲染模板 + 注入 Wire 资源（wire.js + snapshot + updateUrl），返回完整 HTML 页面。是否注入 wire.js 受 `WireManager.isAutoInjectJs()` 控制 |
 | `wire` (static) | `String templateName, Map<String,Object> data` | `Response` | 初始页面渲染（使用默认 update URL: `/wire/update`） |
+| `wire` (static) | `String templateName, Map<String,Object> data, String updateUrl, boolean injectJs` | `Response` | 初始页面渲染，显式指定是否注入 wire.js。`injectJs=false` 时只注入 wire:config 配置标签，不注入 `<script src="...">` 标签 |
 | `update` (static) | `String templateName, Map<String,Object> data, List<String> sections` | `Response` | 部分更新响应：渲染指定 section 并返回 JSON。前端 wire.js 收到后自动替换对应 section 的 DOM 内容，并更新 snapshot。sections 为空时使用模板默认 section |
 | `redirect` (static) | `String url` | `Response` | Wire 重定向：返回 JSON，前端 wire.js 自动执行 `window.location.href = url`。默认立即跳转 |
 | `redirect` (static) | `String url, int delayMs` | `Response` | Wire 重定向（带延迟）：前端在延迟指定毫秒后跳转。`delayMs = 0` 表示立即跳转 |
@@ -277,18 +279,25 @@ WireRequest wireReq = WireRequest.fromJson(
 |--------|-----------|--------|-------------|
 | `setEngine` (static) | `BladeEngine engine` | `void` | 设置 BladeEngine 实例（由 ServiceProvider 或配置类调用） |
 | `getEngine` (static) | 无 | `BladeEngine` | 获取 BladeEngine 实例（未设置抛 RuntimeException） |
+| `setJsPath` (static) | `String path` | `void` | 设置 wire.js 的外部引用路径（注入到 HTML 中的 script src）。用于自定义静态资源服务路径，如 CDN 或自定义路由前缀。`null` 回退为 `/static/wire.js` |
+| `getJsPath` (static) | 无 | `String` | 获取 wire.js 的外部引用路径（默认 `/static/wire.js`） |
+| `setAutoInjectJs` (static) | `boolean autoInject` | `void` | 设置是否自动注入 wire.js 的 script 标签。设为 `false` 后，`injectWireAssets` 只注入 wire:config 配置标签，开发者需自行引入 wire.js |
+| `isAutoInjectJs` (static) | 无 | `boolean` | 是否自动注入 wire.js（默认 `true`，向后兼容） |
+| `getWireJsContent` (static) | 无 | `String` | 从 classpath 读取 `/static/wire.js` 完整内容并返回。用于手动引入场景：可修改静态资源请求路径后内联到页面，或通过自定义路由提供修改后的 JS 内容 |
 | `renderForWire` (static) | `String templateName, Map<String,Object> data` | `String` | 以 Wire 模式渲染模板（完整页面）。设置 `__wire_mode = true`，使 `@yield` 输出被 `<div wire:section="name">` 包裹 |
 | `renderSection` (static) | `String templateName, String sectionName, Map<String,Object> data` | `String` | 渲染指定 section 的内容（不含布局） |
 | `renderSections` (static) | `String templateName, List<String> sectionNames, Map<String,Object> data` | `Map<String,String>` | 批量渲染多个 section（高效：只加载和初始化模板一次）。返回 section 名 → HTML 内容 |
 | `getSectionNames` (static) | `String templateName` | `List<String>` | 获取模板中所有已注册的 section 名 |
 | `encodeSnapshot` (static) | `Map<String,Object> data` | `String` | 将数据 Map 编码为 Base64 JSON 快照（自动过滤 `__wire` 前缀的内部字段） |
 | `decodeSnapshot` (static) | `String base64` | `Map<String,Object>` | 从 Base64 JSON 快照解码出数据 Map（空串返回空 Map） |
-| `injectWireAssets` (static) | `String html, String updateUrl, String snapshot` | `String` | 将 Wire 资源（snapshot + updateUrl + wire.js）注入到 HTML 的 `</body>` 前 |
-| `renderWirePage` (static) | `String templateName, Map<String,Object> data, String updateUrl` | `String` | 完整的 Wire 初始渲染：渲染模板 + 注入 Wire 资源 |
+| `injectWireAssets` (static) | `String html, String updateUrl, String snapshot` | `String` | 将 Wire 资源（snapshot + updateUrl + wire.js）注入到 HTML 的 `</body>` 前。是否注入 wire.js 受 `isAutoInjectJs()` 控制 |
+| `injectWireAssets` (static) | `String html, String updateUrl, String snapshot, boolean injectJs` | `String` | 将 Wire 资源注入到 HTML 的 `</body>` 前，显式指定是否注入 wire.js。`injectJs=false` 时只注入 wire:config 配置标签，不注入 `<script src="...">` 标签 |
+| `renderWirePage` (static) | `String templateName, Map<String,Object> data, String updateUrl` | `String` | 完整的 Wire 初始渲染：渲染模板 + 注入 Wire 资源。是否注入 wire.js 受 `isAutoInjectJs()` 控制 |
+| `renderWirePage` (static) | `String templateName, Map<String,Object> data, String updateUrl, boolean injectJs` | `String` | 完整的 Wire 初始渲染：渲染模板 + 注入 Wire 资源，显式指定是否注入 wire.js |
 
 #### Injected Wire Assets
 
-`injectWireAssets` 在 `</body>` 标签前注入：
+`injectWireAssets` 在 `</body>` 标签前注入。当 `injectJs=true`（或 `isAutoInjectJs()=true`）时注入完整资源：
 
 ```html
 <script type="application/json" wire:config
@@ -296,6 +305,16 @@ WireRequest wireReq = WireRequest.fromJson(
         wire:snapshot="base64snapshot"></script>
 <script src="/static/wire.js"></script>
 ```
+
+当 `injectJs=false` 时，只注入 wire:config 配置标签，不注入 wire.js 的 script 标签：
+
+```html
+<script type="application/json" wire:config
+        data-wire-update="/api/wire/admin"
+        wire:snapshot="base64snapshot"></script>
+```
+
+开发者可通过 `WireManager.getWireJsContent()` 获取 wire.js 完整内容，自行内联或通过自定义路径引入。
 
 #### Usage Example
 
@@ -349,6 +368,78 @@ public Response update(Request request) {
     result.put("effects", new LinkedHashMap<>());
     return ResponseBuilder.json(result);
 }
+
+// 9. 手动控制 wire.js 注入（不自动注入 script 标签）
+WireManager.setAutoInjectJs(false);  // 全局关闭自动注入
+WireManager.setJsPath("/assets/wire.js");  // 自定义 JS 引用路径
+
+// 使用新重载显式指定不注入 wire.js
+String html = WireManager.renderWirePage("counter", data, "/api/wire/counter", false);
+// html 中只包含 wire:config 配置标签，不包含 <script src="..."> 标签
+
+// 10. 获取 wire.js 完整内容（手动内联或自定义服务）
+String jsContent = WireManager.getWireJsContent();
+// 可修改其中的静态资源请求路径后内联到页面：
+// html = html.replace("</body>", "<script>" + jsContent + "</script></body>");
+// 或通过自定义路由提供修改后的 JS 内容
+```
+
+---
+
+### WireProperties (SpringBoot)
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.wire.springboot`
+- **Description**: Wire 模块 SpringBoot 配置属性。在 `application.yml` 中通过 `jaravel.wire.*` 配置。用于控制 wire.js 的自动注入行为和引用路径。
+- **Annotations**: `@ConfigurationProperties(prefix = "jaravel.wire")`
+
+#### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `enabled` | `boolean` | `true` | 是否启用自动装配 |
+| `autoInjectJs` | `boolean` | `true` | 是否自动注入 wire.js 的 script 标签。设为 `false` 后渲染时只注入 wire:config 配置标签 |
+| `jsPath` | `String` | `"/static/wire.js"` | wire.js 的外部引用路径（注入到 HTML 中的 script src） |
+
+#### Usage Example
+
+```yaml
+# application.yml
+jaravel:
+  wire:
+    enabled: true
+    auto-inject-js: false       # 关闭自动注入，手动引入 wire.js
+    js-path: /assets/wire.js    # 自定义 JS 引用路径
+```
+
+---
+
+### WireAutoConfiguration (SpringBoot)
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.wire.springboot`
+- **Description**: Wire 模块 SpringBoot 自动装配。当 `jaravel.wire.enabled=true`（默认）时，自动读取配置并应用到 `WireManager`：将 `autoInjectJs` 和 `jsPath` 配置项设置到 `WireManager` 的静态字段中。设为 `auto-inject-js=false` 后，Wire 渲染时只注入 wire:config 配置标签，开发者需自行在页面中引入 wire.js（可使用 `WireManager.getWireJsContent()` 获取 JS 内容）。
+- **Annotations**: `@AutoConfiguration`, `@ConditionalOnClass(WireManager.class)`, `@ConditionalOnProperty(prefix = "jaravel.wire", name = "enabled", havingValue = "true", matchIfMissing = true)`, `@EnableConfigurationProperties(WireProperties.class)`
+
+#### Behavior
+
+| 配置项 | 对应 WireManager 方法 | 说明 |
+|--------|----------------------|------|
+| `autoInjectJs` | `WireManager.setAutoInjectJs(...)` | 控制是否自动注入 wire.js 的 script 标签 |
+| `jsPath` | `WireManager.setJsPath(...)` | wire.js 的外部引用路径 |
+
+#### Usage Example
+
+```java
+// 引入依赖后自动装配，无需手动配置
+// WireAutoConfiguration 在构造函数中自动调用：
+//   WireManager.setAutoInjectJs(properties.isAutoInjectJs());
+//   WireManager.setJsPath(properties.getJsPath());
+
+// 在控制器中直接使用，行为受配置控制
+public Response page(Request request) {
+    return WireService.from(request, "wire-demo", "/api/wire/demo")
+        .once("count", 0)
+        .responseWire();  // 是否注入 wire.js 取决于 jaravel.wire.auto-inject-js 配置
+}
 ```
 
 ---
@@ -369,6 +460,7 @@ WireService.from(...)   →   .once(...)             →   .responseWire()    //
 | 场景 | 推荐方法 |
 | --- | --- |
 | 初始页面渲染（GET 请求） | `WireResponse.wire(template, data, updateUrl)` 或 `ctx.responseWire()` |
+| 初始页面渲染（不注入 wire.js） | `WireResponse.wire(template, data, updateUrl, false)` 或 `ctx.responseWire(false)` |
 | 部分更新（POST 请求，wire.js 自动调用） | `WireResponse.update(template, data, sections)` 或 `ctx.responseUpdate()` |
 | 处理中触发跳转 | `WireResponse.redirect(url)` 或 `WireResponse.redirect(url, delayMs)` |
 | 错误响应 | `WireResponse.error(status, message)` 或 `WireResponse.error(status, message, redirect)` |
@@ -394,4 +486,4 @@ WireService.from(...)   →   .once(...)             →   .responseWire()    //
 
 ---
 
-版本: 0.1.1
+版本: 0.1.2

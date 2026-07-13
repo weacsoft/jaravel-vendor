@@ -1,6 +1,6 @@
 # utils AI-API Reference
 
-> Module: `utils` | Package: `com.weacsoft.jaravel.vendor.utils` | Version: 0.1.1
+> Module: `utils` | Package: `com.weacsoft.jaravel.vendor.utils` | Version: 0.1.2
 
 ## Overview
 utils 模块提供两类基础设施工具：

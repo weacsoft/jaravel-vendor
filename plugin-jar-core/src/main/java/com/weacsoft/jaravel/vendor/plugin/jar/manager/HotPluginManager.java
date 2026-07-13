@@ -7,6 +7,7 @@ import com.weacsoft.jaravel.vendor.plugin.jar.classloader.SharedClassLoader;
 import com.weacsoft.jaravel.vendor.plugin.jar.integration.PluginIntegration;
 import com.weacsoft.jaravel.vendor.plugin.jar.model.PluginInfo;
 import com.weacsoft.jaravel.vendor.plugin.jar.model.RouteInfo;
+import com.weacsoft.jaravel.vendor.plugin.jar.model.SharedInterfaceDescriptor;
 import com.weacsoft.jaravel.vendor.plugin.jar.persistence.MetadataPersistence;
 import com.weacsoft.jaravel.vendor.plugin.jar.registrar.PluginBeanRegistrar;
 import com.weacsoft.jaravel.vendor.plugin.jar.registrar.PluginRouteRegistrar;
@@ -16,12 +17,15 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.ConfigurableApplicationContext;
 
 import java.io.IOException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -81,6 +85,8 @@ public class HotPluginManager implements Application.HotPluginManagerRef {
     private final Map<String, PluginInfo> plugins = new ConcurrentHashMap<>();
     /** 插件 ClassLoader 注册表：pluginId -> PluginClassLoader */
     private final Map<String, PluginClassLoader> pluginClassLoaders = new ConcurrentHashMap<>();
+    /** 共享接口注册表: interfaceName -> SharedInterfaceDescriptor */
+    private final Map<String, SharedInterfaceDescriptor> sharedInterfaceRegistry = new ConcurrentHashMap<>();
 
     /** 共享 ClassLoader，volatile 保证可见性 */
     private volatile SharedClassLoader sharedClassLoader;
@@ -725,6 +731,294 @@ public class HotPluginManager implements Application.HotPluginManagerRef {
         } finally {
             lock.readLock().unlock();
         }
+    }
+
+    /**
+     * 注册共享接口。
+     * <p>
+     * 全手动指定：用字符串指定插件中的哪个 Bean 的哪个方法作为共享接口。
+     * 开发时无需包含目标类，运行时通过反射调用。
+     *
+     * @param interfaceName 共享接口名称（全局唯一，如 "admin.service.list"）
+     * @param pluginId      提供方插件 ID
+     * @param beanName      Bean 名称
+     * @param methodName    方法名
+     * @return true=注册成功，false=插件不存在/未启用/Bean未注册
+     */
+    public boolean registerSharedInterface(String interfaceName, String pluginId,
+                                            String beanName, String methodName) {
+        return registerSharedInterface(interfaceName, pluginId, beanName, methodName, null);
+    }
+
+    /**
+     * 注册共享接口（带描述）。
+     *
+     * @param interfaceName 共享接口名称（全局唯一）
+     * @param pluginId      提供方插件 ID
+     * @param beanName      Bean 名称
+     * @param methodName    方法名
+     * @param description   可选描述
+     * @return true=注册成功
+     */
+    public boolean registerSharedInterface(String interfaceName, String pluginId,
+                                            String beanName, String methodName, String description) {
+        lock.readLock().lock();
+        try {
+            PluginInfo info = plugins.get(pluginId);
+            if (info == null || info.getState() != PluginInfo.State.ENABLED) {
+                log.warn("注册共享接口失败，插件不存在或未启用: pluginId={}", pluginId);
+                return false;
+            }
+            if (!info.getRegisteredBeanNames().contains(beanName)) {
+                log.warn("注册共享接口失败，Bean未注册: pluginId={}, beanName={}", pluginId, beanName);
+                return false;
+            }
+        } finally {
+            lock.readLock().unlock();
+        }
+
+        SharedInterfaceDescriptor descriptor = new SharedInterfaceDescriptor(
+                interfaceName, pluginId, beanName, methodName, description);
+        sharedInterfaceRegistry.put(interfaceName, descriptor);
+        log.info("注册共享接口: name={}, pluginId={}, bean={}, method={}",
+                interfaceName, pluginId, beanName, methodName);
+        return true;
+    }
+
+    /**
+     * 注销共享接口。
+     *
+     * @param interfaceName 共享接口名称
+     * @return true=注销成功（接口存在），false=接口不存在
+     */
+    public boolean unregisterSharedInterface(String interfaceName) {
+        SharedInterfaceDescriptor removed = sharedInterfaceRegistry.remove(interfaceName);
+        if (removed != null) {
+            log.info("注销共享接口: name={}", interfaceName);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 获取所有已注册的共享接口。
+     *
+     * @return 共享接口描述列表
+     */
+    public List<SharedInterfaceDescriptor> getSharedInterfaces() {
+        return new ArrayList<>(sharedInterfaceRegistry.values());
+    }
+
+    /**
+     * 获取指定共享接口描述。
+     *
+     * @param interfaceName 共享接口名称
+     * @return 描述符，不存在返回 null
+     */
+    public SharedInterfaceDescriptor getSharedInterface(String interfaceName) {
+        return sharedInterfaceRegistry.get(interfaceName);
+    }
+
+    /**
+     * 通过共享接口名称反射调用方法。
+     * <p>
+     * 参数通过 Map 传递，返回值也转为 Map。
+     * <ul>
+     *   <li>方法参数为0：直接调用</li>
+     *   <li>方法有1个 Map 类型参数：传入整个 args Map</li>
+     *   <li>方法有1个其他类型参数：尝试从 args 中取 "data" 或第一个值</li>
+     *   <li>方法有多个参数：按参数名匹配（用 {@link Parameter#getName()}）</li>
+     * </ul>
+     * 返回值转换规则：
+     * <ul>
+     *   <li>返回 null 或 void：返回空 Map</li>
+     *   <li>返回 Map：直接返回</li>
+     *   <li>其他：包装为 {@code {"data": result}}</li>
+     * </ul>
+     * 异常时返回 {@code {"error": message}}，不抛出异常。
+     *
+     * @param interfaceName 共享接口名称
+     * @param args          请求参数 Map
+     * @return 返回参数 Map
+     */
+    public Map<String, Object> invokeSharedInterface(String interfaceName, Map<String, Object> args) {
+        // 1. 获取 descriptor
+        SharedInterfaceDescriptor descriptor = sharedInterfaceRegistry.get(interfaceName);
+        if (descriptor == null) {
+            throw new IllegalStateException("共享接口未注册: " + interfaceName);
+        }
+
+        Map<String, Object> safeArgs = args != null ? args : new HashMap<>();
+
+        // 2-4. 检查插件状态并获取 Bean
+        Object bean;
+        lock.readLock().lock();
+        try {
+            PluginInfo info = plugins.get(descriptor.getPluginId());
+            if (info == null || info.getState() != PluginInfo.State.ENABLED) {
+                throw new IllegalStateException("插件未启用: " + descriptor.getPluginId());
+            }
+            try {
+                bean = lookupSharedInterfaceBean(descriptor);
+            } catch (Exception e) {
+                log.error("获取Bean失败: beanName={}", descriptor.getBeanName(), e);
+                Map<String, Object> error = new HashMap<>();
+                error.put("error", "获取Bean失败: " + e.getMessage());
+                return error;
+            }
+        } finally {
+            lock.readLock().unlock();
+        }
+
+        // 5. 反射查找方法
+        Method targetMethod = null;
+        for (Method m : bean.getClass().getMethods()) {
+            if (m.getName().equals(descriptor.getMethodName())) {
+                targetMethod = m;
+                break;
+            }
+        }
+        if (targetMethod == null) {
+            log.error("方法不存在: {}.{}", descriptor.getBeanName(), descriptor.getMethodName());
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "方法不存在: " + descriptor.getBeanName() + "." + descriptor.getMethodName());
+            return error;
+        }
+
+        // 6. 解析参数
+        Object[] params;
+        try {
+            params = resolveMethodParameters(targetMethod, safeArgs);
+        } catch (Exception e) {
+            log.error("解析参数失败: method={}", targetMethod.getName(), e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "解析参数失败: " + e.getMessage());
+            return error;
+        }
+
+        // 7. 调用方法
+        Object result;
+        try {
+            result = targetMethod.invoke(bean, params);
+        } catch (Exception e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            log.error("调用共享接口失败: {}", interfaceName, cause);
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "调用失败: " + cause.getMessage());
+            return error;
+        }
+
+        // 8. 转换返回值为 Map
+        return convertResultToMap(result);
+    }
+
+    /**
+     * 解析方法参数。
+     *
+     * @param method 目标方法
+     * @param args   请求参数 Map
+     * @return 参数数组
+     */
+    private Object[] resolveMethodParameters(Method method, Map<String, Object> args) {
+        int paramCount = method.getParameterCount();
+        if (paramCount == 0) {
+            return new Object[0];
+        }
+
+        Parameter[] parameters = method.getParameters();
+        Object[] params = new Object[paramCount];
+
+        if (paramCount == 1) {
+            Class<?> paramType = parameters[0].getType();
+            if (Map.class.isAssignableFrom(paramType)) {
+                // 方法接受 Map 参数，传入整个 args
+                params[0] = args;
+            } else {
+                // 尝试从 args 中取 "data" 或第一个值
+                Object value = args.get("data");
+                if (value == null && !args.isEmpty()) {
+                    value = args.values().iterator().next();
+                }
+                params[0] = convertValue(value, paramType);
+            }
+            return params;
+        }
+
+        // 多参数：按参数名匹配
+        for (int i = 0; i < paramCount; i++) {
+            String paramName = parameters[i].getName();
+            Object value = args.get(paramName);
+            params[i] = convertValue(value, parameters[i].getType());
+        }
+        return params;
+    }
+
+    /**
+     * 将值转换为目标类型（支持基本类型转换）。
+     *
+     * @param value      原始值
+     * @param targetType 目标类型
+     * @return 转换后的值
+     */
+    private Object convertValue(Object value, Class<?> targetType) {
+        if (value == null) {
+            return null;
+        }
+        if (targetType.isInstance(value)) {
+            return value;
+        }
+        String str = value.toString();
+        if (targetType == String.class) {
+            return str;
+        }
+        if (targetType == Integer.class || targetType == int.class) {
+            return Integer.valueOf(str);
+        }
+        if (targetType == Long.class || targetType == long.class) {
+            return Long.valueOf(str);
+        }
+        if (targetType == Boolean.class || targetType == boolean.class) {
+            return Boolean.valueOf(str);
+        }
+        if (targetType == Double.class || targetType == double.class) {
+            return Double.valueOf(str);
+        }
+        if (targetType == Float.class || targetType == float.class) {
+            return Float.valueOf(str);
+        }
+        return value;
+    }
+
+    /**
+     * 将方法返回值转换为 Map。
+     *
+     * @param result 方法返回值
+     * @return Map 形式的返回值
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> convertResultToMap(Object result) {
+        if (result == null) {
+            return new HashMap<>();
+        }
+        if (result instanceof Map) {
+            return new HashMap<>((Map<String, Object>) result);
+        }
+        Map<String, Object> map = new HashMap<>();
+        map.put("data", result);
+        return map;
+    }
+
+    /**
+     * 获取共享接口对应的 Bean 实例。
+     * <p>
+     * 子类可重写以自定义 Bean 查找逻辑（如多租户前缀化 Bean 名称）。
+     *
+     * @param descriptor 共享接口描述符
+     * @return Bean 实例
+     * @throws Exception 获取失败时抛出
+     */
+    protected Object lookupSharedInterfaceBean(SharedInterfaceDescriptor descriptor) throws Exception {
+        return beanRegistrar.getApplicationContext().getBean(descriptor.getBeanName());
     }
 
     /**

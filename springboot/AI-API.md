@@ -1,6 +1,6 @@
 # springboot AI-API Reference
 
-> Module: `springboot` | Package: `com.weacsoft.jaravel.vendor.springboot` | Version: 0.1.1
+> Module: `springboot` | Package: `com.weacsoft.jaravel.vendor.springboot` | Version: 0.1.2
 
 ## Overview
 

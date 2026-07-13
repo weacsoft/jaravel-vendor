@@ -1,6 +1,6 @@
 # plugin-jar-database AI-API Reference
 
-> Module: `plugin-jar-database` | Package: `com.weacsoft.jaravel.vendor.plugin.jar.database` | Version: 0.1.1
+> Module: `plugin-jar-database` | Package: `com.weacsoft.jaravel.vendor.plugin.jar.database` | Version: 0.1.2
 
 ## Overview
 

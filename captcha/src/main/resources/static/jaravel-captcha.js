@@ -354,13 +354,12 @@ class Captcha {
         this._captchaKey = null;
         this._captchaData = null;
         this._destroyed = false;
-        this._verifying = false;
         this._refreshing = false;       // 刷新中标记，防止并发刷新
-        this._captchaUsed = false;      // 验证码已被使用（验证成功或失败后置 true，刷新时重置）
+        this._completed = false;        // 用户已完成前端验证操作（点击N个文字/滑动/旋转完成），刷新时重置
         this._visible = true;
         this._listeners = [];       // 所有托管的事件监听器
         this._clickPoints = [];     // click 类型的点击坐标
-        this._failRefreshTimer = null;  // 验证失败后的延迟刷新定时器
+        this._eventListeners = {};  // 事件监听器 { event: [callback, ...] }
 
         // 解析加密模式（含 Web Crypto 降级）
         this._resolveEncryption();
@@ -388,14 +387,10 @@ class Captcha {
         return {
             type: (opts.type || 'number').toLowerCase(),
             apiUrl: opts.apiUrl || '/api/captcha/generate',
-            // verifyUrl 仅在 autoVerify=true 时使用；autoVerify=false 时可省略
-            verifyUrl: opts.verifyUrl || '/api/captcha/verify',
             encryptionType: (opts.encryptionType || 'none').toLowerCase(),
             encryptionKey: opts.encryptionKey || null,
-            autoVerify: opts.autoVerify !== false,  // 默认 true
-            onSuccess: typeof opts.onSuccess === 'function' ? opts.onSuccess : null,
-            onFail: typeof opts.onFail === 'function' ? opts.onFail : null,
-            onComplete: typeof opts.onComplete === 'function' ? opts.onComplete : null
+            // per-instance 后端配置覆盖（如 {clickTargetCount: 6, length: 6}），作为查询参数传给 generate API
+            config: opts.config || null
         };
     }
 
@@ -942,11 +937,11 @@ class Captcha {
     // ----- 数字 / 算术事件 -----
 
     _attachNumberArithmeticEvents() {
-        // 按 Enter 自动验证
+        // 按 Enter 触发完成
         this._addManagedListener(this._inputEl, 'keydown', (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
-                this.verify();
+                this._complete();
             }
         });
     }
@@ -966,8 +961,8 @@ class Captcha {
                     }
                 },
                 onEnd: (value, trajectory) => {
-                    // 松开自动验证
-                    this.verify();
+                    // 松开触发完成
+                    this._complete();
                 }
             }
         );
@@ -990,8 +985,8 @@ class Captcha {
                     }
                 },
                 onEnd: (angle, trajectory) => {
-                    // 松开自动验证
-                    this.verify();
+                    // 松开触发完成
+                    this._complete();
                 }
             }
         );
@@ -1033,9 +1028,9 @@ class Captcha {
             this._clickProgressEl.textContent =
                 '已点击 ' + this._clickPoints.length + ' / ' + this._clickCount;
 
-            // 达到所需点击数后自动验证
+            // 达到所需点击数后触发完成
             if (this._clickPoints.length >= this._clickCount) {
-                this.verify();
+                this._complete();
             }
         });
     }
@@ -1189,8 +1184,18 @@ class Captcha {
 
     async _loadCaptcha() {
         this._showLoading();
+        // 触发 beforeGet 事件（获取验证码前，包含刷新场景）
+        this._emit('beforeGet', this.options.type);
         try {
-            const url = this.options.apiUrl + '?type=' + encodeURIComponent(this.options.type);
+            // 构建 URL，附加 config 查询参数
+            let url = this.options.apiUrl + '?type=' + encodeURIComponent(this.options.type);
+            if (this.options.config) {
+                for (var key in this.options.config) {
+                    if (this.options.config.hasOwnProperty(key)) {
+                        url += '&' + encodeURIComponent(key) + '=' + encodeURIComponent(this.options.config[key]);
+                    }
+                }
+            }
             const resp = await fetch(url);
             const json = await resp.json();
             if (json.code !== 200) {
@@ -1199,6 +1204,8 @@ class Captcha {
             this._captchaData = json.data;
             this._captchaKey = json.data.captchaKey;
             this._renderCaptcha(json.data);
+            // 触发 afterGet 事件（验证码已加载并渲染完成）
+            this._emit('afterGet', this._captchaKey, this._captchaData);
         } catch (e) {
             this._showError('加载失败: ' + e.message);
             console.error('[Captcha] 加载验证码失败:', e);
@@ -1431,21 +1438,16 @@ class Captcha {
     }
 
     /**
-     * 刷新验证码（重新生成并渲染）
+     * 刷新验证码（重新生成并渲染）。
+     * 触发 beforeGet → 加载 → afterGet 事件链。
      */
     refresh() {
         // 防止并发刷新（快速点击刷新按钮、定时器+手动刷新同时触发等）
         if (this._refreshing) return;
         this._refreshing = true;
 
-        // 取消验证失败后挂起的延迟刷新，避免手动刷新后又被定时器二次刷新
-        if (this._failRefreshTimer) {
-            clearTimeout(this._failRefreshTimer);
-            this._failRefreshTimer = null;
-        }
-
-        // 重置验证状态
-        this._captchaUsed = false;
+        // 重置完成状态
+        this._completed = false;
         this._captchaKey = null;
 
         this._resetUI();
@@ -1454,6 +1456,69 @@ class Captcha {
             self._refreshing = false;
         });
     }
+
+    // ========== 事件系统 ==========
+
+    /**
+     * 注册事件监听器。
+     * <p>
+     * 支持的事件：
+     * <ul>
+     *   <li>{@code beforeGet} — 获取验证码前（含刷新），参数：{@code (type)}</li>
+     *   <li>{@code afterGet} — 验证码加载并渲染完成后，参数：{@code (captchaKey, captchaData)}</li>
+     *   <li>{@code complete} — 用户完成前端验证操作，参数：{@code (captchaKey, captchaInput)}</li>
+     * </ul>
+     *
+     * @param {string} event 事件名
+     * @param {Function} callback 回调函数
+     * @returns {Captcha} this（链式）
+     */
+    on(event, callback) {
+        if (typeof callback !== 'function') return this;
+        if (!this._eventListeners[event]) {
+            this._eventListeners[event] = [];
+        }
+        this._eventListeners[event].push(callback);
+        return this;
+    }
+
+    /**
+     * 移除事件监听器。
+     *
+     * @param {string} event 事件名
+     * @param {Function} callback 要移除的回调函数（不传则移除该事件的所有监听器）
+     * @returns {Captcha} this（链式）
+     */
+    off(event, callback) {
+        if (!this._eventListeners[event]) return this;
+        if (!callback) {
+            this._eventListeners[event] = [];
+        } else {
+            this._eventListeners[event] = this._eventListeners[event].filter(
+                function(fn) { return fn !== callback; }
+            );
+        }
+        return this;
+    }
+
+    /**
+     * 触发事件，调用所有注册的监听器。
+     */
+    _emit(event) {
+        var listeners = this._eventListeners[event];
+        if (!listeners) return;
+        // 从第二个参数开始传递给回调
+        var args = Array.prototype.slice.call(arguments, 1);
+        for (var i = 0; i < listeners.length; i++) {
+            try {
+                listeners[i].apply(null, args);
+            } catch (e) {
+                console.error('[Captcha] 事件监听器异常 (' + event + '):', e);
+            }
+        }
+    }
+
+    // ========== 数据获取 ==========
 
     /**
      * 获取当前 captchaKey
@@ -1464,7 +1529,8 @@ class Captcha {
     }
 
     /**
-     * 获取用户输入（加密后）
+     * 获取用户输入（加密后）。
+     * 业务方可在 complete 事件回调中调用，或在外部主动调用来获取加密后的验证参数。
      * @returns {Promise<string>} Base64 编码的加密密文
      */
     async getCaptchaInput() {
@@ -1475,26 +1541,17 @@ class Captcha {
     }
 
     /**
-     * 触发验证或完成回调。
-     * - autoVerify=true（默认）：调用 verifyUrl 进行服务端验证，成功后调用 onSuccess
-     * - autoVerify=false：不调用服务端验证，直接调用 onComplete 返回 captchaKey 和加密后的 input
-     * @returns {Promise<boolean|void>}
+     * 用户完成前端验证操作时内部调用。
+     * <p>
+     * 不提交到后端，不判断准确与否。仅触发 complete 事件，参数为验证参数
+     * （captchaKey、加密后的 input、原始明文 input），由业务方决定后续处理。
      */
-    async verify() {
-        // 防止重复验证
-        if (this._verifying) return false;
-
-        // 验证码已被使用（成功或失败后），拒绝再次验证
-        if (this._captchaUsed) {
-            console.warn('[Captcha] 验证码已被使用，请刷新后重试');
-            return false;
-        }
-
-        // 检查验证码是否已加载
+    async _complete() {
+        // 防止重复完成
+        if (this._completed) return;
         if (!this._captchaKey) {
             console.warn('[Captcha] 验证码尚未加载');
-            if (this.options.onFail) this.options.onFail();
-            return false;
+            return;
         }
 
         // 检查输入是否为空（仅文本类验证码）
@@ -1503,87 +1560,23 @@ class Captcha {
             if (!raw) {
                 console.warn('[Captcha] 请输入验证码');
                 this._showResult(false, '请输入验证码');
-                if (this.options.onFail) this.options.onFail();
-                return false;
+                return;
             }
         }
 
-        this._verifying = true;
-        this._captchaUsed = true;  // 标记为已使用，防止 verify 完成前被重复调用
-        try {
-            // 加密用户输入
-            const encryptedInput = await JaravelCaptcha.encrypt(
-                raw, this._effectiveEncType, this.options.encryptionKey
-            );
+        this._completed = true;
+        // 禁用交互，防止修改已完成的数据
+        this._setInteractionEnabled(false);
 
-            // autoVerify=false 模式：不调用服务端验证，直接回调
-            if (!this.options.autoVerify) {
-                if (this.options.onComplete) {
-                    this.options.onComplete(this._captchaKey, encryptedInput);
-                }
-                this._showResult(true, '已完成');
-                this._setInteractionEnabled(false);
-                return true;
-            }
+        // 加密用户输入
+        const encryptedInput = await JaravelCaptcha.encrypt(
+            raw, this._effectiveEncType, this.options.encryptionKey
+        );
 
-            // autoVerify=true 模式：调用服务端验证
-            const resp = await fetch(this.options.verifyUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    type: this.options.type,
-                    captchaKey: this._captchaKey,
-                    input: encryptedInput
-                })
-            });
+        this._showResult(true, '已完成');
 
-            const json = await resp.json();
-
-            if (json.code === 200) {
-                // 验证通过 — 禁用交互
-                this._showResult(true, json.msg || '验证通过');
-                this._setInteractionEnabled(false);
-                if (this.options.onSuccess) {
-                    this.options.onSuccess(this._captchaKey, encryptedInput);
-                }
-                return true;
-            } else if (json.code === 410) {
-                // 验证码已被使用（一次性消费）— 禁用交互，立即刷新
-                this._showResult(false, json.msg || '验证码已失效');
-                this._setInteractionEnabled(false);
-                if (this.options.onFail) this.options.onFail();
-                var self = this;
-                this._failRefreshTimer = setTimeout(function() {
-                    self._failRefreshTimer = null;
-                    self.refresh();
-                }, 800);
-                return false;
-            } else {
-                // 验证失败 — 禁用交互，2秒后自动刷新
-                this._showResult(false, json.msg || '验证失败');
-                this._setInteractionEnabled(false);
-                if (this.options.onFail) this.options.onFail();
-                var self = this;
-                this._failRefreshTimer = setTimeout(function() {
-                    self._failRefreshTimer = null;
-                    self.refresh();
-                }, 2000);
-                return false;
-            }
-        } catch (e) {
-            console.error('[Captcha] 验证请求失败:', e);
-            this._showResult(false, '请求失败: ' + e.message);
-            this._setInteractionEnabled(false);
-            if (this.options.onFail) this.options.onFail();
-            var self = this;
-            this._failRefreshTimer = setTimeout(function() {
-                self._failRefreshTimer = null;
-                self.refresh();
-            }, 2000);
-            return false;
-        } finally {
-            this._verifying = false;
-        }
+        // 触发 complete 事件，只传递已处理的参数（不含原始明文）
+        this._emit('complete', this._captchaKey, encryptedInput);
     }
 
     /**
@@ -1593,17 +1586,14 @@ class Captcha {
         if (this._destroyed) return;
         this._destroyed = true;
 
-        // 取消挂起的延迟刷新定时器
-        if (this._failRefreshTimer) {
-            clearTimeout(this._failRefreshTimer);
-            this._failRefreshTimer = null;
-        }
-
         // 移除所有托管的事件监听器
         this._listeners.forEach(({ el, event, handler, options }) => {
             el.removeEventListener(event, handler, options);
         });
         this._listeners = [];
+
+        // 清空事件监听器
+        this._eventListeners = {};
 
         // 移除验证码 UI
         if (this._wrapper && this._wrapper.parentNode) {

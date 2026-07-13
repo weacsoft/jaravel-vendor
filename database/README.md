@@ -72,7 +72,7 @@ public class User extends BaseModel<User, Long> {
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>database</artifactId>
-    <version>0.1.1</version>
+    <version>0.1.2</version>
 </dependency>
 ```
 

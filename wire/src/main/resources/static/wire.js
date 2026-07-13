@@ -8,6 +8,7 @@
  * - wire:model 双向绑定（防抖 150ms，wire:model.lazy 延迟到 blur）
  * - wire:loading 加载状态显示/隐藏
  * - wire:target 指定要更新的 section
+ * - Wire.on/off 事件系统（beforeUpdate/afterUpdate），支持 mdui 等框架在 DOM 更新后刷新组件
  * - 零外部依赖，自包含
  */
 (function () {
@@ -15,8 +16,74 @@
 
     var Wire = {
         components: [],
-        debounceTimers: {}
+        debounceTimers: {},
+        // 全局事件监听器
+        _listeners: {}
     };
+
+    /**
+     * 注册事件监听器。
+     * <p>
+     * 支持的事件：
+     * <ul>
+     *   <li>{@code beforeUpdate} — 发送更新请求前触发，参数：{@code (component, action, params)}</li>
+     *   <li>{@code afterUpdate} — DOM 更新完成后触发，参数：{@code (component, data, sections)}</li>
+     * </ul>
+     * <p>
+     * 典型用法（mdui 等框架在 DOM 更新后需要重新初始化组件）：
+     * <pre>
+     * Wire.on('afterUpdate', function(component, data, sections) {
+     *     mdui.mutation();  // 重新扫描并初始化 mdui 组件
+     * });
+     * </pre>
+     *
+     * @param {string} event 事件名
+     * @param {Function} callback 回调函数
+     * @returns {Wire} Wire 对象（链式）
+     */
+    Wire.on = function(event, callback) {
+        if (typeof callback !== 'function') return Wire;
+        if (!Wire._listeners[event]) {
+            Wire._listeners[event] = [];
+        }
+        Wire._listeners[event].push(callback);
+        return Wire;
+    };
+
+    /**
+     * 移除事件监听器。
+     *
+     * @param {string} event 事件名
+     * @param {Function} callback 要移除的回调（不传则移除该事件的所有监听器）
+     * @returns {Wire} Wire 对象（链式）
+     */
+    Wire.off = function(event, callback) {
+        if (!Wire._listeners[event]) return Wire;
+        if (!callback) {
+            Wire._listeners[event] = [];
+        } else {
+            Wire._listeners[event] = Wire._listeners[event].filter(function(fn) {
+                return fn !== callback;
+            });
+        }
+        return Wire;
+    };
+
+    /**
+     * 触发事件，调用所有注册的监听器。
+     */
+    function emit(event) {
+        var listeners = Wire._listeners[event];
+        if (!listeners) return;
+        var args = Array.prototype.slice.call(arguments, 1);
+        for (var i = 0; i < listeners.length; i++) {
+            try {
+                listeners[i].apply(null, args);
+            } catch (e) {
+                console.error('[Wire] 事件监听器异常 (' + event + '):', e);
+            }
+        }
+    }
 
     // ===== 初始化 =====
 
@@ -307,6 +374,9 @@
         // 显示 loading
         showLoading(component, action);
 
+        // 触发 beforeUpdate 事件（发送请求前）
+        emit('beforeUpdate', component, action, params);
+
         // 构建请求体
         var wireData = JSON.stringify({
             snapshot: component.snapshot,
@@ -424,6 +494,10 @@
                 }
             }
         }
+
+        // 触发 afterUpdate 事件（DOM 更新完成后）
+        // 适用于 mdui 等框架在 DOM 更新后需要重新初始化组件的场景
+        emit('afterUpdate', component, data, data.sections || {});
     }
 
     // ===== 工具方法 =====

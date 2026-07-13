@@ -1,6 +1,6 @@
 # queue-database AI-API Reference
 
-> Module: `queue-database` | Package: `com.weacsoft.jaravel.vendor.queue.database` | Version: 0.1.1
+> Module: `queue-database` | Package: `com.weacsoft.jaravel.vendor.queue.database` | Version: 0.1.2
 
 ## Overview
 
