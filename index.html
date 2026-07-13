@@ -151,6 +151,7 @@ td {
 }
 tr:nth-child(even) td { background: rgba(248,249,250,0.5); }
 section { margin-bottom: 1rem; scroll-margin-top: 1rem; }
+h2[id], h3[id], h4[id], h5[id], h6[id] { scroll-margin-top: 1.5rem; }
 strong { font-weight: 600; color: var(--ink); }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
@@ -331,17 +332,19 @@ public class App {
 
 <h5 id="core-目录">目录</h5>
 
+<ul>
 <li><a href="#core-1-模块概述">1. 模块概述</a></li>
 <li><a href="#core-2-依赖信息">2. 依赖信息</a></li>
 <li><a href="#core-3-类总览">3. 类总览</a></li>
-<li><a href="#core-4-facade--门面基类">4. Facade —— 门面基类</a></li>
-<li><a href="#core-5-springcontext--spring-上下文持有器">5. SpringContext —— Spring 上下文持有器</a></li>
-<li><a href="#core-6-配置体系config--configrepository--configdefinition--configdefinitionregistrar">6. 配置体系（Config / ConfigRepository / ConfigDefinition / ConfigDefinitionRegistrar）</a></li>
-<li><a href="#core-7-服务提供者serviceprovider--providerregistry">7. 服务提供者（ServiceProvider / ProviderRegistry）</a></li>
-<li><a href="#core-8-工具类str--arr">8. 工具类（Str / Arr）</a></li>
-<li><a href="#core-9-校验体系formrequest--validator--rule--rules">9. 校验体系（FormRequest / Validator / Rule / Rules）</a></li>
-<li><a href="#core-10-异常类validationexception--unauthorizedexception">10. 异常类（ValidationException / UnauthorizedException）</a></li>
+<li><a href="#core-4-facade-——-门面基类">4. Facade —— 门面基类</a></li>
+<li><a href="#core-5-springcontext-——-spring-上下文持有器">5. SpringContext —— Spring 上下文持有器</a></li>
+<li><a href="#core-6-配置体系（config--configrepository--configdefinition--configdefinitionregistrar）">6. 配置体系（Config / ConfigRepository / ConfigDefinition / ConfigDefinitionRegistrar）</a></li>
+<li><a href="#core-7-服务提供者（serviceprovider--providerregistry）">7. 服务提供者（ServiceProvider / ProviderRegistry）</a></li>
+<li><a href="#core-8-工具类（str--arr）">8. 工具类（Str / Arr）</a></li>
+<li><a href="#core-9-校验体系（formrequest--validator--rule--rules）">9. 校验体系（FormRequest / Validator / Rule / Rules）</a></li>
+<li><a href="#core-10-异常类（validationexception--unauthorizedexception）">10. 异常类（ValidationException / UnauthorizedException）</a></li>
 <li><a href="#core-11-线程安全说明">11. 线程安全说明</a></li>
+</ul>
 
 <p>---</p>
 
@@ -1449,15 +1452,17 @@ Map&lt;String, Object&gt; valid = v.validate(); // 失败抛 ValidationException
 
 <h5 id="utils-目录">目录</h5>
 
+<ul>
 <li><a href="#utils-1-模块概述">1. 模块概述</a></li>
 <li><a href="#utils-2-依赖信息">2. 依赖信息</a></li>
 <li><a href="#utils-3-类总览">3. 类总览</a></li>
 <li><a href="#utils-4-内存编译工作原理">4. 内存编译工作原理</a></li>
-<li><a href="#utils-5-sourcecodejavafileobject--源代码文件对象">5. SourceCodeJavaFileObject —— 源代码文件对象</a></li>
-<li><a href="#utils-6-memoryfilemanager--内存文件管理器">6. MemoryFileManager —— 内存文件管理器</a></li>
-<li><a href="#utils-7-memoryclassloader--内存类加载器">7. MemoryClassLoader —— 内存类加载器</a></li>
+<li><a href="#utils-5-sourcecodejavafileobject-——-源代码文件对象">5. SourceCodeJavaFileObject —— 源代码文件对象</a></li>
+<li><a href="#utils-6-memoryfilemanager-——-内存文件管理器">6. MemoryFileManager —— 内存文件管理器</a></li>
+<li><a href="#utils-7-memoryclassloader-——-内存类加载器">7. MemoryClassLoader —— 内存类加载器</a></li>
 <li><a href="#utils-8-使用示例">8. 使用示例</a></li>
 <li><a href="#utils-9-线程安全说明">9. 线程安全说明</a></li>
+</ul>
 
 <p>---</p>
 
@@ -1935,30 +1940,32 @@ compiler.getTask(null, fileManager, null, null, null, List.of(source)).call();
 
 <h5 id="http-目录">目录</h5>
 
+<ul>
 <li><a href="#http-1-模块概述">1. 模块概述</a></li>
 <li><a href="#http-2-依赖信息">2. 依赖信息</a></li>
 <li><a href="#http-3-类总览">3. 类总览</a></li>
-<li><a href="#http-4-中间件体系middleware">4. 中间件体系（Middleware）</a></li>
+<li><a href="#http-4-中间件体系（middleware）">4. 中间件体系（Middleware）</a></li>
 <li><a href="#http-41-middleware-接口">4.1 Middleware 接口</a></li>
 <li><a href="#http-42-trimstrings">4.2 TrimStrings</a></li>
 <li><a href="#http-43-convertemptystringstonull">4.3 ConvertEmptyStringsToNull</a></li>
 <li><a href="#http-44-encryptcookies">4.4 EncryptCookies</a></li>
 <li><a href="#http-45-trustproxies">4.5 TrustProxies</a></li>
 <li><a href="#http-46-verifycsrftoken">4.6 VerifyCsrfToken</a></li>
-<li><a href="#http-5-请求request--requestfactory">5. 请求（Request / RequestFactory）</a></li>
-<li><a href="#http-6-响应response--responsebuilder--jsonresponseesolver">6. 响应（Response / ResponseBuilder / JSONResponseResolver）</a></li>
-<li><a href="#http-7-路由系统router--route--routeservice">7. 路由系统（Router / Route / RouteService）</a></li>
-<li><a href="#http-8-控制器契约controllers">8. 控制器契约（Controllers）</a></li>
+<li><a href="#http-5-请求（request--requestfactory）">5. 请求（Request / RequestFactory）</a></li>
+<li><a href="#http-6-响应（response--responsebuilder--jsonresponseresolver）">6. 响应（Response / ResponseBuilder / JSONResponseResolver）</a></li>
+<li><a href="#http-7-路由系统（router--route--routeservice）">7. 路由系统（Router / Route / RouteService）</a></li>
+<li><a href="#http-8-控制器契约（controllers）">8. 控制器契约（Controllers）</a></li>
 <li><a href="#http-9-配置选项">9. 配置选项</a></li>
 <li><a href="#http-10-线程安全说明">10. 线程安全说明</a></li>
-<li><a href="#http-11-静态资源目录staticresource">11. 静态资源目录（StaticResource）</a></li>
+<li><a href="#http-11-静态资源目录（staticresource）">11. 静态资源目录（StaticResource）</a></li>
 <li><a href="#http-111-架构">11.1 架构</a></li>
 <li><a href="#http-112-使用示例">11.2 使用示例</a></li>
 <li><a href="#http-113-多目录回退查找">11.3 多目录回退查找</a></li>
-<li><a href="#http-114-配置staticresourceproperties">11.4 配置（StaticResourceProperties）</a></li>
+<li><a href="#http-114-配置（staticresourceproperties）">11.4 配置（StaticResourceProperties）</a></li>
 <li><a href="#http-115-mime-类型">11.5 MIME 类型</a></li>
 <li><a href="#http-116-路径安全">11.6 路径安全</a></li>
 <li><a href="#http-117-blade-模板-asset-指令">11.7 Blade 模板 @asset 指令</a></li>
+</ul>
 
 <p>---</p>
 
@@ -3390,23 +3397,25 @@ router.serveStatic(&quot;/static&quot;, List.of(&quot;file:./public/&quot;, &quo
 
 <h5 id="jblade-目录">目录</h5>
 
+<ul>
 <li><a href="#jblade-1-模块概述">1. 模块概述</a></li>
 <li><a href="#jblade-2-依赖信息">2. 依赖信息</a></li>
 <li><a href="#jblade-3-类总览">3. 类总览</a></li>
-<li><a href="#jblade-4-bladeengine--模板引擎">4. BladeEngine —— 模板引擎</a></li>
+<li><a href="#jblade-4-bladeengine-——-模板引擎">4. BladeEngine —— 模板引擎</a></li>
 <li><a href="#jblade-41-模板缓存机制">4.1 模板缓存机制</a></li>
-<li><a href="#jblade-5-bladecompiler--模板编译器">5. BladeCompiler —— 模板编译器</a></li>
+<li><a href="#jblade-5-bladecompiler-——-模板编译器">5. BladeCompiler —— 模板编译器</a></li>
 <li><a href="#jblade-51-表达式编译引擎">5.1 表达式编译引擎</a></li>
-<li><a href="#jblade-6-bladetemplate--模板基类">6. BladeTemplate —— 模板基类</a></li>
+<li><a href="#jblade-6-bladetemplate-——-模板基类">6. BladeTemplate —— 模板基类</a></li>
 <li><a href="#jblade-61-php-辅助函数">6.1 PHP 辅助函数</a></li>
-<li><a href="#jblade-7-bladecontext--执行上下文">7. BladeContext —— 执行上下文</a></li>
+<li><a href="#jblade-7-bladecontext-——-执行上下文">7. BladeContext —— 执行上下文</a></li>
 <li><a href="#jblade-8-内存编译机制">8. 内存编译机制</a></li>
 <li><a href="#jblade-9-工具类">9. 工具类</a></li>
 <li><a href="#jblade-10-支持的指令">10. 支持的指令</a></li>
 <li><a href="#jblade-11-使用示例">11. 使用示例</a></li>
 <li><a href="#jblade-12-线程安全说明">12. 线程安全说明</a></li>
-<li><a href="#jblade-13-静态资源-url-生成asset">13. 静态资源 URL 生成（@asset）</a></li>
+<li><a href="#jblade-13-静态资源-url-生成（asset）">13. 静态资源 URL 生成（@asset）</a></li>
 <li><a href="#jblade-14-预编译功能">14. 预编译功能</a></li>
+</ul>
 
 <p>---</p>
 
@@ -4986,15 +4995,17 @@ java -cp jblade.jar com.weacsoft.jaravel.vendor.jblade.BladePrecompilerMain \
 
 <h5 id="database-目录">目录</h5>
 
+<ul>
 <li><a href="#database-模块概述">模块概述</a></li>
 <li><a href="#database-maven-依赖">Maven 依赖</a></li>
 <li><a href="#database-类总览">类总览</a></li>
 <li><a href="#database-basemodel">BaseModel</a></li>
 <li><a href="#database-datasource-注解">DataSource 注解</a></li>
 <li><a href="#database-eloquentuserprovider">EloquentUserProvider</a></li>
-<li><a href="#database-配置项applicationyml">配置项（application.yml）</a></li>
+<li><a href="#database-配置项（applicationyml）">配置项（application.yml）</a></li>
 <li><a href="#database-完整使用示例">完整使用示例</a></li>
 <li><a href="#database-线程安全说明">线程安全说明</a></li>
+</ul>
 
 <p>---</p>
 
@@ -5907,29 +5918,31 @@ Auth.login(user);
 
 <h5 id="migration-目录">目录</h5>
 
+<ul>
 <li><a href="#migration-1-模块概述">1. 模块概述</a></li>
 <li><a href="#migration-2-依赖信息">2. 依赖信息</a></li>
 <li><a href="#migration-3-类总览">3. 类总览</a></li>
 <li><a href="#migration-4-迁移源模式">4. 迁移源模式</a></li>
 <li><a href="#migration-5-jdkjre-构建配置">5. JDK/JRE 构建配置</a></li>
-<li><a href="#migration-6-独立运行无-springboot">6. 独立运行（无 SpringBoot）</a></li>
-<li><a href="#migration-7-migration--迁移接口">7. Migration —— 迁移接口</a></li>
-<li><a href="#migration-8-migrationannotation--迁移标记注解">8. MigrationAnnotation —— 迁移标记注解</a></li>
-<li><a href="#migration-9-migrationscanner--迁移源扫描器">9. MigrationScanner —— 迁移源扫描器</a></li>
-<li><a href="#migration-10-migrationgenerator--迁移类源码生成器">10. MigrationGenerator —— 迁移类源码生成器</a></li>
-<li><a href="#migration-11-schema--表结构构建器">11. Schema —— 表结构构建器</a></li>
-<li><a href="#migration-12-blueprint--表结构蓝图">12. Blueprint —— 表结构蓝图</a></li>
-<li><a href="#migration-13-columndefinition--列定义">13. ColumnDefinition —— 列定义</a></li>
-<li><a href="#migration-14-foreignkeydefinition--外键定义">14. ForeignKeyDefinition —— 外键定义</a></li>
-<li><a href="#migration-15-migrator--迁移引擎">15. Migrator —— 迁移引擎</a></li>
-<li><a href="#migration-16-migrationrepository--迁移记录仓库">16. MigrationRepository —— 迁移记录仓库</a></li>
-<li><a href="#migration-17-migrationexecutor--迁移执行器">17. MigrationExecutor —— 迁移执行器</a></li>
-<li><a href="#migration-18-migrationrunner--springboot-适配器">18. MigrationRunner —— SpringBoot 适配器</a></li>
-<li><a href="#migration-19-migrationcli--独立命令行入口">19. MigrationCLI —— 独立命令行入口</a></li>
-<li><a href="#migration-20-jdbcexecutor--轻量-jdbc-执行器">20. JdbcExecutor —— 轻量 JDBC 执行器</a></li>
-<li><a href="#migration-21-migrationautoconfiguration--自动装配">21. MigrationAutoConfiguration —— 自动装配</a></li>
-<li><a href="#migration-22-配置选项">22. 配置选项</a></li>
-<li><a href="#migration-23-线程安全说明">23. 线程安全说明</a></li>
+<li><a href="#migration-6-独立运行（无-springboot）">6. 独立运行（无 SpringBoot）</a></li>
+<li><a href="#migration-7-migration-——-迁移接口">7. Migration —— 迁移接口</a></li>
+<li><a href="#migration-7-migrationannotation-——-迁移标记注解">8. MigrationAnnotation —— 迁移标记注解</a></li>
+<li><a href="#migration-8-migrationscanner-——-迁移源扫描器">9. MigrationScanner —— 迁移源扫描器</a></li>
+<li><a href="#migration-9-migrationgenerator-——-迁移类源码生成器">10. MigrationGenerator —— 迁移类源码生成器</a></li>
+<li><a href="#migration-10-schema-——-表结构构建器">11. Schema —— 表结构构建器</a></li>
+<li><a href="#migration-11-blueprint-——-表结构蓝图">12. Blueprint —— 表结构蓝图</a></li>
+<li><a href="#migration-12-columndefinition-——-列定义">13. ColumnDefinition —— 列定义</a></li>
+<li><a href="#migration-13-foreignkeydefinition-——-外键定义">14. ForeignKeyDefinition —— 外键定义</a></li>
+<li><a href="#migration-14-migrator-——-迁移引擎">15. Migrator —— 迁移引擎</a></li>
+<li><a href="#migration-15-migrationrepository-——-迁移记录仓库">16. MigrationRepository —— 迁移记录仓库</a></li>
+<li><a href="#migration-migrationexecutor">17. MigrationExecutor —— 迁移执行器</a></li>
+<li><a href="#migration-16-migrationrunner-——-命令行运行器">18. MigrationRunner —— SpringBoot 适配器</a></li>
+<li><a href="#migration-migrationcli">19. MigrationCLI —— 独立命令行入口</a></li>
+<li><a href="#migration-jdbcexecutor">20. JdbcExecutor —— 轻量 JDBC 执行器</a></li>
+<li><a href="#migration-17-migrationautoconfiguration-——-自动装配">21. MigrationAutoConfiguration —— 自动装配</a></li>
+<li><a href="#migration-18-配置选项">22. 配置选项</a></li>
+<li><a href="#migration-19-线程安全说明">23. 线程安全说明</a></li>
+</ul>
 
 <p>---</p>
 
@@ -7855,18 +7868,20 @@ java -cp migration.jar:utils.jar:mysql-connector.jar \
 
 <h5 id="model-cache-目录">目录</h5>
 
+<ul>
 <li><a href="#model-cache-1-模块概述">1. 模块概述</a></li>
-<li><a href="#model-cache-2-设计原理版本化缓存失效">2. 设计原理：版本化缓存失效</a></li>
+<li><a href="#model-cache-2-设计原理：版本化缓存失效">2. 设计原理：版本化缓存失效</a></li>
 <li><a href="#model-cache-3-依赖信息">3. 依赖信息</a></li>
 <li><a href="#model-cache-4-类总览">4. 类总览</a></li>
 <li><a href="#model-cache-5-快速开始">5. 快速开始</a></li>
 <li><a href="#model-cache-6-cachablemodel-注解">6. @CachableModel 注解</a></li>
-<li><a href="#model-cache-7-modelcacheservice--核心服务">7. ModelCacheService —— 核心服务</a></li>
-<li><a href="#model-cache-8-modelcache--门面">8. ModelCache —— 门面</a></li>
+<li><a href="#model-cache-7-modelcacheservice-——-核心服务">7. ModelCacheService —— 核心服务</a></li>
+<li><a href="#model-cache-8-modelcache-——-门面">8. ModelCache —— 门面</a></li>
 <li><a href="#model-cache-9-配置选项">9. 配置选项</a></li>
 <li><a href="#model-cache-10-使用示例">10. 使用示例</a></li>
 <li><a href="#model-cache-11-与-cache-模块的关系">11. 与 cache 模块的关系</a></li>
 <li><a href="#model-cache-12-注意事项与局限">12. 注意事项与局限</a></li>
+</ul>
 
 <p>---</p>
 
@@ -9020,11 +9035,12 @@ event (QueueDispatcher interface)
 
 <h5 id="auth-目录">目录</h5>
 
+<ul>
 <li><a href="#auth-模块概述">模块概述</a></li>
-<li><a href="#auth-设计原则retrievebyid-不缓存">设计原则：retrieveById 不缓存</a></li>
+<li><a href="#auth-关键设计决策：retrievebyid-不缓存用户">设计原则：retrieveById 不缓存</a></li>
 <li><a href="#auth-maven-依赖">Maven 依赖</a></li>
 <li><a href="#auth-类总览">类总览</a></li>
-<li><a href="#auth-契约层contract">契约层（contract）</a></li>
+<li><a href="#auth-契约层（contract）">契约层（contract）</a></li>
 <li><a href="#auth-authenticatable">Authenticatable</a></li>
 <li><a href="#auth-authguard">AuthGuard</a></li>
 <li><a href="#auth-userprovider">UserProvider</a></li>
@@ -9032,20 +9048,21 @@ event (QueueDispatcher interface)
 <li><a href="#auth-核心层">核心层</a></li>
 <li><a href="#auth-authmanager">AuthManager</a></li>
 <li><a href="#auth-authcontext">AuthContext</a></li>
-<li><a href="#auth-守卫实现guard">守卫实现（guard）</a></li>
+<li><a href="#auth-守卫实现（guard）">守卫实现（guard）</a></li>
 <li><a href="#auth-sessionguard">SessionGuard</a></li>
-<li><a href="#auth-门面facade">门面（facade）</a></li>
+<li><a href="#auth-门面（facade）">门面（facade）</a></li>
 <li><a href="#auth-auth">Auth</a></li>
-<li><a href="#auth-中间件middleware">中间件（middleware）</a></li>
+<li><a href="#auth-中间件（middleware）">中间件（middleware）</a></li>
 <li><a href="#auth-authenticate">Authenticate</a></li>
-<li><a href="#auth-过滤器filter">过滤器（filter）</a></li>
+<li><a href="#auth-过滤器（filter）">过滤器（filter）</a></li>
 <li><a href="#auth-authlifecyclefilter">AuthLifecycleFilter</a></li>
-<li><a href="#auth-自动装配autoconfigure">自动装配（autoconfigure）</a></li>
+<li><a href="#auth-自动装配（autoconfigure）">自动装配（autoconfigure）</a></li>
 <li><a href="#auth-authautoconfiguration">AuthAutoConfiguration</a></li>
 <li><a href="#auth-authproperties">AuthProperties</a></li>
-<li><a href="#auth-配置项applicationyml">配置项（application.yml）</a></li>
+<li><a href="#auth-配置项（applicationyml）">配置项（application.yml）</a></li>
 <li><a href="#auth-完整使用示例">完整使用示例</a></li>
 <li><a href="#auth-线程安全说明">线程安全说明</a></li>
+</ul>
 
 <p>---</p>
 
@@ -10261,6 +10278,7 @@ jaravel:
 
 <h5 id="jwt-目录">目录</h5>
 
+<ul>
 <li><a href="#jwt-模块概述">模块概述</a></li>
 <li><a href="#jwt-三种运行模式">三种运行模式</a></li>
 <li><a href="#jwt-maven-依赖">Maven 依赖</a></li>
@@ -10271,12 +10289,13 @@ jaravel:
 <li><a href="#jwt-jwttokenresponsefilter">JwtTokenResponseFilter</a></li>
 <li><a href="#jwt-jwtproperties">JwtProperties</a></li>
 <li><a href="#jwt-jwtautoconfiguration">JwtAutoConfiguration</a></li>
-<li><a href="#jwt-配置项applicationyml">配置项（application.yml）</a></li>
+<li><a href="#jwt-配置项（applicationyml）">配置项（application.yml）</a></li>
 <li><a href="#jwt-黑名单功能">黑名单功能</a></li>
 <li><a href="#jwt-宽限期功能">宽限期功能</a></li>
 <li><a href="#jwt-核心流程详解">核心流程详解</a></li>
 <li><a href="#jwt-完整使用示例">完整使用示例</a></li>
 <li><a href="#jwt-线程安全说明">线程安全说明</a></li>
+</ul>
 
 <p>---</p>
 
@@ -12307,20 +12326,22 @@ Object userId = Session::store(&quot;redis&quot;).get(&quot;user_id&quot;);
 
 <h5 id="cache-目录">目录</h5>
 
+<ul>
 <li><a href="#cache-1-模块概述">1. 模块概述</a></li>
 <li><a href="#cache-2-依赖信息">2. 依赖信息</a></li>
 <li><a href="#cache-3-类总览">3. 类总览</a></li>
-<li><a href="#cache-4-cache--缓存门面">4. Cache —— 缓存门面</a></li>
-<li><a href="#cache-5-cachemanager--缓存管理器">5. CacheManager —— 缓存管理器</a></li>
-<li><a href="#cache-6-cachestore--高级缓存操作契约">6. CacheStore —— 高级缓存操作契约</a></li>
-<li><a href="#cache-7-defaultcachestore--默认缓存仓库实现">7. DefaultCacheStore —— 默认缓存仓库实现</a></li>
-<li><a href="#cache-8-cachedriver--缓存驱动契约">8. CacheDriver —— 缓存驱动契约</a></li>
-<li><a href="#cache-9-arraycachedriver--内存缓存驱动">9. ArrayCacheDriver —— 内存缓存驱动</a></li>
-<li><a href="#cache-10-filecachedriver--文件缓存驱动">10. FileCacheDriver —— 文件缓存驱动</a></li>
-<li><a href="#cache-11-databasecachedriver--数据库缓存驱动">11. DatabaseCacheDriver —— 数据库缓存驱动</a></li>
-<li><a href="#cache-12-cacheautoconfiguration--自动装配">12. CacheAutoConfiguration —— 自动装配</a></li>
+<li><a href="#cache-4-cache-——-缓存门面">4. Cache —— 缓存门面</a></li>
+<li><a href="#cache-5-cachemanager-——-缓存管理器">5. CacheManager —— 缓存管理器</a></li>
+<li><a href="#cache-6-cachestore-——-高级缓存操作契约">6. CacheStore —— 高级缓存操作契约</a></li>
+<li><a href="#cache-7-defaultcachestore-——-默认缓存仓库实现">7. DefaultCacheStore —— 默认缓存仓库实现</a></li>
+<li><a href="#cache-8-cachedriver-——-缓存驱动契约">8. CacheDriver —— 缓存驱动契约</a></li>
+<li><a href="#cache-9-arraycachedriver-——-内存缓存驱动">9. ArrayCacheDriver —— 内存缓存驱动</a></li>
+<li><a href="#cache-10-filecachedriver-——-文件缓存驱动">10. FileCacheDriver —— 文件缓存驱动</a></li>
+<li><a href="#cache-11-databasecachedriver-——-数据库缓存驱动">11. DatabaseCacheDriver —— 数据库缓存驱动</a></li>
+<li><a href="#cache-12-cacheautoconfiguration-——-自动装配">12. CacheAutoConfiguration —— 自动装配</a></li>
 <li><a href="#cache-13-配置选项">13. 配置选项</a></li>
 <li><a href="#cache-14-线程安全说明">14. 线程安全说明</a></li>
+</ul>
 
 <p>---</p>
 
@@ -13286,24 +13307,26 @@ jaravel:
 
 <h5 id="event-目录">目录</h5>
 
+<ul>
 <li><a href="#event-1-模块概述">1. 模块概述</a></li>
 <li><a href="#event-2-依赖信息">2. 依赖信息</a></li>
 <li><a href="#event-3-类总览">3. 类总览</a></li>
-<li><a href="#event-4-event--事件标记接口">4. Event —— 事件标记接口</a></li>
-<li><a href="#event-5-listener--监听器接口">5. Listener —— 监听器接口</a></li>
-<li><a href="#event-6-shouldqueue--队列化标记接口">6. ShouldQueue —— 队列化标记接口</a></li>
-<li><a href="#event-7-dispatcher--事件调度器契约">7. Dispatcher —— 事件调度器契约</a></li>
-<li><a href="#event-8-eventdispatcher--事件调度器实现">8. EventDispatcher —— 事件调度器实现</a></li>
-<li><a href="#event-9-queuemanager--队列管理器">9. QueueManager —— 队列管理器</a></li>
-<li><a href="#event-10-queuedispatcher--队列分发器接口">10. QueueDispatcher —— 队列分发器接口</a></li>
-<li><a href="#event-11-listensto--监听器绑定注解">11. ListensTo —— 监听器绑定注解</a></li>
-<li><a href="#event-12-eventlistenerregistrar--自动注册器">12. EventListenerRegistrar —— 自动注册器</a></li>
-<li><a href="#event-13-eventserviceprovider--事件服务提供者基类">13. EventServiceProvider —— 事件服务提供者基类</a></li>
-<li><a href="#event-14-eventfacade--事件门面">14. EventFacade —— 事件门面</a></li>
-<li><a href="#event-15-示例用户注册事件">15. 示例：用户注册事件</a></li>
-<li><a href="#event-16-eventautoconfiguration--自动装配">16. EventAutoConfiguration —— 自动装配</a></li>
+<li><a href="#event-4-event-——-事件标记接口">4. Event —— 事件标记接口</a></li>
+<li><a href="#event-5-listener-——-监听器接口">5. Listener —— 监听器接口</a></li>
+<li><a href="#event-6-shouldqueue-——-队列化标记接口">6. ShouldQueue —— 队列化标记接口</a></li>
+<li><a href="#event-7-dispatcher-——-事件调度器契约">7. Dispatcher —— 事件调度器契约</a></li>
+<li><a href="#event-8-eventdispatcher-——-事件调度器实现">8. EventDispatcher —— 事件调度器实现</a></li>
+<li><a href="#event-9-queuemanager-——-队列管理器">9. QueueManager —— 队列管理器</a></li>
+<li><a href="#event-10-queuedispatcher-——-队列分发器接口">10. QueueDispatcher —— 队列分发器接口</a></li>
+<li><a href="#event-11-listensto-——-监听器绑定注解">11. ListensTo —— 监听器绑定注解</a></li>
+<li><a href="#event-12-eventlistenerregistrar-——-自动注册器">12. EventListenerRegistrar —— 自动注册器</a></li>
+<li><a href="#event-13-eventserviceprovider-——-事件服务提供者基类">13. EventServiceProvider —— 事件服务提供者基类</a></li>
+<li><a href="#event-14-eventfacade-——-事件门面">14. EventFacade —— 事件门面</a></li>
+<li><a href="#event-15-示例：用户注册事件">15. 示例：用户注册事件</a></li>
+<li><a href="#event-16-eventautoconfiguration-——-自动装配">16. EventAutoConfiguration —— 自动装配</a></li>
 <li><a href="#event-17-配置选项">17. 配置选项</a></li>
 <li><a href="#event-18-线程安全说明">18. 线程安全说明</a></li>
+</ul>
 
 <p>---</p>
 
@@ -15941,6 +15964,7 @@ jaravel:
 
 <h5 id="plugin-jar-core-目录">目录</h5>
 
+<ul>
 <li><a href="#plugin-jar-core-核心特性">核心特性</a></li>
 <li><a href="#plugin-jar-core-依赖引入">依赖引入</a></li>
 <li><a href="#plugin-jar-core-配置">配置</a></li>
@@ -15953,7 +15977,7 @@ jaravel:
 <li><a href="#plugin-jar-core-hotpluginmanager-方法列表">HotPluginManager 方法列表</a></li>
 <li><a href="#plugin-jar-core-共享接口（v012-新增）">共享接口（v0.1.2 新增）</a></li>
 <li><a href="#plugin-jar-core-sharedinterfacedescriptor">SharedInterfaceDescriptor</a></li>
-<li><a href="#plugin-jar-core-字节数组模式内存插件">字节数组模式（内存插件）</a></li>
+<li><a href="#plugin-jar-core-字节数组模式（内存插件）">字节数组模式（内存插件）</a></li>
 <li><a href="#plugin-jar-core-插件开发指南">插件开发指南</a></li>
 <li><a href="#plugin-jar-core-添加-maven-依赖">添加 Maven 依赖</a></li>
 <li><a href="#plugin-jar-core-编写插件类">编写插件类</a></li>
@@ -15961,13 +15985,14 @@ jaravel:
 <li><a href="#plugin-jar-core-核心注解">核心注解</a></li>
 <li><a href="#plugin-jar-core-持久化">持久化</a></li>
 <li><a href="#plugin-jar-core-metadatapersistence-接口">MetadataPersistence 接口</a></li>
-<li><a href="#plugin-jar-core-默认实现jsonmetadatapersistence">默认实现：JsonMetadataPersistence</a></li>
-<li><a href="#plugin-jar-core-数据库实现plugin-jar-database-模块">数据库实现：plugin-jar-database 模块</a></li>
+<li><a href="#plugin-jar-core-默认实现：jsonmetadatapersistence">默认实现：JsonMetadataPersistence</a></li>
+<li><a href="#plugin-jar-core-数据库实现：plugin-jar-database-模块">数据库实现：plugin-jar-database 模块</a></li>
 <li><a href="#plugin-jar-core-jaravel-集成">Jaravel 集成</a></li>
 <li><a href="#plugin-jar-core-pluginintegration-接口">PluginIntegration 接口</a></li>
 <li><a href="#plugin-jar-core-requestresponse-集成">Request/Response 集成</a></li>
 <li><a href="#plugin-jar-core-安全说明">安全说明</a></li>
 <li><a href="#plugin-jar-core-目录结构">目录结构</a></li>
+</ul>
 
 <p>---</p>
 
@@ -17379,6 +17404,7 @@ public String createData(@RequestBody String data) { ... }
 
 <h5 id="plugin-jar-database-目录">目录</h5>
 
+<ul>
 <li><a href="#plugin-jar-database-核心特性">核心特性</a></li>
 <li><a href="#plugin-jar-database-依赖引入">依赖引入</a></li>
 <li><a href="#plugin-jar-database-工作原理">工作原理</a></li>
@@ -17389,6 +17415,7 @@ public String createData(@RequestBody String data) { ... }
 <li><a href="#plugin-jar-database-配置">配置</a></li>
 <li><a href="#plugin-jar-database-与-json-持久化的对比">与 JSON 持久化的对比</a></li>
 <li><a href="#plugin-jar-database-目录结构">目录结构</a></li>
+</ul>
 
 <p>---</p>
 
@@ -17991,6 +18018,7 @@ pluginManager.enable(&quot;my-plugin&quot;);
 
 <h5 id="plugin-java-core-目录">目录</h5>
 
+<ul>
 <li><a href="#plugin-java-core-核心特性">核心特性</a></li>
 <li><a href="#plugin-java-core-依赖引入">依赖引入</a></li>
 <li><a href="#plugin-java-core-配置">配置</a></li>
@@ -18003,6 +18031,7 @@ pluginManager.enable(&quot;my-plugin&quot;);
 <li><a href="#plugin-java-core-与-jar-插件系统的关系">与 JAR 插件系统的关系</a></li>
 <li><a href="#plugin-java-core-限制">限制</a></li>
 <li><a href="#plugin-java-core-目录结构">目录结构</a></li>
+</ul>
 
 <p>---</p>
 
@@ -20539,18 +20568,20 @@ System.out.println(dispatcher.dumpTree());
 
 <h5 id="springboot-目录">目录</h5>
 
+<ul>
 <li><a href="#springboot-1-模块概述">1. 模块概述</a></li>
 <li><a href="#springboot-2-依赖信息">2. 依赖信息</a></li>
 <li><a href="#springboot-3-类总览">3. 类总览</a></li>
-<li><a href="#springboot-4-globalmiddlewareregistry--全局中间件注册器">4. GlobalMiddlewareRegistry —— 全局中间件注册器</a></li>
-<li><a href="#springboot-5-springbootrouteautoconfiguration--路由自动装配">5. SpringBootRouteAutoConfiguration —— 路由自动装配</a></li>
-<li><a href="#springboot-6-responseautoconfiguration--响应自动装配">6. ResponseAutoConfiguration —— 响应自动装配</a></li>
-<li><a href="#springboot-7-springbootrequestmvcresolver--请求参数解析器">7. SpringBootRequestMVCResolver —— 请求参数解析器</a></li>
-<li><a href="#springboot-8-springbootresponsemvcresolver--响应体处理器">8. SpringBootResponseMVCResolver —— 响应体处理器</a></li>
-<li><a href="#springboot-9-responsereturnvaluehandler--返回值处理器">9. ResponseReturnValueHandler —— 返回值处理器</a></li>
+<li><a href="#springboot-4-globalmiddlewareregistry-——-全局中间件注册器">4. GlobalMiddlewareRegistry —— 全局中间件注册器</a></li>
+<li><a href="#springboot-5-springbootrouteautoconfiguration-——-路由自动装配">5. SpringBootRouteAutoConfiguration —— 路由自动装配</a></li>
+<li><a href="#springboot-6-responseautoconfiguration-——-响应自动装配">6. ResponseAutoConfiguration —— 响应自动装配</a></li>
+<li><a href="#springboot-7-springbootrequestmvcresolver-——-请求参数解析器">7. SpringBootRequestMVCResolver —— 请求参数解析器</a></li>
+<li><a href="#springboot-8-springbootresponsemvcresolver-——-响应体处理器">8. SpringBootResponseMVCResolver —— 响应体处理器</a></li>
+<li><a href="#springboot-9-responsereturnvaluehandler-——-返回值处理器">9. ResponseReturnValueHandler —— 返回值处理器</a></li>
 <li><a href="#springboot-10-自动装配清单">10. 自动装配清单</a></li>
 <li><a href="#springboot-11-配置选项">11. 配置选项</a></li>
 <li><a href="#springboot-12-线程安全说明">12. 线程安全说明</a></li>
+</ul>
 
 <p>---</p>
 
@@ -21721,6 +21752,7 @@ private MiniProgramService miniService;
 
 <h5 id="captcha-目录">目录</h5>
 
+<ul>
 <li><a href="#captcha-1-核心特性">1. 核心特性</a></li>
 <li><a href="#captcha-2-架构设计">2. 架构设计</a></li>
 <li><a href="#captcha-3-依赖信息">3. 依赖信息</a></li>
@@ -21735,6 +21767,7 @@ private MiniProgramService miniService;
 <li><a href="#captcha-12-存储选择">12. 存储选择</a></li>
 <li><a href="#captcha-13-自定义验证码类型">13. 自定义验证码类型</a></li>
 <li><a href="#captcha-14-前端事件系统">14. 前端事件系统（v0.1.2 新增）</a></li>
+</ul>
 
 <p>---</p>
 
@@ -24111,6 +24144,7 @@ CaptchaProperties coreProps = springBootProps.toCoreProperties();
 
 <h5 id="wire-目录">目录</h5>
 
+<ul>
 <li><a href="#wire-核心特性">核心特性</a></li>
 <li><a href="#wire-依赖引入">依赖引入</a></li>
 <li><a href="#wire-配置说明">配置说明</a></li>
@@ -24122,6 +24156,7 @@ CaptchaProperties coreProps = springBootProps.toCoreProperties();
 <li><a href="#wire-前端事件系统wirejs">前端事件系统（wire.js）</a></li>
 <li><a href="#wire-section-排除列表">Section 排除列表</a></li>
 <li><a href="#wire-设计理念">设计理念</a></li>
+</ul>
 
 <p>---</p>
 
@@ -24458,15 +24493,17 @@ wireManager.clearExcludedSections();
 
 <h5 id="starter-目录">目录</h5>
 
+<ul>
 <li><a href="#starter-1-模块概述">1. 模块概述</a></li>
 <li><a href="#starter-2-依赖信息">2. 依赖信息</a></li>
 <li><a href="#starter-3-类总览">3. 类总览</a></li>
-<li><a href="#starter-4-jaravelautoconfiguration--核心自动装配">4. JaravelAutoConfiguration —— 核心自动装配</a></li>
+<li><a href="#starter-4-jaravelautoconfiguration-——-核心自动装配">4. JaravelAutoConfiguration —— 核心自动装配</a></li>
 <li><a href="#starter-5-快速开始">5. 快速开始</a></li>
 <li><a href="#starter-6-自动装配内容">6. 自动装配内容</a></li>
 <li><a href="#starter-7-jwt-可选模块说明">7. JWT 可选模块说明</a></li>
 <li><a href="#starter-8-配置优先级">8. 配置优先级</a></li>
 <li><a href="#starter-9-线程安全说明">9. 线程安全说明</a></li>
+</ul>
 
 <p>---</p>
 
