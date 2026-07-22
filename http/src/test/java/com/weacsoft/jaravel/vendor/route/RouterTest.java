@@ -4,6 +4,9 @@ import com.weacsoft.jaravel.vendor.http.controller.Controllers;
 import com.weacsoft.jaravel.vendor.http.controller.response.Response;
 import com.weacsoft.jaravel.vendor.http.controller.response.ResponseBuilder;
 import com.weacsoft.jaravel.vendor.http.middleware.Middleware;
+import com.weacsoft.jaravel.vendor.http.middleware.MiddlewareAliasRegistry;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -15,12 +18,22 @@ import static org.junit.jupiter.api.Assertions.*;
  * {@link Router} 路由注册、分组与中间件链测试。
  * <p>
  * 覆盖 GET / POST / PUT / DELETE / PATCH 注册、group 分组（prefix/namespace/name）、
- * 中间件挂载与链式合并、getAllRoutes 递归收集。
+ * 中间件挂载与链式合并、getAllRoutes 递归收集、别名中间件。
  */
 class RouterTest {
 
     /** 空动作占位 */
     private static final Controllers.Runner NOOP = request -> ResponseBuilder.ok();
+
+    @BeforeEach
+    void setUp() {
+        MiddlewareAliasRegistry.getGlobal().clear();
+    }
+
+    @AfterEach
+    void tearDown() {
+        MiddlewareAliasRegistry.getGlobal().clear();
+    }
 
     @Test
     void testHttpMethodRegistration() {
@@ -164,6 +177,108 @@ class RouterTest {
 
         List<Route> routes = router.getAllRoutes();
         assertEquals(3, routes.size(), "应收集根路由与分组路由");
+    }
+
+    // ========== 别名中间件测试 ==========
+
+    @Test
+    void testRouterMiddlewareByAlias() {
+        Middleware authMw = (request, next) -> ResponseBuilder.ok();
+        MiddlewareAliasRegistry.getGlobal().register("auth", authMw);
+
+        Router router = new Router();
+        router.middleware("auth");
+        router.get("/secured", NOOP);
+
+        List<Middleware> middlewares = router.getAllMiddlewares();
+        assertEquals(1, middlewares.size());
+        assertSame(authMw, middlewares.get(0), "路由器级别名应解析为注册的中间件");
+    }
+
+    @Test
+    void testRouterMiddlewareByAliasWithParameter() {
+        Middleware logMw = (request, next) -> ResponseBuilder.ok();
+        MiddlewareAliasRegistry.getGlobal().register("log", logMw);
+
+        Router router = new Router();
+        router.middleware("log:api");
+        router.get("/api", NOOP);
+
+        List<Middleware> middlewares = router.getAllMiddlewares();
+        assertEquals(1, middlewares.size());
+        assertSame(logMw, middlewares.get(0));
+    }
+
+    @Test
+    void testRouterMiddlewareMultipleAliasesInOrder() {
+        Middleware authMw = (request, next) -> ResponseBuilder.ok();
+        Middleware logMw = (request, next) -> ResponseBuilder.ok();
+        MiddlewareAliasRegistry.getGlobal().register("auth", authMw);
+        MiddlewareAliasRegistry.getGlobal().register("log", logMw);
+
+        Router router = new Router();
+        router.middleware("auth:api", "log");
+        router.get("/api", NOOP);
+
+        List<Middleware> middlewares = router.getAllMiddlewares();
+        assertEquals(2, middlewares.size());
+        assertSame(authMw, middlewares.get(0), "第一个应是 auth");
+        assertSame(logMw, middlewares.get(1), "第二个应是 log");
+    }
+
+    @Test
+    void testAliasMiddlewareInheritedFromParentGroup() {
+        Middleware parentMw = (request, next) -> ResponseBuilder.ok();
+        Middleware childMw = (request, next) -> ResponseBuilder.ok();
+        MiddlewareAliasRegistry.getGlobal().register("auth", parentMw);
+        MiddlewareAliasRegistry.getGlobal().register("log", childMw);
+
+        Router router = new Router();
+        router.middleware("auth");
+
+        router.group(Map.of(Route.Group.PREFIX, "api"), r -> {
+            r.middleware("log");
+            r.get("/data", NOOP);
+        });
+
+        List<Route> routes = router.getAllRoutes();
+        assertEquals(1, routes.size());
+        List<Middleware> routeMiddlewares = routes.get(0).getMiddlewares();
+        // 父级别名中间件 + 子级别名中间件
+        assertEquals(2, routeMiddlewares.size(), "父级和子级别名中间件都应被解析");
+    }
+
+    @Test
+    void testMixedDirectAndAliasMiddlewareOnRouter() {
+        Middleware directMw = (request, next) -> ResponseBuilder.ok();
+        Middleware aliasMw = (request, next) -> ResponseBuilder.ok();
+        MiddlewareAliasRegistry.getGlobal().register("auth", aliasMw);
+
+        Router router = new Router();
+        router.middleware(directMw).middleware("auth").middleware(directMw);
+        router.get("/mixed", NOOP);
+
+        List<Middleware> middlewares = router.getAllMiddlewares();
+        assertEquals(3, middlewares.size());
+        assertSame(directMw, middlewares.get(0));
+        assertSame(aliasMw, middlewares.get(1));
+        assertSame(directMw, middlewares.get(2));
+    }
+
+    @Test
+    void testAliasMiddlewareWithMultipleParametersOnRouter() {
+        final String[] capturedParams = {null};
+        MiddlewareAliasRegistry.getGlobal().register("auth", params -> {
+            capturedParams[0] = String.join(",", params);
+            return (request, next) -> ResponseBuilder.ok();
+        });
+
+        Router router = new Router();
+        router.middleware("auth:api,admin");
+        router.get("/api", NOOP);
+
+        router.getAllMiddlewares();
+        assertEquals("api,admin", capturedParams[0], "应正确解析多参数");
     }
 
     /** 通过反射获取 route 的 router 字段（无 public getter） */

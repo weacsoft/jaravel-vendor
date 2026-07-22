@@ -39,6 +39,92 @@ router.middleware(authMiddleware).get("/profile", req -> {
 
 ---
 
+### MiddlewareResolver
+- **Type**: interface (functional)
+- **Package**: `com.weacsoft.jaravel.vendor.http.middleware`
+- **Description**: 中间件解析器，对齐 Laravel 中间件别名 + 参数机制。根据别名表达式中冒号后的参数（如 `auth:api,admin` 解析为 `["api","admin"]`）动态创建中间件实例。无参数中间件可直接返回固定实例。
+- **Annotations**: `@FunctionalInterface`
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `resolve` | `String... parameters` | `Middleware` | 根据参数解析出中间件实例 |
+
+#### Usage Example
+```java
+// 无参数中间件：忽略参数，返回固定实例
+MiddlewareResolver simpleResolver = params -> logMiddleware;
+
+// 参数化中间件：根据参数动态创建实例
+MiddlewareResolver authResolver = params -> {
+    String guard = params.length > 0 ? params[0] : "web";
+    return new AuthMiddleware(guard);
+};
+```
+
+---
+
+### MiddlewareAliasRegistry
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.http.middleware`
+- **Description**: 中间件别名注册表，对齐 Laravel `App\Http\Kernel::$routeMiddleware` 别名机制。将字符串别名映射到 `MiddlewareResolver`，支持解析 `auth:api,admin` 形式的别名表达式。通过 `getGlobal()` 获取全局静态实例，供 `Route` / `Router` 在解析别名时使用。
+- **Annotations**: 无
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `getGlobal` (static) | 无 | `MiddlewareAliasRegistry` | 获取全局静态实例 |
+| `register` | `String alias, Middleware middleware` | `void` | 注册无参数中间件别名（引用时忽略参数，返回同一实例） |
+| `register` | `String alias, MiddlewareResolver resolver` | `void` | 注册参数化中间件别名（引用时根据参数创建实例） |
+| `resolve` | `String expression` | `Middleware` | 解析别名表达式为中间件实例；未注册抛 `IllegalArgumentException` |
+| `resolveAll` | `List<String> expressions` | `List<Middleware>` | 批量解析别名表达式（保持顺序） |
+| `isRegistered` | `String alias` | `boolean` | 别名是否已注册 |
+| `getRegisteredAliases` | 无 | `Set<String>` | 获取所有已注册别名（不可修改视图） |
+| `clear` | 无 | `void` | 清除所有别名（主要用于测试） |
+| `registerGlobal` (static) | `String alias, Middleware middleware` | `void` | 向全局注册表注册无参数别名 |
+| `registerGlobal` (static) | `String alias, MiddlewareResolver resolver` | `void` | 向全局注册表注册参数化别名 |
+| `resolveGlobal` (static) | `String expression` | `Middleware` | 通过全局注册表解析别名表达式 |
+
+#### Alias Expression Syntax
+
+| 表达式 | 别名 | 参数 | 说明 |
+|--------|------|------|------|
+| `"auth"` | `auth` | `[]` | 无参数 |
+| `"auth:api"` | `auth` | `["api"]` | 单参数 |
+| `"auth:api,admin"` | `auth` | `["api", "admin"]` | 多参数 |
+
+冒号分隔别名与参数，逗号分隔多个参数，别名两端空格自动裁剪。
+
+#### Usage Example
+```java
+// 注册别名
+Middleware logMiddleware = (request, next) -> {
+    System.out.println(request.getRequest().getRequestURI());
+    return next.apply(request);
+};
+MiddlewareAliasRegistry.registerGlobal("log", logMiddleware);
+MiddlewareAliasRegistry.registerGlobal("auth", params -> new AuthMiddleware(params));
+
+// 解析别名
+Middleware auth = MiddlewareAliasRegistry.resolveGlobal("auth:api");   // 参数 ["api"]
+Middleware log  = MiddlewareAliasRegistry.resolveGlobal("log");        // 无参数
+
+// 路由中使用别名（Route / Router 的 middleware(String...) 重载）
+router.get("/api/users", req -> ResponseBuilder.json(users))
+      .middleware("auth:api", "log");
+// 执行顺序：auth(guard=api) → log
+
+// 混合使用直接中间件与别名（保持插入顺序）
+router.get("/mixed", req -> ResponseBuilder.ok())
+      .middleware(corsMiddleware)   // 直接中间件
+      .middleware("auth:api")        // 别名
+      .middleware("log");            // 别名
+```
+
+---
+
 ### Route
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.route`
@@ -51,6 +137,7 @@ router.middleware(authMiddleware).get("/profile", req -> {
 |--------|-----------|--------|-------------|
 | `Route` | `String method, String uri, Controllers.Runner action` | 构造方法 | 创建路由 |
 | `middleware` | `Middleware... middleware` | `Route` | 添加中间件（链式） |
+| `middleware` | `String... aliases` | `Route` | 通过别名表达式添加中间件（链式），别名通过全局 `MiddlewareAliasRegistry` 解析 |
 | `name` | `String name` | `Route` | 设置路由名称（链式） |
 | `prefix` | `String prefix` | `Route` | 设置 URI 前缀（链式） |
 | `generateFullUri` | 无 | `String` | 生成完整 URI（含父路由前缀） |
@@ -90,6 +177,7 @@ route.name("users.show").middleware(authMiddleware);
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
 | `middleware` | `Middleware... middleware` | `Router` | 添加中间件（链式） |
+| `middleware` | `String... aliases` | `Router` | 通过别名表达式添加中间件（链式），别名通过全局 `MiddlewareAliasRegistry` 解析 |
 | `get` | `String uri, Controllers.Runner action` | `Route` | 注册 GET 路由 |
 | `post` | `String uri, Controllers.Runner action` | `Route` | 注册 POST 路由 |
 | `put` | `String uri, Controllers.Runner action` | `Route` | 注册 PUT 路由 |

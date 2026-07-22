@@ -16,6 +16,7 @@
   - [4.4 EncryptCookies](#44-encryptcookies)
   - [4.5 TrustProxies](#45-trustproxies)
   - [4.6 VerifyCsrfToken](#46-verifycsrftoken)
+  - [4.7 中间件别名（Middleware Alias）](#47-中间件别名middleware-alias)
 - [5. 请求（Request / RequestFactory）](#5-请求request--requestfactory)
 - [6. 响应（Response / ResponseBuilder / RawResponse / JSONResponseResolver）](#6-响应response--responsebuilder--rawresponse--jsonresponseresolver)
 - [7. 路由系统（Router / Route / RouteService）](#7-路由系统router--route--routeservice)
@@ -86,6 +87,8 @@
 com.weacsoft.jaravel.vendor
 ├── middleware
 │   ├── Middleware                     // 中间件函数式接口
+│   ├── MiddlewareResolver             // 中间件解析器函数式接口（别名→实例）
+│   ├── MiddlewareAliasRegistry        // 中间件别名注册表（对齐 Laravel $routeMiddleware）
 │   ├── TrimStrings                    // 字符串裁剪（@Component，无状态）
 │   ├── ConvertEmptyStringsToNull      // 空串转 null（@Component，无状态）
 │   ├── EncryptCookies                 // Cookie 加解密（@Component，无状态）
@@ -305,6 +308,111 @@ token 查找顺序：`X-XSRF-TOKEN` 请求头 -> `_token` 表单字段 -> `XSRF-
 // 排除 API 路径
 VerifyCsrfToken mw = new VerifyCsrfToken(new String[]{"/api/webhook"});
 ```
+
+### 4.7 中间件别名（Middleware Alias）
+
+`com.weacsoft.jaravel.vendor.http.middleware.MiddlewareAliasRegistry`
+`com.weacsoft.jaravel.vendor.http.middleware.MiddlewareResolver`
+
+对齐 Laravel `$routeMiddleware` 别名机制。开发者可将中间件注册为字符串别名，路由通过别名表达式引用中间件并支持传递参数——无需在路由处手动 `new` 中间件实例。
+
+涉及两个类：
+
+| 类 | 职责 |
+| --- | --- |
+| `MiddlewareResolver` | 函数式接口，根据参数解析出中间件实例 |
+| `MiddlewareAliasRegistry` | 别名注册表，映射别名→解析器；提供全局静态实例 `getGlobal()` |
+
+#### 别名表达式语法
+
+与 Laravel 一致，冒号分隔别名与参数，逗号分隔多个参数：
+
+| 表达式 | 别名 | 参数 | 说明 |
+| --- | --- | --- | --- |
+| `"auth"` | `auth` | `[]` | 无参数 |
+| `"auth:api"` | `auth` | `["api"]` | 单参数 |
+| `"auth:api,admin"` | `auth` | `["api", "admin"]` | 多参数 |
+
+别名两端的空格会被自动裁剪（`trim`）。未注册的别名在解析时抛出 `IllegalArgumentException`。
+
+#### 注册别名
+
+`MiddlewareAliasRegistry` 提供两种注册方式：注册无参数中间件（简单别名，忽略参数，始终返回同一实例）与注册参数化中间件（每次引用时根据参数动态创建实例）。
+
+```java
+import com.weacsoft.jaravel.vendor.http.middleware.MiddlewareAliasRegistry;
+
+// 1. 注册无参数中间件（简单别名，忽略参数，始终返回同一实例）
+Middleware logMiddleware = (request, next) -> {
+    System.out.println(request.getRequest().getRequestURI());
+    return next.apply(request);
+};
+MiddlewareAliasRegistry.registerGlobal("log", logMiddleware);
+
+// 2. 注册参数化中间件（根据参数动态创建实例）
+MiddlewareAliasRegistry.registerGlobal("auth", params -> {
+    String guard = params.length > 0 ? params[0] : "web";
+    return new AuthMiddleware(guard);
+});
+```
+
+> `registerGlobal` / `resolveGlobal` 是委托给 `getGlobal()` 全局实例的静态便捷方法。也可通过 `new MiddlewareAliasRegistry()` 创建独立实例用于测试或隔离场景。
+
+#### 在路由中使用别名
+
+`Route` 和 `Router` 均新增 `middleware(String... aliases)` 重载方法。别名不会立即解析，而是在调用 `getMiddlewares()` / `getAllMiddlewares()` 时通过 `MiddlewareAliasRegistry.getGlobal()` 解析为中间件实例。
+
+```java
+Router router = new Router();
+
+// 路由级别名中间件
+router.get("/api/users", req -> ResponseBuilder.json(users))
+      .middleware("auth:api", "log");
+
+// 路由器级别名中间件（对该路由器下所有路由生效）
+router.middleware("auth:api")
+      .get("/api/profile", req -> ResponseBuilder.json(profile))
+      .get("/api/settings", req -> ResponseBuilder.json(settings));
+
+// 路由分组中使用别名
+router.group(Map.of(Route.Group.PREFIX, "admin"), admin -> {
+    admin.middleware("auth:admin");   // 分组级别名中间件
+    admin.get("/dashboard", req -> ResponseBuilder.json(data));
+    admin.get("/users", req -> ResponseBuilder.json(users));
+});
+```
+
+#### 混合使用直接中间件与别名
+
+`middleware(Middleware...)` 与 `middleware(String...)` 可混合调用，保持插入顺序，别名在解析时按出现顺序展开：
+
+```java
+Middleware corsMiddleware = new CorsMiddleware();   // 直接实例
+
+router.get("/mixed", req -> ResponseBuilder.ok())
+      .middleware(corsMiddleware)   // 直接中间件
+      .middleware("auth:api")        // 别名（解析为注册的中间件）
+      .middleware("log");            // 别名
+// 执行顺序：cors → auth(guard=api) → log
+```
+
+#### MiddlewareAliasRegistry 方法
+
+| 方法签名 | 说明 |
+| --- | --- |
+| `static MiddlewareAliasRegistry getGlobal()` | 获取全局静态实例 |
+| `void register(String alias, Middleware middleware)` | 注册无参数别名（引用时忽略参数，返回同一实例） |
+| `void register(String alias, MiddlewareResolver resolver)` | 注册参数化别名（引用时根据参数创建实例） |
+| `Middleware resolve(String expression)` | 解析别名表达式为中间件实例；未注册抛 `IllegalArgumentException` |
+| `List<Middleware> resolveAll(List<String> expressions)` | 批量解析别名表达式（保持顺序） |
+| `boolean isRegistered(String alias)` | 别名是否已注册 |
+| `Set<String> getRegisteredAliases()` | 获取所有已注册别名（不可修改视图） |
+| `void clear()` | 清除所有别名（主要用于测试） |
+| `static void registerGlobal(String alias, Middleware middleware)` | 向全局注册表注册无参数别名 |
+| `static void registerGlobal(String alias, MiddlewareResolver resolver)` | 向全局注册表注册参数化别名 |
+| `static Middleware resolveGlobal(String expression)` | 通过全局注册表解析别名表达式 |
+
+> SpringBoot 模块的 `GlobalMiddlewareRegistry` 会在启动时自动扫描 `@Middleware` 注解的 Bean 并注册到全局实例中。
 
 ---
 
@@ -606,6 +714,7 @@ Map<String, Object> err = JSONResponseResolver.createErrorResponse("参数错误
 | 方法签名 | 说明 |
 | --- | --- |
 | `Router middleware(Middleware... middleware)` | 添加中间件，返回 this（链式） |
+| `Router middleware(String... aliases)` | 通过别名表达式添加中间件（如 `"auth:api"`），返回 this（链式），别名通过 `MiddlewareAliasRegistry.getGlobal()` 解析 |
 | `Route get(String uri, Controllers.Runner action)` | 注册 GET 路由 |
 | `Route post(String uri, Controllers.Runner action)` | 注册 POST 路由 |
 | `Route put(String uri, Controllers.Runner action)` | 注册 PUT 路由 |
@@ -645,6 +754,10 @@ router.group(Map.of(
 // 带中间件的路由
 router.get("/admin", request -> ResponseBuilder.json(adminData))
       .middleware(new Authenticate("admin"));
+
+// 通过别名引用中间件（需先在 MiddlewareAliasRegistry 注册别名）
+router.get("/api/users", request -> ResponseBuilder.json(users))
+      .middleware("auth:api", "log");
 ```
 
 ### 7.2 Route
@@ -657,6 +770,7 @@ router.get("/admin", request -> ResponseBuilder.json(adminData))
 | --- | --- |
 | `Route(String method, String uri, Controllers.Runner action)` | 构造器 |
 | `Route middleware(Middleware... middleware)` | 添加路由级中间件，返回 this |
+| `Route middleware(String... aliases)` | 通过别名表达式添加路由级中间件（如 `"auth:api"`），返回 this，别名通过 `MiddlewareAliasRegistry.getGlobal()` 解析 |
 | `Route name(String name)` | 设置路由名称，返回 this |
 | `Route prefix(String prefix)` | 设置前缀，返回 this |
 | `String generateFullUri()` | 生成完整 URI（合并父路由器前缀） |
@@ -743,6 +857,8 @@ router.get("/users", userController::index);
 | --- | --- | --- |
 | 所有中间件（`TrimStrings` / `ConvertEmptyStringsToNull` / `EncryptCookies` / `TrustProxies` / `VerifyCsrfToken`） | **线程安全** | `@Component` 单例，无状态、不可变（所有字段 `final`，无 setter），可安全在并发请求间复用 |
 | `Middleware` / `NextFunction` | 线程安全 | 函数式接口，无状态 |
+| `MiddlewareResolver` | 线程安全 | 函数式接口，无状态 |
+| `MiddlewareAliasRegistry` | 线程安全 | 内部使用 `ConcurrentHashMap` 存储别名映射，全局静态实例可在并发下安全注册与解析；`getRegisteredAliases()` 返回不可修改视图 |
 | `Request` | **单请求隔离** | 每次请求新建实例，内部 Map 非线程安全。`RequestFactory` 通过 `ThreadLocal` 维护当前请求，确保请求间隔离。不应跨请求共享同一个 `Request` |
 | `RequestFactory` | 线程安全 | 静态方法无共享可变状态；`currentRequest` 为 `ThreadLocal`，天然线程隔离 |
 | `ResponseBuilder` | 线程安全 | 静态工厂方法，每次返回新的 `AbstractResponse` 实例。`ObjectMapper` 为静态 final 线程安全。`bladeEngine` 静态字段在启动阶段单次写入后只读 |
