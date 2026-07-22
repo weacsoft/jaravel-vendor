@@ -40,7 +40,7 @@ public class EncryptCookies implements Middleware {
     }
 
     @Override
-    public Response handle(Request request, NextFunction next) {
+    public Response handle(Request request, NextFunction next, String... params) {
         decryptCookies(request);
         Response response = next.apply(request);
         encryptCookies(response);

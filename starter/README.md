@@ -163,12 +163,12 @@ public class MyApp {
 public class RouteConfig {
 
     @Bean
-    public Router router(GlobalMiddlewareRegistry registry) {
+    public Router router(ApplicationContext context) {
         Router router = new Router();
 
         // 注册全局中间件
-        registry.addByType(TrimStrings.class);
-        registry.addByType(ConvertEmptyStringsToNull.class);
+        router.middleware(context.getBean(TrimStrings.class));
+        router.middleware(context.getBean(ConvertEmptyStringsToNull.class));
 
         // 注册路由
         router.get("/", request -> ResponseBuilder.json(Map.of("message", "Hello Jaravel!")));
@@ -245,7 +245,7 @@ router.post("/users", request -> {
 | --- | --- |
 | `SpringBootRouteAutoConfiguration` | Router → RouterFunction 桥接，中间件管道执行 |
 | `ResponseAutoConfiguration` | 注入 ResponseReturnValueHandler |
-| `GlobalMiddlewareRegistry` | 全局中间件注册器 |
+| `MiddlewareAliasRegistrar` | 别名中间件自动注册 |
 | `SpringBootRequestMVCResolver` | Controller 方法 Request 参数注入 |
 | `SpringBootResponseMVCResolver` | Response 响应处理 + 安全响应头 |
 

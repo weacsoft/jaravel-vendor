@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * {@link MiddlewareAliasRegistry} 别名注册与解析测试。
  * <p>
- * 覆盖别名注册、表达式解析（无参数/单参数/多参数）、批量解析、未注册别名异常等场景。
+ * 覆盖别名注册、表达式解析（无参数/单参数/多参数）、批量解析、参数烘焙验证、未注册别名异常等场景。
  */
 class MiddlewareAliasRegistryTest {
 
@@ -27,12 +27,11 @@ class MiddlewareAliasRegistryTest {
 
     @AfterEach
     void tearDown() {
-        // 清理全局注册表，避免影响其他测试
         MiddlewareAliasRegistry.getGlobal().clear();
     }
 
     private Middleware testMiddleware() {
-        return (request, next) -> ResponseBuilder.ok();
+        return (request, next, params) -> ResponseBuilder.ok();
     }
 
     @Test
@@ -42,57 +41,50 @@ class MiddlewareAliasRegistryTest {
 
         assertTrue(registry.isRegistered("auth"));
         Middleware resolved = registry.resolve("auth");
-        assertSame(mw, resolved, "无参数别名应返回注册的中间件实例");
+        assertNotNull(resolved, "resolve 应返回非 null 的 Middleware");
     }
 
     @Test
     void testResolveWithSingleParameter() {
-        Middleware mw = testMiddleware();
-        registry.register("auth", mw);
-
-        // auth:api — 参数被忽略（简单中间件）
-        Middleware resolved = registry.resolve("auth:api");
-        assertSame(mw, resolved, "简单中间件应忽略参数，返回同一实例");
-    }
-
-    @Test
-    void testResolveWithMultipleParameters() {
-        Middleware mw = testMiddleware();
-        registry.register("auth", mw);
-
-        // auth:api,admin — 多参数被忽略（简单中间件）
-        Middleware resolved = registry.resolve("auth:api,admin");
-        assertSame(mw, resolved, "简单中间件应忽略多参数，返回同一实例");
-    }
-
-    @Test
-    void testRegisterResolverWithParameters() {
-        // 参数化中间件：根据参数创建不同实例
-        registry.register("auth", params -> (request, next) -> {
+        // 中间件根据 params[0] 设置响应头
+        registry.register("auth", (request, next, params) -> {
             Response resp = ResponseBuilder.ok();
             resp.addHeader("X-Guard", params.length > 0 ? params[0] : "default");
             return resp;
         });
 
+        // auth:api → params = ["api"]
         Middleware resolved = registry.resolve("auth:api");
-        assertNotNull(resolved);
-        assertEquals("api", resolved.handle(null, req -> ResponseBuilder.ok()).getHeaders().get("X-Guard").get(0));
-
-        Middleware resolved2 = registry.resolve("auth:admin");
-        assertNotNull(resolved2);
-        assertEquals("admin", resolved2.handle(null, req -> ResponseBuilder.ok()).getHeaders().get("X-Guard").get(0));
+        Response response = resolved.handle(null, req -> ResponseBuilder.ok());
+        assertEquals("api", response.getHeaders().get("X-Guard").get(0),
+                "params[0] 应为 'api'");
     }
 
     @Test
-    void testRegisterResolverWithMultipleParameters() {
+    void testResolveWithMultipleParameters() {
         final String[] capturedParams = {null};
-        registry.register("auth", params -> {
+        registry.register("auth", (request, next, params) -> {
             capturedParams[0] = String.join(",", params);
-            return testMiddleware();
+            return ResponseBuilder.ok();
         });
 
-        registry.resolve("auth:api,admin");
+        // auth:api,admin → params = ["api", "admin"]
+        Middleware resolved = registry.resolve("auth:api,admin");
+        resolved.handle(null, req -> ResponseBuilder.ok());
         assertEquals("api,admin", capturedParams[0], "应正确解析多参数");
+    }
+
+    @Test
+    void testResolveWithoutParams() {
+        final int[] paramCount = {0};
+        registry.register("auth", (request, next, params) -> {
+            paramCount[0] = params.length;
+            return ResponseBuilder.ok();
+        });
+
+        Middleware resolved = registry.resolve("auth");
+        resolved.handle(null, req -> ResponseBuilder.ok());
+        assertEquals(0, paramCount[0], "无参数别名 params 应为空数组");
     }
 
     @Test
@@ -104,8 +96,6 @@ class MiddlewareAliasRegistryTest {
 
         List<Middleware> result = registry.resolveAll(Arrays.asList("auth", "log"));
         assertEquals(2, result.size());
-        assertSame(mw1, result.get(0), "第一个应是 auth");
-        assertSame(mw2, result.get(1), "第二个应是 log");
     }
 
     @Test
@@ -133,33 +123,21 @@ class MiddlewareAliasRegistryTest {
     }
 
     @Test
-    void testExpressionParsingNoColon() {
-        Middleware mw = testMiddleware();
-        registry.register("cors", mw);
-
-        // 无冒号 → 无参数
-        Middleware resolved = registry.resolve("cors");
-        assertSame(mw, resolved);
-    }
-
-    @Test
     void testExpressionParsingWithSpaces() {
-        Middleware mw = testMiddleware();
-        registry.register("cors", mw);
+        registry.register("cors", testMiddleware());
 
         // 带空格的表达式应被 trim
         Middleware resolved = registry.resolve("  cors  ");
-        assertSame(mw, resolved, "别名两端空格应被 trim");
+        assertNotNull(resolved, "别名两端空格应被 trim");
     }
 
     @Test
     void testExpressionParsingEmptyParams() {
-        Middleware mw = testMiddleware();
-        registry.register("cors", mw);
+        registry.register("cors", testMiddleware());
 
         // cors: — 冒号后无参数
         Middleware resolved = registry.resolve("cors:");
-        assertSame(mw, resolved, "冒号后无参数应正常解析");
+        assertNotNull(resolved, "冒号后无参数应正常解析");
     }
 
     @Test
@@ -169,6 +147,23 @@ class MiddlewareAliasRegistryTest {
 
         assertTrue(MiddlewareAliasRegistry.getGlobal().isRegistered("global-test"));
         Middleware resolved = MiddlewareAliasRegistry.resolveGlobal("global-test");
-        assertSame(mw, resolved);
+        assertNotNull(resolved);
+    }
+
+    @Test
+    void testResolvedMiddlewareIgnoresCallTimeParams() {
+        // resolve 返回的闭包应忽略调用时传入的 params，使用烘焙的参数
+        final String[] capturedParams = {null};
+        registry.register("auth", (request, next, params) -> {
+            capturedParams[0] = String.join(",", params);
+            return ResponseBuilder.ok();
+        });
+
+        // 解析 auth:api → 烘焙 params = ["api"]
+        Middleware resolved = registry.resolve("auth:api");
+
+        // 调用时传入不同的 params，应被忽略
+        resolved.handle(null, req -> ResponseBuilder.ok(), "should", "be", "ignored");
+        assertEquals("api", capturedParams[0], "闭包应使用烘焙参数，忽略调用时传入的参数");
     }
 }

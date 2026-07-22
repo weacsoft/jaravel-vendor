@@ -29,7 +29,7 @@ public class TrimStrings implements Middleware {
     }
 
     @Override
-    public Response handle(Request request, NextFunction next) {
+    public Response handle(Request request, NextFunction next, String... params) {
         trimQueryParameters(request);
         trimInputParameters(request);
         return next.apply(request);

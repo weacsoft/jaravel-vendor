@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -14,26 +15,22 @@ import java.util.concurrent.ConcurrentHashMap;
  * // Kernel.php 中注册别名
  * protected $routeMiddleware = [
  *     'auth' => \App\Http\Middleware\Authenticate::class,
- *     'log'  => \App\Http\Middleware\LogRequest::class,
  * ];
  *
  * // 路由中使用别名（支持参数）
  * Route::middleware('auth:api');        // auth 中间件，参数 "api"
  * Route::middleware('auth:api,admin');  // auth 中间件，参数 "api" 和 "admin"
- * Route::middleware(['auth:api', 'log']); // 按顺序执行 auth 和 log
  * </pre>
  * <p>
- * 本类提供等价能力：
+ * 本类提供等价能力。别名映射到 {@link Middleware} 实例，解析别名表达式时，
+ * 通过闭包将参数烘焙到返回的 Middleware 中：
  * <ul>
- *   <li>{@link #register(String, Middleware)} — 注册无参数中间件别名</li>
- *   <li>{@link #register(String, MiddlewareResolver)} — 注册参数化中间件别名</li>
- *   <li>{@link #resolve(String)} — 解析别名表达式（如 {@code "auth:api,admin"}）为 {@link Middleware} 实例</li>
- *   <li>{@link #resolveAll(List)} — 批量解析别名表达式列表</li>
+ *   <li>{@link #register(String, Middleware)} — 注册别名</li>
+ *   <li>{@link #resolve(String)} — 解析别名表达式，返回带参数的 Middleware 闭包</li>
  * </ul>
  * <p>
- * 通过 {@link #getGlobal()} 获取全局静态实例，供 {@code Route} / {@code Router} 在解析别名时使用。
- * SpringBoot 模块的 {@code GlobalMiddlewareRegistry} 会在启动时自动扫描 {@code @Middleware} 注解的 Bean，
- * 并注册到全局实例中。
+ * 通过 {@link #getGlobal()} 获取全局静态实例。SpringBoot 模块的 {@code MiddlewareAliasRegistrar}
+ * 会在启动时自动扫描 {@code @MiddlewareAlias} 注解的 Bean 并注册到全局实例。
  *
  * <h3>别名表达式语法</h3>
  * <ul>
@@ -46,19 +43,18 @@ import java.util.concurrent.ConcurrentHashMap;
  * <h3>使用示例</h3>
  * <pre>{@code
  * // 注册别名
- * MiddlewareAliasRegistry.getGlobal().register("log", logMiddleware);
- * MiddlewareAliasRegistry.getGlobal().register("auth", params -> new AuthMiddleware(params));
+ * MiddlewareAliasRegistry.getGlobal().register("auth", authMiddleware);
  *
- * // 路由中使用别名（在 Route / Router 上调用 middleware(String...)）
+ * // 路由中使用别名
  * router.get("/api/users", action).middleware("auth:api", "log");
- * // 等价于按顺序执行 auth(guard=api) → log
+ * // resolve("auth:api") 返回 (req, next, ignored) -> authMiddleware.handle(req, next, "api")
  * }</pre>
  */
 public class MiddlewareAliasRegistry {
 
     private static final MiddlewareAliasRegistry GLOBAL = new MiddlewareAliasRegistry();
 
-    private final Map<String, MiddlewareResolver> resolvers = new ConcurrentHashMap<>();
+    private final Map<String, Middleware> aliases = new ConcurrentHashMap<>();
 
     /**
      * 获取全局静态实例。
@@ -70,32 +66,17 @@ public class MiddlewareAliasRegistry {
     }
 
     /**
-     * 注册无参数中间件别名。
-     * <p>
-     * 别名引用时忽略参数，始终返回同一实例。适用于无状态中间件。
+     * 注册中间件别名。
      *
      * @param alias      别名（如 "auth"、"log"）
      * @param middleware 中间件实例
      */
     public void register(String alias, Middleware middleware) {
-        resolvers.put(alias, params -> middleware);
+        aliases.put(alias, middleware);
     }
 
     /**
-     * 注册参数化中间件别名。
-     * <p>
-     * 每次引用别名时调用 resolver 根据参数创建中间件实例。
-     * 适用于需要根据参数构造不同行为的中间件（如不同 guard 的认证）。
-     *
-     * @param alias    别名（如 "auth"）
-     * @param resolver 中间件解析器
-     */
-    public void register(String alias, MiddlewareResolver resolver) {
-        resolvers.put(alias, resolver);
-    }
-
-    /**
-     * 解析别名表达式为中间件实例。
+     * 解析别名表达式，返回带参数烘焙的 {@link Middleware} 闭包。
      * <p>
      * 表达式语法：
      * <ul>
@@ -103,9 +84,11 @@ public class MiddlewareAliasRegistry {
      *   <li>{@code "auth:api"} → 别名 "auth"，参数 ["api"]</li>
      *   <li>{@code "auth:api,admin"} → 别名 "auth"，参数 ["api", "admin"]</li>
      * </ul>
+     * <p>
+     * 返回的 Middleware 闭包会忽略调用时传入的 params，使用解析时烘焙的参数。
      *
      * @param expression 别名表达式
-     * @return 中间件实例
+     * @return 带参数的 Middleware 闭包
      * @throws IllegalArgumentException 别名未注册时抛出
      */
     public Middleware resolve(String expression) {
@@ -130,26 +113,26 @@ public class MiddlewareAliasRegistry {
             }
         }
 
-        MiddlewareResolver resolver = resolvers.get(alias);
-        if (resolver == null) {
+        Middleware original = aliases.get(alias);
+        if (original == null) {
             throw new IllegalArgumentException("未注册的中间件别名: " + alias);
         }
-        return resolver.resolve(params);
+
+        // 通过闭包烘焙参数，返回的 Middleware 忽略调用时传入的 params
+        final String[] bakedParams = params;
+        return (request, next, ignored) -> original.handle(request, next, bakedParams);
     }
 
     /**
-     * 批量解析别名表达式列表，按顺序返回中间件实例列表。
+     * 批量解析别名表达式列表，按顺序返回 Middleware 列表。
      *
      * @param expressions 别名表达式列表（如 ["auth:api", "log"]）
-     * @return 按序解析的中间件实例列表
+     * @return 按序解析的 Middleware 列表
      */
     public List<Middleware> resolveAll(List<String> expressions) {
         List<Middleware> result = new ArrayList<>();
         for (String expr : expressions) {
-            Middleware resolved = resolve(expr);
-            if (resolved != null) {
-                result.add(resolved);
-            }
+            result.add(resolve(expr));
         }
         return result;
     }
@@ -161,7 +144,7 @@ public class MiddlewareAliasRegistry {
      * @return 已注册返回 true
      */
     public boolean isRegistered(String alias) {
-        return resolvers.containsKey(alias);
+        return aliases.containsKey(alias);
     }
 
     /**
@@ -169,47 +152,28 @@ public class MiddlewareAliasRegistry {
      *
      * @return 别名集合
      */
-    public java.util.Set<String> getRegisteredAliases() {
-        return Collections.unmodifiableSet(resolvers.keySet());
+    public Set<String> getRegisteredAliases() {
+        return Collections.unmodifiableSet(aliases.keySet());
     }
 
     /**
      * 清除所有已注册的别名（主要用于测试）。
      */
     public void clear() {
-        resolvers.clear();
+        aliases.clear();
     }
 
     // ========== 静态便捷方法（委托给全局实例） ==========
 
     /**
-     * 向全局注册表注册无参数中间件别名。
-     *
-     * @param alias      别名
-     * @param middleware 中间件实例
-     * @see #register(String, Middleware)
+     * 向全局注册表注册中间件别名。
      */
     public static void registerGlobal(String alias, Middleware middleware) {
         GLOBAL.register(alias, middleware);
     }
 
     /**
-     * 向全局注册表注册参数化中间件别名。
-     *
-     * @param alias    别名
-     * @param resolver 中间件解析器
-     * @see #register(String, MiddlewareResolver)
-     */
-    public static void registerGlobal(String alias, MiddlewareResolver resolver) {
-        GLOBAL.register(alias, resolver);
-    }
-
-    /**
      * 通过全局注册表解析别名表达式。
-     *
-     * @param expression 别名表达式
-     * @return 中间件实例
-     * @see #resolve(String)
      */
     public static Middleware resolveGlobal(String expression) {
         return GLOBAL.resolve(expression);

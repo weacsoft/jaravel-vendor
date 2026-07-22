@@ -6,7 +6,6 @@ import com.weacsoft.jaravel.vendor.http.controller.response.Response;
 import com.weacsoft.jaravel.vendor.http.middleware.Middleware;
 import com.weacsoft.jaravel.vendor.route.Route;
 import com.weacsoft.jaravel.vendor.route.Router;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -83,13 +82,11 @@ public class SpringBootRouteAutoConfiguration {
 
     @Bean
     public RouterFunction<ServerResponse> jaravelRouterFunction(Router router,
-            ObjectProvider<GlobalMiddlewareRegistry> globalMiddlewareProvider,
             RouteAuthHandler routeAuthHandler) {
-        GlobalMiddlewareRegistry globalMiddleware = globalMiddlewareProvider.getIfAvailable();
         List<Route> routes = router.getAllRoutes();
         RouterFunctions.Builder builder = RouterFunctions.route();
         routes.forEach(route -> {
-            builder.route(createRoutePredicate(route), createRouteFunction(route, routeAuthHandler, globalMiddleware));
+            builder.route(createRoutePredicate(route), createRouteFunction(route, routeAuthHandler));
         });
         return builder.build();
     }
@@ -99,8 +96,7 @@ public class SpringBootRouteAutoConfiguration {
                 .and(RequestPredicates.path(route.generateFullUri()));
     }
 
-    private HandlerFunction<ServerResponse> createRouteFunction(Route route, RouteAuthHandler routeAuthHandler,
-            GlobalMiddlewareRegistry globalMiddleware) {
+    private HandlerFunction<ServerResponse> createRouteFunction(Route route, RouteAuthHandler routeAuthHandler) {
         return springRequest -> {
             try {
                 Request customRequest = RequestFactory.buildFromServerRequest(springRequest);
@@ -117,12 +113,8 @@ public class SpringBootRouteAutoConfiguration {
                 // 设置认证上下文（当 auth 模块存在时设置 AuthContext，否则 no-op）
                 routeAuthHandler.setupAuth(customRequest);
                 try {
-                    // 合并中间件：全局中间件 + 路由中间件
-                    List<Middleware> allMiddlewares = new ArrayList<>();
-                    if (globalMiddleware != null) {
-                        allMiddlewares.addAll(globalMiddleware.getMiddlewares());
-                    }
-                    allMiddlewares.addAll(route.getMiddlewares());
+                    // 获取路由中间件（含根 Router 全局中间件 + 路由组中间件 + 路由级中间件）
+                    List<Middleware> allMiddlewares = route.getMiddlewares();
 
                     // 逆序折叠中间件链
                     Middleware.NextFunction finalHandler = route.getAction()::handle;

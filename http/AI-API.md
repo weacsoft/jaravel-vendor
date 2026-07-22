@@ -17,14 +17,14 @@ http 模块提供 Laravel 风格的 HTTP 处理层，包含中间件管道（Mid
 
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
-| `handle` | `Request request, NextFunction next` | `Response` | 处理请求并返回响应 |
+| `handle` | `Request request, NextFunction next, String... params` | `Response` | 处理请求并返回响应；params 来自别名表达式 |
 
 #### Nested Types
 - **Middleware.NextFunction** (interface, functional): `Response apply(Request request)` - 传递给下一层中间件或控制器的函数
 
 #### Usage Example
 ```java
-Middleware authMiddleware = (request, next) -> {
+Middleware authMiddleware = (request, next, params) -> {
     if (!request.hasSession("user_id")) {
         return ResponseBuilder.unauthorized("请先登录");
     }
@@ -39,36 +39,10 @@ router.middleware(authMiddleware).get("/profile", req -> {
 
 ---
 
-### MiddlewareResolver
-- **Type**: interface (functional)
-- **Package**: `com.weacsoft.jaravel.vendor.http.middleware`
-- **Description**: 中间件解析器，对齐 Laravel 中间件别名 + 参数机制。根据别名表达式中冒号后的参数（如 `auth:api,admin` 解析为 `["api","admin"]`）动态创建中间件实例。无参数中间件可直接返回固定实例。
-- **Annotations**: `@FunctionalInterface`
-
-#### Methods
-
-| Method | Parameters | Return | Description |
-|--------|-----------|--------|-------------|
-| `resolve` | `String... parameters` | `Middleware` | 根据参数解析出中间件实例 |
-
-#### Usage Example
-```java
-// 无参数中间件：忽略参数，返回固定实例
-MiddlewareResolver simpleResolver = params -> logMiddleware;
-
-// 参数化中间件：根据参数动态创建实例
-MiddlewareResolver authResolver = params -> {
-    String guard = params.length > 0 ? params[0] : "web";
-    return new AuthMiddleware(guard);
-};
-```
-
----
-
 ### MiddlewareAliasRegistry
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.http.middleware`
-- **Description**: 中间件别名注册表，对齐 Laravel `App\Http\Kernel::$routeMiddleware` 别名机制。将字符串别名映射到 `MiddlewareResolver`，支持解析 `auth:api,admin` 形式的别名表达式。通过 `getGlobal()` 获取全局静态实例，供 `Route` / `Router` 在解析别名时使用。
+- **Description**: 中间件别名注册表，对齐 Laravel `App\Http\Kernel::$routeMiddleware` 别名机制。将字符串别名映射到 `Middleware`，支持解析 `auth:api,admin` 形式的别名表达式。`resolve()` 在解析时将别名表达式中的参数通过闭包烘焙（bake）到返回的 `Middleware` 包装 lambda 中（`(request, next, ignored) -> original.handle(request, next, bakedParams)`）。通过 `getGlobal()` 获取全局静态实例，供 `Route` / `Router` 在解析别名时使用。
 - **Annotations**: 无
 
 #### Methods
@@ -76,15 +50,13 @@ MiddlewareResolver authResolver = params -> {
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
 | `getGlobal` (static) | 无 | `MiddlewareAliasRegistry` | 获取全局静态实例 |
-| `register` | `String alias, Middleware middleware` | `void` | 注册无参数中间件别名（引用时忽略参数，返回同一实例） |
-| `register` | `String alias, MiddlewareResolver resolver` | `void` | 注册参数化中间件别名（引用时根据参数创建实例） |
-| `resolve` | `String expression` | `Middleware` | 解析别名表达式为中间件实例；未注册抛 `IllegalArgumentException` |
+| `register` | `String alias, Middleware middleware` | `void` | 注册中间件别名（引用时参数由别名表达式烘焙注入） |
+| `resolve` | `String expression` | `Middleware` | 解析别名表达式为中间件实例（参数烘焙到返回的包装 lambda 中）；未注册抛 `IllegalArgumentException` |
 | `resolveAll` | `List<String> expressions` | `List<Middleware>` | 批量解析别名表达式（保持顺序） |
 | `isRegistered` | `String alias` | `boolean` | 别名是否已注册 |
 | `getRegisteredAliases` | 无 | `Set<String>` | 获取所有已注册别名（不可修改视图） |
 | `clear` | 无 | `void` | 清除所有别名（主要用于测试） |
-| `registerGlobal` (static) | `String alias, Middleware middleware` | `void` | 向全局注册表注册无参数别名 |
-| `registerGlobal` (static) | `String alias, MiddlewareResolver resolver` | `void` | 向全局注册表注册参数化别名 |
+| `registerGlobal` (static) | `String alias, Middleware middleware` | `void` | 向全局注册表注册别名 |
 | `resolveGlobal` (static) | `String expression` | `Middleware` | 通过全局注册表解析别名表达式 |
 
 #### Alias Expression Syntax
@@ -100,15 +72,24 @@ MiddlewareResolver authResolver = params -> {
 #### Usage Example
 ```java
 // 注册别名
-Middleware logMiddleware = (request, next) -> {
+Middleware logMiddleware = (request, next, params) -> {
     System.out.println(request.getRequest().getRequestURI());
     return next.apply(request);
 };
 MiddlewareAliasRegistry.registerGlobal("log", logMiddleware);
-MiddlewareAliasRegistry.registerGlobal("auth", params -> new AuthMiddleware(params));
+
+// 注册参数化中间件别名（params 来自别名表达式，由 handle 的 String... params 接收）
+Middleware authMiddleware = (request, next, params) -> {
+    String guard = params.length > 0 ? params[0] : "web";
+    if (!isAuthorized(request, guard)) {
+        return ResponseBuilder.unauthorized("未授权");
+    }
+    return next.apply(request);
+};
+MiddlewareAliasRegistry.registerGlobal("auth", authMiddleware);
 
 // 解析别名
-Middleware auth = MiddlewareAliasRegistry.resolveGlobal("auth:api");   // 参数 ["api"]
+Middleware auth = MiddlewareAliasRegistry.resolveGlobal("auth:api");   // 参数 ["api"] 烘焙到返回的包装实例
 Middleware log  = MiddlewareAliasRegistry.resolveGlobal("log");        // 无参数
 
 // 路由中使用别名（Route / Router 的 middleware(String...) 重载）
@@ -484,7 +465,7 @@ Controllers.Runner handler = request -> {
 |--------|-----------|--------|-------------|
 | `VerifyCsrfToken` | 无 | 构造方法 | 默认构造（无排除 URI） |
 | `VerifyCsrfToken` | `String[] except` | 构造方法 | 指定排除校验的 URI |
-| `handle` | `Request request, NextFunction next` | `Response` | 执行 CSRF 校验 |
+| `handle` | `Request request, NextFunction next, String... params` | `Response` | 执行 CSRF 校验 |
 
 ---
 
@@ -502,7 +483,7 @@ Controllers.Runner handler = request -> {
 | `TrustProxies` | 无 | 构造方法 | 默认信任 127.0.0.1 和 ::1 |
 | `TrustProxies` | `List<String> trustedProxies` | 构造方法 | 指定可信代理列表 |
 | `TrustProxies` | `String[] trustedProxies` | 构造方法 | 指定可信代理数组 |
-| `handle` | `Request request, NextFunction next` | `Response` | 处理信任代理头 |
+| `handle` | `Request request, NextFunction next, String... params` | `Response` | 处理信任代理头 |
 
 ---
 
@@ -520,7 +501,7 @@ Controllers.Runner handler = request -> {
 | `EncryptCookies` | 无 | 构造方法 | 默认加密密钥 |
 | `EncryptCookies` | `String encryptionKey` | 构造方法 | 指定加密密钥 |
 | `EncryptCookies` | `String encryptionKey, String[] except` | 构造方法 | 指定密钥和排除 Cookie |
-| `handle` | `Request request, NextFunction next` | `Response` | 解密请求 Cookie，加密响应 Cookie |
+| `handle` | `Request request, NextFunction next, String... params` | `Response` | 解密请求 Cookie，加密响应 Cookie |
 
 ---
 
@@ -537,7 +518,7 @@ Controllers.Runner handler = request -> {
 |--------|-----------|--------|-------------|
 | `TrimStrings` | 无 | 构造方法 | 默认无排除字段 |
 | `TrimStrings` | `String[] except` | 构造方法 | 指定排除裁剪的字段 |
-| `handle` | `Request request, NextFunction next` | `Response` | 裁剪请求参数 |
+| `handle` | `Request request, NextFunction next, String... params` | `Response` | 裁剪请求参数 |
 
 ---
 
@@ -554,7 +535,7 @@ Controllers.Runner handler = request -> {
 |--------|-----------|--------|-------------|
 | `ConvertEmptyStringsToNull` | 无 | 构造方法 | 默认排除 password/password_confirmation/current_password |
 | `ConvertEmptyStringsToNull` | `String... except` | 构造方法 | 指定排除字段 |
-| `handle` | `Request request, NextFunction next` | `Response` | 转换空字符串为 null |
+| `handle` | `Request request, NextFunction next, String... params` | `Response` | 转换空字符串为 null |
 
 ---
 

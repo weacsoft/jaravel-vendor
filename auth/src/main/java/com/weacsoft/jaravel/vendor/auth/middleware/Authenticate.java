@@ -41,11 +41,13 @@ public class Authenticate implements Middleware {
     }
 
     @Override
-    public Response handle(Request request, NextFunction next) {
+    public Response handle(Request request, NextFunction next, String... params) {
+        // 优先使用 params 中的守卫（来自别名表达式如 auth:api），其次使用构造器指定的守卫
+        String effectiveGuard = (params != null && params.length > 0) ? params[0] : this.guard;
         boolean authenticated;
-        if (guard != null && !guard.isEmpty()) {
+        if (effectiveGuard != null && !effectiveGuard.isEmpty()) {
             // 指定守卫：对齐 Laravel auth:guard 语法
-            authenticated = Auth.guard(guard).check();
+            authenticated = Auth.guard(effectiveGuard).check();
         } else {
             // 默认守卫
             authenticated = Auth.check();

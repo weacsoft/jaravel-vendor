@@ -36,7 +36,7 @@ public class VerifyCsrfToken implements Middleware {
     }
 
     @Override
-    public Response handle(Request request, NextFunction next) {
+    public Response handle(Request request, NextFunction next, String... params) {
         String method = request.getRequest().getMethod();
 
         if (isSafeMethod(method) || isExcluded(request)) {

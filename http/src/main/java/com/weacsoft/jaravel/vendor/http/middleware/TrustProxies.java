@@ -37,7 +37,7 @@ public class TrustProxies implements Middleware {
     }
 
     @Override
-    public Response handle(Request request, NextFunction next) {
+    public Response handle(Request request, NextFunction next, String... params) {
         if (isTrustedProxy(request)) {
             setTrustedHeaders(request);
         }

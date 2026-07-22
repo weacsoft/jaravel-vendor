@@ -40,7 +40,7 @@
 
 | Laravel 特性 | http 对应实现 | 说明 |
 | --- | --- | --- |
-| HTTP Middleware | `Middleware` 接口 + 5 个内置中间件 | 洋葱模型管道，`handle(request, next)` |
+| HTTP Middleware | `Middleware` 接口 + 5 个内置中间件 | 洋葱模型管道，`handle(request, next, params)` |
 | `TrimStrings` | `TrimStrings` | 自动裁剪请求参数首尾空白 |
 | `ConvertEmptyStringsToNull` | `ConvertEmptyStringsToNull` | 空字符串转 null |
 | `EncryptCookies` | `EncryptCookies` | AES/CBC 加解密 Cookie |
@@ -87,7 +87,6 @@
 com.weacsoft.jaravel.vendor
 ├── middleware
 │   ├── Middleware                     // 中间件函数式接口
-│   ├── MiddlewareResolver             // 中间件解析器函数式接口（别名→实例）
 │   ├── MiddlewareAliasRegistry        // 中间件别名注册表（对齐 Laravel $routeMiddleware）
 │   ├── TrimStrings                    // 字符串裁剪（@Component，无状态）
 │   ├── ConvertEmptyStringsToNull      // 空串转 null（@Component，无状态）
@@ -122,12 +121,12 @@ com.weacsoft.jaravel.vendor
 
 `com.weacsoft.jaravel.vendor.middleware.Middleware`
 
-函数式接口，定义中间件契约。采用洋葱模型：中间件可在调用 `next` 前预处理请求，在 `next` 返回后后处理响应。
+函数式接口，定义中间件契约。采用洋葱模型：中间件可在调用 `next` 前预处理请求，在 `next` 返回后后处理响应。`handle` 的 `String... params` 参数来自中间件别名表达式（如 `auth:api,admin` 解析为 `["api","admin"]`），直接以 `Middleware` 实例使用时该参数为空数组。
 
 ```java
 @FunctionalInterface
 public interface Middleware {
-    Response handle(Request request, NextFunction next);
+    Response handle(Request request, NextFunction next, String... params);
 
     @FunctionalInterface
     interface NextFunction {
@@ -142,7 +141,7 @@ public interface Middleware {
 @Component
 public class LogMiddleware implements Middleware {
     @Override
-    public Response handle(Request request, Middleware.NextFunction next) {
+    public Response handle(Request request, Middleware.NextFunction next, String... params) {
         long start = System.currentTimeMillis();
         Response response = next.apply(request);   // 调用下一层
         long cost = System.currentTimeMillis() - start;
@@ -165,7 +164,7 @@ public class LogMiddleware implements Middleware {
 
 | 方法 | 说明 |
 | --- | --- |
-| `Response handle(Request, NextFunction)` | 裁剪 query 与 input 后传递给下一层 |
+| `Response handle(Request, NextFunction, String...)` | 裁剪 query 与 input 后传递给下一层 |
 | `protected void trimQueryParameters(Request)` | 裁剪 query 参数 |
 | `protected void trimInputParameters(Request)` | 裁剪 input 参数 |
 | `protected boolean isExcluded(String key)` | 是否在排除列表中 |
@@ -194,7 +193,7 @@ TrimStrings mw = new TrimStrings(new String[]{"password", "password_confirmation
 
 | 方法 | 说明 |
 | --- | --- |
-| `Response handle(Request, NextFunction)` | 转换空串后传递给下一层 |
+| `Response handle(Request, NextFunction, String...)` | 转换空串后传递给下一层 |
 | `private boolean isExcluded(String name)` | 是否在排除列表中（大小写不敏感） |
 
 ```java
@@ -219,7 +218,7 @@ ConvertEmptyStringsToNull mw = new ConvertEmptyStringsToNull("password", "remark
 
 | 方法 | 说明 |
 | --- | --- |
-| `Response handle(Request, NextFunction)` | 先解密请求 Cookie，执行下一层，再加密响应 Cookie |
+| `Response handle(Request, NextFunction, String...)` | 先解密请求 Cookie，执行下一层，再加密响应 Cookie |
 | `protected void decryptCookies(Request)` | 解密请求中的 Cookie |
 | `protected void encryptCookies(Response)` | 加密响应中的 Cookie |
 | `protected String encrypt(String value)` | AES 加密，返回 Base64（IV 前置） |
@@ -254,7 +253,7 @@ EncryptCookies mw = new EncryptCookies("my-key-32bytes-long-enough!!", new Strin
 
 | 方法 | 说明 |
 | --- | --- |
-| `Response handle(Request, NextFunction)` | 若来自受信任代理则设置真实头，再传递给下一层 |
+| `Response handle(Request, NextFunction, String...)` | 若来自受信任代理则设置真实头，再传递给下一层 |
 | `protected boolean isTrustedProxy(Request)` | 判断请求来源是否为受信任代理 |
 | `protected void setTrustedHeaders(Request)` | 从转发头提取真实信息写入 request attribute |
 
@@ -293,7 +292,7 @@ TrustProxies mw = new TrustProxies(List.of("127.0.0.1", "10.0.0.1", "::1"));
 
 | 方法 | 说明 |
 | --- | --- |
-| `Response handle(Request, NextFunction)` | 安全校验或排除则放行并附加 token Cookie；否则校验 token |
+| `Response handle(Request, NextFunction, String...)` | 安全校验或排除则放行并附加 token Cookie；否则校验 token |
 | `protected boolean isSafeMethod(String method)` | 是否为安全方法 |
 | `protected boolean isExcluded(Request)` | URI 是否在排除列表中 |
 | `protected boolean verifyCsrfToken(Request)` | 校验 session token 与请求 token 是否一致 |
@@ -312,16 +311,20 @@ VerifyCsrfToken mw = new VerifyCsrfToken(new String[]{"/api/webhook"});
 ### 4.7 中间件别名（Middleware Alias）
 
 `com.weacsoft.jaravel.vendor.http.middleware.MiddlewareAliasRegistry`
-`com.weacsoft.jaravel.vendor.http.middleware.MiddlewareResolver`
 
 对齐 Laravel `$routeMiddleware` 别名机制。开发者可将中间件注册为字符串别名，路由通过别名表达式引用中间件并支持传递参数——无需在路由处手动 `new` 中间件实例。
 
-涉及两个类：
+注册表内部维护 `Map<String, Middleware>`，将字符串别名映射到 `Middleware` 实例。`resolve()` 在解析别名表达式时，会把别名表达式中冒号后的参数（如 `auth:api,admin` 解析为 `["api","admin"]`）通过闭包烘焙（bake）到返回的 `Middleware` 包装实例中：
+
+```java
+(request, next, ignored) -> original.handle(request, next, bakedParams)
+```
+
+即包装后的中间件在执行时忽略运行时传入的 `params`，直接以解析阶段烘焙好的参数调用原始中间件的 `handle`。
 
 | 类 | 职责 |
 | --- | --- |
-| `MiddlewareResolver` | 函数式接口，根据参数解析出中间件实例 |
-| `MiddlewareAliasRegistry` | 别名注册表，映射别名→解析器；提供全局静态实例 `getGlobal()` |
+| `MiddlewareAliasRegistry` | 别名注册表，映射别名→`Middleware`；提供全局静态实例 `getGlobal()` |
 
 #### 别名表达式语法
 
@@ -337,23 +340,27 @@ VerifyCsrfToken mw = new VerifyCsrfToken(new String[]{"/api/webhook"});
 
 #### 注册别名
 
-`MiddlewareAliasRegistry` 提供两种注册方式：注册无参数中间件（简单别名，忽略参数，始终返回同一实例）与注册参数化中间件（每次引用时根据参数动态创建实例）。
+`MiddlewareAliasRegistry` 通过 `register(String alias, Middleware middleware)` 注册中间件实例。注册的中间件在引用时其 `handle(Request request, NextFunction next, String... params)` 会接收到别名表达式解析出的参数；通过 `resolve()` 返回的包装实例会忽略运行时 `params`，使用解析阶段烘焙好的参数。
 
 ```java
 import com.weacsoft.jaravel.vendor.http.middleware.MiddlewareAliasRegistry;
 
-// 1. 注册无参数中间件（简单别名，忽略参数，始终返回同一实例）
-Middleware logMiddleware = (request, next) -> {
+// 1. 注册中间件别名
+Middleware logMiddleware = (request, next, params) -> {
     System.out.println(request.getRequest().getRequestURI());
     return next.apply(request);
 };
 MiddlewareAliasRegistry.registerGlobal("log", logMiddleware);
 
-// 2. 注册参数化中间件（根据参数动态创建实例）
-MiddlewareAliasRegistry.registerGlobal("auth", params -> {
+// 2. 注册参数化中间件别名（params 来自别名表达式如 "auth:api"，由 handle 的 String... params 接收）
+Middleware authMiddleware = (request, next, params) -> {
     String guard = params.length > 0 ? params[0] : "web";
-    return new AuthMiddleware(guard);
-});
+    if (!isAuthorized(request, guard)) {
+        return ResponseBuilder.unauthorized("未授权");
+    }
+    return next.apply(request);
+};
+MiddlewareAliasRegistry.registerGlobal("auth", authMiddleware);
 ```
 
 > `registerGlobal` / `resolveGlobal` 是委托给 `getGlobal()` 全局实例的静态便捷方法。也可通过 `new MiddlewareAliasRegistry()` 创建独立实例用于测试或隔离场景。
@@ -401,18 +408,14 @@ router.get("/mixed", req -> ResponseBuilder.ok())
 | 方法签名 | 说明 |
 | --- | --- |
 | `static MiddlewareAliasRegistry getGlobal()` | 获取全局静态实例 |
-| `void register(String alias, Middleware middleware)` | 注册无参数别名（引用时忽略参数，返回同一实例） |
-| `void register(String alias, MiddlewareResolver resolver)` | 注册参数化别名（引用时根据参数创建实例） |
-| `Middleware resolve(String expression)` | 解析别名表达式为中间件实例；未注册抛 `IllegalArgumentException` |
+| `void register(String alias, Middleware middleware)` | 注册中间件别名（引用时参数由别名表达式烘焙注入） |
+| `Middleware resolve(String expression)` | 解析别名表达式为中间件实例（参数烘焙到返回的包装 lambda 中）；未注册抛 `IllegalArgumentException` |
 | `List<Middleware> resolveAll(List<String> expressions)` | 批量解析别名表达式（保持顺序） |
 | `boolean isRegistered(String alias)` | 别名是否已注册 |
 | `Set<String> getRegisteredAliases()` | 获取所有已注册别名（不可修改视图） |
 | `void clear()` | 清除所有别名（主要用于测试） |
-| `static void registerGlobal(String alias, Middleware middleware)` | 向全局注册表注册无参数别名 |
-| `static void registerGlobal(String alias, MiddlewareResolver resolver)` | 向全局注册表注册参数化别名 |
+| `static void registerGlobal(String alias, Middleware middleware)` | 向全局注册表注册别名 |
 | `static Middleware resolveGlobal(String expression)` | 通过全局注册表解析别名表达式 |
-
-> SpringBoot 模块的 `GlobalMiddlewareRegistry` 会在启动时自动扫描 `@Middleware` 注解的 Bean 并注册到全局实例中。
 
 ---
 
@@ -847,7 +850,7 @@ router.get("/users", userController::index);
 | `TrustProxies` | `trustedProxies`（信任代理 IP） | `127.0.0.1`, `::1` |
 | `VerifyCsrfToken` | `except`（排除 URI） | 空数组 |
 
-全局中间件的注册由 `springboot` 模块的 `GlobalMiddlewareRegistry` 负责，详见对应模块文档。
+全局中间件不再通过独立的注册表管理，而是直接在根 `Router` 上通过 `router.middleware(...)` 声明；`springboot` 模块的 `MiddlewareAliasRegistrar` 负责在启动时扫描 `@Middleware` 注解的 Bean 并注册到全局 `MiddlewareAliasRegistry`。
 
 ---
 
@@ -857,7 +860,6 @@ router.get("/users", userController::index);
 | --- | --- | --- |
 | 所有中间件（`TrimStrings` / `ConvertEmptyStringsToNull` / `EncryptCookies` / `TrustProxies` / `VerifyCsrfToken`） | **线程安全** | `@Component` 单例，无状态、不可变（所有字段 `final`，无 setter），可安全在并发请求间复用 |
 | `Middleware` / `NextFunction` | 线程安全 | 函数式接口，无状态 |
-| `MiddlewareResolver` | 线程安全 | 函数式接口，无状态 |
 | `MiddlewareAliasRegistry` | 线程安全 | 内部使用 `ConcurrentHashMap` 存储别名映射，全局静态实例可在并发下安全注册与解析；`getRegisteredAliases()` 返回不可修改视图 |
 | `Request` | **单请求隔离** | 每次请求新建实例，内部 Map 非线程安全。`RequestFactory` 通过 `ThreadLocal` 维护当前请求，确保请求间隔离。不应跨请求共享同一个 `Request` |
 | `RequestFactory` | 线程安全 | 静态方法无共享可变状态；`currentRequest` 为 `ThreadLocal`，天然线程隔离 |

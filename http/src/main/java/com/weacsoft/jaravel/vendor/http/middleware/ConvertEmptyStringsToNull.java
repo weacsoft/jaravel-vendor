@@ -23,7 +23,7 @@ public class ConvertEmptyStringsToNull implements Middleware {
     }
 
     @Override
-    public Response handle(Request request, NextFunction next) {
+    public Response handle(Request request, NextFunction next, String... params) {
         convertEmptyStringsToNull(request);
         return next.apply(request);
     }
