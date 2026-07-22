@@ -4,12 +4,15 @@ import com.weacsoft.jaravel.vendor.http.controller.request.Request;
 import com.weacsoft.jaravel.vendor.http.controller.request.RequestFactory;
 import com.weacsoft.jaravel.vendor.http.controller.response.Response;
 import com.weacsoft.jaravel.vendor.http.middleware.Middleware;
+import com.weacsoft.jaravel.vendor.http.middleware.MiddlewareAliasRegistry;
 import com.weacsoft.jaravel.vendor.route.Route;
 import com.weacsoft.jaravel.vendor.route.Router;
+import com.weacsoft.jaravel.vendor.springboot.annotation.MiddlewareAlias;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.HttpMethod;
 import org.slf4j.Logger;
@@ -32,8 +35,12 @@ import java.util.Map;
  * <p>
  * 适配 Spring Boot 3.2.5 / Spring 6.x（jakarta.servlet、{@code org.springframework.web.servlet.function}）。
  * <p>
+ * 同时负责自动扫描 {@link MiddlewareAlias} 注解的中间件 Bean，注册到
+ * {@link MiddlewareAliasRegistry} 全局注册表，使路由可通过别名、类对象或类名引用中间件。
+ * <p>
  * 流程：
  * <ol>
+ *   <li>扫描容器中所有 {@link MiddlewareAlias} 注解的 Bean，注册到 {@link MiddlewareAliasRegistry}（别名非空时注册别名，始终注册类映射）</li>
  *   <li>遍历 {@link Router#getAllRoutes()}，为每条路由构造 {@link RequestPredicate}（HTTP 方法 + 完整 URI）</li>
  *   <li>构造 {@link HandlerFunction}：通过 {@link RequestFactory#buildFromServerRequest} 构建 Laravel 风格
  *       {@link Request}，通过 {@link RouteAuthHandler} 设置认证上下文，再以逆序折叠路由中间件链，终点调用 {@code Route.getAction()::handle}</li>
@@ -82,13 +89,41 @@ public class SpringBootRouteAutoConfiguration {
 
     @Bean
     public RouterFunction<ServerResponse> jaravelRouterFunction(Router router,
-            RouteAuthHandler routeAuthHandler) {
+            RouteAuthHandler routeAuthHandler, ApplicationContext applicationContext) {
+        // 扫描 @MiddlewareAlias 注解的中间件 Bean，注册到全局别名注册表
+        scanMiddlewareAliases(applicationContext);
+
         List<Route> routes = router.getAllRoutes();
         RouterFunctions.Builder builder = RouterFunctions.route();
         routes.forEach(route -> {
             builder.route(createRoutePredicate(route), createRouteFunction(route, routeAuthHandler));
         });
         return builder.build();
+    }
+
+    /**
+     * 扫描容器中所有 {@link MiddlewareAlias} 注解的 Bean，注册到 {@link MiddlewareAliasRegistry} 全局注册表。
+     * <p>
+     * 三种场景：
+     * <ul>
+     *   <li>未标注 {@code @MiddlewareAlias}：视为用户自建，不扫描</li>
+     *   <li>标注但未填别名（{@code @MiddlewareAlias}）：仅注册类映射，路由通过类对象或类名引用</li>
+     *   <li>标注且填了别名（{@code @MiddlewareAlias("auth")}）：同时注册别名映射和类映射</li>
+     * </ul>
+     */
+    void scanMiddlewareAliases(ApplicationContext applicationContext) {
+        if (applicationContext == null) return;
+        MiddlewareAliasRegistry registry = MiddlewareAliasRegistry.getGlobal();
+        Map<String, Object> beans = applicationContext.getBeansWithAnnotation(MiddlewareAlias.class);
+        beans.forEach((beanName, bean) -> {
+            if (bean instanceof Middleware) {
+                MiddlewareAlias annotation = bean.getClass().getAnnotation(MiddlewareAlias.class);
+                if (annotation != null) {
+                    String alias = annotation.value();
+                    registry.register(alias, (Middleware) bean);
+                }
+            }
+        });
     }
 
     private RequestPredicate createRoutePredicate(Route route) {

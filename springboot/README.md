@@ -9,7 +9,7 @@
 - [1. 模块概述](#1-模块概述)
 - [2. 依赖信息](#2-依赖信息)
 - [3. 类总览](#3-类总览)
-- [4. MiddlewareAliasRegistrar —— 中间件别名注册器](#4-middlewarealiasregistrar--中间件别名注册器)
+- [4. 中间件别名扫描 —— SpringBootRouteAutoConfiguration 内置扫描](#4-中间件别名扫描--springbootrouteautoconfiguration-内置扫描)
 - [5. SpringBootRouteAutoConfiguration —— 路由自动装配](#5-springbootrouteautoconfiguration--路由自动装配)
 - [6. ResponseAutoConfiguration —— 响应自动装配](#6-responseautoconfiguration--响应自动装配)
 - [7. SpringBootRequestMVCResolver —— 请求参数解析器](#7-springbootrequestmvcresolver--请求参数解析器)
@@ -28,7 +28,7 @@
 | Laravel 特性 | springboot 对应实现 | 说明 |
 | --- | --- | --- |
 | `App\Http\Kernel::$middleware` 全局中间件 | 根 `Router.middleware()` | 全局中间件直接在根 Router 上声明，所有路由通过 `getAllMiddlewares()` 继承 |
-| `App\Http\Kernel::$routeMiddleware` 别名中间件 | `@MiddlewareAlias` + `MiddlewareAliasRegistrar` | 注解声明别名，启动时自动注册到 `MiddlewareAliasRegistry` |
+| `App\Http\Kernel::$routeMiddleware` 别名中间件 | `@MiddlewareAlias` + `SpringBootRouteAutoConfiguration` | 注解声明别名，构建路由前由 `SpringBootRouteAutoConfiguration.scanMiddlewareAliases()` 扫描并注册到 `MiddlewareAliasRegistry` |
 | `Route::` 路由注册 | `SpringBootRouteAutoConfiguration` | 将 `Router` 转为 Spring `RouterFunction` |
 | Request 注入 | `SpringBootRequestMVCResolver` | Controller 方法可直接声明 `Request` 参数 |
 | Response 处理 | `SpringBootResponseMVCResolver` / `ResponseReturnValueHandler` | Controller 可直接返回 `Response` |
@@ -68,8 +68,7 @@
 
 ```
 com.weacsoft.jaravel.vendor.springboot
-├── MiddlewareAliasRegistrar            // 中间件别名注册器（@Component）
-├── SpringBootRouteAutoConfiguration    // 路由自动装配（@AutoConfiguration）
+├── SpringBootRouteAutoConfiguration    // 路由自动装配（@AutoConfiguration，内置中间件别名扫描）
 ├── ResponseAutoConfiguration           // 响应自动装配（@AutoConfiguration）
 ├── SpringBootRequestMVCResolver        // Request 参数解析器（@Component）
 ├── SpringBootResponseMVCResolver       // Response 响应体处理器（@ControllerAdvice）
@@ -87,41 +86,52 @@ com.weacsoft.jaravel.vendor.springboot.ResponseAutoConfiguration
 
 ---
 
-## 4. MiddlewareAliasRegistrar —— 中间件别名注册器
+## 4. 中间件别名扫描 —— SpringBootRouteAutoConfiguration 内置扫描
 
-`com.weacsoft.jaravel.vendor.springboot.MiddlewareAliasRegistrar`
+对齐 Laravel `App\Http\Kernel::$routeMiddleware` 别名注册机制。别名中间件扫描逻辑现已合并到 `SpringBootRouteAutoConfiguration` 中（不再使用独立的注册器组件）。`jaravelRouterFunction` Bean 方法现在接收 `ApplicationContext` 作为第三个参数，并在构建路由前调用 `scanMiddlewareAliases(applicationContext)`，扫描容器中所有 `@MiddlewareAlias` 注解的 Bean 并注册到 `MiddlewareAliasRegistry.getGlobal()` 全局注册表，使路由可通过别名、Class 对象或类名字符串引用中间件。
 
-对齐 Laravel `App\Http\Kernel::$routeMiddleware` 别名注册机制。SpringBoot 启动时自动扫描 `@MiddlewareAlias` 注解的 Bean，并注册到 `MiddlewareAliasRegistry` 全局注册表，使路由可通过字符串别名引用中间件。作为 Spring `@Component` 管理。
+### scanMiddlewareAliases 方法
 
-### 设计要点
+`SpringBootRouteAutoConfiguration.scanMiddlewareAliases(ApplicationContext applicationContext)` 为包级可见方法：
 
-- 持有 `ApplicationContext`，启动时扫描容器中所有 `@MiddlewareAlias` 注解的 Bean。
-- 注册的 Bean 必须实现 `Middleware` 接口，其 `handle(Request request, NextFunction next, String... params)` 方法通过 `params` 接收别名表达式中的参数。
-- 全局中间件（对所有路由生效的中间件）无需单独的注册器，直接在根 `Router` 上声明即可，路由会通过 `Router.getAllMiddlewares()` 继承。
+- 扫描容器中所有标注 `@MiddlewareAlias` 的 Bean（其本身因组合 `@Component` 已是 Spring Bean）。
+- 根据注解 `value()` 是否为空，决定按别名 + 类或仅按类注册到 `MiddlewareAliasRegistry.getGlobal()`。
+- 对 `null` 上下文安全处理（直接返回，不抛异常）。
+- 在 `jaravelRouterFunction` 构建路由前一次性调用，启动阶段完成后注册表只读。
 
-### 方法文档
+### @MiddlewareAlias 注解
 
-| 方法签名 | 说明 |
-| --- | --- |
-| `MiddlewareAliasRegistrar(ApplicationContext applicationContext)` | 构造器，注入 Spring 上下文 |
-| `void registerAliases()` | `@PostConstruct` 方法，扫描容器中所有 `@MiddlewareAlias` 注解的 Bean 并注册到 `MiddlewareAliasRegistry.getGlobal()` |
+`com.weacsoft.jaravel.vendor.springboot.annotation.MiddlewareAlias`（组合 `@Component`），`value()` 现为可选（`default ""`）。标注在实现了 `Middleware` 接口的类上，其 `handle(Request request, NextFunction next, String... params)` 方法通过 `params` 接收别名表达式中的参数。根据是否标注及 `value()` 取值，存在三种场景：
 
-### 别名中间件自动注册
+| 场景 | 注解形式 | 扫描注册 | 路由引用方式 |
+| --- | --- | --- | --- |
+| 无注解 | 不标注 | 用户自建中间件，模块与 SpringBoot 均不扫描注册 | 仅能通过实例（`router.middleware(instance)`）或全局中间件声明使用 |
+| 仅按类注册 | `@MiddlewareAlias`（无 value） | 被扫描并按类注册到 `MiddlewareAliasRegistry` | 通过 Class 对象或类名字符串引用 |
+| 按别名 + 类注册 | `@MiddlewareAlias("auth")` | 被扫描并按别名与类同时注册到 `MiddlewareAliasRegistry` | 通过别名、Class 对象或类名字符串引用 |
 
-通过 `@MiddlewareAlias` 注解（位于 `com.weacsoft.jaravel.vendor.springboot.annotation` 包，组合了 `@Component`）可将中间件类声明为命名别名。SpringBoot 启动时，`MiddlewareAliasRegistrar.registerAliases()` 自动扫描这些 Bean 并注册到 `MiddlewareAliasRegistry`，路由即可通过字符串别名引用中间件。
+> 注解命名为 `@MiddlewareAlias` 而非 `@Middleware`，是为了避免与 `com.weacsoft.jaravel.vendor.http.middleware.Middleware` 接口同名冲突。`value()` 通过 `@AliasFor(annotation = Component.class, attribute = "value")` 同时作为 Spring Bean 名称。全局中间件（对所有路由生效的中间件）无需别名注册，直接在根 `Router` 上声明即可，路由会通过 `Router.getAllMiddlewares()` 继承。
 
-> 注解命名为 `@MiddlewareAlias` 而非 `@Middleware`，是为了避免与 `com.weacsoft.jaravel.vendor.http.middleware.Middleware` 接口同名冲突。
+### 路由中引用中间件的三种模式
 
-别名表达式语法（冒号分隔别名与参数，逗号分隔多个参数）：
+别名表达式语法（冒号分隔别名/类名与参数，逗号分隔多个参数）：
 
-| 表达式 | 别名 | 参数 |
+| 表达式 | 别名 / 类名 | 参数 |
 | --- | --- | --- |
 | `"auth"` | `auth` | 无 |
 | `"auth:api"` | `auth` | `["api"]` |
 | `"auth:api,admin"` | `auth` | `["api", "admin"]` |
 
+三种引用模式：
+
+1. **别名**：`middleware("auth:api")` —— 适用于 `@MiddlewareAlias("auth")` 标注的中间件。
+2. **Class 对象**：`middleware(AuthMiddleware.class)` 或带参数 `middleware(AuthMiddleware.class, "api", "admin")` —— 适用于 `@MiddlewareAlias` 或 `@MiddlewareAlias("auth")` 标注的中间件。
+3. **类名字符串**：`middleware("AuthMiddleware:api")` —— 语法与别名相同，适用于 `@MiddlewareAlias` 或 `@MiddlewareAlias("auth")` 标注的中间件。
+
+### 使用示例
+
 ```java
-// 1. 声明中间件并注册别名（支持 alias:param 语法，参数通过 handle 的 params 传入）
+// 1. 声明中间件并注册别名（value 可选）
+//    @MiddlewareAlias("auth")：按别名 + 类注册，路由可用别名/Class/类名引用
 @MiddlewareAlias("auth")
 public class AuthMiddleware implements Middleware {
     @Override
@@ -133,10 +143,24 @@ public class AuthMiddleware implements Middleware {
     }
 }
 
-// 2. 路由中通过字符串别名引用中间件
-//    auth:api → AuthMiddleware.handle(request, next, "api")
-//    auth:api,admin → AuthMiddleware.handle(request, next, "api", "admin")
+//    @MiddlewareAlias（无 value）：仅按类注册，路由可用 Class/类名引用
+@MiddlewareAlias
+public class LogMiddleware implements Middleware {
+    @Override
+    public Response handle(Request request, NextFunction next, String... params) {
+        return next.apply(request);
+    }
+}
+
+// 2. 路由中引用中间件（三种模式）
+//    别名：auth:api → AuthMiddleware.handle(request, next, "api")
 router.get("/api/users", action).middleware("auth:api");
+
+//    Class 对象（可带参数）
+router.get("/api/admin", action).middleware(AuthMiddleware.class, "api", "admin");
+
+//    类名字符串（语法同别名）
+router.get("/api/posts", action).middleware("AuthMiddleware:api");
 
 // 或在路由组上使用：
 router.group(Map.of(Route.Group.PREFIX, "api"), api -> {
@@ -144,11 +168,11 @@ router.group(Map.of(Route.Group.PREFIX, "api"), api -> {
     api.get("/users", action);
 });
 
-// 3. 全局中间件直接在根 Router 上声明（无需单独的注册器）
+// 3. 全局中间件直接在根 Router 上声明（无需别名注册）
 router.middleware(trimStrings, convertEmptyStringsToNull);
 ```
 
-> 别名注册流程：用户标注 `@MiddlewareAlias("auth")` → SpringBoot 启动时 `MiddlewareAliasRegistrar.@PostConstruct` 扫描 `@MiddlewareAlias` Bean → 注册到 `MiddlewareAliasRegistry.getGlobal()` → 路由中 `middleware("auth:api")` 调用 `route.getMiddlewares()` 时解析别名表达式，通过闭包烘焙参数并返回 `Middleware` 实例。
+> 别名注册流程：用户标注 `@MiddlewareAlias("auth")` → `jaravelRouterFunction` 构建路由前调用 `SpringBootRouteAutoConfiguration.scanMiddlewareAliases(applicationContext)` 扫描 `@MiddlewareAlias` Bean → 注册到 `MiddlewareAliasRegistry.getGlobal()` → 路由中 `middleware("auth:api")` 调用 `route.getMiddlewares()` 时解析别名表达式，通过闭包烘焙参数并返回 `Middleware` 实例。
 
 ---
 
@@ -163,11 +187,15 @@ router.middleware(trimStrings, convertEmptyStringsToNull);
 | Bean 方法 | 类型 | 条件 | 说明 |
 | --- | --- | --- | --- |
 | `baseRouter()` | `Router` | `@ConditionalOnMissingBean` | 基础路由器，用户可覆盖 |
-| `jaravelRouterFunction(...)` | `RouterFunction<ServerResponse>` | 无 | 将 `Router` 的所有路由转为 Spring 路由函数 |
+| `jaravelRouterFunction(...)` | `RouterFunction<ServerResponse>` | 无 | 接收 `Router`、`RouteAuthHandler`、`ApplicationContext` 三参；构建路由前先调用 `scanMiddlewareAliases(applicationContext)` 扫描 `@MiddlewareAlias` Bean 注册到 `MiddlewareAliasRegistry.getGlobal()`，再将 `Router` 的所有路由转为 Spring 路由函数 |
 
 ### 处理流程
 
 ```
+0. scanMiddlewareAliases(applicationContext)
+   │   扫描 @MiddlewareAlias Bean → 注册到 MiddlewareAliasRegistry.getGlobal()
+   │
+   ▼
 1. 遍历 Router.getAllRoutes()
    │
    ▼ 每条路由
@@ -407,12 +435,11 @@ returnValue == null？
 
 | 组件 | 类型 | 来源 | 作用 |
 | --- | --- | --- | --- |
-| `SpringBootRouteAutoConfiguration` | `@AutoConfiguration` | imports 文件 | 路由桥接 + 中间件执行 |
+| `SpringBootRouteAutoConfiguration` | `@AutoConfiguration` | imports 文件 | 路由桥接 + 中间件执行 + `@MiddlewareAlias` 别名扫描注册 |
 | `ResponseAutoConfiguration` | `@AutoConfiguration` | imports 文件 | 注入返回值处理器 |
-| `MiddlewareAliasRegistrar` | `@Component` | 组件扫描 | 别名中间件自动注册 |
 | `SpringBootRequestMVCResolver` | `@Component` | 组件扫描 | Request 参数注入 |
 | `SpringBootResponseMVCResolver` | `@ControllerAdvice` | 组件扫描 | Response 响应处理 + 安全头 |
-| `@MiddlewareAlias` 标注的中间件类 | `@Component`（组合注解） | 组件扫描 | 用户中间件类，启动时由 `MiddlewareAliasRegistrar.registerAliases()` 注册为别名中间件 |
+| `@MiddlewareAlias` 标注的中间件类 | `@Component`（组合注解） | 组件扫描 | 用户中间件类，启动时由 `SpringBootRouteAutoConfiguration.scanMiddlewareAliases()` 扫描并注册到 `MiddlewareAliasRegistry.getGlobal()` |
 | `baseRouter` (Router) | `@Bean` | `SpringBootRouteAutoConfiguration` | 基础路由器（可覆盖） |
 | `jaravelRouterFunction` (RouterFunction) | `@Bean` | `SpringBootRouteAutoConfiguration` | Spring 路由函数 |
 
@@ -428,7 +455,7 @@ returnValue == null？
 | --- | --- | --- |
 | 覆盖基础路由器 | 自定义 `Router` `@Bean` | `baseRouter()` 标注 `@ConditionalOnMissingBean`，用户定义的同类型 Bean 优先 |
 | 注册全局中间件 | 在根 `Router` 上调用 `middleware()` | 全局中间件直接在根 Router 上声明，所有路由通过 `getAllMiddlewares()` 继承 |
-| 注册别名中间件 | 在中间件类上标注 `@MiddlewareAlias("别名")` | 启动时自动扫描并注册到 `MiddlewareAliasRegistry`，路由中通过 `middleware("别名:参数")` 引用 |
+| 注册别名中间件 | 在中间件类上标注 `@MiddlewareAlias`（value 可选） | 启动时由 `SpringBootRouteAutoConfiguration.scanMiddlewareAliases()` 扫描并注册到 `MiddlewareAliasRegistry`，路由中可通过别名 / Class / 类名引用 |
 | 关闭响应自动装配 | 排除 `ResponseAutoConfiguration` | `@SpringBootApplication(exclude = ResponseAutoConfiguration.class)` |
 | 关闭路由自动装配 | 排除 `SpringBootRouteAutoConfiguration` | 同上 |
 
@@ -448,8 +475,7 @@ public class MyApp { ... }
 
 | 类 | 线程安全性 | 说明 |
 | --- | --- | --- |
-| `MiddlewareAliasRegistrar` | 启动期安全 | `@PostConstruct` 在启动阶段一次性扫描注册，之后只读。`MiddlewareAliasRegistry` 内部使用 `ConcurrentHashMap`，线程安全 |
-| `SpringBootRouteAutoConfiguration` | 线程安全 | `@Bean` 在启动阶段创建；`jaravelRouterFunction` 构建的 `HandlerFunction` 为每次请求新建 `Request`，无共享可变状态。`AuthContext` / `AuthManager` 使用 ThreadLocal 或请求级清理，确保请求间隔离 |
+| `SpringBootRouteAutoConfiguration` | 线程安全 | `@Bean` 在启动阶段创建；`jaravelRouterFunction` 构建路由前调用 `scanMiddlewareAliases(applicationContext)` 在启动阶段一次性扫描注册 `@MiddlewareAlias` Bean 到 `MiddlewareAliasRegistry.getGlobal()`，之后只读（注册表内部使用 `ConcurrentHashMap`）；构建的 `HandlerFunction` 为每次请求新建 `Request`，无共享可变状态。`RouteAuthHandler` 使用 ThreadLocal 或请求级清理，确保请求间隔离 |
 | `ResponseAutoConfiguration` | 线程安全 | 构造器在启动阶段一次性修改 `RequestMappingHandlerAdapter` 的处理器链，之后只读 |
 | `SpringBootRequestMVCResolver` | 线程安全 | `@Component` 单例，`resolveArgument` 每次调用构建新的 `Request`，无共享可变状态 |
 | `SpringBootResponseMVCResolver` | 线程安全 | `@ControllerAdvice` 单例，`beforeBodyWrite` 无状态，仅操作方法参数（每请求独立） |

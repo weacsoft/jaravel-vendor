@@ -243,9 +243,8 @@ router.post("/users", request -> {
 
 | 组件 | 作用 |
 | --- | --- |
-| `SpringBootRouteAutoConfiguration` | Router → RouterFunction 桥接，中间件管道执行 |
+| `SpringBootRouteAutoConfiguration` | Router → RouterFunction 桥接，中间件管道执行，内置 `@MiddlewareAlias` 别名扫描注册 |
 | `ResponseAutoConfiguration` | 注入 ResponseReturnValueHandler |
-| `MiddlewareAliasRegistrar` | 别名中间件自动注册 |
 | `SpringBootRequestMVCResolver` | Controller 方法 Request 参数注入 |
 | `SpringBootResponseMVCResolver` | Response 响应处理 + 安全响应头 |
 

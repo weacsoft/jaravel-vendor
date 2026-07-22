@@ -198,4 +198,91 @@ class RouteTest {
         middlewares.get(0).handle(null, req -> ResponseBuilder.ok());
         assertEquals("api,admin", capturedParams[0], "应正确解析多参数");
     }
+
+    // ========== 类对象中间件测试 ==========
+
+    @Test
+    void testRouteMiddlewareByClass() {
+        Middleware logMw = (request, next, params) -> ResponseBuilder.ok();
+        MiddlewareAliasRegistry.getGlobal().register(logMw);
+
+        Router router = new Router();
+        Route route = router.get("/log", NOOP).middleware(logMw.getClass());
+
+        List<Middleware> middlewares = route.getMiddlewares();
+        assertEquals(1, middlewares.size());
+        assertNotNull(middlewares.get(0), "按类对象应解析为非 null 的 Middleware");
+    }
+
+    @Test
+    void testRouteMiddlewareByClassWithParams() {
+        final String[] capturedParams = {null};
+        Middleware authMw = (request, next, params) -> {
+            capturedParams[0] = String.join(",", params);
+            return ResponseBuilder.ok();
+        };
+        MiddlewareAliasRegistry.getGlobal().register(authMw);
+
+        Router router = new Router();
+        router.get("/api", NOOP).middleware(authMw.getClass(), "api", "admin");
+
+        List<Middleware> middlewares = router.getAllRoutes().get(0).getMiddlewares();
+        assertEquals(1, middlewares.size());
+        middlewares.get(0).handle(null, req -> ResponseBuilder.ok());
+        assertEquals("api,admin", capturedParams[0], "类对象+参数应正确传递");
+    }
+
+    @Test
+    void testRouteMiddlewareByClassName() {
+        Middleware logMw = (request, next, params) -> ResponseBuilder.ok();
+        MiddlewareAliasRegistry.getGlobal().register(logMw);
+
+        Router router = new Router();
+        String className = logMw.getClass().getSimpleName();
+        Route route = router.get("/log", NOOP).middleware(className);
+
+        List<Middleware> middlewares = route.getMiddlewares();
+        assertEquals(1, middlewares.size());
+        assertNotNull(middlewares.get(0), "按类名应解析为非 null 的 Middleware");
+    }
+
+    @Test
+    void testRouteMiddlewareByClassNameWithParams() {
+        final String[] capturedParams = {null};
+        Middleware authMw = (request, next, params) -> {
+            capturedParams[0] = String.join(",", params);
+            return ResponseBuilder.ok();
+        };
+        MiddlewareAliasRegistry.getGlobal().register(authMw);
+
+        Router router = new Router();
+        String className = authMw.getClass().getSimpleName();
+        router.get("/api", NOOP).middleware(className + ":api,admin");
+
+        List<Middleware> middlewares = router.getAllRoutes().get(0).getMiddlewares();
+        assertEquals(1, middlewares.size());
+        middlewares.get(0).handle(null, req -> ResponseBuilder.ok());
+        assertEquals("api,admin", capturedParams[0], "类名表达式应正确解析参数");
+    }
+
+    @Test
+    void testRouteMiddlewareMixedDirectAliasAndClass() {
+        Middleware directMw = (request, next, params) -> ResponseBuilder.ok();
+        Middleware aliasMw = (request, next, params) -> ResponseBuilder.ok();
+        Middleware classMw = (request, next, params) -> ResponseBuilder.ok();
+        MiddlewareAliasRegistry.getGlobal().register("auth", aliasMw);
+        MiddlewareAliasRegistry.getGlobal().register(classMw);
+
+        Router router = new Router();
+        Route route = router.get("/mixed", NOOP)
+                .middleware(directMw)
+                .middleware("auth")
+                .middleware(classMw.getClass());
+
+        List<Middleware> middlewares = route.getMiddlewares();
+        assertEquals(3, middlewares.size());
+        assertSame(directMw, middlewares.get(0), "第一个应是直接中间件");
+        assertNotNull(middlewares.get(1), "第二个应是别名解析的闭包");
+        assertNotNull(middlewares.get(2), "第三个应是类对象解析的闭包");
+    }
 }

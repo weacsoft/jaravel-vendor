@@ -2,6 +2,7 @@ package com.weacsoft.jaravel.vendor.route;
 
 import com.weacsoft.jaravel.vendor.http.controller.Controllers;
 import com.weacsoft.jaravel.vendor.route.staticresource.StaticResourceRoute;
+import com.weacsoft.jaravel.vendor.http.middleware.ClassMiddlewareSpec;
 import com.weacsoft.jaravel.vendor.http.middleware.Middleware;
 import com.weacsoft.jaravel.vendor.http.middleware.MiddlewareAliasRegistry;
 import lombok.Getter;
@@ -20,8 +21,14 @@ public class Router {
     private final List<Route> routes = new CopyOnWriteArrayList<>();
     private final List<Router> routers = new CopyOnWriteArrayList<>();
     /**
-     * 中间件规格列表，元素类型为 {@link Middleware}（直接中间件）或 {@link String}（别名表达式）。
-     * 保持插入顺序，支持混合使用直接中间件与别名。
+     * 中间件规格列表，元素类型为：
+     * <ul>
+     *   <li>{@link Middleware} — 直接中间件实例</li>
+     *   <li>{@link String} — 别名/类名表达式（如 "auth:api"、"LogMiddleware:debug"）</li>
+     *   <li>{@link Class} — 类对象引用（无参数，如 AuthMiddleware.class）</li>
+     *   <li>{@link ClassMiddlewareSpec} — 类对象 + 参数（如 AuthMiddleware.class + ["api"]）</li>
+     * </ul>
+     * 保持插入顺序，支持混合使用。
      */
     private final List<Object> middlewareSpecs = new CopyOnWriteArrayList<>();
     @Setter
@@ -67,6 +74,30 @@ public class Router {
      */
     public Router middleware(String... aliases) {
         middlewareSpecs.addAll(Arrays.asList(aliases));
+        return this;
+    }
+
+    /**
+     * 添加路由器级中间件（通过类对象引用，支持可选参数）。
+     * <p>
+     * 路由器级中间件会被该路由器下所有路由继承，适用于分组批量添加中间件。
+     * 适用于标注了 {@code @MiddlewareAlias} 但未填别名的中间件，或需要类型安全引用的场景。
+     * <p>
+     * 使用示例：
+     * <pre>
+     * // 无参数
+     * router.middleware(LogMiddleware.class);
+     * // 带参数
+     * router.middleware(AuthMiddleware.class, "api", "admin");
+     * </pre>
+     *
+     * @param clazz  中间件类（必须实现 {@link Middleware}）
+     * @param params 中间件参数（可选）
+     * @return this（链式调用）
+     * @see MiddlewareAliasRegistry#resolve(Class, String...)
+     */
+    public Router middleware(Class<?> clazz, String... params) {
+        middlewareSpecs.add(new ClassMiddlewareSpec(clazz, params));
         return this;
     }
 
@@ -186,13 +217,18 @@ public class Router {
 
     public List<Middleware> getAllMiddlewares() {
         List<Middleware> middlewares = new ArrayList<>();
-        // 解析本路由器的中间件规格（直接中间件 + 别名表达式）
+        // 解析本路由器的中间件规格（直接中间件 + 别名/类名表达式 + 类对象 + 类+参数）
         MiddlewareAliasRegistry registry = MiddlewareAliasRegistry.getGlobal();
         for (Object spec : middlewareSpecs) {
             if (spec instanceof Middleware) {
                 middlewares.add((Middleware) spec);
             } else if (spec instanceof String) {
                 middlewares.add(registry.resolve((String) spec));
+            } else if (spec instanceof ClassMiddlewareSpec) {
+                ClassMiddlewareSpec cms = (ClassMiddlewareSpec) spec;
+                middlewares.add(registry.resolve(cms.getClazz(), cms.getParams()));
+            } else if (spec instanceof Class<?>) {
+                middlewares.add(registry.resolve((Class<?>) spec));
             }
         }
         // 递归添加父路由器中间件

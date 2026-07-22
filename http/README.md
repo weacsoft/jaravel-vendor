@@ -16,7 +16,7 @@
   - [4.4 EncryptCookies](#44-encryptcookies)
   - [4.5 TrustProxies](#45-trustproxies)
   - [4.6 VerifyCsrfToken](#46-verifycsrftoken)
-  - [4.7 中间件别名（Middleware Alias）](#47-中间件别名middleware-alias)
+  - [4.7 中间件别名与类引用（Middleware Alias & Class Resolution）](#47-中间件别名与类引用middleware-alias--class-resolution)
 - [5. 请求（Request / RequestFactory）](#5-请求request--requestfactory)
 - [6. 响应（Response / ResponseBuilder / RawResponse / JSONResponseResolver）](#6-响应response--responsebuilder--rawresponse--jsonresponseresolver)
 - [7. 路由系统（Router / Route / RouteService）](#7-路由系统router--route--routeservice)
@@ -87,7 +87,8 @@
 com.weacsoft.jaravel.vendor
 ├── middleware
 │   ├── Middleware                     // 中间件函数式接口
-│   ├── MiddlewareAliasRegistry        // 中间件别名注册表（对齐 Laravel $routeMiddleware）
+│   ├── MiddlewareAliasRegistry        // 中间件别名注册表（对齐 Laravel $routeMiddleware，支持别名与类双映射）
+│   ├── ClassMiddlewareSpec            // 类引用中间件规格（Class + params，内部类）
 │   ├── TrimStrings                    // 字符串裁剪（@Component，无状态）
 │   ├── ConvertEmptyStringsToNull      // 空串转 null（@Component，无状态）
 │   ├── EncryptCookies                 // Cookie 加解密（@Component，无状态）
@@ -308,13 +309,18 @@ token 查找顺序：`X-XSRF-TOKEN` 请求头 -> `_token` 表单字段 -> `XSRF-
 VerifyCsrfToken mw = new VerifyCsrfToken(new String[]{"/api/webhook"});
 ```
 
-### 4.7 中间件别名（Middleware Alias）
+### 4.7 中间件别名与类引用（Middleware Alias & Class Resolution）
 
 `com.weacsoft.jaravel.vendor.http.middleware.MiddlewareAliasRegistry`
 
-对齐 Laravel `$routeMiddleware` 别名机制。开发者可将中间件注册为字符串别名，路由通过别名表达式引用中间件并支持传递参数——无需在路由处手动 `new` 中间件实例。
+对齐 Laravel `$routeMiddleware` 别名机制，并在此基础上扩展了基于 Class 的中间件引用。开发者既可将中间件注册为字符串别名，也可直接通过 `Class` 对象或类名引用中间件——无需在路由处手动 `new` 中间件实例。
 
-注册表内部维护 `Map<String, Middleware>`，将字符串别名映射到 `Middleware` 实例。`resolve()` 在解析别名表达式时，会把别名表达式中冒号后的参数（如 `auth:api,admin` 解析为 `["api","admin"]`）通过闭包烘焙（bake）到返回的 `Middleware` 包装实例中：
+注册表内部维护 **两张映射表**：
+
+- `Map<String, Middleware>` —— 别名 → `Middleware` 实例
+- `Map<Class<?>, Middleware>` —— Class → `Middleware` 实例
+
+`resolve()` 在解析别名/类名表达式时，会把表达式中冒号后的参数（如 `auth:api,admin` 解析为 `["api","admin"]`）通过闭包烘焙（bake）到返回的 `Middleware` 包装实例中：
 
 ```java
 (request, next, ignored) -> original.handle(request, next, bakedParams)
@@ -324,28 +330,47 @@ VerifyCsrfToken mw = new VerifyCsrfToken(new String[]{"/api/webhook"});
 
 | 类 | 职责 |
 | --- | --- |
-| `MiddlewareAliasRegistry` | 别名注册表，映射别名→`Middleware`；提供全局静态实例 `getGlobal()` |
+| `MiddlewareAliasRegistry` | 别名注册表，维护别名→`Middleware` 与 Class→`Middleware` 双映射；提供全局静态实例 `getGlobal()` |
+| `ClassMiddlewareSpec` | 类引用中间件规格，封装 `Class` + `params`，由 `Route.middleware(Class, String...)` / `Router.middleware(Class, String...)` 内部构造 |
 
-#### 别名表达式语法
+#### 三种中间件引用模式
 
-与 Laravel 一致，冒号分隔别名与参数，逗号分隔多个参数：
+`Route` 与 `Router` 的 `middleware(...)` 方法支持以下三种引用模式，解析时均通过全局 `MiddlewareAliasRegistry`：
 
-| 表达式 | 别名 | 参数 | 说明 |
+| 模式 | 调用方式 | 说明 |
+| --- | --- | --- |
+| **别名** | `middleware("auth:api")` | 字符串别名 + 参数；需通过 `@MiddlewareAlias("auth")` 或 `register(alias, mw)` 注册别名 |
+| **Class 对象** | `middleware(AuthMiddleware.class)` 或 `middleware(AuthMiddleware.class, "api", "admin")` | `Class` 对象 + 可选参数；需先注册 Class 映射 |
+| **类名字符串** | `middleware("AuthMiddleware:api")` | 类名字符串，语法与别名一致（冒号分隔参数） |
+
+> Class 对象与类名字符串两种模式均依赖注册表中已注册的 Class 映射。当 `register(alias, middleware)` 被调用时会**自动**同时注册 Class 映射，因此通过别名注册过的中间件也可直接以 Class 方式引用。
+
+#### 别名 / 类名表达式语法
+
+与 Laravel 一致，冒号分隔标识（别名或类名）与参数，逗号分隔多个参数：
+
+| 表达式 | 标识 | 参数 | 说明 |
 | --- | --- | --- | --- |
 | `"auth"` | `auth` | `[]` | 无参数 |
 | `"auth:api"` | `auth` | `["api"]` | 单参数 |
 | `"auth:api,admin"` | `auth` | `["api", "admin"]` | 多参数 |
+| `"AuthMiddleware:api"` | `AuthMiddleware` | `["api"]` | 类名 + 参数 |
 
-别名两端的空格会被自动裁剪（`trim`）。未注册的别名在解析时抛出 `IllegalArgumentException`。
+标识两端的空格会被自动裁剪（`trim`）。`resolve(String expression)` 解析时**先查别名表**；若别名未命中，则回退到类名查找（依次尝试简单名与全限定名），命中则按 Class 解析；两者均未注册时抛出 `IllegalArgumentException`。
 
-#### 注册别名
+#### 注册中间件
 
-`MiddlewareAliasRegistry` 通过 `register(String alias, Middleware middleware)` 注册中间件实例。注册的中间件在引用时其 `handle(Request request, NextFunction next, String... params)` 会接收到别名表达式解析出的参数；通过 `resolve()` 返回的包装实例会忽略运行时 `params`，使用解析阶段烘焙好的参数。
+`MiddlewareAliasRegistry` 提供两种注册方式：
+
+1. **`register(String alias, Middleware middleware)`** —— 按别名注册。调用时**自动**同时注册 Class 映射；若 `alias` 为 `null` 或空字符串，则**仅**注册 Class 映射（不写入别名表）。
+2. **`register(Middleware middleware)`** —— 仅按 Class 注册（不设别名），仅写入 Class→`Middleware` 表。
+
+注册的中间件在引用时其 `handle(Request request, NextFunction next, String... params)` 会接收到表达式解析出的参数；通过 `resolve()` 返回的包装实例会忽略运行时 `params`，使用解析阶段烘焙好的参数。
 
 ```java
 import com.weacsoft.jaravel.vendor.http.middleware.MiddlewareAliasRegistry;
 
-// 1. 注册中间件别名
+// 1. 注册中间件别名（同时自动注册 Class 映射）
 Middleware logMiddleware = (request, next, params) -> {
     System.out.println(request.getRequest().getRequestURI());
     return next.apply(request);
@@ -361,17 +386,28 @@ Middleware authMiddleware = (request, next, params) -> {
     return next.apply(request);
 };
 MiddlewareAliasRegistry.registerGlobal("auth", authMiddleware);
+
+// 3. 仅按 Class 注册（无别名）
+MiddlewareAliasRegistry.getGlobal().register(rateLimitMiddleware);
+// 之后可用 middleware(RateLimitMiddleware.class) 或 middleware("RateLimitMiddleware") 引用
 ```
 
 > `registerGlobal` / `resolveGlobal` 是委托给 `getGlobal()` 全局实例的静态便捷方法。也可通过 `new MiddlewareAliasRegistry()` 创建独立实例用于测试或隔离场景。
 
-#### 在路由中使用别名
+#### ClassMiddlewareSpec
 
-`Route` 和 `Router` 均新增 `middleware(String... aliases)` 重载方法。别名不会立即解析，而是在调用 `getMiddlewares()` / `getAllMiddlewares()` 时通过 `MiddlewareAliasRegistry.getGlobal()` 解析为中间件实例。
+`com.weacsoft.jaravel.vendor.http.middleware.ClassMiddlewareSpec`
+
+内部类，封装一个 `Class<?>` 与一组 `String... params`，表示「按 Class 引用且带参数」的中间件规格。开发者**无需直接构造**该类——它由 `Route.middleware(Class<?> clazz, String... params)` 与 `Router.middleware(Class<?> clazz, String... params)` 在内部创建，并在 `getMiddlewares()` / `getAllMiddlewares()` 解析时通过 `MiddlewareAliasRegistry.resolve(Class, String...)` 解析为中间件实例。
+
+#### 在路由中使用中间件
+
+`Route` 和 `Router` 均提供多个 `middleware(...)` 重载，支持 `Middleware` 实例、`String` 表达式、`Class<?>` 对象三种引用方式。中间件不会立即解析，而是在调用 `getMiddlewares()` / `getAllMiddlewares()` 时通过 `MiddlewareAliasRegistry.getGlobal()` 解析为中间件实例。
 
 ```java
 Router router = new Router();
 
+// —— 模式一：字符串别名 ——
 // 路由级别名中间件
 router.get("/api/users", req -> ResponseBuilder.json(users))
       .middleware("auth:api", "log");
@@ -381,26 +417,41 @@ router.middleware("auth:api")
       .get("/api/profile", req -> ResponseBuilder.json(profile))
       .get("/api/settings", req -> ResponseBuilder.json(settings));
 
-// 路由分组中使用别名
+// —— 模式二：Class 对象 ——
+// 无参数
+router.get("/api/orders", req -> ResponseBuilder.json(orders))
+      .middleware(AuthMiddleware.class);
+
+// 带参数（内部创建 ClassMiddlewareSpec，解析时烘焙 params）
+router.get("/api/admin", req -> ResponseBuilder.json(adminData))
+      .middleware(AuthMiddleware.class, "api", "admin");
+
+// —— 模式三：类名字符串（语法同别名） ——
+router.get("/api/logs", req -> ResponseBuilder.json(logs))
+      .middleware("AuthMiddleware:api");
+
+// 路由分组中使用
 router.group(Map.of(Route.Group.PREFIX, "admin"), admin -> {
-    admin.middleware("auth:admin");   // 分组级别名中间件
+    admin.middleware("auth:admin");               // 分组级别名中间件
+    admin.middleware(RateLimitMiddleware.class);   // 分组级 Class 中间件
     admin.get("/dashboard", req -> ResponseBuilder.json(data));
     admin.get("/users", req -> ResponseBuilder.json(users));
 });
 ```
 
-#### 混合使用直接中间件与别名
+#### 混合使用直接中间件、别名与类引用
 
-`middleware(Middleware...)` 与 `middleware(String...)` 可混合调用，保持插入顺序，别名在解析时按出现顺序展开：
+`middleware(Middleware...)`、`middleware(String...)` 与 `middleware(Class<?>, String...)` 可混合调用，保持插入顺序，解析时按出现顺序展开：
 
 ```java
 Middleware corsMiddleware = new CorsMiddleware();   // 直接实例
 
 router.get("/mixed", req -> ResponseBuilder.ok())
-      .middleware(corsMiddleware)   // 直接中间件
-      .middleware("auth:api")        // 别名（解析为注册的中间件）
-      .middleware("log");            // 别名
-// 执行顺序：cors → auth(guard=api) → log
+      .middleware(corsMiddleware)                    // 直接中间件
+      .middleware("auth:api")                        // 别名（解析为注册的中间件）
+      .middleware(AuthMiddleware.class, "admin")     // Class + 参数
+      .middleware("log");                            // 别名
+// 执行顺序：cors → auth(guard=api) → auth(guard=admin) → log
 ```
 
 #### MiddlewareAliasRegistry 方法
@@ -408,14 +459,19 @@ router.get("/mixed", req -> ResponseBuilder.ok())
 | 方法签名 | 说明 |
 | --- | --- |
 | `static MiddlewareAliasRegistry getGlobal()` | 获取全局静态实例 |
-| `void register(String alias, Middleware middleware)` | 注册中间件别名（引用时参数由别名表达式烘焙注入） |
-| `Middleware resolve(String expression)` | 解析别名表达式为中间件实例（参数烘焙到返回的包装 lambda 中）；未注册抛 `IllegalArgumentException` |
-| `List<Middleware> resolveAll(List<String> expressions)` | 批量解析别名表达式（保持顺序） |
+| `void register(String alias, Middleware middleware)` | 注册中间件别名（引用时参数由别名表达式烘焙注入）；**同时自动注册 Class 映射**；`alias` 为 null/空时仅注册 Class 映射 |
+| `void register(Middleware middleware)` | 仅按 Class 注册中间件（不设别名），写入 Class→`Middleware` 表 |
+| `Middleware resolve(String expression)` | 解析别名/类名表达式为中间件实例（参数烘焙到返回的包装 lambda 中）；先查别名表，未命中则回退类名查找（简单名、全限定名）；均未注册抛 `IllegalArgumentException` |
+| `Middleware resolve(Class<?> clazz)` | 按 Class 解析中间件实例（无参数）；未注册抛 `IllegalArgumentException` |
+| `Middleware resolve(Class<?> clazz, String... params)` | 按 Class 解析中间件实例并烘焙参数；未注册抛 `IllegalArgumentException` |
+| `List<Middleware> resolveAll(List<String> expressions)` | 批量解析别名/类名表达式（保持顺序） |
 | `boolean isRegistered(String alias)` | 别名是否已注册 |
+| `boolean isClassRegistered(Class<?> clazz)` | Class 是否已注册 |
 | `Set<String> getRegisteredAliases()` | 获取所有已注册别名（不可修改视图） |
-| `void clear()` | 清除所有别名（主要用于测试） |
+| `Set<Class<?>> getRegisteredClasses()` | 获取所有已注册 Class（不可修改视图） |
+| `void clear()` | 清除所有别名与 Class 映射（主要用于测试） |
 | `static void registerGlobal(String alias, Middleware middleware)` | 向全局注册表注册别名 |
-| `static Middleware resolveGlobal(String expression)` | 通过全局注册表解析别名表达式 |
+| `static Middleware resolveGlobal(String expression)` | 通过全局注册表解析别名/类名表达式 |
 
 ---
 
@@ -717,7 +773,8 @@ Map<String, Object> err = JSONResponseResolver.createErrorResponse("参数错误
 | 方法签名 | 说明 |
 | --- | --- |
 | `Router middleware(Middleware... middleware)` | 添加中间件，返回 this（链式） |
-| `Router middleware(String... aliases)` | 通过别名表达式添加中间件（如 `"auth:api"`），返回 this（链式），别名通过 `MiddlewareAliasRegistry.getGlobal()` 解析 |
+| `Router middleware(String... aliases)` | 通过别名/类名表达式添加中间件（如 `"auth:api"`），返回 this（链式），通过 `MiddlewareAliasRegistry.getGlobal()` 解析 |
+| `Router middleware(Class<?> clazz, String... params)` | 通过 Class 对象引用中间件（可选参数），返回 this（链式）；内部创建 `ClassMiddlewareSpec`，由全局 `MiddlewareAliasRegistry` 解析 |
 | `Route get(String uri, Controllers.Runner action)` | 注册 GET 路由 |
 | `Route post(String uri, Controllers.Runner action)` | 注册 POST 路由 |
 | `Route put(String uri, Controllers.Runner action)` | 注册 PUT 路由 |
@@ -773,7 +830,8 @@ router.get("/api/users", request -> ResponseBuilder.json(users))
 | --- | --- |
 | `Route(String method, String uri, Controllers.Runner action)` | 构造器 |
 | `Route middleware(Middleware... middleware)` | 添加路由级中间件，返回 this |
-| `Route middleware(String... aliases)` | 通过别名表达式添加路由级中间件（如 `"auth:api"`），返回 this，别名通过 `MiddlewareAliasRegistry.getGlobal()` 解析 |
+| `Route middleware(String... aliases)` | 通过别名/类名表达式添加路由级中间件（如 `"auth:api"`），返回 this，通过 `MiddlewareAliasRegistry.getGlobal()` 解析 |
+| `Route middleware(Class<?> clazz, String... params)` | 通过 Class 对象引用路由级中间件（可选参数），返回 this；内部创建 `ClassMiddlewareSpec`，由全局 `MiddlewareAliasRegistry` 解析 |
 | `Route name(String name)` | 设置路由名称，返回 this |
 | `Route prefix(String prefix)` | 设置前缀，返回 this |
 | `String generateFullUri()` | 生成完整 URI（合并父路由器前缀） |
@@ -850,7 +908,7 @@ router.get("/users", userController::index);
 | `TrustProxies` | `trustedProxies`（信任代理 IP） | `127.0.0.1`, `::1` |
 | `VerifyCsrfToken` | `except`（排除 URI） | 空数组 |
 
-全局中间件不再通过独立的注册表管理，而是直接在根 `Router` 上通过 `router.middleware(...)` 声明；`springboot` 模块的 `MiddlewareAliasRegistrar` 负责在启动时扫描 `@Middleware` 注解的 Bean 并注册到全局 `MiddlewareAliasRegistry`。
+全局中间件不再通过独立的注册表管理，而是直接在根 `Router` 上通过 `router.middleware(...)` 声明；`springboot` 模块的 `SpringBootRouteAutoConfiguration` 负责在启动时扫描 `@MiddlewareAlias` 注解的 Bean 并注册到全局 `MiddlewareAliasRegistry`。
 
 ---
 
@@ -860,7 +918,7 @@ router.get("/users", userController::index);
 | --- | --- | --- |
 | 所有中间件（`TrimStrings` / `ConvertEmptyStringsToNull` / `EncryptCookies` / `TrustProxies` / `VerifyCsrfToken`） | **线程安全** | `@Component` 单例，无状态、不可变（所有字段 `final`，无 setter），可安全在并发请求间复用 |
 | `Middleware` / `NextFunction` | 线程安全 | 函数式接口，无状态 |
-| `MiddlewareAliasRegistry` | 线程安全 | 内部使用 `ConcurrentHashMap` 存储别名映射，全局静态实例可在并发下安全注册与解析；`getRegisteredAliases()` 返回不可修改视图 |
+| `MiddlewareAliasRegistry` | 线程安全 | 内部使用 `ConcurrentHashMap` 存储别名映射与 Class 映射，全局静态实例可在并发下安全注册与解析；`getRegisteredAliases()` / `getRegisteredClasses()` 返回不可修改视图 |
 | `Request` | **单请求隔离** | 每次请求新建实例，内部 Map 非线程安全。`RequestFactory` 通过 `ThreadLocal` 维护当前请求，确保请求间隔离。不应跨请求共享同一个 `Request` |
 | `RequestFactory` | 线程安全 | 静态方法无共享可变状态；`currentRequest` 为 `ThreadLocal`，天然线程隔离 |
 | `ResponseBuilder` | 线程安全 | 静态工厂方法，每次返回新的 `AbstractResponse` 实例。`ObjectMapper` 为静态 final 线程安全。`bladeEngine` 静态字段在启动阶段单次写入后只读 |
