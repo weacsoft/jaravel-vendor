@@ -3,7 +3,7 @@
 > Module: `http` | Package: `com.weacsoft.jaravel.vendor` | Version: 0.1.2
 
 ## Overview
-http 模块提供 Laravel 风格的 HTTP 处理层，包含中间件管道（Middleware）、请求（Request）与响应（Response）抽象、路由系统（Route/Router）、控制器接口（Controllers）与控制器注册解析（ControllerRegistry / ControllerActionResolver）、静态资源目录服务（StaticResource）以及一组内置中间件（VerifyCsrfToken、TrustProxies、EncryptCookies、TrimStrings、ConvertEmptyStringsToNull）。它将 Servlet API 封装为对齐 Laravel 的 Request/Response 对象，支持链式中间件管道、路由分组、控制器动作路由（`"Controller::action"` 字符串或 `Class + 方法名`，懒解析），并通过 `Router.serveStatic()` 提供对齐 Laravel `public` 目录与 `asset()` 辅助函数的静态资源服务。内置中间件为普通类（不再是 Spring `@Component`），通过继承并标注 `@MiddlewareAlias` 注册，配置通过重写受保护方法完成。
+http 模块提供 Laravel 风格的 HTTP 处理层，包含中间件管道（Middleware）、请求（Request）与响应（Response）抽象、路由系统（Route/Router）、控制器接口（Controllers）与控制器注册解析（ControllerRegistry / ControllerActionResolver）、静态资源目录服务（StaticResource）以及一组内置中间件（VerifyCsrfToken、TrustProxies、EncryptCookies、TrimStrings、ConvertEmptyStringsToNull）。它将 Servlet API 封装为对齐 Laravel 的 Request/Response 对象，支持链式中间件管道、路由分组、控制器动作路由（`"Controller::action"` 字符串或 `Class + 方法名`，懒解析），并通过 `Router.serveStatic()` 提供对齐 Laravel `public` 目录与 `asset()` 辅助函数的静态资源服务。内置中间件为普通类（不再是 Spring `@Component`），通过继承并标注 `@MiddlewareAlias` 注册，配置通过重写受保护方法完成。预定义中间件也可直接 `new` 实例后传入路由（`router.middleware(new TrimStrings() { ... })`），以匿名子类覆盖 `protected` 方法自定义配置或使用基类默认配置，无需注册到 `MiddlewareAliasRegistry`。
 
 ## Classes & Interfaces
 
@@ -545,7 +545,7 @@ Controllers.Runner handler = request -> {
 ### ControllerRegistry
 - **Type**: class（静态全局）
 - **Package**: `com.weacsoft.jaravel.vendor.http.controller`
-- **Description**: 控制器全局注册表。内部维护**两张映射表**：`Map<Class<?>, Object>`（Class→控制器实例）与 `Map<String, Object>`（名称→控制器实例）。`register(Object)` 注册时会以 `obj.getClass()` 为 Class key、以 `obj.getClass().getSimpleName()` 为名称 key 同时写入两张表。供 `ControllerActionResolver` 在请求时按 Class 或名称懒解析控制器实例；通常在应用启动时注册所有控制器。所有方法均为静态方法，直接通过类名访问全局注册表。
+- **Description**: 控制器全局注册表。内部维护**两张映射表**：`Map<Class<?>, Object>`（Class→控制器实例）与 `Map<String, Object>`（名称→控制器实例）。`register(Object)` 注册时会以 `obj.getClass()` 为 Class key、以 `obj.getClass().getSimpleName()` 为名称 key 同时写入两张表。供 `ControllerActionResolver` 在请求时按 Class 或名称懒解析控制器实例；通常在应用启动时注册所有控制器。支持通过 `setScanBasePackages(String...)` 静态指定控制器扫描基础包（对齐 Laravel RouteServiceProvider 手动指定范围），设置后 `springboot` 模块将通过 classpath 扫描这些包下所有实现了 `Controllers` 的类，使用 `AutowireCapableBeanFactory` 实例化并自动注入依赖（控制器无需标注 `@Component`）；未指定时回退自动扫描容器中所有 `Controllers` Bean。所有方法均为静态方法，直接通过类名访问全局注册表。
 - **Annotations**: 无
 
 #### Methods
@@ -559,6 +559,9 @@ Controllers.Runner handler = request -> {
 | `isNameRegistered` (static) | `String name` | `boolean` | 名称是否已注册 |
 | `getRegisteredClasses` (static) | 无 | `Set<Class<?>>` | 获取所有已注册 Class |
 | `clear` (static) | 无 | `void` | 清除所有注册（主要用于测试） |
+| `setScanBasePackages` (static) | `String... packages` | `void` | 设置控制器扫描的基础包列表（对齐 Laravel RouteServiceProvider）；设置后 `springboot` 模块通过 classpath 扫描这些包下 `Controllers` 实现类，使用 `AutowireCapableBeanFactory` 实例化并自动注入依赖（无需 `@Component`）；传 `null` 或空数组清除设置回退自动扫描 |
+| `getScanBasePackages` (static) | 无 | `List<String>` | 获取用户手动指定的扫描基础包列表；未指定时返回 `null` |
+| `hasScanBasePackages` (static) | 无 | `boolean` | 检查是否已手动指定扫描基础包；已指定且非空返回 `true` |
 
 #### Usage Example
 ```java
@@ -580,6 +583,19 @@ if (ControllerRegistry.isClassRegistered(UserController.class)) {
 
 // 获取所有已注册 Class
 Set<Class<?>> registered = ControllerRegistry.getRegisteredClasses();
+
+// 指定控制器扫描基础包（在 RouteServiceProvider 中调用，推荐）
+// 设置后框架通过 classpath 扫描这些包下的 Controllers 实现类，
+// 使用 AutowireCapableBeanFactory 实例化并自动注入依赖（无需 @Component）
+ControllerRegistry.setScanBasePackages("com.example.app.http.controller");
+
+// 检查是否已指定扫描包
+if (ControllerRegistry.hasScanBasePackages()) {
+    List<String> packages = ControllerRegistry.getScanBasePackages();
+}
+
+// 清除扫描包设置，回退自动扫描模式
+ControllerRegistry.setScanBasePackages();  // 传 null 或空数组
 
 // 测试后清理
 ControllerRegistry.clear();
@@ -630,7 +646,7 @@ Controllers.Runner r3 = ControllerActionResolver.resolve(UserController.class, "
 ### VerifyCsrfToken
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.middleware`
-- **Description**: CSRF 令牌校验中间件，对齐 Laravel VerifyCsrfToken。对安全方法（GET/HEAD/OPTIONS/TRACE）和排除 URI 跳过校验，其余请求验证 CSRF 令牌。该类为普通类（**不再是 Spring `@Component`**），开发者通过继承并标注 `@MiddlewareAlias` 注册到全局别名表；配置通过重写受保护方法而非构造参数完成。
+- **Description**: CSRF 令牌校验中间件，对齐 Laravel VerifyCsrfToken。对安全方法（GET/HEAD/OPTIONS/TRACE）和排除 URI 跳过校验，其余请求验证 CSRF 令牌。该类为普通类（**不再是 Spring `@Component`**），开发者通过继承并标注 `@MiddlewareAlias` 注册到全局别名表；配置通过重写受保护方法而非构造参数完成。也可直接 `new` 实例传入路由（匿名子类覆盖或默认配置），无需注册到 `MiddlewareAliasRegistry`。
 - **Annotations**: 无（建议在子类上标注 `@MiddlewareAlias`）
 - **Implements**: `Middleware`
 
@@ -661,7 +677,7 @@ MiddlewareAliasRegistry.getGlobal().register(new VerifyCsrfToken());
 ### TrustProxies
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.middleware`
-- **Description**: 信任代理中间件，对齐 Laravel TrustProxies。配置可信代理 IP，从 X-Forwarded-* 头提取真实客户端信息。该类为普通类（**不再是 Spring `@Component`**），开发者通过继承并标注 `@MiddlewareAlias` 注册到全局别名表；配置通过重写受保护方法而非构造参数完成。
+- **Description**: 信任代理中间件，对齐 Laravel TrustProxies。配置可信代理 IP，从 X-Forwarded-* 头提取真实客户端信息。该类为普通类（**不再是 Spring `@Component`**），开发者通过继承并标注 `@MiddlewareAlias` 注册到全局别名表；配置通过重写受保护方法而非构造参数完成。也可直接 `new` 实例传入路由（匿名子类覆盖或默认配置），无需注册到 `MiddlewareAliasRegistry`。
 - **Annotations**: 无（建议在子类上标注 `@MiddlewareAlias`）
 - **Implements**: `Middleware`
 
@@ -692,7 +708,7 @@ MiddlewareAliasRegistry.getGlobal().register(new TrustProxies());
 ### EncryptCookies
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.middleware`
-- **Description**: Cookie 加密中间件，对齐 Laravel EncryptCookies。使用 AES/CBC/PKCS5Padding 加密 Cookie 值，请求时解密，响应时加密。该类为普通类（**不再是 Spring `@Component`**），开发者通过继承并标注 `@MiddlewareAlias` 注册到全局别名表；配置通过重写受保护方法而非构造参数完成。
+- **Description**: Cookie 加密中间件，对齐 Laravel EncryptCookies。使用 AES/CBC/PKCS5Padding 加密 Cookie 值，请求时解密，响应时加密。该类为普通类（**不再是 Spring `@Component`**），开发者通过继承并标注 `@MiddlewareAlias` 注册到全局别名表；配置通过重写受保护方法而非构造参数完成。也可直接 `new` 实例传入路由（匿名子类覆盖或默认配置），无需注册到 `MiddlewareAliasRegistry`。
 - **Annotations**: 无（建议在子类上标注 `@MiddlewareAlias`）
 - **Implements**: `Middleware`
 
@@ -729,7 +745,7 @@ MiddlewareAliasRegistry.getGlobal().register(new EncryptCookies());
 ### TrimStrings
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.middleware`
-- **Description**: 字符串裁剪中间件，对齐 Laravel TrimStrings。自动裁剪 input 和 query 参数的首尾空白。该类为普通类（**不再是 Spring `@Component`**），开发者通过继承并标注 `@MiddlewareAlias` 注册到全局别名表；配置通过重写受保护方法而非构造参数完成。
+- **Description**: 字符串裁剪中间件，对齐 Laravel TrimStrings。自动裁剪 input 和 query 参数的首尾空白。该类为普通类（**不再是 Spring `@Component`**），开发者通过继承并标注 `@MiddlewareAlias` 注册到全局别名表；配置通过重写受保护方法而非构造参数完成。也可直接 `new` 实例传入路由（匿名子类覆盖或默认配置），无需注册到 `MiddlewareAliasRegistry`。
 - **Annotations**: 无（建议在子类上标注 `@MiddlewareAlias`）
 - **Implements**: `Middleware`
 
@@ -753,6 +769,17 @@ public class AppTrimStrings extends TrimStrings {
 
 // 默认行为（裁剪所有字段）：直接注册基类实例或无重写的子类
 MiddlewareAliasRegistry.getGlobal().register(new TrimStrings());
+
+// 也可直接 new 实例传入路由（匿名子类覆盖 except() 自定义配置，无需 @MiddlewareAlias）
+router.middleware(new TrimStrings() {
+    @Override
+    protected String[] except() {
+        return new String[]{"password"};
+    }
+});
+
+// 或直接使用基类默认配置（裁剪所有字段）
+router.middleware(new TrimStrings());
 ```
 
 ---
@@ -760,7 +787,7 @@ MiddlewareAliasRegistry.getGlobal().register(new TrimStrings());
 ### ConvertEmptyStringsToNull
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.middleware`
-- **Description**: 空字符串转 Null 中间件，对齐 Laravel ConvertEmptyStringsToNull。将空字符串参数转为 null，默认排除 password 相关字段。该类为普通类（**不再是 Spring `@Component`**），开发者通过继承并标注 `@MiddlewareAlias` 注册到全局别名表；配置通过重写受保护方法而非构造参数完成。
+- **Description**: 空字符串转 Null 中间件，对齐 Laravel ConvertEmptyStringsToNull。将空字符串参数转为 null，默认排除 password 相关字段。该类为普通类（**不再是 Spring `@Component`**），开发者通过继承并标注 `@MiddlewareAlias` 注册到全局别名表；配置通过重写受保护方法而非构造参数完成。也可直接 `new` 实例传入路由（匿名子类覆盖或默认配置），无需注册到 `MiddlewareAliasRegistry`。
 - **Annotations**: 无（建议在子类上标注 `@MiddlewareAlias`）
 - **Implements**: `Middleware`
 

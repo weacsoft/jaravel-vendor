@@ -11,14 +11,17 @@ import com.weacsoft.jaravel.vendor.route.Route;
 import com.weacsoft.jaravel.vendor.route.Router;
 import com.weacsoft.jaravel.vendor.springboot.annotation.MiddlewareAlias;
 import org.springframework.beans.factory.config.BeanDefinition;
+import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigurationPackages;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.ApplicationContext;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
+import org.springframework.core.type.filter.AssignableTypeFilter;
 import org.springframework.core.type.filter.AnnotationTypeFilter;
 import org.springframework.http.HttpMethod;
 import org.slf4j.Logger;
@@ -72,6 +75,17 @@ public class SpringBootRouteAutoConfiguration {
     public Router baseRouter() {
         Router router = new Router();
         return router;
+    }
+
+    /**
+     * 注册 {@link SpringBootRequestMVCResolver} 为 Bean，使 Spring MVC 自动发现并注册为参数解析器。
+     * <p>
+     * 不使用 {@code @Component}，与同模块其他解析器风格统一（通过 AutoConfiguration 的 {@code @Bean} 注册）。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public SpringBootRequestMVCResolver requestMVCResolver() {
+        return new SpringBootRequestMVCResolver();
     }
 
     /**
@@ -191,21 +205,79 @@ public class SpringBootRouteAutoConfiguration {
     }
 
     /**
-     * 扫描容器中实现了 {@link Controllers} 的 Bean，注册到 {@link ControllerRegistry}。
+     * 扫描控制器并注册到 {@link ControllerRegistry}。
      * <p>
-     * 控制器是 Spring Bean（需要 {@code @Autowired} 依赖注入），因此从容器中获取而非 classpath 扫描。
-     * 注册后路由可通过字符串（{@code "ControllerName::method"}）或类对象引用控制器方法。
+     * 支持两种扫描模式：
+     * <ul>
+     *   <li><b>手动指定扫描包</b>（推荐）：用户在 RouteServiceProvider 中调用
+     *       {@code ControllerRegistry.setScanBasePackages("com.example.controller")} 后，
+     *       框架通过 classpath 扫描这些包下所有实现了 {@link Controllers} 的类，
+     *       使用 Spring 的 {@code AutowireCapableBeanFactory} 实例化并自动注入依赖。
+     *       此模式下控制器不需要标注 {@code @Component}。</li>
+     *   <li><b>自动扫描</b>（默认）：若未指定扫描包，框架扫描容器中所有实现了
+     *       {@link Controllers} 的 Bean（需标注 {@code @Component}）。</li>
+     * </ul>
      *
      * @param applicationContext Spring 应用上下文
      */
     void scanControllers(ApplicationContext applicationContext) {
         if (applicationContext == null) return;
         ControllerRegistry registry = ControllerRegistry.getGlobal();
-        Map<String, Controllers> beans = applicationContext.getBeansOfType(Controllers.class);
-        beans.values().forEach(controller -> {
-            registry.register(controller);
-            log.debug("扫描注册控制器: {}", controller.getClass().getSimpleName());
-        });
+
+        if (ControllerRegistry.hasScanBasePackages()) {
+            // 手动指定扫描包模式：classpath 扫描 + AutowireCapableBeanFactory 实例化
+            scanControllersByClasspath(applicationContext, ControllerRegistry.getScanBasePackages());
+        } else {
+            // 自动模式：扫描容器中所有 Controllers Bean
+            Map<String, Controllers> beans = applicationContext.getBeansOfType(Controllers.class);
+            beans.values().forEach(controller -> {
+                registry.register(controller);
+                log.debug("扫描注册控制器: {}", controller.getClass().getSimpleName());
+            });
+        }
+    }
+
+    /**
+     * 通过 classpath 扫描指定包中的 {@link Controllers} 实现类，使用
+     * {@code AutowireCapableBeanFactory} 实例化并自动注入依赖后注册到 {@link ControllerRegistry}。
+     * <p>
+     * 此模式下控制器不需要标注 {@code @Component}，框架通过反射发现类，
+     * 通过 Spring 的自动装配能力完成依赖注入。
+     *
+     * @param applicationContext Spring 应用上下文
+     * @param basePackages       要扫描的基础包列表
+     */
+    void scanControllersByClasspath(ApplicationContext applicationContext, List<String> basePackages) {
+        if (applicationContext == null || basePackages == null || basePackages.isEmpty()) return;
+
+        ControllerRegistry registry = ControllerRegistry.getGlobal();
+        ConfigurableListableBeanFactory beanFactory =
+                ((ConfigurableApplicationContext) applicationContext).getBeanFactory();
+
+        ClassPathScanningCandidateComponentProvider scanner =
+                new ClassPathScanningCandidateComponentProvider(false);
+        scanner.addIncludeFilter(new AssignableTypeFilter(Controllers.class));
+        scanner.setResourceLoader(applicationContext);
+        if (applicationContext.getEnvironment() != null) {
+            scanner.setEnvironment(applicationContext.getEnvironment());
+        }
+
+        for (String basePackage : basePackages) {
+            Set<BeanDefinition> candidates = scanner.findCandidateComponents(basePackage);
+            for (BeanDefinition candidate : candidates) {
+                try {
+                    Class<?> clazz = Class.forName(candidate.getBeanClassName());
+                    if (Controllers.class.isAssignableFrom(clazz) && !clazz.isInterface()) {
+                        // 使用 AutowireCapableBeanFactory 实例化并自动注入依赖
+                        Object controller = beanFactory.createBean(clazz);
+                        registry.register(controller);
+                        log.debug("classpath 扫描注册控制器: {}", clazz.getSimpleName());
+                    }
+                } catch (Exception e) {
+                    log.warn("无法实例化控制器: {}", candidate.getBeanClassName(), e);
+                }
+            }
+        }
     }
 
     /**

@@ -522,6 +522,45 @@ router.get("/mixed", req -> ResponseBuilder.ok())
 // 执行顺序：cors → auth(guard=api) → auth(guard=admin) → log
 ```
 
+#### 预定义中间件的直接 `new` 使用模式
+
+除了「继承 + `@MiddlewareAlias`」的注册式用法外，预定义中间件（`TrimStrings`、`ConvertEmptyStringsToNull`、`EncryptCookies`、`TrustProxies`、`VerifyCsrfToken`）也可以直接 `new` 实例后传入路由——既可以使用匿名子类覆盖 `protected` 方法自定义配置，也可以直接使用基类默认配置。这种模式无需注册到 `MiddlewareAliasRegistry`，适合在路由配置类中就近声明、一次性使用的场景。
+
+```java
+// 匿名子类覆盖 except() 自定义排除字段（无需 @MiddlewareAlias，无需注册）
+router.middleware(new TrimStrings() {
+    @Override
+    protected String[] except() {
+        return new String[]{"password"};
+    }
+});
+
+// 直接使用基类默认配置（无排除字段，裁剪所有参数）
+router.middleware(new TrimStrings());
+
+// 多个预定义中间件组合使用
+router.middleware(
+    new TrimStrings() {
+        @Override
+        protected String[] except() {
+            return new String[]{"password", "password_confirmation"};
+        }
+    },
+    new ConvertEmptyStringsToNull()   // 使用默认排除（password 类字段）
+);
+
+// 也可在路由级别使用
+router.get("/api/users", action)
+      .middleware(new TrimStrings() {
+          @Override
+          protected String[] except() {
+              return new String[]{"password"};
+          }
+      });
+```
+
+> **两种模式对比**：`new` 直接实例模式适合在路由配置类中就近声明、无需别名复用的场景；继承 + `@MiddlewareAlias` 注册模式适合需要在多处路由中通过别名/类名引用的场景。两者可混合使用——别名引用的中间件与直接 `new` 的中间件实例会在 `getMiddlewares()` / `getAllMiddlewares()` 解析时按插入顺序合并。
+
 #### MiddlewareAliasRegistry 方法
 
 | 方法签名 | 说明 |
@@ -1021,11 +1060,19 @@ public class UserController implements Controllers {
 - `Map<Class<?>, Object>` —— Class → 控制器实例（通过 `register(Object)` 注册）
 - `Map<String, Object>` —— 名称（简名 + 全限定名）→ 控制器实例
 
-控制器是 Spring Bean（需要 `@Autowired` 依赖注入），由 `springboot` 模块的 `SpringBootRouteAutoConfiguration` 在启动时扫描容器中实现了 `Controllers` 的 Bean 并注册到全局实例。注册时同时写入类映射与名称映射（简名 + 全限定名），确保通过类对象或类名（简名/全限定名）均能解析。
+控制器是 Spring Bean（需要 `@Autowired` 依赖注入），由 `springboot` 模块的 `SpringBootRouteAutoConfiguration` 在启动时扫描注册到全局实例。支持两种扫描模式：
+
+- **手动指定扫描包**（推荐）：用户在 RouteServiceProvider 中调用 `setScanBasePackages(...)` 指定基础包列表后，框架通过 classpath 扫描这些包下所有实现了 `Controllers` 的类，使用 Spring 的 `AutowireCapableBeanFactory` 实例化并自动注入依赖。此模式下控制器无需标注 `@Component`（对齐 Laravel RouteServiceProvider 手动指定路由文件加载范围）。
+- **自动扫描**（默认）：若未指定扫描包，框架扫描容器中所有实现了 `Controllers` 的 Bean（需标注 `@Component`）。
+
+注册时同时写入类映射与名称映射（简名 + 全限定名），确保通过类对象或类名（简名/全限定名）均能解析。
 
 | 方法签名 | 说明 |
 | --- | --- |
 | `static ControllerRegistry getGlobal()` | 获取全局静态实例 |
+| `static void setScanBasePackages(String... packages)` | 设置控制器扫描的基础包列表（对齐 Laravel RouteServiceProvider 手动指定范围）；设置后 `springboot` 模块将通过 classpath 扫描这些包下所有实现了 `Controllers` 的类，使用 `AutowireCapableBeanFactory` 实例化并自动注入依赖（控制器无需标注 `@Component`）；传 `null` 或空数组则清除设置，回退自动扫描 |
+| `static List<String> getScanBasePackages()` | 获取用户手动指定的扫描基础包列表；未指定时返回 `null` |
+| `static boolean hasScanBasePackages()` | 检查是否已手动指定扫描基础包；已指定且非空返回 `true` |
 | `void register(Object controller)` | 注册控制器实例，同时写入类映射与名称映射（简名 + 全限定名） |
 | `Object resolve(Class<?> clazz)` | 按 Class 解析控制器实例；未注册抛 `IllegalArgumentException` |
 | `Object resolve(String name)` | 按名称（简名或全限定名）解析控制器实例；未注册抛 `IllegalArgumentException` |
@@ -1046,6 +1093,20 @@ Object controller = ControllerRegistry.getGlobal().resolve("UserController");
 
 // 通过类对象解析
 Object controller = ControllerRegistry.getGlobal().resolve(UserController.class);
+
+// 指定控制器扫描基础包（在 RouteServiceProvider 中调用，推荐）
+// 设置后框架将通过 classpath 扫描这些包下的 Controllers 实现类，
+// 使用 AutowireCapableBeanFactory 实例化并自动注入依赖（无需 @Component）
+ControllerRegistry.setScanBasePackages("com.example.app.http.controller");
+
+// 检查是否已指定扫描包
+if (ControllerRegistry.hasScanBasePackages()) {
+    List<String> packages = ControllerRegistry.getScanBasePackages();
+    // 已指定，框架将使用手动扫描模式
+}
+
+// 清除扫描包设置，回退自动扫描模式
+ControllerRegistry.setScanBasePackages();  // 传 null 或空数组
 ```
 
 ### 8.3 控制器动作解析器（ControllerActionResolver）

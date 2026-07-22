@@ -88,7 +88,7 @@ com.weacsoft.jaravel.vendor.springboot.ResponseAutoConfiguration
 
 ## 4. 中间件别名扫描 —— SpringBootRouteAutoConfiguration 内置扫描
 
-对齐 Laravel `App\Http\Kernel::$routeMiddleware` 别名注册机制。别名中间件扫描逻辑现已合并到 `SpringBootRouteAutoConfiguration` 中（不再使用独立的注册器组件）。`jaravelRouterFunction` Bean 方法现在接收 `ApplicationContext` 作为第三个参数，并在构建路由前调用 `scanMiddlewareAliases(applicationContext)`，通过 **classpath 扫描**（非 Bean 扫描）发现 `@MiddlewareAlias` 注解的中间件类，反射实例化（非 Spring Bean）后注册到 `MiddlewareAliasRegistry.getGlobal()` 全局注册表，使路由可通过别名、Class 对象或类名字符串引用中间件。同时调用 `scanControllers(applicationContext)` 扫描容器中实现了 `Controllers` 的 Bean，注册到 `ControllerRegistry`，使路由可通过字符串（`"ControllerName::method"`）或类对象引用控制器方法。
+对齐 Laravel `App\Http\Kernel::$routeMiddleware` 别名注册机制。别名中间件扫描逻辑现已合并到 `SpringBootRouteAutoConfiguration` 中（不再使用独立的注册器组件）。`jaravelRouterFunction` Bean 方法现在接收 `ApplicationContext` 作为第三个参数，并在构建路由前调用 `scanMiddlewareAliases(applicationContext)`，通过 **classpath 扫描**（非 Bean 扫描）发现 `@MiddlewareAlias` 注解的中间件类，反射实例化（非 Spring Bean）后注册到 `MiddlewareAliasRegistry.getGlobal()` 全局注册表，使路由可通过别名、Class 对象或类名字符串引用中间件。同时调用 `scanControllers(applicationContext)` 扫描控制器并注册到 `ControllerRegistry`，使路由可通过字符串（`"ControllerName::method"`）或类对象引用控制器方法。`scanControllers` 支持两种扫描模式：**手动指定扫描包**（用户调用 `ControllerRegistry.setScanBasePackages(...)` 指定基础包后，框架通过 classpath 扫描这些包下所有实现了 `Controllers` 的类，使用 `AutowireCapableBeanFactory` 实例化并自动注入依赖，控制器无需标注 `@Component`）与**自动扫描**（默认，扫描容器中所有实现了 `Controllers` 的 Bean，需标注 `@Component`）。
 
 ### scanMiddlewareAliases 方法
 
@@ -101,6 +101,59 @@ com.weacsoft.jaravel.vendor.springboot.ResponseAutoConfiguration
 - 对 `null` 上下文安全处理（直接返回，不抛异常）。
 - 在 `jaravelRouterFunction` 构建路由前一次性调用，启动阶段完成后注册表只读。
 - 另有包级可见重载 `scanMiddlewareAliases(ApplicationContext, List<String> basePackages)` 供测试直接指定扫描包。
+
+### scanControllers 方法
+
+`SpringBootRouteAutoConfiguration.scanControllers(ApplicationContext applicationContext)` 为包级可见方法，扫描控制器并注册到 `ControllerRegistry.getGlobal()`。与中间件不同，控制器是 Spring Bean（需要 `@Autowired` 依赖注入），支持两种扫描模式：
+
+| 模式 | 触发条件 | 扫描方式 | 控制器要求 |
+| --- | --- | --- | --- |
+| **手动指定扫描包**（推荐） | `ControllerRegistry.hasScanBasePackages()` 为 `true` | classpath 扫描（`ClassPathScanningCandidateComponentProvider` + `AssignableTypeFilter(Controllers.class)`）指定包下所有 `Controllers` 实现类，通过 `AutowireCapableBeanFactory.createBean()` 实例化并自动注入依赖 | 无需标注 `@Component`，框架通过反射发现并实例化 |
+| **自动扫描**（默认） | `ControllerRegistry.hasScanBasePackages()` 为 `false` | `applicationContext.getBeansOfType(Controllers.class)` 获取容器中所有 `Controllers` Bean | 需标注 `@Component`（或被组件扫描发现为 Bean） |
+
+- `scanControllers` 在 `jaravelRouterFunction` 构建路由前一次性调用，启动阶段完成后注册表只读。
+- 对 `null` 上下文安全处理（直接返回，不抛异常）。
+- 手动指定扫描包模式对齐 Laravel RouteServiceProvider 中手动指定路由文件加载范围。
+
+#### scanControllersByClasspath 方法
+
+`SpringBootRouteAutoConfiguration.scanControllersByClasspath(ApplicationContext applicationContext, List<String> basePackages)` 为包级可见方法，由 `scanControllers` 在手动指定扫描包模式下内部调用：
+
+- 通过 `ClassPathScanningCandidateComponentProvider` + `AssignableTypeFilter(Controllers.class)` 扫描指定基础包中的 `Controllers` 实现类（非 Bean 扫描）。
+- 使用 `AutowireCapableBeanFactory.createBean(clazz)` 实例化并自动注入依赖，控制器无需标注 `@Component`。
+- 对 `null` 上下文或空包列表安全处理（直接返回，不抛异常）。
+- 实例化失败的类会记录警告日志并跳过，不中断启动。
+
+#### ControllerRegistry 扫描包配置
+
+用户通过 `ControllerRegistry.setScanBasePackages(String...)` 静态方法指定控制器扫描基础包（对齐 Laravel RouteServiceProvider）：
+
+```java
+import com.weacsoft.jaravel.vendor.http.controller.ControllerRegistry;
+
+@Configuration
+public class RouteServiceProvider {
+
+    @Bean
+    public Router router() {
+        // 指定控制器扫描基础包（推荐）
+        // 设置后框架通过 classpath 扫描这些包下所有 Controllers 实现类，
+        // 使用 AutowireCapableBeanFactory 实例化并自动注入依赖（控制器无需 @Component）
+        ControllerRegistry.setScanBasePackages(
+            "com.example.app.http.controller",
+            "com.example.app.api.controller"
+        );
+
+        Router router = new Router();
+        // 控制器无需 @Component，框架会自动扫描注册
+        router.get("/users", "UserController::list");
+        router.get("/users/{id}", UserController.class, "show");
+        return router;
+    }
+}
+```
+
+> 若未调用 `setScanBasePackages(...)`，框架回退自动扫描模式，扫描容器中所有 `Controllers` Bean（需标注 `@Component`）。调用 `setScanBasePackages()`（传 `null` 或空数组）可清除设置，回退自动扫描。
 
 ### @MiddlewareAlias 注解
 
@@ -190,13 +243,19 @@ router.middleware(AppTrimStrings.class).middleware(AppConvertEmptyStringsToNull.
 | Bean 方法 | 类型 | 条件 | 说明 |
 | --- | --- | --- | --- |
 | `baseRouter()` | `Router` | `@ConditionalOnMissingBean` | 基础路由器，用户可覆盖 |
-| `jaravelRouterFunction(...)` | `RouterFunction<ServerResponse>` | 无 | 接收 `Router`、`RouteAuthHandler`、`ApplicationContext` 三参；构建路由前先调用 `scanMiddlewareAliases(applicationContext)` 扫描 `@MiddlewareAlias` Bean 注册到 `MiddlewareAliasRegistry.getGlobal()`，再将 `Router` 的所有路由转为 Spring 路由函数 |
+| `jaravelRouterFunction(...)` | `RouterFunction<ServerResponse>` | 无 | 接收 `Router`、`RouteAuthHandler`、`ApplicationContext` 三参；构建路由前先调用 `scanMiddlewareAliases(applicationContext)` 扫描 `@MiddlewareAlias` Bean 注册到 `MiddlewareAliasRegistry.getGlobal()`，再调用 `scanControllers(applicationContext)` 扫描控制器注册到 `ControllerRegistry.getGlobal()`（支持手动指定扫描包与自动扫描两种模式），最后将 `Router` 的所有路由转为 Spring 路由函数 |
 
 ### 处理流程
 
 ```
 0. scanMiddlewareAliases(applicationContext)
    │   扫描 @MiddlewareAlias Bean → 注册到 MiddlewareAliasRegistry.getGlobal()
+   │
+   ▼
+0.5. scanControllers(applicationContext)
+   │   扫描控制器 → 注册到 ControllerRegistry.getGlobal()
+   │   ├── 手动指定扫描包模式：classpath 扫描 + AutowireCapableBeanFactory 实例化（无需 @Component）
+   │   └── 自动扫描模式：getBeansOfType(Controllers.class)（需 @Component）
    │
    ▼
 1. 遍历 Router.getAllRoutes()
@@ -443,6 +502,7 @@ returnValue == null？
 | `SpringBootRequestMVCResolver` | `@Component` | 组件扫描 | Request 参数注入 |
 | `SpringBootResponseMVCResolver` | `@ControllerAdvice` | 组件扫描 | Response 响应处理 + 安全头 |
 | `@MiddlewareAlias` 标注的中间件类 | 纯注解（非 Spring Bean） | classpath 扫描 | 用户中间件类，启动时由 `SpringBootRouteAutoConfiguration.scanMiddlewareAliases()` 通过 classpath 扫描发现，反射实例化后注册到 `MiddlewareAliasRegistry.getGlobal()` |
+| `Controllers` 实现类（控制器） | Spring Bean 或纯类 | `scanControllers()` | 启动时由 `SpringBootRouteAutoConfiguration.scanControllers()` 扫描注册到 `ControllerRegistry.getGlobal()`；手动指定扫描包模式下通过 classpath 扫描 + `AutowireCapableBeanFactory` 实例化（无需 `@Component`），自动扫描模式下通过 `getBeansOfType` 获取（需 `@Component`） |
 | `baseRouter` (Router) | `@Bean` | `SpringBootRouteAutoConfiguration` | 基础路由器（可覆盖） |
 | `jaravelRouterFunction` (RouterFunction) | `@Bean` | `SpringBootRouteAutoConfiguration` | Spring 路由函数 |
 
@@ -459,6 +519,7 @@ returnValue == null？
 | 覆盖基础路由器 | 自定义 `Router` `@Bean` | `baseRouter()` 标注 `@ConditionalOnMissingBean`，用户定义的同类型 Bean 优先 |
 | 注册全局中间件 | 在根 `Router` 上调用 `middleware()` | 全局中间件直接在根 Router 上声明，所有路由通过 `getAllMiddlewares()` 继承 |
 | 注册别名中间件 | 在中间件类上标注 `@MiddlewareAlias`（value 可选） | 启动时由 `SpringBootRouteAutoConfiguration.scanMiddlewareAliases()` 扫描并注册到 `MiddlewareAliasRegistry`，路由中可通过别名 / Class / 类名引用 |
+| 指定控制器扫描包 | 在 RouteServiceProvider 中调用 `ControllerRegistry.setScanBasePackages(...)` | 设置后框架通过 classpath 扫描指定包下 `Controllers` 实现类，使用 `AutowireCapableBeanFactory` 实例化（无需 `@Component`）；未设置则回退自动扫描容器中 `Controllers` Bean |
 | 关闭响应自动装配 | 排除 `ResponseAutoConfiguration` | `@SpringBootApplication(exclude = ResponseAutoConfiguration.class)` |
 | 关闭路由自动装配 | 排除 `SpringBootRouteAutoConfiguration` | 同上 |
 
@@ -478,7 +539,7 @@ public class MyApp { ... }
 
 | 类 | 线程安全性 | 说明 |
 | --- | --- | --- |
-| `SpringBootRouteAutoConfiguration` | 线程安全 | `@Bean` 在启动阶段创建；`jaravelRouterFunction` 构建路由前调用 `scanMiddlewareAliases(applicationContext)` 在启动阶段一次性扫描注册 `@MiddlewareAlias` Bean 到 `MiddlewareAliasRegistry.getGlobal()`，之后只读（注册表内部使用 `ConcurrentHashMap`）；构建的 `HandlerFunction` 为每次请求新建 `Request`，无共享可变状态。`RouteAuthHandler` 使用 ThreadLocal 或请求级清理，确保请求间隔离 |
+| `SpringBootRouteAutoConfiguration` | 线程安全 | `@Bean` 在启动阶段创建；`jaravelRouterFunction` 构建路由前调用 `scanMiddlewareAliases(applicationContext)` 在启动阶段一次性扫描注册 `@MiddlewareAlias` Bean 到 `MiddlewareAliasRegistry.getGlobal()`，并调用 `scanControllers(applicationContext)` 扫描控制器注册到 `ControllerRegistry.getGlobal()`（支持手动指定扫描包与自动扫描两种模式），之后只读（注册表内部使用 `ConcurrentHashMap`）；`ControllerRegistry.scanBasePackages` 为 `volatile` 字段，保证多线程可见性；构建的 `HandlerFunction` 为每次请求新建 `Request`，无共享可变状态。`RouteAuthHandler` 使用 ThreadLocal 或请求级清理，确保请求间隔离 |
 | `ResponseAutoConfiguration` | 线程安全 | 构造器在启动阶段一次性修改 `RequestMappingHandlerAdapter` 的处理器链，之后只读 |
 | `SpringBootRequestMVCResolver` | 线程安全 | `@Component` 单例，`resolveArgument` 每次调用构建新的 `Request`，无共享可变状态 |
 | `SpringBootResponseMVCResolver` | 线程安全 | `@ControllerAdvice` 单例，`beforeBodyWrite` 无状态，仅操作方法参数（每请求独立） |

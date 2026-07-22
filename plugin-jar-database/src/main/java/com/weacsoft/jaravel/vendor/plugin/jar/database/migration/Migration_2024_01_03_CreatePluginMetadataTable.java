@@ -1,8 +1,8 @@
 package com.weacsoft.jaravel.vendor.plugin.jar.database.migration;
 
 import com.weacsoft.jaravel.vendor.migration.Migration;
+import com.weacsoft.jaravel.vendor.migration.MigrationAnnotation;
 import com.weacsoft.jaravel.vendor.migration.Schema;
-import org.springframework.stereotype.Component;
 
 /**
  * 创建 {@code plugin_metadata} 表的迁移。
@@ -12,8 +12,11 @@ import org.springframework.stereotype.Component;
  * <p>
  * 命名遵循 {@code Migration_YYYY_MM_DD_Description} 约定，{@link com.weacsoft.jaravel.vendor.migration.engine.Migrator}
  * 按类名字典序排序即可获得正确的执行顺序。
+ * <p>
+ * 使用 {@link MigrationAnnotation} 标记（非 Spring {@code @Component}），
+ * 由 {@code MigrationScanner} 通过 classpath 扫描发现。
  */
-@Component
+@MigrationAnnotation
 public class Migration_2024_01_03_CreatePluginMetadataTable implements Migration {
 
     @Override

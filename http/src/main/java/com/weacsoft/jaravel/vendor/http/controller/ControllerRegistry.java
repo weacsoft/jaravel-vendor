@@ -1,6 +1,8 @@
 package com.weacsoft.jaravel.vendor.http.controller;
 
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -23,20 +25,20 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>{@code Class → 实例}：类映射（通过 {@link #register(Object)} 注册）</li>
  *   <li>{@code String → 实例}：名称映射（简名和全限定名都写入）</li>
  * </ul>
- * 控制器是 Spring Bean（需要 {@code @Autowired} 依赖注入），由
- * {@code SpringBootRouteAutoConfiguration} 在启动时扫描容器中实现了
- * {@link Controllers} 的 Bean 并注册到全局实例。
+ * <p>
+ * <b>扫描范围指定</b>：用户可在 RouteServiceProvider 中通过
+ * {@link #setScanBasePackages(String...)} 静态指定控制器扫描的基础包列表
+ * （对齐 Laravel RouteServiceProvider 中手动指定路由文件加载范围）。
+ * 若未指定，框架将自动扫描容器中所有实现了 {@link Controllers} 的 Bean。
  *
  * <h3>使用示例</h3>
  * <pre>{@code
- * // 注册控制器（通常由框架自动完成）
- * ControllerRegistry.getGlobal().register(userController);
+ * // 1. 在 RouteServiceProvider 中指定控制器扫描范围（推荐）
+ * ControllerRegistry.setScanBasePackages("com.weacsoft.jaravel.app.http.controller");
  *
- * // 通过类名解析
- * Object controller = ControllerRegistry.getGlobal().resolve("UserController");
- *
- * // 通过类对象解析
- * Object controller = ControllerRegistry.getGlobal().resolve(UserController.class);
+ * // 2. 框架自动扫描注册后，通过字符串/类对象引用
+ * router.get("/users", "UserController::list");
+ * router.get("/users/{id}", UserController.class, "show");
  * }</pre>
  *
  * @see ControllerActionResolver
@@ -51,6 +53,9 @@ public class ControllerRegistry {
     /** 名称（简名/全限定名）→ 控制器实例 */
     private final Map<String, Object> nameMap = new ConcurrentHashMap<>();
 
+    /** 用户手动指定的控制器扫描基础包列表（null 表示未指定，使用自动扫描） */
+    private static volatile List<String> scanBasePackages = null;
+
     /**
      * 获取全局静态实例。
      *
@@ -59,6 +64,47 @@ public class ControllerRegistry {
     public static ControllerRegistry getGlobal() {
         return GLOBAL;
     }
+
+    // ========== 扫描范围配置 ==========
+
+    /**
+     * 设置控制器扫描的基础包列表（对齐 Laravel RouteServiceProvider 手动指定范围）。
+     * <p>
+     * 在 RouteServiceProvider 中调用此方法后，{@code SpringBootRouteAutoConfiguration}
+     * 将通过 classpath 扫描这些包下所有实现了 {@link Controllers} 的类，
+     * 使用 Spring 的 {@code AutowireCapableBeanFactory} 实例化并自动注入依赖。
+     * <p>
+     * 若未调用此方法，框架将自动扫描容器中所有实现了 {@link Controllers} 的 Bean。
+     *
+     * @param packages 基础包列表（如 {@code "com.example.app.http.controller"}）
+     */
+    public static void setScanBasePackages(String... packages) {
+        if (packages == null || packages.length == 0) {
+            scanBasePackages = null;
+        } else {
+            scanBasePackages = Arrays.asList(packages);
+        }
+    }
+
+    /**
+     * 获取用户手动指定的扫描基础包列表。
+     *
+     * @return 基础包列表，未指定时返回 null
+     */
+    public static List<String> getScanBasePackages() {
+        return scanBasePackages;
+    }
+
+    /**
+     * 检查是否已手动指定扫描基础包。
+     *
+     * @return 已指定返回 true
+     */
+    public static boolean hasScanBasePackages() {
+        return scanBasePackages != null && !scanBasePackages.isEmpty();
+    }
+
+    // ========== 注册与解析 ==========
 
     /**
      * 注册控制器实例。
