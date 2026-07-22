@@ -2,7 +2,6 @@ package com.weacsoft.jaravel.vendor.http.middleware;
 
 import com.weacsoft.jaravel.vendor.http.controller.request.Request;
 import com.weacsoft.jaravel.vendor.http.controller.response.Response;
-import org.springframework.stereotype.Component;
 
 import java.security.SecureRandom;
 import java.util.Arrays;
@@ -12,10 +11,22 @@ import java.util.List;
 /**
  * CSRF 令牌校验中间件，对齐 Laravel 的 {@code VerifyCsrfToken}。
  * <p>
- * 无状态、不可变，可被 Spring 容器管理并安全地在并发请求间复用。
- * 所有字段为 {@code final}，构造后不可修改。
+ * 对非安全方法（非 GET/HEAD/OPTIONS/TRACE）的请求校验 CSRF 令牌。
+ * <p>
+ * <b>继承式配置</b>：通过覆盖 {@link #except()} 方法指定排除 URI，而非通过构造器传参。
+ * 预定义中间件不标注 {@code @MiddlewareAlias}，由使用者继承后自行标注。
+ *
+ * <h3>使用示例</h3>
+ * <pre>{@code
+ * @MiddlewareAlias
+ * public class AppVerifyCsrfToken extends VerifyCsrfToken {
+ *     @Override
+ *     protected String[] except() {
+ *         return new String[]{"/api/webhook/*"};
+ *     }
+ * }
+ * }</pre>
  */
-@Component
 public class VerifyCsrfToken implements Middleware {
 
     protected static final String CSRF_TOKEN_COOKIE_NAME = "XSRF-TOKEN";
@@ -24,16 +35,6 @@ public class VerifyCsrfToken implements Middleware {
     protected static final String CSRF_SESSION_KEY = "csrf_token";
 
     protected static final List<String> SAFE_METHODS = Arrays.asList("GET", "HEAD", "OPTIONS", "TRACE");
-
-    private final String[] except;
-
-    public VerifyCsrfToken() {
-        this(new String[0]);
-    }
-
-    public VerifyCsrfToken(String[] except) {
-        this.except = except != null ? except : new String[0];
-    }
 
     @Override
     public Response handle(Request request, NextFunction next, String... params) {
@@ -54,13 +55,22 @@ public class VerifyCsrfToken implements Middleware {
         return response;
     }
 
+    /**
+     * 不校验 CSRF 的 URI 数组，子类可覆盖以自定义排除列表。
+     *
+     * @return 排除 URI 数组，默认为空
+     */
+    protected String[] except() {
+        return new String[0];
+    }
+
     protected boolean isSafeMethod(String method) {
         return SAFE_METHODS.contains(method);
     }
 
     protected boolean isExcluded(Request request) {
         String uri = request.getRequest().getRequestURI();
-        return Arrays.asList(except).contains(uri);
+        return Arrays.asList(except()).contains(uri);
     }
 
     protected boolean verifyCsrfToken(Request request) {

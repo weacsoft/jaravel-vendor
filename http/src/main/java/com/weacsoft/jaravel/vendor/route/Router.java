@@ -1,5 +1,6 @@
 package com.weacsoft.jaravel.vendor.route;
 
+import com.weacsoft.jaravel.vendor.http.controller.ControllerActionResolver;
 import com.weacsoft.jaravel.vendor.http.controller.Controllers;
 import com.weacsoft.jaravel.vendor.route.staticresource.StaticResourceRoute;
 import com.weacsoft.jaravel.vendor.http.middleware.ClassMiddlewareSpec;
@@ -123,6 +124,181 @@ public class Router {
 
     public Router all(String uri, Controllers.Runner action) {
         return addMultiRoute(new String[]{"GET", "POST", "PUT", "DELETE", "PATCH"}, uri, action);
+    }
+
+    // ===== 控制器引用重载（对齐 Laravel Route::get('/users', 'UserController@index')） =====
+
+    /**
+     * 注册 GET 路由（字符串形式控制器引用，对齐 Laravel {@code Route::get('/users', 'UserController@index')}）。
+     * <p>
+     * 控制器引用格式：{@code "ControllerName::methodName"} 或 {@code "com.example.ControllerName::methodName"}。
+     * 解析延迟到首次请求时执行，保证路由注册顺序与控制器扫描顺序无关。
+     *
+     * @param uri              URI
+     * @param controllerAction 控制器引用（如 {@code "UserController::list"}）
+     * @return 路由实例
+     * @see ControllerActionResolver#resolve(String)
+     */
+    public Route get(String uri, String controllerAction) {
+        return addRoute("GET", uri, lazyResolve(controllerAction));
+    }
+
+    /**
+     * 注册 POST 路由（字符串形式控制器引用）。
+     *
+     * @param uri              URI
+     * @param controllerAction 控制器引用（如 {@code "AuthController::login"}）
+     * @return 路由实例
+     * @see ControllerActionResolver#resolve(String)
+     */
+    public Route post(String uri, String controllerAction) {
+        return addRoute("POST", uri, lazyResolve(controllerAction));
+    }
+
+    /**
+     * 注册 PUT 路由（字符串形式控制器引用）。
+     *
+     * @param uri              URI
+     * @param controllerAction 控制器引用
+     * @return 路由实例
+     * @see ControllerActionResolver#resolve(String)
+     */
+    public Route put(String uri, String controllerAction) {
+        return addRoute("PUT", uri, lazyResolve(controllerAction));
+    }
+
+    /**
+     * 注册 DELETE 路由（字符串形式控制器引用）。
+     *
+     * @param uri              URI
+     * @param controllerAction 控制器引用
+     * @return 路由实例
+     * @see ControllerActionResolver#resolve(String)
+     */
+    public Route delete(String uri, String controllerAction) {
+        return addRoute("DELETE", uri, lazyResolve(controllerAction));
+    }
+
+    /**
+     * 注册 PATCH 路由（字符串形式控制器引用）。
+     *
+     * @param uri              URI
+     * @param controllerAction 控制器引用
+     * @return 路由实例
+     * @see ControllerActionResolver#resolve(String)
+     */
+    public Route patch(String uri, String controllerAction) {
+        return addRoute("PATCH", uri, lazyResolve(controllerAction));
+    }
+
+    /**
+     * 注册多方法路由（字符串形式控制器引用）。
+     *
+     * @param uri              URI
+     * @param controllerAction 控制器引用
+     * @return 路由组实例
+     * @see ControllerActionResolver#resolve(String)
+     */
+    public Router all(String uri, String controllerAction) {
+        return addMultiRoute(new String[]{"GET", "POST", "PUT", "DELETE", "PATCH"}, uri, lazyResolve(controllerAction));
+    }
+
+    /**
+     * 注册 GET 路由（类对象形式控制器引用，忽略包名）。
+     * <p>
+     * 通过类对象和方法名引用控制器，类型安全且无需输入完整类名。
+     * 解析延迟到首次请求时执行。
+     *
+     * @param uri             URI
+     * @param controllerClass 控制器类
+     * @param methodName      方法名
+     * @return 路由实例
+     * @see ControllerActionResolver#resolve(Class, String)
+     */
+    public Route get(String uri, Class<?> controllerClass, String methodName) {
+        return addRoute("GET", uri, lazyResolve(controllerClass, methodName));
+    }
+
+    /**
+     * 注册 POST 路由（类对象形式控制器引用）。
+     *
+     * @param uri             URI
+     * @param controllerClass 控制器类
+     * @param methodName      方法名
+     * @return 路由实例
+     * @see ControllerActionResolver#resolve(Class, String)
+     */
+    public Route post(String uri, Class<?> controllerClass, String methodName) {
+        return addRoute("POST", uri, lazyResolve(controllerClass, methodName));
+    }
+
+    /**
+     * 注册 PUT 路由（类对象形式控制器引用）。
+     *
+     * @param uri             URI
+     * @param controllerClass 控制器类
+     * @param methodName      方法名
+     * @return 路由实例
+     * @see ControllerActionResolver#resolve(Class, String)
+     */
+    public Route put(String uri, Class<?> controllerClass, String methodName) {
+        return addRoute("PUT", uri, lazyResolve(controllerClass, methodName));
+    }
+
+    /**
+     * 注册 DELETE 路由（类对象形式控制器引用）。
+     *
+     * @param uri             URI
+     * @param controllerClass 控制器类
+     * @param methodName      方法名
+     * @return 路由实例
+     * @see ControllerActionResolver#resolve(Class, String)
+     */
+    public Route delete(String uri, Class<?> controllerClass, String methodName) {
+        return addRoute("DELETE", uri, lazyResolve(controllerClass, methodName));
+    }
+
+    /**
+     * 注册 PATCH 路由（类对象形式控制器引用）。
+     *
+     * @param uri             URI
+     * @param controllerClass 控制器类
+     * @param methodName      方法名
+     * @return 路由实例
+     * @see ControllerActionResolver#resolve(Class, String)
+     */
+    public Route patch(String uri, Class<?> controllerClass, String methodName) {
+        return addRoute("PATCH", uri, lazyResolve(controllerClass, methodName));
+    }
+
+    /**
+     * 注册多方法路由（类对象形式控制器引用）。
+     *
+     * @param uri             URI
+     * @param controllerClass 控制器类
+     * @param methodName      方法名
+     * @return 路由组实例
+     * @see ControllerActionResolver#resolve(Class, String)
+     */
+    public Router all(String uri, Class<?> controllerClass, String methodName) {
+        return addMultiRoute(new String[]{"GET", "POST", "PUT", "DELETE", "PATCH"}, uri, lazyResolve(controllerClass, methodName));
+    }
+
+    /**
+     * 创建延迟解析的 Runner（字符串形式）。
+     * <p>
+     * 控制器引用在首次请求时才解析，保证路由注册时控制器尚未注册也能正常工作。
+     * {@link ControllerActionResolver} 内部缓存解析结果，后续请求无额外开销。
+     */
+    private Controllers.Runner lazyResolve(String controllerAction) {
+        return request -> ControllerActionResolver.resolve(controllerAction).handle(request);
+    }
+
+    /**
+     * 创建延迟解析的 Runner（类对象形式）。
+     */
+    private Controllers.Runner lazyResolve(Class<?> controllerClass, String methodName) {
+        return request -> ControllerActionResolver.resolve(controllerClass, methodName).handle(request);
     }
 
     /**

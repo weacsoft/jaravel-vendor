@@ -1,5 +1,9 @@
 package com.weacsoft.jaravel.vendor.springboot;
 
+import com.weacsoft.jaravel.vendor.http.controller.ControllerActionResolver;
+import com.weacsoft.jaravel.vendor.http.controller.ControllerRegistry;
+import com.weacsoft.jaravel.vendor.http.controller.Controllers;
+import com.weacsoft.jaravel.vendor.http.controller.request.Request;
 import com.weacsoft.jaravel.vendor.http.controller.response.Response;
 import com.weacsoft.jaravel.vendor.http.controller.response.ResponseBuilder;
 import com.weacsoft.jaravel.vendor.http.middleware.Middleware;
@@ -9,43 +13,77 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.support.StaticApplicationContext;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * {@link SpringBootRouteAutoConfiguration} 中间件别名自动扫描测试。
+ * {@link SpringBootRouteAutoConfiguration} 中间件别名自动扫描 + 控制器扫描测试。
  * <p>
- * 验证 {@code scanMiddlewareAliases} 方法能正确扫描 {@code @MiddlewareAlias} 注解的 Bean，
- * 注册到 {@link MiddlewareAliasRegistry} 全局注册表。
- * 覆盖三种场景：有别名、无别名、null 上下文。
+ * 验证 classpath 扫描机制能正确发现 {@code @MiddlewareAlias} 注解的中间件类（非 Spring Bean），
+ * 反射实例化后注册到 {@link MiddlewareAliasRegistry} 全局注册表。
+ * 同时验证控制器扫描注册到 {@link ControllerRegistry}，以及 {@link ControllerActionResolver}
+ * 的字符串/类对象引用解析。
+ * <p>
+ * 覆盖三种中间件场景：有别名、无别名、null 上下文。
  */
 class SpringBootRouteAutoConfigurationTest {
 
     private SpringBootRouteAutoConfiguration configuration;
+    private static final String TEST_PACKAGE = "com.weacsoft.jaravel.vendor.springboot";
 
     @BeforeEach
     void setUp() {
         MiddlewareAliasRegistry.getGlobal().clear();
+        ControllerRegistry.getGlobal().clear();
+        ControllerActionResolver.clearCache();
         configuration = new SpringBootRouteAutoConfiguration();
     }
 
     @AfterEach
     void tearDown() {
         MiddlewareAliasRegistry.getGlobal().clear();
+        ControllerRegistry.getGlobal().clear();
+        ControllerActionResolver.clearCache();
     }
+
+    // ========== 中间件 classpath 扫描测试 ==========
 
     @Test
     void testScanWithNullContext() {
         assertDoesNotThrow(() -> configuration.scanMiddlewareAliases(null),
                 "applicationContext 为 null 时应安全跳过");
+        assertDoesNotThrow(() -> configuration.scanMiddlewareAliases(null, List.of(TEST_PACKAGE)),
+                "applicationContext 为 null 时应安全跳过（带 basePackages 重载）");
+    }
+
+    @Test
+    void testScanWithNullBasePackages() {
+        StaticApplicationContext context = new StaticApplicationContext();
+        context.refresh();
+        assertDoesNotThrow(() -> configuration.scanMiddlewareAliases(context, null),
+                "basePackages 为 null 时应安全跳过");
+        assertDoesNotThrow(() -> configuration.scanMiddlewareAliases(context, List.of()),
+                "basePackages 为空列表时应安全跳过");
+    }
+
+    @Test
+    void testScanWithoutAutoConfigurationPackagesSkipsScanning() {
+        // StaticApplicationContext 没有 AutoConfigurationPackages，
+        // scanMiddlewareAliases(context) 应安全跳过（不抛异常）
+        StaticApplicationContext context = new StaticApplicationContext();
+        context.refresh();
+        assertDoesNotThrow(() -> configuration.scanMiddlewareAliases(context),
+                "无 AutoConfigurationPackages 时应安全跳过");
     }
 
     @Test
     void testScanSingleAliasMiddleware() {
         StaticApplicationContext context = new StaticApplicationContext();
-        context.registerSingleton("authMiddleware", TestAuthMiddleware.class);
         context.refresh();
 
-        configuration.scanMiddlewareAliases(context);
+        // 使用 classpath 扫描（非 Bean 扫描），中间件不需要注册为 Spring Bean
+        configuration.scanMiddlewareAliases(context, List.of(TEST_PACKAGE));
 
         assertTrue(MiddlewareAliasRegistry.getGlobal().isRegistered("auth"),
                 "应注册别名 'auth'");
@@ -56,28 +94,26 @@ class SpringBootRouteAutoConfigurationTest {
     @Test
     void testScanMultipleAliasMiddlewares() {
         StaticApplicationContext context = new StaticApplicationContext();
-        context.registerSingleton("authMiddleware", TestAuthMiddleware.class);
-        context.registerSingleton("logMiddleware", TestLogMiddleware.class);
         context.refresh();
 
-        configuration.scanMiddlewareAliases(context);
+        configuration.scanMiddlewareAliases(context, List.of(TEST_PACKAGE));
 
         assertTrue(MiddlewareAliasRegistry.getGlobal().isRegistered("auth"));
         assertTrue(MiddlewareAliasRegistry.getGlobal().isRegistered("log"));
         assertEquals(2, MiddlewareAliasRegistry.getGlobal().getRegisteredAliases().size());
-        assertEquals(2, MiddlewareAliasRegistry.getGlobal().getRegisteredClasses().size());
+        assertEquals(3, MiddlewareAliasRegistry.getGlobal().getRegisteredClasses().size(),
+                "应注册 3 个类映射（auth + log + noAlias）");
     }
 
     @Test
     void testScanNoAliasMiddleware() {
         StaticApplicationContext context = new StaticApplicationContext();
-        context.registerSingleton("noAliasMiddleware", TestNoAliasMiddleware.class);
         context.refresh();
 
-        configuration.scanMiddlewareAliases(context);
+        configuration.scanMiddlewareAliases(context, List.of(TEST_PACKAGE));
 
         // 无别名的中间件不应注册别名
-        assertEquals(0, MiddlewareAliasRegistry.getGlobal().getRegisteredAliases().size(),
+        assertFalse(MiddlewareAliasRegistry.getGlobal().isRegistered("TestNoAliasMiddleware"),
                 "无别名中间件不应注册别名");
         // 但应注册类映射
         assertTrue(MiddlewareAliasRegistry.getGlobal().isClassRegistered(TestNoAliasMiddleware.class),
@@ -87,27 +123,24 @@ class SpringBootRouteAutoConfigurationTest {
     @Test
     void testScanMixedAliasAndNoAliasMiddlewares() {
         StaticApplicationContext context = new StaticApplicationContext();
-        context.registerSingleton("authMiddleware", TestAuthMiddleware.class);
-        context.registerSingleton("noAliasMiddleware", TestNoAliasMiddleware.class);
         context.refresh();
 
-        configuration.scanMiddlewareAliases(context);
+        configuration.scanMiddlewareAliases(context, List.of(TEST_PACKAGE));
 
-        // 只有 auth 注册了别名
-        assertEquals(1, MiddlewareAliasRegistry.getGlobal().getRegisteredAliases().size(),
-                "只有 1 个别名");
-        // 两个类都注册了
-        assertEquals(2, MiddlewareAliasRegistry.getGlobal().getRegisteredClasses().size(),
-                "应注册 2 个类映射");
+        // 只有 auth 和 log 注册了别名
+        assertEquals(2, MiddlewareAliasRegistry.getGlobal().getRegisteredAliases().size(),
+                "应有 2 个别名（auth + log）");
+        // 三个类都注册了
+        assertEquals(3, MiddlewareAliasRegistry.getGlobal().getRegisteredClasses().size(),
+                "应注册 3 个类映射（auth + log + noAlias）");
     }
 
     @Test
     void testScannedAliasMiddlewareReceivesParams() {
         StaticApplicationContext context = new StaticApplicationContext();
-        context.registerSingleton("authMiddleware", TestAuthMiddleware.class);
         context.refresh();
 
-        configuration.scanMiddlewareAliases(context);
+        configuration.scanMiddlewareAliases(context, List.of(TEST_PACKAGE));
 
         Middleware resolved = MiddlewareAliasRegistry.getGlobal().resolve("auth:api");
         assertNotNull(resolved);
@@ -121,10 +154,9 @@ class SpringBootRouteAutoConfigurationTest {
     @Test
     void testScannedNoAliasMiddlewareResolvedByClass() {
         StaticApplicationContext context = new StaticApplicationContext();
-        context.registerSingleton("noAliasMiddleware", TestNoAliasMiddleware.class);
         context.refresh();
 
-        configuration.scanMiddlewareAliases(context);
+        configuration.scanMiddlewareAliases(context, List.of(TEST_PACKAGE));
 
         // 通过类对象解析
         Middleware resolved = MiddlewareAliasRegistry.getGlobal().resolve(TestNoAliasMiddleware.class);
@@ -139,10 +171,9 @@ class SpringBootRouteAutoConfigurationTest {
     @Test
     void testScannedNoAliasMiddlewareResolvedByClassName() {
         StaticApplicationContext context = new StaticApplicationContext();
-        context.registerSingleton("noAliasMiddleware", TestNoAliasMiddleware.class);
         context.refresh();
 
-        configuration.scanMiddlewareAliases(context);
+        configuration.scanMiddlewareAliases(context, List.of(TEST_PACKAGE));
 
         // 通过类简名解析
         Middleware resolved = MiddlewareAliasRegistry.getGlobal().resolve("TestNoAliasMiddleware");
@@ -152,10 +183,9 @@ class SpringBootRouteAutoConfigurationTest {
     @Test
     void testScannedAliasMiddlewareAlsoResolvedByClass() {
         StaticApplicationContext context = new StaticApplicationContext();
-        context.registerSingleton("authMiddleware", TestAuthMiddleware.class);
         context.refresh();
 
-        configuration.scanMiddlewareAliases(context);
+        configuration.scanMiddlewareAliases(context, List.of(TEST_PACKAGE));
 
         // 有别名的中间件也能通过类对象解析
         Middleware resolved = MiddlewareAliasRegistry.getGlobal().resolve(TestAuthMiddleware.class, "admin");
@@ -165,5 +195,100 @@ class SpringBootRouteAutoConfigurationTest {
         Response response = resolved.handle(null, finalHandler);
         assertEquals("admin", response.getHeaders().get("X-Auth-Guard").get(0),
                 "有别名的中间件也应能通过类对象+参数解析");
+    }
+
+    // ========== 控制器扫描测试 ==========
+
+    @Test
+    void testScanControllersWithNullContext() {
+        assertDoesNotThrow(() -> configuration.scanControllers(null),
+                "applicationContext 为 null 时应安全跳过");
+    }
+
+    @Test
+    void testScanControllersRegistersBeans() {
+        StaticApplicationContext context = new StaticApplicationContext();
+        context.registerSingleton("testController", TestController.class);
+        context.refresh();
+
+        configuration.scanControllers(context);
+
+        assertTrue(ControllerRegistry.getGlobal().isClassRegistered(TestController.class),
+                "应注册 TestController 类映射");
+        assertTrue(ControllerRegistry.getGlobal().isNameRegistered("TestController"),
+                "应注册 TestController 名称映射");
+    }
+
+    @Test
+    void testControllerActionResolverStringForm() {
+        StaticApplicationContext context = new StaticApplicationContext();
+        context.registerSingleton("testController", TestController.class);
+        context.refresh();
+
+        configuration.scanControllers(context);
+
+        Controllers.Runner runner = ControllerActionResolver.resolve("TestController::ping");
+        assertNotNull(runner, "字符串形式应解析成功");
+
+        // 执行 Runner（使用 mock Request）
+        Response response = runner.handle(null);
+        assertNotNull(response);
+        assertEquals("pong", response.getContent());
+    }
+
+    @Test
+    void testControllerActionResolverClassForm() {
+        StaticApplicationContext context = new StaticApplicationContext();
+        context.registerSingleton("testController", TestController.class);
+        context.refresh();
+
+        configuration.scanControllers(context);
+
+        Controllers.Runner runner = ControllerActionResolver.resolve(TestController.class, "ping");
+        assertNotNull(runner, "类对象形式应解析成功");
+
+        Response response = runner.handle(null);
+        assertNotNull(response);
+        assertEquals("pong", response.getContent());
+    }
+
+    @Test
+    void testControllerActionResolverCaching() {
+        StaticApplicationContext context = new StaticApplicationContext();
+        context.registerSingleton("testController", TestController.class);
+        context.refresh();
+
+        configuration.scanControllers(context);
+
+        Controllers.Runner runner1 = ControllerActionResolver.resolve("TestController::ping");
+        Controllers.Runner runner2 = ControllerActionResolver.resolve("TestController::ping");
+        assertSame(runner1, runner2, "相同引用应返回缓存的 Runner 实例");
+    }
+
+    @Test
+    void testControllerActionResolverInvalidFormat() {
+        assertThrows(IllegalArgumentException.class,
+                () -> ControllerActionResolver.resolve("InvalidFormat"),
+                "格式错误应抛出 IllegalArgumentException");
+    }
+
+    @Test
+    void testControllerActionResolverUnregisteredController() {
+        assertThrows(IllegalArgumentException.class,
+                () -> ControllerActionResolver.resolve("NonExistentController::method"),
+                "未注册控制器应抛出 IllegalArgumentException");
+    }
+
+    @Test
+    void testControllerActionResolverMethodNotFound() {
+        StaticApplicationContext context = new StaticApplicationContext();
+        context.registerSingleton("testController", TestController.class);
+        context.refresh();
+
+        configuration.scanControllers(context);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> ControllerActionResolver.resolve(TestController.class, "nonExistentMethod"),
+                "方法不存在应抛出 IllegalArgumentException");
     }
 }

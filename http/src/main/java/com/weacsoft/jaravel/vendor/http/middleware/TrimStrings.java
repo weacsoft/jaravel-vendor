@@ -2,7 +2,6 @@ package com.weacsoft.jaravel.vendor.http.middleware;
 
 import com.weacsoft.jaravel.vendor.http.controller.request.Request;
 import com.weacsoft.jaravel.vendor.http.controller.response.Response;
-import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -12,27 +11,38 @@ import java.util.Map;
 /**
  * 字符串裁剪中间件，对齐 Laravel 的 {@code TrimStrings}。
  * <p>
- * 无状态、不可变，可被 Spring 容器管理并安全地在并发请求间复用。
- * 所有字段为 {@code final}，构造后不可修改。
+ * 自动裁剪 query 与 input 参数中字符串值的首尾空白。
+ * <p>
+ * <b>继承式配置</b>：通过覆盖 {@link #except()} 方法指定不裁剪的字段名，而非通过构造器传参。
+ * 预定义中间件不标注 {@code @MiddlewareAlias}，由使用者继承后自行标注。
+ *
+ * <h3>使用示例</h3>
+ * <pre>{@code
+ * @MiddlewareAlias
+ * public class AppTrimStrings extends TrimStrings {
+ *     @Override
+ *     protected String[] except() {
+ *         return new String[]{"password", "password_confirmation"};
+ *     }
+ * }
+ * }</pre>
  */
-@Component
 public class TrimStrings implements Middleware {
-
-    private final String[] except;
-
-    public TrimStrings() {
-        this(new String[0]);
-    }
-
-    public TrimStrings(String[] except) {
-        this.except = except != null ? except : new String[0];
-    }
 
     @Override
     public Response handle(Request request, NextFunction next, String... params) {
         trimQueryParameters(request);
         trimInputParameters(request);
         return next.apply(request);
+    }
+
+    /**
+     * 不裁剪的字段名数组，子类可覆盖以自定义排除列表。
+     *
+     * @return 排除字段名数组，默认为空
+     */
+    protected String[] except() {
+        return new String[0];
     }
 
     protected void trimQueryParameters(Request request) {
@@ -60,7 +70,7 @@ public class TrimStrings implements Middleware {
     }
 
     protected boolean isExcluded(String key) {
-        return Arrays.asList(except).contains(key);
+        return Arrays.asList(except()).contains(key);
     }
 
     protected Object trimValue(Object value) {

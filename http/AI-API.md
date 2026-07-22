@@ -3,7 +3,7 @@
 > Module: `http` | Package: `com.weacsoft.jaravel.vendor` | Version: 0.1.2
 
 ## Overview
-http 模块提供 Laravel 风格的 HTTP 处理层，包含中间件管道（Middleware）、请求（Request）与响应（Response）抽象、路由系统（Route/Router）、控制器接口（Controllers）、静态资源目录服务（StaticResource）以及一组内置中间件（VerifyCsrfToken、TrustProxies、EncryptCookies、TrimStrings、ConvertEmptyStringsToNull）。它将 Servlet API 封装为对齐 Laravel 的 Request/Response 对象，支持链式中间件管道、路由分组，并通过 `Router.serveStatic()` 提供对齐 Laravel `public` 目录与 `asset()` 辅助函数的静态资源服务。
+http 模块提供 Laravel 风格的 HTTP 处理层，包含中间件管道（Middleware）、请求（Request）与响应（Response）抽象、路由系统（Route/Router）、控制器接口（Controllers）与控制器注册解析（ControllerRegistry / ControllerActionResolver）、静态资源目录服务（StaticResource）以及一组内置中间件（VerifyCsrfToken、TrustProxies、EncryptCookies、TrimStrings、ConvertEmptyStringsToNull）。它将 Servlet API 封装为对齐 Laravel 的 Request/Response 对象，支持链式中间件管道、路由分组、控制器动作路由（`"Controller::action"` 字符串或 `Class + 方法名`，懒解析），并通过 `Router.serveStatic()` 提供对齐 Laravel `public` 目录与 `asset()` 辅助函数的静态资源服务。内置中间件为普通类（不再是 Spring `@Component`），通过继承并标注 `@MiddlewareAlias` 注册，配置通过重写受保护方法完成。
 
 ## Classes & Interfaces
 
@@ -213,7 +213,7 @@ route.name("users.show").middleware(authMiddleware);
 ### Router
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.route`
-- **Description**: 路由器，管理路由集合和子路由器。支持 HTTP 动词方法（get/post/put/delete/patch/all）、路由分组（group）、中间件链，以及静态资源目录服务（serveStatic，对齐 Laravel `public` 目录）。
+- **Description**: 路由器，管理路由集合和子路由器。支持 HTTP 动词方法（get/post/put/delete/patch/all）、路由分组（group）、中间件链，以及静态资源目录服务（serveStatic，对齐 Laravel `public` 目录）。各 HTTP 动词方法除接受 `Controllers.Runner` 外，还提供**控制器动作重载**：字符串形式 `"Controller::action"` 与 Class 形式 `Class<?> + methodName`，内部通过 `ControllerActionResolver` 将控制器引用解析为 `Controllers.Runner`，采用**懒解析**——控制器引用在首次请求时才解析，而非注册路由时。
 - **Annotations**: Lombok `@Getter`/`@Setter`
 
 #### Methods
@@ -224,11 +224,23 @@ route.name("users.show").middleware(authMiddleware);
 | `middleware` | `String... aliases` | `Router` | 通过别名/类名表达式添加中间件（链式），通过全局 `MiddlewareAliasRegistry` 解析 |
 | `middleware` | `Class<?> clazz, String... params` | `Router` | 通过 Class 对象引用中间件（可选参数，链式）；内部创建 `ClassMiddlewareSpec`，由全局 `MiddlewareAliasRegistry` 解析 |
 | `get` | `String uri, Controllers.Runner action` | `Route` | 注册 GET 路由 |
+| `get` | `String uri, String controllerAction` | `Route` | 注册 GET 路由（控制器动作字符串，如 `"UserController::list"`）；控制器引用在首次请求时懒解析 |
+| `get` | `String uri, Class<?> controllerClass, String methodName` | `Route` | 注册 GET 路由（Class + 方法名，如 `UserController.class, "list"`）；控制器引用在首次请求时懒解析 |
 | `post` | `String uri, Controllers.Runner action` | `Route` | 注册 POST 路由 |
+| `post` | `String uri, String controllerAction` | `Route` | 注册 POST 路由（控制器动作字符串）；懒解析 |
+| `post` | `String uri, Class<?> controllerClass, String methodName` | `Route` | 注册 POST 路由（Class + 方法名）；懒解析 |
 | `put` | `String uri, Controllers.Runner action` | `Route` | 注册 PUT 路由 |
+| `put` | `String uri, String controllerAction` | `Route` | 注册 PUT 路由（控制器动作字符串）；懒解析 |
+| `put` | `String uri, Class<?> controllerClass, String methodName` | `Route` | 注册 PUT 路由（Class + 方法名）；懒解析 |
 | `delete` | `String uri, Controllers.Runner action` | `Route` | 注册 DELETE 路由 |
+| `delete` | `String uri, String controllerAction` | `Route` | 注册 DELETE 路由（控制器动作字符串）；懒解析 |
+| `delete` | `String uri, Class<?> controllerClass, String methodName` | `Route` | 注册 DELETE 路由（Class + 方法名）；懒解析 |
 | `patch` | `String uri, Controllers.Runner action` | `Route` | 注册 PATCH 路由 |
+| `patch` | `String uri, String controllerAction` | `Route` | 注册 PATCH 路由（控制器动作字符串）；懒解析 |
+| `patch` | `String uri, Class<?> controllerClass, String methodName` | `Route` | 注册 PATCH 路由（Class + 方法名）；懒解析 |
 | `all` | `String uri, Controllers.Runner action` | `Router` | 注册多方法路由（GET/POST/PUT/DELETE/PATCH） |
+| `all` | `String uri, String controllerAction` | `Router` | 注册多方法路由（控制器动作字符串）；懒解析 |
+| `all` | `String uri, Class<?> controllerClass, String methodName` | `Router` | 注册多方法路由（Class + 方法名）；懒解析 |
 | `addRoute` | `String method, String uri, Controllers.Runner action` | `Route` | 添加单条路由 |
 | `addMultiRoute` | `String[] method, String uri, Controllers.Runner action` | `Router` | 添加多方法路由 |
 | `group` | `Map<Route.Group, String> params, Consumer<Router> router` | `Router` | 创建路由分组（设置 namespace/prefix/name） |
@@ -261,6 +273,20 @@ router.group(Map.of(
 router.middleware(authMiddleware).get("/profile", req -> {
     return ResponseBuilder.json(Map.of("user", req.session("user")));
 });
+
+// 控制器动作路由（字符串形式）——控制器引用在首次请求时懒解析
+router.get("/users", "UserController::list");
+router.post("/users", "UserController::create");
+router.put("/users/{id}", "com.example.UserController::update");
+
+// 控制器动作路由（Class 形式）
+router.get("/users/{id}", UserController.class, "show");
+router.delete("/users/{id}", UserController.class, "destroy");
+router.all("/posts/{id}", PostController.class, "handle");
+
+// 注意：使用控制器动作路由前，需先在 ControllerRegistry 注册控制器实例
+ControllerRegistry.register(new UserController());
+ControllerRegistry.register(new PostController());
 ```
 
 ---
@@ -516,90 +542,249 @@ Controllers.Runner handler = request -> {
 
 ---
 
+### ControllerRegistry
+- **Type**: class（静态全局）
+- **Package**: `com.weacsoft.jaravel.vendor.http.controller`
+- **Description**: 控制器全局注册表。内部维护**两张映射表**：`Map<Class<?>, Object>`（Class→控制器实例）与 `Map<String, Object>`（名称→控制器实例）。`register(Object)` 注册时会以 `obj.getClass()` 为 Class key、以 `obj.getClass().getSimpleName()` 为名称 key 同时写入两张表。供 `ControllerActionResolver` 在请求时按 Class 或名称懒解析控制器实例；通常在应用启动时注册所有控制器。所有方法均为静态方法，直接通过类名访问全局注册表。
+- **Annotations**: 无
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `register` (static) | `Object controller` | `void` | 注册控制器实例；同时写入 Class→实例 与 名称→实例 两张表（名称取 `getClass().getSimpleName()`） |
+| `resolve` (static) | `Class<?> clazz` | `Object` | 按 Class 解析控制器实例；未注册返回 `null` |
+| `resolve` (static) | `String name` | `Object` | 按简单类名解析控制器实例；未注册返回 `null` |
+| `isClassRegistered` (static) | `Class<?> clazz` | `boolean` | Class 是否已注册 |
+| `isNameRegistered` (static) | `String name` | `boolean` | 名称是否已注册 |
+| `getRegisteredClasses` (static) | 无 | `Set<Class<?>>` | 获取所有已注册 Class |
+| `clear` (static) | 无 | `void` | 清除所有注册（主要用于测试） |
+
+#### Usage Example
+```java
+// 应用启动时注册所有控制器
+ControllerRegistry.register(new UserController());
+ControllerRegistry.register(new PostController());
+ControllerRegistry.register(new OrderController());
+
+// 按 Class 解析
+Object userController = ControllerRegistry.resolve(UserController.class);
+
+// 按简单类名解析
+Object ctrl = ControllerRegistry.resolve("PostController");
+
+// 判断是否已注册
+if (ControllerRegistry.isClassRegistered(UserController.class)) {
+    // 已注册，可安全使用控制器动作路由
+}
+
+// 获取所有已注册 Class
+Set<Class<?>> registered = ControllerRegistry.getRegisteredClasses();
+
+// 测试后清理
+ControllerRegistry.clear();
+```
+
+---
+
+### ControllerActionResolver
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.http.controller`
+- **Description**: 控制器动作解析器，将控制器引用解析为 `Controllers.Runner`。支持两种引用形式：**字符串形式** `"ControllerName::methodName"`（或 `"com.example.ControllerName::methodName"` 全限定名）与 **Class 形式** `Class<?> + methodName`。`::` 之前为控制器引用（简单类名或全限定名），之后为方法名；解析时从 `ControllerRegistry` 取得控制器实例并反射调用指定方法。内部通过 `ConcurrentMap` 缓存已解析的 `Controllers.Runner`，相同引用二次解析直接返回缓存结果。采用**懒解析**策略——控制器引用在**首次请求时**才被解析为 `Controllers.Runner`，而非注册路由时；供 `Router` 的控制器动作重载（`get(uri, "Controller::action")` 等）使用。若控制器未在 `ControllerRegistry` 注册，解析失败将在请求时抛出异常。
+- **Annotations**: 无
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `resolve` (static) | `String controllerAction` | `Controllers.Runner` | 解析 `"ControllerName::methodName"` 或 `"com.example.ControllerName::methodName"` 为 Runner；`::` 之前为控制器引用（从 `ControllerRegistry` 解析实例），之后为方法名；反射调用并返回 Runner；结果缓存 |
+| `resolve` (static) | `Class<?> controllerClass, String methodName` | `Controllers.Runner` | 解析 Class + 方法名为 Runner；从 `ControllerRegistry` 按 Class 解析控制器实例，反射调用方法；结果缓存 |
+
+#### String Expression Syntax
+
+| 表达式 | 控制器引用 | 方法名 | 说明 |
+|--------|-----------|--------|------|
+| `"UserController::list"` | `UserController`（简单类名） | `list` | 简单类名形式 |
+| `"UserController::show"` | `UserController` | `show` | 简单类名 + 方法 |
+| `"com.example.UserController::list"` | `com.example.UserController`（全限定名） | `list` | 全限定名形式 |
+
+`::` 分隔控制器引用与方法名；控制器引用可为简单类名或全限定名，由 `ControllerRegistry` 解析为实例。
+
+#### Usage Example
+```java
+// 字符串形式解析（简单类名）
+Controllers.Runner r1 = ControllerActionResolver.resolve("UserController::list");
+
+// 字符串形式解析（全限定名）
+Controllers.Runner r2 = ControllerActionResolver.resolve("com.example.UserController::list");
+
+// Class 形式解析
+Controllers.Runner r3 = ControllerActionResolver.resolve(UserController.class, "list");
+
+// 结果会被缓存：相同引用二次解析直接返回缓存的 Runner，
+// 因此控制器引用在首次请求时才被解析（懒解析），而非注册路由时
+```
+
+---
+
 ### VerifyCsrfToken
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.middleware`
-- **Description**: CSRF 令牌校验中间件，对齐 Laravel VerifyCsrfToken。对安全方法（GET/HEAD/OPTIONS/TRACE）和排除 URI 跳过校验，其余请求验证 CSRF 令牌。
-- **Annotations**: `@Component`
+- **Description**: CSRF 令牌校验中间件，对齐 Laravel VerifyCsrfToken。对安全方法（GET/HEAD/OPTIONS/TRACE）和排除 URI 跳过校验，其余请求验证 CSRF 令牌。该类为普通类（**不再是 Spring `@Component`**），开发者通过继承并标注 `@MiddlewareAlias` 注册到全局别名表；配置通过重写受保护方法而非构造参数完成。
+- **Annotations**: 无（建议在子类上标注 `@MiddlewareAlias`）
 - **Implements**: `Middleware`
 
 #### Methods
 
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
-| `VerifyCsrfToken` | 无 | 构造方法 | 默认构造（无排除 URI） |
-| `VerifyCsrfToken` | `String[] except` | 构造方法 | 指定排除校验的 URI |
+| `except` (protected) | 无 | `String[]` | 排除 CSRF 校验的 URI 数组，默认返回空数组；子类可重写以自定义排除列表 |
 | `handle` | `Request request, NextFunction next, String... params` | `Response` | 执行 CSRF 校验 |
+
+#### Usage Example
+```java
+// 继承 VerifyCsrfToken 并通过 @MiddlewareAlias 注册别名
+@MiddlewareAlias("csrf")
+public class AppVerifyCsrfToken extends VerifyCsrfToken {
+    @Override
+    protected String[] except() {
+        return new String[]{ "/api/webhook/*", "/api/callback" };
+    }
+}
+
+// 默认行为（无排除 URI）：直接注册基类实例或无重写的子类
+MiddlewareAliasRegistry.getGlobal().register(new VerifyCsrfToken());
+```
 
 ---
 
 ### TrustProxies
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.middleware`
-- **Description**: 信任代理中间件，对齐 Laravel TrustProxies。配置可信代理 IP，从 X-Forwarded-* 头提取真实客户端信息。
-- **Annotations**: `@Component`
+- **Description**: 信任代理中间件，对齐 Laravel TrustProxies。配置可信代理 IP，从 X-Forwarded-* 头提取真实客户端信息。该类为普通类（**不再是 Spring `@Component`**），开发者通过继承并标注 `@MiddlewareAlias` 注册到全局别名表；配置通过重写受保护方法而非构造参数完成。
+- **Annotations**: 无（建议在子类上标注 `@MiddlewareAlias`）
 - **Implements**: `Middleware`
 
 #### Methods
 
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
-| `TrustProxies` | 无 | 构造方法 | 默认信任 127.0.0.1 和 ::1 |
-| `TrustProxies` | `List<String> trustedProxies` | 构造方法 | 指定可信代理列表 |
-| `TrustProxies` | `String[] trustedProxies` | 构造方法 | 指定可信代理数组 |
+| `trustedProxies` (protected) | 无 | `List<String>` | 可信代理 IP 列表，默认返回 `Arrays.asList("127.0.0.1", "::1")`；子类可重写以自定义 |
 | `handle` | `Request request, NextFunction next, String... params` | `Response` | 处理信任代理头 |
+
+#### Usage Example
+```java
+// 继承 TrustProxies 并通过 @MiddlewareAlias 注册别名
+@MiddlewareAlias("trustProxies")
+public class AppTrustProxies extends TrustProxies {
+    @Override
+    protected List<String> trustedProxies() {
+        return Arrays.asList("127.0.0.1", "::1", "10.0.0.0/8");
+    }
+}
+
+// 默认行为（信任 127.0.0.1 与 ::1）：直接注册基类实例或无重写的子类
+MiddlewareAliasRegistry.getGlobal().register(new TrustProxies());
+```
 
 ---
 
 ### EncryptCookies
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.middleware`
-- **Description**: Cookie 加密中间件，对齐 Laravel EncryptCookies。使用 AES/CBC/PKCS5Padding 加密 Cookie 值，请求时解密，响应时加密。
-- **Annotations**: `@Component`
+- **Description**: Cookie 加密中间件，对齐 Laravel EncryptCookies。使用 AES/CBC/PKCS5Padding 加密 Cookie 值，请求时解密，响应时加密。该类为普通类（**不再是 Spring `@Component`**），开发者通过继承并标注 `@MiddlewareAlias` 注册到全局别名表；配置通过重写受保护方法而非构造参数完成。
+- **Annotations**: 无（建议在子类上标注 `@MiddlewareAlias`）
 - **Implements**: `Middleware`
 
 #### Methods
 
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
-| `EncryptCookies` | 无 | 构造方法 | 默认加密密钥 |
-| `EncryptCookies` | `String encryptionKey` | 构造方法 | 指定加密密钥 |
-| `EncryptCookies` | `String encryptionKey, String[] except` | 构造方法 | 指定密钥和排除 Cookie |
+| `encryptionKey` (protected) | 无 | `String` | Cookie 加密密钥，默认返回内置默认密钥；子类可重写以自定义密钥 |
+| `except` (protected) | 无 | `String[]` | 排除加密的 Cookie 名称数组，默认返回空数组；子类可重写以自定义排除列表 |
 | `handle` | `Request request, NextFunction next, String... params` | `Response` | 解密请求 Cookie，加密响应 Cookie |
+
+#### Usage Example
+```java
+// 继承 EncryptCookies 并通过 @MiddlewareAlias 注册别名
+@MiddlewareAlias("encryptCookies")
+public class AppEncryptCookies extends EncryptCookies {
+    @Override
+    protected String encryptionKey() {
+        return System.getenv("APP_COOKIE_KEY");
+    }
+
+    @Override
+    protected String[] except() {
+        return new String[]{ "theme", "locale" };
+    }
+}
+
+// 默认行为（内置密钥、无排除 Cookie）：直接注册基类实例或无重写的子类
+MiddlewareAliasRegistry.getGlobal().register(new EncryptCookies());
+```
 
 ---
 
 ### TrimStrings
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.middleware`
-- **Description**: 字符串裁剪中间件，对齐 Laravel TrimStrings。自动裁剪 input 和 query 参数的首尾空白。
-- **Annotations**: `@Component`
+- **Description**: 字符串裁剪中间件，对齐 Laravel TrimStrings。自动裁剪 input 和 query 参数的首尾空白。该类为普通类（**不再是 Spring `@Component`**），开发者通过继承并标注 `@MiddlewareAlias` 注册到全局别名表；配置通过重写受保护方法而非构造参数完成。
+- **Annotations**: 无（建议在子类上标注 `@MiddlewareAlias`）
 - **Implements**: `Middleware`
 
 #### Methods
 
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
-| `TrimStrings` | 无 | 构造方法 | 默认无排除字段 |
-| `TrimStrings` | `String[] except` | 构造方法 | 指定排除裁剪的字段 |
+| `except` (protected) | 无 | `String[]` | 排除裁剪的字段数组，默认返回 `new String[0]`（即裁剪所有字段）；子类可重写以自定义排除列表 |
 | `handle` | `Request request, NextFunction next, String... params` | `Response` | 裁剪请求参数 |
+
+#### Usage Example
+```java
+// 继承 TrimStrings 并通过 @MiddlewareAlias 注册别名
+@MiddlewareAlias("trimStrings")
+public class AppTrimStrings extends TrimStrings {
+    @Override
+    protected String[] except() {
+        return new String[]{ "raw_content", "markdown" };
+    }
+}
+
+// 默认行为（裁剪所有字段）：直接注册基类实例或无重写的子类
+MiddlewareAliasRegistry.getGlobal().register(new TrimStrings());
+```
 
 ---
 
 ### ConvertEmptyStringsToNull
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.middleware`
-- **Description**: 空字符串转 Null 中间件，对齐 Laravel ConvertEmptyStringsToNull。将空字符串参数转为 null，默认排除 password 相关字段。
-- **Annotations**: `@Component`
+- **Description**: 空字符串转 Null 中间件，对齐 Laravel ConvertEmptyStringsToNull。将空字符串参数转为 null，默认排除 password 相关字段。该类为普通类（**不再是 Spring `@Component`**），开发者通过继承并标注 `@MiddlewareAlias` 注册到全局别名表；配置通过重写受保护方法而非构造参数完成。
+- **Annotations**: 无（建议在子类上标注 `@MiddlewareAlias`）
 - **Implements**: `Middleware`
 
 #### Methods
 
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
-| `ConvertEmptyStringsToNull` | 无 | 构造方法 | 默认排除 password/password_confirmation/current_password |
-| `ConvertEmptyStringsToNull` | `String... except` | 构造方法 | 指定排除字段 |
+| `except` (protected) | 无 | `String[]` | 排除转换的字段数组，默认返回 `{"password", "password_confirmation", "current_password"}`；子类可重写以自定义排除列表 |
 | `handle` | `Request request, NextFunction next, String... params` | `Response` | 转换空字符串为 null |
+
+#### Usage Example
+```java
+// 继承 ConvertEmptyStringsToNull 并通过 @MiddlewareAlias 注册别名
+@MiddlewareAlias("convertEmpty")
+public class AppConvertEmptyStringsToNull extends ConvertEmptyStringsToNull {
+    @Override
+    protected String[] except() {
+        return new String[]{ "password", "password_confirmation", "current_password", "description" };
+    }
+}
+
+// 默认行为（排除 password 相关字段）：直接注册基类实例或无重写的子类
+MiddlewareAliasRegistry.getGlobal().register(new ConvertEmptyStringsToNull());
+```
 
 ---
 

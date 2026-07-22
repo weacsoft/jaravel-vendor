@@ -1,5 +1,7 @@
 package com.weacsoft.jaravel.vendor.springboot;
 
+import com.weacsoft.jaravel.vendor.http.controller.ControllerRegistry;
+import com.weacsoft.jaravel.vendor.http.controller.Controllers;
 import com.weacsoft.jaravel.vendor.http.controller.request.Request;
 import com.weacsoft.jaravel.vendor.http.controller.request.RequestFactory;
 import com.weacsoft.jaravel.vendor.http.controller.response.Response;
@@ -8,12 +10,16 @@ import com.weacsoft.jaravel.vendor.http.middleware.MiddlewareAliasRegistry;
 import com.weacsoft.jaravel.vendor.route.Route;
 import com.weacsoft.jaravel.vendor.route.Router;
 import com.weacsoft.jaravel.vendor.springboot.annotation.MiddlewareAlias;
+import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.AutoConfigurationPackages;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
+import org.springframework.core.type.filter.AnnotationTypeFilter;
 import org.springframework.http.HttpMethod;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,9 +31,11 @@ import org.springframework.web.servlet.function.RouterFunctions;
 import org.springframework.web.servlet.function.ServerResponse;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * SpringBoot 路由自动装配（核心）：将 Jaravel {@link Router} 中注册的路由转换为
@@ -35,12 +43,19 @@ import java.util.Map;
  * <p>
  * 适配 Spring Boot 3.2.5 / Spring 6.x（jakarta.servlet、{@code org.springframework.web.servlet.function}）。
  * <p>
- * 同时负责自动扫描 {@link MiddlewareAlias} 注解的中间件 Bean，注册到
- * {@link MiddlewareAliasRegistry} 全局注册表，使路由可通过别名、类对象或类名引用中间件。
+ * 同时负责：
+ * <ul>
+ *   <li><b>中间件别名扫描</b>：通过 classpath 扫描（非 Bean 扫描）发现 {@link MiddlewareAlias} 注解的类，
+ *       反射实例化后注册到 {@link MiddlewareAliasRegistry} 全局注册表。
+ *       中间件不是 Spring Bean，不需要 {@code @Component}。</li>
+ *   <li><b>控制器注册</b>：扫描容器中实现了 {@link Controllers} 的 Bean，注册到 {@link ControllerRegistry}，
+ *       使路由可通过字符串（{@code "ControllerName::method"}）或类对象引用控制器方法。</li>
+ * </ul>
  * <p>
  * 流程：
  * <ol>
- *   <li>扫描容器中所有 {@link MiddlewareAlias} 注解的 Bean，注册到 {@link MiddlewareAliasRegistry}（别名非空时注册别名，始终注册类映射）</li>
+ *   <li>扫描 classpath 中所有 {@link MiddlewareAlias} 注解的类，反射实例化并注册到 {@link MiddlewareAliasRegistry}</li>
+ *   <li>扫描容器中所有 {@link Controllers} Bean，注册到 {@link ControllerRegistry}</li>
  *   <li>遍历 {@link Router#getAllRoutes()}，为每条路由构造 {@link RequestPredicate}（HTTP 方法 + 完整 URI）</li>
  *   <li>构造 {@link HandlerFunction}：通过 {@link RequestFactory#buildFromServerRequest} 构建 Laravel 风格
  *       {@link Request}，通过 {@link RouteAuthHandler} 设置认证上下文，再以逆序折叠路由中间件链，终点调用 {@code Route.getAction()::handle}</li>
@@ -90,8 +105,10 @@ public class SpringBootRouteAutoConfiguration {
     @Bean
     public RouterFunction<ServerResponse> jaravelRouterFunction(Router router,
             RouteAuthHandler routeAuthHandler, ApplicationContext applicationContext) {
-        // 扫描 @MiddlewareAlias 注解的中间件 Bean，注册到全局别名注册表
+        // 扫描 @MiddlewareAlias 注解的中间件类（classpath 扫描，非 Bean），注册到全局别名注册表
         scanMiddlewareAliases(applicationContext);
+        // 扫描容器中实现了 Controllers 的 Bean，注册到控制器注册表
+        scanControllers(applicationContext);
 
         List<Route> routes = router.getAllRoutes();
         RouterFunctions.Builder builder = RouterFunctions.route();
@@ -102,7 +119,12 @@ public class SpringBootRouteAutoConfiguration {
     }
 
     /**
-     * 扫描容器中所有 {@link MiddlewareAlias} 注解的 Bean，注册到 {@link MiddlewareAliasRegistry} 全局注册表。
+     * 通过 classpath 扫描发现 {@link MiddlewareAlias} 注解的中间件类，反射实例化后注册到
+     * {@link MiddlewareAliasRegistry} 全局注册表。
+     * <p>
+     * 中间件不是 Spring Bean，不需要 {@code @Component}。扫描使用
+     * {@link ClassPathScanningCandidateComponentProvider} + {@link AnnotationTypeFilter}，
+     * 基础包由 {@link AutoConfigurationPackages} 确定（即 {@code @SpringBootApplication} 类所在包及其子包）。
      * <p>
      * 三种场景：
      * <ul>
@@ -110,20 +132,94 @@ public class SpringBootRouteAutoConfiguration {
      *   <li>标注但未填别名（{@code @MiddlewareAlias}）：仅注册类映射，路由通过类对象或类名引用</li>
      *   <li>标注且填了别名（{@code @MiddlewareAlias("auth")}）：同时注册别名映射和类映射</li>
      * </ul>
+     *
+     * @param applicationContext Spring 应用上下文
      */
     void scanMiddlewareAliases(ApplicationContext applicationContext) {
         if (applicationContext == null) return;
+
+        List<String> basePackages = determineBasePackages(applicationContext);
+        if (basePackages.isEmpty()) {
+            log.debug("无法从 AutoConfigurationPackages 获取基础包，跳过中间件别名扫描");
+            return;
+        }
+        scanMiddlewareAliases(applicationContext, basePackages);
+    }
+
+    /**
+     * 扫描指定基础包中的 {@link MiddlewareAlias} 注解中间件类。
+     * <p>
+     * 供 {@link #scanMiddlewareAliases(ApplicationContext)} 内部调用及测试直接指定包名使用。
+     *
+     * @param applicationContext Spring 应用上下文（提供 ResourceLoader）
+     * @param basePackages       要扫描的基础包列表
+     */
+    void scanMiddlewareAliases(ApplicationContext applicationContext, List<String> basePackages) {
+        if (applicationContext == null || basePackages == null || basePackages.isEmpty()) return;
+
         MiddlewareAliasRegistry registry = MiddlewareAliasRegistry.getGlobal();
-        Map<String, Object> beans = applicationContext.getBeansWithAnnotation(MiddlewareAlias.class);
-        beans.forEach((beanName, bean) -> {
-            if (bean instanceof Middleware) {
-                MiddlewareAlias annotation = bean.getClass().getAnnotation(MiddlewareAlias.class);
-                if (annotation != null) {
-                    String alias = annotation.value();
-                    registry.register(alias, (Middleware) bean);
+
+        ClassPathScanningCandidateComponentProvider scanner =
+                new ClassPathScanningCandidateComponentProvider(false);
+        scanner.addIncludeFilter(new AnnotationTypeFilter(MiddlewareAlias.class));
+        scanner.setResourceLoader(applicationContext);
+        if (applicationContext.getEnvironment() != null) {
+            scanner.setEnvironment(applicationContext.getEnvironment());
+        }
+
+        for (String basePackage : basePackages) {
+            Set<BeanDefinition> candidates = scanner.findCandidateComponents(basePackage);
+            for (BeanDefinition candidate : candidates) {
+                try {
+                    Class<?> clazz = Class.forName(candidate.getBeanClassName());
+                    if (Middleware.class.isAssignableFrom(clazz)) {
+                        @SuppressWarnings("unchecked")
+                        Middleware instance = (Middleware) clazz.getDeclaredConstructor().newInstance();
+                        MiddlewareAlias annotation = clazz.getAnnotation(MiddlewareAlias.class);
+                        if (annotation != null) {
+                            String alias = annotation.value();
+                            registry.register(alias, instance);
+                            log.debug("扫描注册中间件: {} (alias={})", clazz.getSimpleName(),
+                                    alias.isEmpty() ? "<无别名>" : alias);
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("无法实例化中间件: {}", candidate.getBeanClassName(), e);
                 }
             }
+        }
+    }
+
+    /**
+     * 扫描容器中实现了 {@link Controllers} 的 Bean，注册到 {@link ControllerRegistry}。
+     * <p>
+     * 控制器是 Spring Bean（需要 {@code @Autowired} 依赖注入），因此从容器中获取而非 classpath 扫描。
+     * 注册后路由可通过字符串（{@code "ControllerName::method"}）或类对象引用控制器方法。
+     *
+     * @param applicationContext Spring 应用上下文
+     */
+    void scanControllers(ApplicationContext applicationContext) {
+        if (applicationContext == null) return;
+        ControllerRegistry registry = ControllerRegistry.getGlobal();
+        Map<String, Controllers> beans = applicationContext.getBeansOfType(Controllers.class);
+        beans.values().forEach(controller -> {
+            registry.register(controller);
+            log.debug("扫描注册控制器: {}", controller.getClass().getSimpleName());
         });
+    }
+
+    /**
+     * 从 {@link AutoConfigurationPackages} 获取基础包列表。
+     * <p>
+     * 返回 {@code @SpringBootApplication} 类所在包及其子包。
+     * 若上下文未配置 AutoConfigurationPackages（如测试中的 StaticApplicationContext），返回空列表。
+     */
+    private List<String> determineBasePackages(ApplicationContext applicationContext) {
+        try {
+            return AutoConfigurationPackages.get(applicationContext);
+        } catch (Exception e) {
+            return Collections.emptyList();
+        }
     }
 
     private RequestPredicate createRoutePredicate(Route route) {
