@@ -4,6 +4,7 @@ import com.weacsoft.jaravel.vendor.plugin.jar.remote.spi.BeanResolver;
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.ExecuteRequest;
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.ExecuteResponse;
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.RemoteTransport;
+import com.weacsoft.jaravel.vendor.json.Json;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -112,8 +113,7 @@ public class RequestCoordinator {
             }
             Object[] args = resolveArguments(request.getArgs(), request.getArgTypes(), targetMethod);
             Object result = targetMethod.invoke(bean, args);
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            String resultJson = result != null ? mapper.writeValueAsString(result) : null;
+            String resultJson = result != null ? Json.stringify(result) : null;
             String resultType = result != null ? result.getClass().getName() : null;
             return ExecuteResponse.ok(request.getRequestId(), resultJson, resultType);
         } catch (Exception e) {
@@ -294,10 +294,9 @@ public class RequestCoordinator {
         if (args == null || args.isEmpty()) return new Object[0];
         Class<?>[] paramTypes = method.getParameterTypes();
         Object[] result = new Object[Math.min(args.size(), paramTypes.length)];
-        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
         for (int i = 0; i < result.length; i++) {
             try {
-                result[i] = mapper.readValue(args.get(i), paramTypes[i]);
+                result[i] = Json.parse(args.get(i), paramTypes[i]);
             } catch (Exception e) {
                 result[i] = args.get(i);
             }

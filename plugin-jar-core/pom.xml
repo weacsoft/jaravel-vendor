@@ -64,6 +64,11 @@
             <artifactId>jackson-databind</artifactId>
             <scope>provided</scope>
         </dependency>
+        <!-- JSON 编解码 SPI（Jackson 2/3 双支持） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>json</artifactId>
+        </dependency>
         <!-- ASM for bytecode scanning -->
         <dependency>
             <groupId>org.ow2.asm</groupId>

@@ -1,8 +1,8 @@
 package com.weacsoft.jaravel.vendor.wechat;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.weacsoft.jaravel.vendor.cache.CacheManager;
 import com.weacsoft.jaravel.vendor.cache.CacheStore;
+import com.weacsoft.jaravel.vendor.json.Json;
 import okhttp3.MediaType;
 import okhttp3.MultipartBody;
 import okhttp3.OkHttpClient;
@@ -28,7 +28,7 @@ import java.util.UUID;
  * <p>
  * 封装微信公众号全部常用 API，包括用户信息、模板消息、菜单管理、标签管理、
  * 素材管理、客服消息、JSSDK 配置等。所有 API 调用通过 OkHttp 执行，
- * JSON 响应通过 Jackson {@link ObjectMapper} 解析。
+ * JSON 响应通过 {@link Json} 解析。
  *
  * <h3>PHP 对齐关系</h3>
  * <table border="1">
@@ -82,9 +82,6 @@ public class OfficialAccountService {
     /** OkHttp 客户端 */
     private final OkHttpClient httpClient;
 
-    /** Jackson JSON 解析器 */
-    private final ObjectMapper objectMapper;
-
     /** 缓存仓库（用于 JSSDK ticket 缓存，优先 redis，未注册时回退 array） */
     private final CacheStore cacheStore;
 
@@ -97,18 +94,15 @@ public class OfficialAccountService {
      * @param accessTokenManager Access Token 管理器
      * @param properties         微信配置属性
      * @param httpClient         OkHttp 客户端
-     * @param objectMapper       Jackson JSON 解析器
      * @param cacheManager       缓存管理器（由 cache 模块提供，用于 JSSDK ticket 缓存）
      */
     public OfficialAccountService(AccessTokenManager accessTokenManager,
                                   WechatProperties properties,
                                   OkHttpClient httpClient,
-                                  ObjectMapper objectMapper,
                                   CacheManager cacheManager) {
         this.accessTokenManager = accessTokenManager;
         this.properties = properties;
         this.httpClient = httpClient;
-        this.objectMapper = objectMapper;
         this.cacheStore = resolveStore(cacheManager, properties != null ? properties.getCacheStore() : "redis");
     }
 
@@ -767,7 +761,7 @@ public class OfficialAccountService {
     @SuppressWarnings("unchecked")
     private Map<String, Object> executePostJson(String url, Object body, String operation) {
         try {
-            String json = objectMapper.writeValueAsString(body);
+            String json = Json.stringify(body);
             RequestBody requestBody = RequestBody.create(json, JSON_MEDIA_TYPE);
             Request request = new Request.Builder().url(url).post(requestBody).build();
             try (Response response = httpClient.newCall(request).execute()) {
@@ -822,7 +816,7 @@ public class OfficialAccountService {
             logger.error("[wechat] {} HTTP 失败: code={}, body={}", operation, response.code(), body);
             throw new RuntimeException(operation + " HTTP 失败: " + response.code());
         }
-        Map<String, Object> result = objectMapper.readValue(body, Map.class);
+        Map<String, Object> result = Json.parseToMap(body);
         // 检查微信业务错误码（errcode 非 0 表示失败，部分接口无 errcode 字段）
         Object errcode = result.get("errcode");
         if (errcode != null && errcode instanceof Number && ((Number) errcode).intValue() != 0) {

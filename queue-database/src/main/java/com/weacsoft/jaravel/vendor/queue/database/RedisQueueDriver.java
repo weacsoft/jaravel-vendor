@@ -1,7 +1,6 @@
 package com.weacsoft.jaravel.vendor.queue.database;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
+import com.weacsoft.jaravel.vendor.json.Json;
 import com.weacsoft.jaravel.vendor.redis.RedisManager;
 import io.lettuce.core.MapScanCursor;
 import io.lettuce.core.ScanCursor;
@@ -66,9 +65,6 @@ public class RedisQueueDriver implements QueueDriver {
     /** Redis 键前缀 */
     private final String prefix;
 
-    /** JSON 序列化器 */
-    private final ObjectMapper objectMapper;
-
     /**
      * 构造 Redis 队列驱动。
      *
@@ -87,8 +83,6 @@ public class RedisQueueDriver implements QueueDriver {
         this.retryAfterSeconds = retryAfterSeconds;
         this.failedJobRetentionDays = failedJobRetentionDays;
         this.prefix = DEFAULT_PREFIX;
-        this.objectMapper = new ObjectMapper();
-        this.objectMapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
         logger.info("[queue-redis] 初始化: connection={}, retryAfter={}s, retention={}d",
                 connectionName == null || connectionName.isEmpty() ? "default" : connectionName,
                 retryAfterSeconds, failedJobRetentionDays);
@@ -424,10 +418,9 @@ public class RedisQueueDriver implements QueueDriver {
         return writeJson(map);
     }
 
-    @SuppressWarnings("unchecked")
     private Map<String, Object> deserialize(String json) {
         try {
-            return objectMapper.readValue(json, Map.class);
+            return Json.parseToMap(json);
         } catch (Exception e) {
             logger.error("[queue-redis] JSON 反序列化失败: {}", e.getMessage());
             return null;
@@ -436,7 +429,7 @@ public class RedisQueueDriver implements QueueDriver {
 
     private String writeJson(Object obj) {
         try {
-            return objectMapper.writeValueAsString(obj);
+            return Json.stringify(obj);
         } catch (Exception e) {
             throw new RuntimeException("[queue-redis] JSON 序列化失败: " + e.getMessage(), e);
         }

@@ -3,7 +3,7 @@ package com.weacsoft.jaravel.vendor.plugin.jar.remote.client;
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.ExecuteRequest;
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.ExecuteResponse;
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.RemoteTransport;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.weacsoft.jaravel.vendor.json.Json;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,7 +53,6 @@ public class HttpTransport implements RemoteTransport {
     /** 默认 RPC 端点路径 */
     public static final String DEFAULT_ENDPOINT = "/__remote_rpc__";
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
     private static final int DEFAULT_TIMEOUT_MS = 30000;
 
     /** RPC 端点路径 */
@@ -100,7 +99,7 @@ public class HttpTransport implements RemoteTransport {
             conn.setReadTimeout((int) DEFAULT_TIMEOUT_MS);
             conn.setDoOutput(true);
 
-            String body = objectMapper.writeValueAsString(request);
+            String body = Json.stringify(request);
             try (OutputStream out = conn.getOutputStream()) {
                 out.write(body.getBytes(StandardCharsets.UTF_8));
                 out.flush();
@@ -116,7 +115,7 @@ public class HttpTransport implements RemoteTransport {
             if (code >= 400) {
                 return ExecuteResponse.error(request.getRequestId(), "HTTP " + code + ": " + respBody);
             }
-            return objectMapper.readValue(respBody, ExecuteResponse.class);
+            return Json.parse(respBody, ExecuteResponse.class);
         } catch (IOException e) {
             log.error("HTTP 请求失败: {}:{}{}", host, port, endpoint, e);
             return ExecuteResponse.error(request.getRequestId(), "HTTP 请求失败: " + e.getMessage());

@@ -1,6 +1,6 @@
 package com.weacsoft.jaravel.vendor.http.controller.response;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.weacsoft.jaravel.vendor.json.Json;
 import jakarta.servlet.http.Cookie;
 
 import java.lang.reflect.Method;
@@ -11,7 +11,6 @@ import java.util.List;
 import java.util.Map;
 
 public class ResponseBuilder {
-    private static final ObjectMapper objectMapper = new ObjectMapper();
     private static Object bladeEngine;
 
     private static Object getBladeEngine() {
@@ -83,7 +82,7 @@ public class ResponseBuilder {
             @Override
             public String getContent() {
                 try {
-                    return objectMapper.writeValueAsString(data);
+                    return Json.stringify(data);
                 } catch (Exception e) {
                     throw new RuntimeException("JSON 序列化失败", e);
                 }
@@ -217,7 +216,7 @@ public class ResponseBuilder {
                 try {
                     Map<String, String> map = new HashMap<>();
                     map.put("message", message);
-                    return objectMapper.writeValueAsString(map);
+                    return Json.stringify(map);
                 } catch (Exception e) {
                     throw new RuntimeException("JSON 序列化失败", e);
                 }
@@ -250,7 +249,7 @@ public class ResponseBuilder {
                     Map<String, Object> map = new LinkedHashMap<>();
                     map.put("message", message);
                     map.put("redirect", redirect);
-                    return objectMapper.writeValueAsString(map);
+                    return Json.stringify(map);
                 } catch (Exception e) {
                     throw new RuntimeException("JSON 序列化失败", e);
                 }
@@ -279,7 +278,7 @@ public class ResponseBuilder {
     /** 将对象序列化为 JSON 字符串 */
     public static String toJson(Object data) {
         try {
-            return objectMapper.writeValueAsString(data);
+            return Json.stringify(data);
         } catch (Exception e) {
             throw new RuntimeException("JSON 序列化失败", e);
         }

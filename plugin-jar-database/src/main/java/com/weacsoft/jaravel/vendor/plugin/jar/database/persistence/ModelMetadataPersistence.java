@@ -1,7 +1,6 @@
 package com.weacsoft.jaravel.vendor.plugin.jar.database.persistence;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.weacsoft.jaravel.vendor.json.Json;
 import com.weacsoft.jaravel.vendor.plugin.jar.database.model.PluginMetadataModel;
 import com.weacsoft.jaravel.vendor.plugin.jar.model.PluginInfo;
 import com.weacsoft.jaravel.vendor.plugin.jar.model.RouteInfo;
@@ -13,26 +12,26 @@ import org.slf4j.LoggerFactory;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.util.stream.Collectors;
 
 /**
  * 基于数据库的插件元数据持久化实现。
  * <p>
  * 使用 jaravel 的 {@link PluginMetadataModel}（Eloquent Model）进行 CRUD 操作，
- * 复杂字段（{@code Set<String>}、{@code Set<RouteInfo>}）通过 Jackson {@link ObjectMapper}
+ * 复杂字段（{@code Set<String>}、{@code Set<RouteInfo>}）通过 {@link Json}
  * 序列化为 JSON 字符串存储在数据库 TEXT 列中。
  * <p>
  * 与 {@link com.weacsoft.jaravel.vendor.plugin.jar.persistence.JsonMetadataPersistence} 语义一致：
  * 仅持久化 {@code persisted=true} 的磁盘插件，内存插件不参与持久化。
  * <p>
- * 线程安全：{@link ObjectMapper} 本身线程安全，数据库操作由 gaarason 底层连接池保证。
+ * 线程安全：{@link Json} 为无状态静态工具，数据库操作由 gaarason 底层连接池保证。
  * 并发写入由调用方（{@code HotPluginManager}）通过 ReadWriteLock 串行化。
  */
 public class ModelMetadataPersistence implements MetadataPersistence {
 
     private static final Logger log = LoggerFactory.getLogger(ModelMetadataPersistence.class);
-
-    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
     public void save(PluginInfo info) {
@@ -148,7 +147,7 @@ public class ModelMetadataPersistence implements MetadataPersistence {
             return "[]";
         }
         try {
-            return objectMapper.writeValueAsString(set);
+            return Json.stringify(set);
         } catch (Exception e) {
             log.error("序列化 Set<String> 失败", e);
             return "[]";
@@ -161,12 +160,13 @@ public class ModelMetadataPersistence implements MetadataPersistence {
      * @param json JSON 字符串
      * @return 字符串集合
      */
+    @SuppressWarnings("unchecked")
     private Set<String> fromJson(String json) {
         if (json == null || json.isEmpty()) {
             return new HashSet<>();
         }
         try {
-            return objectMapper.readValue(json, new TypeReference<Set<String>>() {});
+            return Json.parse(json, Set.class);
         } catch (Exception e) {
             log.error("反序列化 Set<String> 失败: {}", json, e);
             return new HashSet<>();
@@ -187,7 +187,7 @@ public class ModelMetadataPersistence implements MetadataPersistence {
             return "[]";
         }
         try {
-            return objectMapper.writeValueAsString(routes);
+            return Json.stringify(routes);
         } catch (Exception e) {
             log.error("序列化 Set<RouteInfo> 失败", e);
             return "[]";
@@ -200,12 +200,22 @@ public class ModelMetadataPersistence implements MetadataPersistence {
      * @param json JSON 字符串
      * @return 路由信息集合
      */
+    @SuppressWarnings("unchecked")
     private Set<RouteInfo> fromJsonRouteInfos(String json) {
         if (json == null || json.isEmpty()) {
             return new HashSet<>();
         }
         try {
-            return objectMapper.readValue(json, new TypeReference<Set<RouteInfo>>() {});
+            // 使用 ParameterizedType 保留泛型信息，使 Jackson 能正确反序列化为 RouteInfo
+            Type setType = new ParameterizedType() {
+                @Override
+                public Type[] getActualTypeArguments() { return new Type[]{RouteInfo.class}; }
+                @Override
+                public Type getRawType() { return Set.class; }
+                @Override
+                public Type getOwnerType() { return null; }
+            };
+            return Json.parse(json, setType);
         } catch (Exception e) {
             log.error("反序列化 Set<RouteInfo> 失败: {}", json, e);
             return new HashSet<>();

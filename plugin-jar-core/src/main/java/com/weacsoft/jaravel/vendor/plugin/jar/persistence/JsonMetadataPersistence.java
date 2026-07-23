@@ -1,6 +1,6 @@
 package com.weacsoft.jaravel.vendor.plugin.jar.persistence;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.weacsoft.jaravel.vendor.json.Json;
 import com.weacsoft.jaravel.vendor.plugin.jar.model.PluginInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,7 +20,7 @@ import java.util.List;
  * {@code loadAll} 扫描 {@code pluginsDir} 下的所有子目录（跳过 {@code shared} 目录），
  * 读取其中的 {@code metadata.json}，仅返回 {@code persisted=true} 的插件。
  * <p>
- * 线程安全：每次读写都通过 ObjectMapper 序列化/反序列化，无共享可变状态。
+ * 线程安全：每次读写都通过 {@link Json} 序列化/反序列化，无共享可变状态。
  * 文件操作由调用方（{@code HotPluginManager}）通过 ReadWriteLock 串行化。
  */
 public class JsonMetadataPersistence implements MetadataPersistence {
@@ -31,17 +31,14 @@ public class JsonMetadataPersistence implements MetadataPersistence {
     private static final String SHARED_DIR = "shared";
 
     private final Path pluginsDir;
-    private final ObjectMapper objectMapper;
 
     /**
      * 构造 JSON 元数据持久化。
      *
      * @param pluginsDir    插件目录
-     * @param objectMapper  Jackson ObjectMapper
      */
-    public JsonMetadataPersistence(Path pluginsDir, ObjectMapper objectMapper) {
+    public JsonMetadataPersistence(Path pluginsDir) {
         this.pluginsDir = pluginsDir;
-        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -57,7 +54,7 @@ public class JsonMetadataPersistence implements MetadataPersistence {
             Path pluginDir = pluginsDir.resolve(info.getPluginId());
             Files.createDirectories(pluginDir);
             Path metadataFile = pluginDir.resolve(METADATA_FILE);
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(metadataFile.toFile(), info);
+            Json.writeToPrettyFile(metadataFile.toFile(), info);
         } catch (IOException e) {
             log.error("保存插件元数据失败: {}", info.getPluginId(), e);
         }
@@ -73,13 +70,13 @@ public class JsonMetadataPersistence implements MetadataPersistence {
             return null;
         }
         try {
-            PluginInfo info = objectMapper.readValue(metadataFile.toFile(), PluginInfo.class);
+            PluginInfo info = Json.readFromFile(metadataFile.toFile(), PluginInfo.class);
             // 仅返回磁盘持久化的插件
             if (info != null && info.isPersisted()) {
                 return info;
             }
             return null;
-        } catch (IOException e) {
+        } catch (Exception e) {
             log.error("加载插件元数据失败: {}", pluginId, e);
             return null;
         }
@@ -106,11 +103,11 @@ public class JsonMetadataPersistence implements MetadataPersistence {
                     continue;
                 }
                 try {
-                    PluginInfo info = objectMapper.readValue(metadataFile.toFile(), PluginInfo.class);
+                    PluginInfo info = Json.readFromFile(metadataFile.toFile(), PluginInfo.class);
                     if (info != null && info.isPersisted()) {
                         result.add(info);
                     }
-                } catch (IOException e) {
+                } catch (Exception e) {
                     log.error("加载插件元数据失败: {}", metadataFile, e);
                 }
             }

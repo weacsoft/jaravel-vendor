@@ -1,6 +1,6 @@
 package com.weacsoft.jaravel.vendor.wire;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.weacsoft.jaravel.vendor.json.Json;
 import com.weacsoft.jaravel.vendor.http.controller.request.Request;
 
 import java.util.*;
@@ -19,7 +19,6 @@ import java.util.*;
  * }</pre>
  */
 public class WireRequest {
-    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     private final String snapshot;
     private final String action;
@@ -48,9 +47,9 @@ public class WireRequest {
             }
             if (body == null || body.isEmpty()) {
                 Map<String, Object> all = request.all();
-                body = objectMapper.writeValueAsString(all);
+                body = Json.stringify(all);
             }
-            Map<String, Object> data = objectMapper.readValue(body, Map.class);
+            Map<String, Object> data = Json.parseToMap(body);
 
             String snapshot = (String) data.get("snapshot");
             String action = (String) data.get("action");
@@ -69,7 +68,7 @@ public class WireRequest {
     @SuppressWarnings("unchecked")
     public static WireRequest fromJson(String json) {
         try {
-            Map<String, Object> data = objectMapper.readValue(json, Map.class);
+            Map<String, Object> data = Json.parseToMap(json);
             String snapshot = (String) data.get("snapshot");
             String action = (String) data.get("action");
             Map<String, Object> params = (Map<String, Object>) data.get("params");

@@ -1,8 +1,8 @@
 package com.weacsoft.jaravel.vendor.wechat;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.weacsoft.jaravel.vendor.cache.CacheManager;
 import com.weacsoft.jaravel.vendor.cache.CacheStore;
+import com.weacsoft.jaravel.vendor.json.Json;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -37,7 +37,7 @@ import java.util.Map;
  * <h3>线程安全</h3>
  * 本类为单例，{@link CacheStore} 实现自身保证线程安全（array 基于
  * {@link java.util.concurrent.ConcurrentHashMap}，redis 基于 Redis 单线程模型）。
- * OkHttpClient 与 ObjectMapper 均为线程安全。
+ * OkHttpClient 与 {@link Json} 均为线程安全。
  *
  * @author weacsoft
  */
@@ -57,9 +57,6 @@ public class AccessTokenManager {
     /** OkHttp 客户端（线程安全，复用连接池） */
     private final OkHttpClient httpClient;
 
-    /** Jackson JSON 解析器（线程安全） */
-    private final ObjectMapper objectMapper;
-
     /** 缓存仓库（优先配置的 store，未注册时回退 array） */
     private final CacheStore cacheStore;
 
@@ -70,29 +67,24 @@ public class AccessTokenManager {
      * 当 redis store 未注册（未引入 redis-cache 模块或 Redis 未配置）时回退到 {@code array} 内存 store。
      *
      * @param httpClient   OkHttp 客户端
-     * @param objectMapper Jackson JSON 解析器
      * @param cacheManager 缓存管理器（由 cache 模块提供）
      */
     public AccessTokenManager(OkHttpClient httpClient,
-                              ObjectMapper objectMapper,
                               CacheManager cacheManager) {
-        this(httpClient, objectMapper, cacheManager, "redis");
+        this(httpClient, cacheManager, "redis");
     }
 
     /**
      * 构造 Access Token 管理器，指定首选缓存 store。
      *
      * @param httpClient       OkHttp 客户端
-     * @param objectMapper     Jackson JSON 解析器
      * @param cacheManager     缓存管理器（可为 null）
      * @param preferredStore   首选缓存 store 名称（如 "redis"、"array"）
      */
     public AccessTokenManager(OkHttpClient httpClient,
-                              ObjectMapper objectMapper,
                               CacheManager cacheManager,
                               String preferredStore) {
         this.httpClient = httpClient;
-        this.objectMapper = objectMapper;
         this.cacheStore = resolveStore(cacheManager, preferredStore);
     }
 
@@ -209,7 +201,7 @@ public class AccessTokenManager {
                 throw new RuntimeException("获取 AccessToken HTTP 失败: " + response.code());
             }
 
-            Map<String, Object> result = objectMapper.readValue(body, Map.class);
+            Map<String, Object> result = Json.parseToMap(body);
             String accessToken = (String) result.get("access_token");
 
             if (accessToken == null || accessToken.isEmpty()) {

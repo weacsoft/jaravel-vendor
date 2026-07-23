@@ -1,7 +1,7 @@
 package com.weacsoft.jaravel.vendor.wire;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.weacsoft.jaravel.vendor.http.controller.response.Response;
+import com.weacsoft.jaravel.vendor.json.Json;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class WireResponseTest {
 
-    private static final ObjectMapper mapper = new ObjectMapper();
+    // ObjectMapper replaced by Json SPI (auto-detects Jackson 2/3)
 
     // ===== redirect =====
 
@@ -26,7 +26,7 @@ class WireResponseTest {
         Response r = WireResponse.redirect("/dashboard");
 
         assertEquals(200, r.getStatus());
-        Map<String, Object> json = mapper.readValue(r.getContent(), Map.class);
+        Map<String, Object> json = Json.parseToMap(r.getContent());
         Map<String, Object> effects = (Map<String, Object>) json.get("effects");
         Map<String, Object> redirect = (Map<String, Object>) effects.get("redirect");
 
@@ -39,7 +39,7 @@ class WireResponseTest {
         Response r = WireResponse.redirect("/items/42", 1500);
 
         assertEquals(200, r.getStatus());
-        Map<String, Object> json = mapper.readValue(r.getContent(), Map.class);
+        Map<String, Object> json = Json.parseToMap(r.getContent());
         Map<String, Object> effects = (Map<String, Object>) json.get("effects");
         Map<String, Object> redirect = (Map<String, Object>) effects.get("redirect");
 
@@ -51,7 +51,7 @@ class WireResponseTest {
     void testRedirectHasEmptySectionsAndSnapshot() throws Exception {
         Response r = WireResponse.redirect("/login");
 
-        Map<String, Object> json = mapper.readValue(r.getContent(), Map.class);
+        Map<String, Object> json = Json.parseToMap(r.getContent());
         assertTrue(((Map<?, ?>) json.get("sections")).isEmpty());
         assertEquals("", json.get("snapshot"));
     }
@@ -160,7 +160,7 @@ class WireResponseTest {
         Response r = resp.build();
         assertEquals(200, r.getStatus());
 
-        Map<String, Object> json = mapper.readValue(r.getContent(), Map.class);
+        Map<String, Object> json = Json.parseToMap(r.getContent());
         assertNotNull(json.get("sections"));
         assertNotNull(json.get("effects"));
         assertNotNull(json.get("snapshot"));
@@ -186,7 +186,7 @@ class WireResponseTest {
         Response r = resp.build();
         assertEquals(200, r.getStatus());
 
-        Map<String, Object> json = mapper.readValue(r.getContent(), Map.class);
+        Map<String, Object> json = Json.parseToMap(r.getContent());
         Map<String, Object> effects = (Map<String, Object>) json.get("effects");
         Map<String, Object> redirect = (Map<String, Object>) effects.get("redirect");
         List<?> dispatch = (List<?>) effects.get("dispatch");

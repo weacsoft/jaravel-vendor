@@ -1,2 +1,3 @@
+com.weacsoft.jaravel.vendor.springboot.JsonCodecAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.SpringBootRouteAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.ResponseAutoConfiguration

@@ -5,7 +5,7 @@ import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.ExecuteRequest;
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.ExecuteResponse;
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.ProtocolCodec;
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.RemoteProtocol;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.weacsoft.jaravel.vendor.json.Json;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,7 +58,6 @@ public class RemotePluginServer {
 
     private static final Logger log = LoggerFactory.getLogger(RemotePluginServer.class);
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
     private final int port;
     private final String authToken;
     private final BeanResolver beanResolver;
@@ -362,8 +361,8 @@ public class RemotePluginServer {
         String body = (String) frame[1];
         if (authToken != null && !authToken.isEmpty()) {
             try {
-                var node = objectMapper.readTree(body);
-                String token = node.has("authToken") ? node.get("authToken").asText() : null;
+                Map<String, Object> node = Json.parseToMap(body);
+                String token = node.containsKey("authToken") ? String.valueOf(node.get("authToken")) : null;
                 if (!authToken.equals(token)) {
                     out.write(ProtocolCodec.encodeFrame(RemoteProtocol.MSG_ERROR,
                             "{\"error\":\"认证失败\"}"));
@@ -385,14 +384,14 @@ public class RemotePluginServer {
      */
     private String handleExecuteRequest(String body) {
         try {
-            ExecuteRequest request = objectMapper.readValue(body, ExecuteRequest.class);
+            ExecuteRequest request = Json.parse(body, ExecuteRequest.class);
             ExecuteResponse response = executeWithRelay(request);
-            return objectMapper.writeValueAsString(response);
+            return Json.stringify(response);
         } catch (Exception e) {
             log.error("处理执行请求失败", e);
             try {
                 ExecuteResponse errorResp = ExecuteResponse.error(null, "服务端内部错误: " + e.getMessage());
-                return objectMapper.writeValueAsString(errorResp);
+                return Json.stringify(errorResp);
             } catch (Exception e2) {
                 return "{\"success\":false,\"error\":\"序列化错误\"}";
             }
@@ -404,14 +403,14 @@ public class RemotePluginServer {
      */
     private String handleRelayRequest(String body) {
         try {
-            ExecuteRequest request = objectMapper.readValue(body, ExecuteRequest.class);
+            ExecuteRequest request = Json.parse(body, ExecuteRequest.class);
             ExecuteResponse response = executeWithRelay(request);
-            return objectMapper.writeValueAsString(response);
+            return Json.stringify(response);
         } catch (Exception e) {
             log.error("处理中继请求失败", e);
             try {
                 ExecuteResponse errorResp = ExecuteResponse.error(null, "中继内部错误: " + e.getMessage());
-                return objectMapper.writeValueAsString(errorResp);
+                return Json.stringify(errorResp);
             } catch (Exception e2) {
                 return "{\"success\":false,\"error\":\"序列化错误\"}";
             }
@@ -477,7 +476,7 @@ public class RemotePluginServer {
             }
             Object[] args = resolveArguments(request.getArgs(), request.getArgTypes(), targetMethod);
             Object result = targetMethod.invoke(bean, args);
-            String resultJson = result != null ? objectMapper.writeValueAsString(result) : null;
+            String resultJson = result != null ? Json.stringify(result) : null;
             String resultType = result != null ? result.getClass().getName() : null;
             return ExecuteResponse.ok(request.getRequestId(), resultJson, resultType);
         } catch (Exception e) {
@@ -546,7 +545,7 @@ public class RemotePluginServer {
      * 通过 TCP 转发请求到子节点。
      */
     private ExecuteResponse forwardToChild(ChildNodeInfo child, ExecuteRequest request) throws IOException {
-        String body = objectMapper.writeValueAsString(request);
+        String body = Json.stringify(request);
         try (Socket socket = new Socket(child.host, child.port)) {
             socket.setSoTimeout(30000);
             socket.setKeepAlive(true);
@@ -579,10 +578,10 @@ public class RemotePluginServer {
             String respBody = (String) frame[1];
 
             if (msgType == RemoteProtocol.MSG_RELAY_RESPONSE || msgType == RemoteProtocol.MSG_EXECUTE_RESPONSE) {
-                return objectMapper.readValue(respBody, ExecuteResponse.class);
+                return Json.parse(respBody, ExecuteResponse.class);
             } else if (msgType == RemoteProtocol.MSG_ERROR) {
-                var node = objectMapper.readTree(respBody);
-                String error = node.has("error") ? node.get("error").asText() : "未知错误";
+                Map<String, Object> node = Json.parseToMap(respBody);
+                String error = node.containsKey("error") ? String.valueOf(node.get("error")) : "未知错误";
                 return ExecuteResponse.error(request.getRequestId(), error);
             }
             return ExecuteResponse.error(request.getRequestId(), "未知响应类型: " + msgType);
@@ -632,7 +631,7 @@ public class RemotePluginServer {
             String argJson = args.get(i);
             Class<?> targetType = paramTypes[i];
             try {
-                result[i] = objectMapper.readValue(argJson, targetType);
+                result[i] = Json.parse(argJson, targetType);
             } catch (Exception e) {
                 // 回退：直接使用字符串
                 result[i] = argJson;

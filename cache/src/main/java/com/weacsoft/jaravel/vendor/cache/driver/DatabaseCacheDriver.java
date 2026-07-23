@@ -1,7 +1,7 @@
 package com.weacsoft.jaravel.vendor.cache.driver;
 
 import com.weacsoft.jaravel.vendor.cache.CacheDriver;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.weacsoft.jaravel.vendor.json.Json;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -40,8 +40,6 @@ import java.util.concurrent.Executors;
 public class DatabaseCacheDriver implements CacheDriver {
 
     private static final Logger logger = LoggerFactory.getLogger(DatabaseCacheDriver.class);
-
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /** 默认缓存表名 */
     private static final String DEFAULT_TABLE = "jaravel_cache";
@@ -91,7 +89,7 @@ public class DatabaseCacheDriver implements CacheDriver {
         long expiresAt = ttlSeconds > 0 ? System.currentTimeMillis() + ttlSeconds * 1000L : 0L;
         String json;
         try {
-            json = MAPPER.writeValueAsString(value);
+            json = Json.stringify(value);
         } catch (Exception e) {
             logger.warn("[cache-db] 序列化缓存值失败: key={}, err={}", key, e.getMessage());
             return false;
@@ -189,7 +187,7 @@ public class DatabaseCacheDriver implements CacheDriver {
             return null;
         }
         try {
-            return MAPPER.readValue(json, Object.class);
+            return Json.parse(json, Object.class);
         } catch (Exception e) {
             logger.warn("[cache-db] 反序列化缓存值失败: {}", e.getMessage());
             return null;

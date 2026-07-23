@@ -1,6 +1,6 @@
 package com.weacsoft.jaravel.vendor.wechat;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.weacsoft.jaravel.vendor.json.Json;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -29,7 +29,7 @@ import java.util.Map;
  * 通过 appId 参数区分不同小程序，配置从 {@link WechatProperties#getMiniApps()} 获取。
  *
  * <h3>线程安全</h3>
- * 本类为无状态单例（配置、客户端、解析器均为构造后不可变字段），可被多线程并发安全调用。
+ * 本类为无状态单例（配置、客户端均为构造后不可变字段），可被多线程并发安全调用。
  *
  * @author weacsoft
  */
@@ -52,25 +52,19 @@ public class MiniProgramService {
     /** OkHttp 客户端 */
     private final OkHttpClient httpClient;
 
-    /** Jackson JSON 解析器 */
-    private final ObjectMapper objectMapper;
-
     /**
      * 构造小程序服务。
      *
      * @param accessTokenManager Access Token 管理器
      * @param properties         微信配置属性
      * @param httpClient         OkHttp 客户端
-     * @param objectMapper       Jackson JSON 解析器
      */
     public MiniProgramService(AccessTokenManager accessTokenManager,
                               WechatProperties properties,
-                              OkHttpClient httpClient,
-                              ObjectMapper objectMapper) {
+                              OkHttpClient httpClient) {
         this.accessTokenManager = accessTokenManager;
         this.properties = properties;
         this.httpClient = httpClient;
-        this.objectMapper = objectMapper;
     }
 
     /**
@@ -107,7 +101,7 @@ public class MiniProgramService {
                         appId, response.code(), body);
                 throw new RuntimeException("jscode2session HTTP 失败: " + response.code());
             }
-            Map<String, Object> result = objectMapper.readValue(body, Map.class);
+            Map<String, Object> result = Json.parseToMap(body);
             Object errcode = result.get("errcode");
             if (errcode != null && errcode instanceof Number && ((Number) errcode).intValue() != 0) {
                 logger.warn("[wechat-mini] jscode2session 业务失败: appId={}, errcode={}, errmsg={}",
@@ -177,7 +171,7 @@ public class MiniProgramService {
 
         String url = API_BASE_URL + "/cgi-bin/message/subscribe/send?access_token=" + token;
         try {
-            String json = objectMapper.writeValueAsString(body);
+            String json = Json.stringify(body);
             RequestBody requestBody = RequestBody.create(json, JSON_MEDIA_TYPE);
             Request request = new Request.Builder().url(url).post(requestBody).build();
             try (Response response = httpClient.newCall(request).execute()) {
@@ -187,7 +181,7 @@ public class MiniProgramService {
                             appId, response.code(), respBody);
                     throw new RuntimeException("sendTemplateMessage HTTP 失败: " + response.code());
                 }
-                Map<String, Object> result = objectMapper.readValue(respBody, Map.class);
+                Map<String, Object> result = Json.parseToMap(respBody);
                 Object errcode = result.get("errcode");
                 if (errcode != null && errcode instanceof Number && ((Number) errcode).intValue() != 0) {
                     logger.warn("[wechat-mini] sendTemplateMessage 业务失败: appId={}, errcode={}, errmsg={}",

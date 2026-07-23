@@ -1,6 +1,5 @@
 package com.weacsoft.jaravel.vendor.plugin.jar.persistence;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.weacsoft.jaravel.vendor.plugin.jar.annotation.HttpMethod;
 import com.weacsoft.jaravel.vendor.plugin.jar.model.PluginInfo;
 import com.weacsoft.jaravel.vendor.plugin.jar.model.RouteInfo;
@@ -31,7 +30,7 @@ class JsonMetadataPersistenceTest {
 
     @BeforeEach
     void setUp() {
-        persistence = new JsonMetadataPersistence(tempDir, new ObjectMapper());
+        persistence = new JsonMetadataPersistence(tempDir);
     }
 
     private PluginInfo newPersisted(String id) {

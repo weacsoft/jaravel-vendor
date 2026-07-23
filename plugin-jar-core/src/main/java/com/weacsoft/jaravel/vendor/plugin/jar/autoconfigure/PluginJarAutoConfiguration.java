@@ -1,6 +1,5 @@
 package com.weacsoft.jaravel.vendor.plugin.jar.autoconfigure;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.weacsoft.jaravel.vendor.plugin.jar.integration.DefaultPluginIntegration;
 import com.weacsoft.jaravel.vendor.plugin.jar.integration.PluginIntegration;
 import com.weacsoft.jaravel.vendor.plugin.jar.manager.HotPluginManager;
@@ -10,7 +9,6 @@ import com.weacsoft.jaravel.vendor.plugin.jar.registrar.PluginBeanRegistrar;
 import com.weacsoft.jaravel.vendor.plugin.jar.registrar.PluginRouteRegistrar;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -83,19 +81,13 @@ public class PluginJarAutoConfiguration {
      * {@code plugin-jar-database} 模块可覆盖此 Bean 提供数据库持久化。
      *
      * @param properties   配置属性
-     * @param objectMapper Jackson ObjectMapper
      * @return 元数据持久化
      */
     @Bean
     @ConditionalOnMissingBean
-    public MetadataPersistence metadataPersistence(PluginJarProperties properties,
-                                                   ObjectProvider<ObjectMapper> objectMapper) {
+    public MetadataPersistence metadataPersistence(PluginJarProperties properties) {
         Path pluginsDir = resolvePluginsDir(properties);
-        ObjectMapper mapper = objectMapper.getIfAvailable();
-        if (mapper == null) {
-            mapper = new ObjectMapper();
-        }
-        return new JsonMetadataPersistence(pluginsDir, mapper);
+        return new JsonMetadataPersistence(pluginsDir);
     }
 
     /**

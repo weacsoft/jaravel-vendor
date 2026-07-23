@@ -4,7 +4,7 @@ import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.ExecuteRequest;
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.ExecuteResponse;
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.ProtocolCodec;
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.RemoteProtocol;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.weacsoft.jaravel.vendor.json.Json;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,8 +46,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public class RemotePluginClient {
 
     private static final Logger log = LoggerFactory.getLogger(RemotePluginClient.class);
-
-    private final ObjectMapper objectMapper = new ObjectMapper();
 
     /** 连接缓存：host:port -> Socket */
     private final ConcurrentHashMap<String, Socket> connections = new ConcurrentHashMap<>();
@@ -180,7 +178,7 @@ public class RemotePluginClient {
     }
 
     private ExecuteResponse sendRequest(Socket socket, ExecuteRequest request) throws IOException {
-        String body = objectMapper.writeValueAsString(request);
+        String body = Json.stringify(request);
         OutputStream out = socket.getOutputStream();
         out.write(ProtocolCodec.encodeFrame(RemoteProtocol.MSG_EXECUTE_REQUEST, body));
         out.flush();
@@ -191,10 +189,10 @@ public class RemotePluginClient {
         int msgType = (int) frame[0];
         String respBody = (String) frame[1];
         if (msgType == RemoteProtocol.MSG_EXECUTE_RESPONSE) {
-            return objectMapper.readValue(respBody, ExecuteResponse.class);
+            return Json.parse(respBody, ExecuteResponse.class);
         } else if (msgType == RemoteProtocol.MSG_ERROR) {
-            var node = objectMapper.readTree(respBody);
-            String error = node.has("error") ? node.get("error").asText() : "未知错误";
+            Map<String, Object> node = Json.parseToMap(respBody);
+            String error = node.containsKey("error") ? String.valueOf(node.get("error")) : "未知错误";
             return ExecuteResponse.error(request.getRequestId(), error);
         }
         return ExecuteResponse.error(request.getRequestId(), "未知响应类型: " + msgType);

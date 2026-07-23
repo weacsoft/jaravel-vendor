@@ -1,6 +1,6 @@
 package com.weacsoft.jaravel.vendor.queue.database;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.weacsoft.jaravel.vendor.json.Json;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,9 +46,6 @@ public class DatabaseQueueWorker {
     /** Spring 应用上下文，用于获取监听器 bean */
     private final ApplicationContext applicationContext;
 
-    /** JSON 序列化器 */
-    private final ObjectMapper objectMapper;
-
     /** 要消费的队列名列表 */
     private final List<String> queues;
 
@@ -86,7 +83,6 @@ public class DatabaseQueueWorker {
                                long pollIntervalMs, int workerThreads) {
         this.driver = driver;
         this.applicationContext = applicationContext;
-        this.objectMapper = new ObjectMapper();
         this.queues = queues;
         this.maxAttempts = maxAttempts;
         this.retryDelayMs = retryDelayMs;
@@ -154,7 +150,7 @@ public class DatabaseQueueWorker {
             logger.info("[queue-worker] 执行任务: {}", job);
 
             // 解析负载
-            Map<String, Object> payload = objectMapper.readValue(job.getPayload(), Map.class);
+            Map<String, Object> payload = Json.parseToMap(job.getPayload());
             String listenerBeanName = (String) payload.get("listenerBeanName");
             String listenerClassName = (String) payload.get("listenerClass");
 
@@ -188,7 +184,7 @@ public class DatabaseQueueWorker {
             if (eventData != null && eventClassName != null) {
                 try {
                     Class<?> eventClass = Class.forName(eventClassName);
-                    event = objectMapper.convertValue(eventData, eventClass);
+                    event = Json.convert(eventData, eventClass);
                 } catch (ClassNotFoundException e) {
                     logger.warn("[queue-worker] 事件类不存在，使用原始数据: {}", eventClassName);
                     event = eventData;

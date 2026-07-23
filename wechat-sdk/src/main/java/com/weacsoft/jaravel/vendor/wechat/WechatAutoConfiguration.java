@@ -1,6 +1,5 @@
 package com.weacsoft.jaravel.vendor.wechat;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.weacsoft.jaravel.vendor.cache.CacheManager;
 import okhttp3.OkHttpClient;
 import org.slf4j.Logger;
@@ -76,22 +75,20 @@ public class WechatAutoConfiguration {
     /**
      * Access Token 管理器 Bean。
      * <p>
-     * 注入 OkHttpClient、ObjectMapper 以及 CacheManager 提供者（由 cache 模块提供）。
+     * 注入 OkHttpClient 以及 CacheManager 提供者（由 cache 模块提供）。
      * AccessTokenManager 通过 CacheManager 解析缓存仓库：优先 redis store，未注册时回退 array 内存缓存。
      *
      * @param wechatHttpClient     OkHttp 客户端
-     * @param objectMapper         Jackson JSON 解析器
      * @param cacheManagerProvider 缓存管理器提供者（由 cache 模块提供）
      * @return AccessTokenManager 实例
      */
     @Bean
     @ConditionalOnMissingBean
     public AccessTokenManager accessTokenManager(OkHttpClient wechatHttpClient,
-                                                  ObjectMapper objectMapper,
                                                   WechatProperties properties,
                                                   ObjectProvider<CacheManager> cacheManagerProvider) {
         logger.info("[wechat] 初始化 AccessTokenManager, 首选缓存 store: {}", properties.getCacheStore());
-        return new AccessTokenManager(wechatHttpClient, objectMapper,
+        return new AccessTokenManager(wechatHttpClient,
                 cacheManagerProvider.getIfAvailable(), properties.getCacheStore());
     }
 
@@ -101,7 +98,6 @@ public class WechatAutoConfiguration {
      * @param accessTokenManager   Access Token 管理器
      * @param properties           微信配置属性
      * @param wechatHttpClient     OkHttp 客户端
-     * @param objectMapper         Jackson JSON 解析器
      * @param cacheManagerProvider 缓存管理器提供者（用于 JSSDK ticket 缓存）
      * @return OfficialAccountService 实例
      */
@@ -110,11 +106,10 @@ public class WechatAutoConfiguration {
     public OfficialAccountService officialAccountService(AccessTokenManager accessTokenManager,
                                                          WechatProperties properties,
                                                          OkHttpClient wechatHttpClient,
-                                                         ObjectMapper objectMapper,
                                                          ObjectProvider<CacheManager> cacheManagerProvider) {
         logger.info("[wechat] 初始化 OfficialAccountService");
         return new OfficialAccountService(accessTokenManager, properties, wechatHttpClient,
-                objectMapper, cacheManagerProvider.getIfAvailable());
+                cacheManagerProvider.getIfAvailable());
     }
 
     /**
@@ -123,16 +118,14 @@ public class WechatAutoConfiguration {
      * @param accessTokenManager Access Token 管理器
      * @param properties         微信配置属性
      * @param wechatHttpClient   OkHttp 客户端
-     * @param objectMapper       Jackson JSON 解析器
      * @return MiniProgramService 实例
      */
     @Bean
     @ConditionalOnMissingBean
     public MiniProgramService miniProgramService(AccessTokenManager accessTokenManager,
                                                  WechatProperties properties,
-                                                 OkHttpClient wechatHttpClient,
-                                                 ObjectMapper objectMapper) {
+                                                 OkHttpClient wechatHttpClient) {
         logger.info("[wechat] 初始化 MiniProgramService");
-        return new MiniProgramService(accessTokenManager, properties, wechatHttpClient, objectMapper);
+        return new MiniProgramService(accessTokenManager, properties, wechatHttpClient);
     }
 }

@@ -1,6 +1,6 @@
 package com.weacsoft.jaravel.vendor.wire;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.weacsoft.jaravel.vendor.json.Json;
 import com.weacsoft.jaravel.vendor.jblade.BladeEngine;
 
 import java.io.InputStream;
@@ -25,7 +25,6 @@ import java.util.function.Consumer;
  * </ol>
  */
 public class WireManager {
-    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     /** Wire 模式标记，设置到 BladeContext 中触发 @yield 的 section 包装 */
     public static final String WIRE_MODE_KEY = "__wire_mode";
@@ -305,7 +304,7 @@ public class WireManager {
                     }
                 }
             }
-            String json = objectMapper.writeValueAsString(cleanData);
+            String json = Json.stringify(cleanData);
             return Base64.getEncoder().encodeToString(json.getBytes(StandardCharsets.UTF_8));
         } catch (Exception e) {
             throw new RuntimeException("编码快照失败", e);
@@ -326,7 +325,7 @@ public class WireManager {
         try {
             byte[] bytes = Base64.getDecoder().decode(base64);
             String json = new String(bytes, StandardCharsets.UTF_8);
-            return objectMapper.readValue(json, Map.class);
+            return Json.parseToMap(json);
         } catch (Exception e) {
             throw new RuntimeException("解码快照失败", e);
         }

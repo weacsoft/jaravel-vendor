@@ -10,27 +10,26 @@
         <version>0.1.2</version>
     </parent>
 
-    <artifactId>core</artifactId>
-    <name>core</name>
-    <description>核心：Facades 门面 / Config 配置仓库 / ServiceProvider / Validation 校验 / Str·Arr 工具</description>
+    <artifactId>json</artifactId>
+    <name>json</name>
+    <description>JSON 编解码 SPI：Jackson 2 / Jackson 3 双支持，无 Spring 依赖，自动检测 classpath</description>
 
     <dependencies>
-        <dependency>
-            <groupId>io.github.lijialong1313</groupId>
-            <artifactId>json</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework</groupId>
-            <artifactId>spring-context</artifactId>
-        </dependency>
+        <!-- Jackson 2（SB3 运行时提供，编译期 provided） -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
+            <scope>provided</scope>
+            <optional>true</optional>
         </dependency>
+        <!-- Jackson 3（SB4 运行时提供，编译期 provided） -->
         <dependency>
-            <groupId>jakarta.annotation</groupId>
-            <artifactId>jakarta.annotation-api</artifactId>
+            <groupId>tools.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <scope>provided</scope>
+            <optional>true</optional>
         </dependency>
+        <!-- SLF4J（日志） -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
@@ -44,4 +43,3 @@
         </dependency>
     </dependencies>
 </project>
-

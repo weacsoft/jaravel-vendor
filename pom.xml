@@ -43,6 +43,8 @@
 
     <modules>
         <module>core</module>
+        <!-- JSON 编解码 SPI（Jackson 2/3 双支持，无 Spring 依赖） -->
+        <module>json</module>
         <!-- 通用工具：内存编译（MemoryClassLoader 等） -->
         <module>utils</module>
         <module>http</module>
@@ -101,6 +103,7 @@
         <slf4j.version>1.7.36</slf4j.version>
         <asm.version>9.7</asm.version>
         <okhttp.version>4.12.0</okhttp.version>
+        <jackson3.version>3.0.2</jackson3.version>
 
         <!-- 覆盖 Spring Boot 管理的依赖版本（安全补丁） -->
         <jackson-bom.version>2.18.2</jackson-bom.version>
@@ -317,6 +320,35 @@
                 <groupId>com.squareup.okhttp3</groupId>
                 <artifactId>okhttp</artifactId>
                 <version>${okhttp.version}</version>
+            </dependency>
+
+            <!-- Jackson 2 显式版本管理（SB3/SB4 双兼容） -->
+            <!-- SB4 使用 tools.jackson（Jackson 3），不管理 com.fasterxml.jackson.core GA； -->
+            <!-- 本库内部使用 com.fasterxml.jackson.databind.ObjectMapper，需保证 Jackson 2 在类路径上。 -->
+            <!-- 此处显式声明版本，使消费端（无论 SB3 还是 SB4）均能传递获取 Jackson 2.18.2。 -->
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-databind</artifactId>
+                <version>${jackson-bom.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-core</artifactId>
+                <version>${jackson-bom.version}</version>
+            </dependency>
+
+            <!-- Jackson 3（SB4 运行时使用，json 模块编译期 provided） -->
+            <dependency>
+                <groupId>tools.jackson.core</groupId>
+                <artifactId>jackson-databind</artifactId>
+                <version>${jackson3.version}</version>
+            </dependency>
+
+            <!-- json SPI 模块 -->
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>json</artifactId>
+                <version>${project.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

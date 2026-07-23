@@ -2,7 +2,7 @@ package com.weacsoft.jaravel.vendor.plugin.jar.remote.client;
 
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.ExecuteRequest;
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.ExecuteResponse;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.weacsoft.jaravel.vendor.json.Json;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,7 +55,6 @@ import java.util.UUID;
 public class RemoteProxy {
 
     private static final Logger log = LoggerFactory.getLogger(RemoteProxy.class);
-    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * 创建远程服务代理。
@@ -128,7 +127,7 @@ public class RemoteProxy {
                         argJsonList.add("null");
                         argTypeList.add("java.lang.Object");
                     } else {
-                        argJsonList.add(objectMapper.writeValueAsString(arg));
+                        argJsonList.add(Json.stringify(arg));
                         argTypeList.add(arg.getClass().getName());
                     }
                 }
@@ -160,11 +159,11 @@ public class RemoteProxy {
                 // 如果结果是 JSON 字符串，需要去掉外层引号
                 String result = response.getResult();
                 if (result.startsWith("\"") && result.endsWith("\"")) {
-                    return objectMapper.readValue(result, String.class);
+                    return Json.parse(result, String.class);
                 }
                 return result;
             }
-            return objectMapper.readValue(response.getResult(), returnType);
+            return Json.parse(response.getResult(), returnType);
         }
     }
 }

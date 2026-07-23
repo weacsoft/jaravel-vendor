@@ -1,9 +1,9 @@
 package com.weacsoft.jaravel.vendor.queue.database;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.weacsoft.jaravel.vendor.event.Event;
 import com.weacsoft.jaravel.vendor.event.Listener;
 import com.weacsoft.jaravel.vendor.event.QueueDispatcher;
+import com.weacsoft.jaravel.vendor.json.Json;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationContext;
@@ -39,9 +39,6 @@ public class DatabaseQueueDispatcher implements QueueDispatcher {
     /** Spring 应用上下文，用于解析监听器 bean 名 */
     private final ApplicationContext applicationContext;
 
-    /** JSON 序列化器 */
-    private final ObjectMapper objectMapper;
-
     /**
      * 构造持久化队列分发器。
      *
@@ -51,7 +48,6 @@ public class DatabaseQueueDispatcher implements QueueDispatcher {
     public DatabaseQueueDispatcher(QueueDriver driver, ApplicationContext applicationContext) {
         this.driver = driver;
         this.applicationContext = applicationContext;
-        this.objectMapper = new ObjectMapper();
     }
 
     @Override
@@ -69,7 +65,7 @@ public class DatabaseQueueDispatcher implements QueueDispatcher {
             payload.put("eventClass", event.getClass().getName());
             payload.put("eventData", event);
 
-            String json = objectMapper.writeValueAsString(payload);
+            String json = Json.stringify(payload);
             long jobId = driver.push(queueName, json, delayMs);
             logger.debug("[queue-dispatcher] 分发任务: queue={}, jobId={}, listener={}, event={}, delayMs={}",
                     queueName, jobId, listener.getClass().getName(), event.getClass().getName(), delayMs);

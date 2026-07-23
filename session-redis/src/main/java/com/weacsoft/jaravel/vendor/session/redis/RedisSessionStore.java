@@ -1,7 +1,6 @@
 package com.weacsoft.jaravel.vendor.session.redis;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.weacsoft.jaravel.vendor.json.Json;
 import com.weacsoft.jaravel.vendor.redis.RedisManager;
 import io.lettuce.core.api.sync.RedisCommands;
 import org.slf4j.Logger;
@@ -53,9 +52,6 @@ public class RedisSessionStore {
     /** Cookie 名称，用于传递 Session ID */
     private final String cookieName;
 
-    /** JSON 序列化器 */
-    private final ObjectMapper objectMapper;
-
     /**
      * 构造 Redis Session 存储。
      *
@@ -72,7 +68,6 @@ public class RedisSessionStore {
         this.prefix = prefix;
         this.lifetimeSeconds = lifetimeMinutes * 60;
         this.cookieName = cookieName;
-        this.objectMapper = new ObjectMapper();
     }
 
     /** 获取 Redis 同步命令接口 */
@@ -239,7 +234,7 @@ public class RedisSessionStore {
     /** 序列化对象为 JSON 字符串 */
     private String serialize(Object value) {
         try {
-            return objectMapper.writeValueAsString(value);
+            return Json.stringify(value);
         } catch (Exception e) {
             return value != null ? value.toString() : "null";
         }
@@ -248,7 +243,7 @@ public class RedisSessionStore {
     /** 反序列化 JSON 字符串为 Java 对象 */
     private Object deserialize(String json) {
         try {
-            return objectMapper.readValue(json, new TypeReference<Object>() {});
+            return Json.parse(json, Object.class);
         } catch (Exception e) {
             return json;
         }

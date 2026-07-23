@@ -1,10 +1,9 @@
 package com.weacsoft.jaravel.vendor.cache.driver;
 
 import com.weacsoft.jaravel.vendor.cache.CacheDriver;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.weacsoft.jaravel.vendor.json.Json;
 
 import java.io.File;
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -14,7 +13,7 @@ import java.util.List;
 /**
  * 基于文件系统的缓存驱动，对齐 Laravel {@code "file"} 缓存驱动。
  * <p>
- * 每个 key 对应目录下一个文件，使用 Jackson {@link ObjectMapper} 将 {@link CacheEntry}
+ * 每个 key 对应目录下一个文件，使用 {@link Json} 将 {@link CacheEntry}
  * （含 {@code value} 与 {@code expiryAt}）序列化为 JSON 写入文件；读取时反序列化，
  * 过期则删除文件并视为未命中。
  * <p>
@@ -27,7 +26,6 @@ import java.util.List;
  */
 public class FileCacheDriver implements CacheDriver {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final String SUFFIX = ".cache";
 
     /** 缓存文件存放目录 */
@@ -66,9 +64,9 @@ public class FileCacheDriver implements CacheDriver {
         // 修复旧版 bug：TTL 统一为秒，expiryAt 使用毫秒时间戳
         long expiryAt = ttlSeconds > 0 ? System.currentTimeMillis() + ttlSeconds * 1000L : 0L;
         try {
-            MAPPER.writeValue(fileFor(key), new CacheEntry(value, expiryAt));
+            Json.writeToFile(fileFor(key), new CacheEntry(value, expiryAt));
             return true;
-        } catch (IOException e) {
+        } catch (Exception e) {
             return false;
         }
     }
@@ -125,7 +123,7 @@ public class FileCacheDriver implements CacheDriver {
         }
         for (File f : files) {
             try {
-                CacheEntry entry = MAPPER.readValue(f, CacheEntry.class);
+                CacheEntry entry = Json.readFromFile(f, CacheEntry.class);
                 if (entry == null) {
                     continue;
                 }
@@ -148,8 +146,8 @@ public class FileCacheDriver implements CacheDriver {
             return null;
         }
         try {
-            return MAPPER.readValue(f, CacheEntry.class);
-        } catch (IOException e) {
+            return Json.readFromFile(f, CacheEntry.class);
+        } catch (Exception e) {
             return null;
         }
     }

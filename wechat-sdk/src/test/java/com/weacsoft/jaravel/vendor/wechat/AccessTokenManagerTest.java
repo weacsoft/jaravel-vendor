@@ -1,6 +1,5 @@
 package com.weacsoft.jaravel.vendor.wechat;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.weacsoft.jaravel.vendor.cache.driver.ArrayCacheDriver;
 import com.weacsoft.jaravel.vendor.cache.CacheManager;
 import com.weacsoft.jaravel.vendor.cache.CacheStore;
@@ -26,7 +25,6 @@ import static org.mockito.Mockito.*;
 class AccessTokenManagerTest {
 
     private OkHttpClient mockHttpClient;
-    private ObjectMapper objectMapper;
     private CacheManager cacheManager;
     private CacheStore spyStore;
     private AccessTokenManager manager;
@@ -34,11 +32,10 @@ class AccessTokenManagerTest {
     @BeforeEach
     void setUp() {
         mockHttpClient = mock(OkHttpClient.class);
-        objectMapper = new ObjectMapper();
         cacheManager = new CacheManager();
         spyStore = spy(new DefaultCacheStore(new ArrayCacheDriver(), ""));
         cacheManager.addStore("array", spyStore);
-        manager = new AccessTokenManager(mockHttpClient, objectMapper, cacheManager, "array");
+        manager = new AccessTokenManager(mockHttpClient, cacheManager, "array");
     }
 
     @Test
@@ -100,7 +97,7 @@ class AccessTokenManagerTest {
 
     @Test
     void testNullCacheManagerFallsBackToArrayStore() {
-        manager = new AccessTokenManager(mockHttpClient, objectMapper, null, "redis");
+        manager = new AccessTokenManager(mockHttpClient, null, "redis");
         mockWechatResponse(200, "{\"access_token\":\"fallback_token\",\"expires_in\":7200}");
         String token = manager.getToken("wx123", "secret");
         assertEquals("fallback_token", token, "CacheManager 为 null 时应回退到内存存储");
@@ -109,7 +106,7 @@ class AccessTokenManagerTest {
     @Test
     void testPreferredStoreNotRegisteredFallsBackToArray() {
         // preferredStore 为 "redis" 但未注册，应回退到 "array"
-        manager = new AccessTokenManager(mockHttpClient, objectMapper, cacheManager, "redis");
+        manager = new AccessTokenManager(mockHttpClient, cacheManager, "redis");
         mockWechatResponse(200, "{\"access_token\":\"fb_token\",\"expires_in\":7200}");
         String token = manager.getToken("wx123", "secret");
         assertEquals("fb_token", token, "preferredStore 未注册时应回退到 array 存储");

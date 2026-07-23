@@ -1,8 +1,7 @@
 package com.weacsoft.jaravel.vendor.redis.cache;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
 import com.weacsoft.jaravel.vendor.cache.CacheDriver;
+import com.weacsoft.jaravel.vendor.json.Json;
 import com.weacsoft.jaravel.vendor.redis.RedisManager;
 import io.lettuce.core.api.sync.RedisCommands;
 import org.slf4j.Logger;
@@ -22,7 +21,7 @@ import java.util.Collection;
  *
  * <h3>序列化策略</h3>
  * <ul>
- *   <li>值通过 Jackson {@link ObjectMapper} 序列化为 JSON 字符串存储</li>
+ *   <li>值通过 {@link Json} 序列化为 JSON 字符串存储</li>
  *   <li>读取时返回反序列化后的 Java 对象（Map / List / String / Number 等）</li>
  *   <li>TTL {@code <= 0} 表示永不过期，使用 SET 而非 SETEX</li>
  * </ul>
@@ -41,9 +40,6 @@ public class RedisCacheDriver implements CacheDriver {
     /** Redis 连接名（如 cache / model-cache），对应 jaravel.redis.connections 中的配置 */
     private final String connectionName;
 
-    /** JSON 序列化器 */
-    private final ObjectMapper objectMapper;
-
     /**
      * 构造 Redis 缓存驱动。
      *
@@ -53,8 +49,6 @@ public class RedisCacheDriver implements CacheDriver {
     public RedisCacheDriver(RedisManager redisManager, String connectionName) {
         this.redisManager = redisManager;
         this.connectionName = connectionName;
-        this.objectMapper = new ObjectMapper();
-        this.objectMapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
     }
 
     /**
@@ -74,7 +68,7 @@ public class RedisCacheDriver implements CacheDriver {
     @Override
     public boolean put(String key, Object value, long ttlSeconds) {
         try {
-            String json = objectMapper.writeValueAsString(value);
+            String json = Json.stringify(value);
             RedisCommands<String, String> cmd = commands();
             if (ttlSeconds > 0) {
                 cmd.setex(key, ttlSeconds, json);
@@ -95,7 +89,7 @@ public class RedisCacheDriver implements CacheDriver {
             if (json == null) {
                 return null;
             }
-            return objectMapper.readValue(json, Object.class);
+            return Json.parse(json, Object.class);
         } catch (Exception e) {
             logger.error("[redis-cache] 读取缓存失败 key={}: {}", key, e.getMessage());
             return null;

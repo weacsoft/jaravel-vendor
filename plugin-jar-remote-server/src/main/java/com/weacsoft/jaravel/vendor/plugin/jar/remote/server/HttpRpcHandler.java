@@ -3,7 +3,7 @@ package com.weacsoft.jaravel.vendor.plugin.jar.remote.server;
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.spi.BeanResolver;
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.ExecuteRequest;
 import com.weacsoft.jaravel.vendor.plugin.jar.remote.protocol.ExecuteResponse;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.weacsoft.jaravel.vendor.json.Json;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -62,8 +62,6 @@ public final class HttpRpcHandler {
 
     private static final Logger log = LoggerFactory.getLogger(HttpRpcHandler.class);
 
-    private static final ObjectMapper objectMapper = new ObjectMapper();
-
     private HttpRpcHandler() {
     }
 
@@ -88,7 +86,7 @@ public final class HttpRpcHandler {
             }
         }
         try {
-            ExecuteRequest execRequest = objectMapper.readValue(requestBody, ExecuteRequest.class);
+            ExecuteRequest execRequest = Json.parse(requestBody, ExecuteRequest.class);
             ExecuteResponse execResponse = executeLocally(beanResolver, execRequest);
             return toJson(execResponse);
         } catch (Exception e) {
@@ -127,7 +125,7 @@ public final class HttpRpcHandler {
             }
             Object[] args = resolveArguments(request.getArgs(), request.getArgTypes(), targetMethod);
             Object result = targetMethod.invoke(bean, args);
-            String resultJson = result != null ? objectMapper.writeValueAsString(result) : null;
+            String resultJson = result != null ? Json.stringify(result) : null;
             String resultType = result != null ? result.getClass().getName() : null;
             return ExecuteResponse.ok(request.getRequestId(), resultJson, resultType);
         } catch (Exception e) {
@@ -168,7 +166,7 @@ public final class HttpRpcHandler {
         Object[] result = new Object[Math.min(args.size(), paramTypes.length)];
         for (int i = 0; i < result.length; i++) {
             try {
-                result[i] = objectMapper.readValue(args.get(i), paramTypes[i]);
+                result[i] = Json.parse(args.get(i), paramTypes[i]);
             } catch (Exception e) {
                 result[i] = args.get(i);
             }
@@ -178,7 +176,7 @@ public final class HttpRpcHandler {
 
     private static String toJson(Object obj) {
         try {
-            return objectMapper.writeValueAsString(obj);
+            return Json.stringify(obj);
         } catch (Exception e) {
             return "{\"success\":false,\"error\":\"序列化错误\"}";
         }
