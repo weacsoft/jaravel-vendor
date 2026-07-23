@@ -5,7 +5,7 @@ import com.weacsoft.jaravel.vendor.artisan.ArtisanCommand;
 /**
  * make:middleware 命令 — 生成 Middleware 类。
  * <p>
- * 使用方式：{@code java -jar app.jar --artisan make:middleware AuthMiddleware}
+ * 使用方式：{@code java -jar app.jar artisan make:middleware AuthMiddleware}
  */
 public class MakeMiddlewareCommand extends ArtisanCommand {
 

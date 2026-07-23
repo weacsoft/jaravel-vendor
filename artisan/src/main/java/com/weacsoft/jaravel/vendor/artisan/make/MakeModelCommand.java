@@ -5,7 +5,7 @@ import com.weacsoft.jaravel.vendor.artisan.ArtisanCommand;
 /**
  * make:model 命令 — 生成 Model 类。
  * <p>
- * 使用方式：{@code java -jar app.jar --artisan make:model User}
+ * 使用方式：{@code java -jar app.jar artisan make:model User}
  */
 public class MakeModelCommand extends ArtisanCommand {
 

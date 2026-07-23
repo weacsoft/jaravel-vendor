@@ -5,7 +5,7 @@ import com.weacsoft.jaravel.vendor.artisan.ArtisanCommand;
 /**
  * make:event 命令 — 生成 Event 类。
  * <p>
- * 使用方式：{@code java -jar app.jar --artisan make:event UserRegisteredEvent}
+ * 使用方式：{@code java -jar app.jar artisan make:event UserRegisteredEvent}
  */
 public class MakeEventCommand extends ArtisanCommand {
 

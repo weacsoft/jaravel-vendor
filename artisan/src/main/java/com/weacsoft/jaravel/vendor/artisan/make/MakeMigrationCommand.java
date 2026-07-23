@@ -5,7 +5,7 @@ import com.weacsoft.jaravel.vendor.artisan.ArtisanCommand;
 /**
  * make:migration 命令 — 生成 Migration 类。
  * <p>
- * 使用方式：{@code java -jar app.jar --artisan make:migration create_users_table}
+ * 使用方式：{@code java -jar app.jar artisan make:migration create_users_table}
  */
 public class MakeMigrationCommand extends ArtisanCommand {
 

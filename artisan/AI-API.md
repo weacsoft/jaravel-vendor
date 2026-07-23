@@ -4,7 +4,7 @@
 
 ## Overview
 
-artisan 模块提供了 Laravel 风格的命令行工具框架。`ArtisanApplication` 负责命令注册、查找和执行；`ArtisanCommand` 是所有自定义命令的抽象基类，子类实现 `handle()` 方法完成业务逻辑；`ArtisanRunner` 实现 Spring Boot `CommandLineRunner`，在应用启动时检测 `--artisan` 参数并派发到对应命令。支持参数解析（`{arg}` 位置参数、`{--option}` 选项参数）和帮助信息输出。
+artisan 模块提供了 Laravel 风格的命令行工具框架。`ArtisanApplication` 负责命令注册、查找和执行；`ArtisanCommand` 是所有自定义命令的抽象基类，子类实现 `handle()` 方法完成业务逻辑；`ArtisanRunner` 实现 Spring Boot `CommandLineRunner`，在应用启动时检测 `artisan` 参数并派发到对应命令。支持参数解析（`{arg}` 位置参数、`{--option}` 选项参数）和帮助信息输出。
 
 ## Classes & Interfaces
 
@@ -84,21 +84,21 @@ artisan.listCommands().forEach((name, cmd) -> {
 - **Package**: `com.weacsoft.jaravel.vendor.artisan`
 - **Implements**: `org.springframework.boot.CommandLineRunner`
 - **Annotations**: `@Component`
-- **Description**: Spring Boot 启动钩子。在应用启动时检测启动参数中是否包含 `--artisan`，若存在则将后续参数传递给 `ArtisanApplication.execute()` 执行对应命令，执行完毕后调用 `System.exit()` 退出 JVM。无 `--artisan` 参数时不做任何操作。
+- **Description**: Spring Boot 启动钩子。在应用启动时检测启动参数中是否包含 `artisan`，若存在则将后续参数传递给 `ArtisanApplication.execute()` 执行对应命令，执行完毕后调用 `System.exit()` 退出 JVM。无 `artisan` 参数时不做任何操作。
 
 #### Methods
 
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
-| `run` | `String... args` | `void` | CommandLineRunner 入口，检测 `--artisan` 并派发命令 |
+| `run` | `String... args` | `void` | CommandLineRunner 入口，检测 `artisan` 并派发命令 |
 
 #### Usage Example
 ```bash
 # 在命令行运行 Artisan 命令
-java -jar app.jar --artisan make:migration create_users_table --force
+java -jar app.jar artisan make:migration create_users_table --force
 
 # 列出所有可用命令
-java -jar app.jar --artisan list
+java -jar app.jar artisan list
 ```
 
 ### ArtisanAutoConfiguration

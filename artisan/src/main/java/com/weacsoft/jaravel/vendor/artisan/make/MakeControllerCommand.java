@@ -5,7 +5,7 @@ import com.weacsoft.jaravel.vendor.artisan.ArtisanCommand;
 /**
  * make:controller 命令 — 生成 Controller 类。
  * <p>
- * 使用方式：{@code java -jar app.jar --artisan make:controller UserController}
+ * 使用方式：{@code java -jar app.jar artisan make:controller UserController}
  */
 public class MakeControllerCommand extends ArtisanCommand {
 

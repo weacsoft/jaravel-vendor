@@ -5,7 +5,7 @@ import com.weacsoft.jaravel.vendor.artisan.ArtisanCommand;
 /**
  * make:command 命令 — 生成 ArtisanCommand 类。
  * <p>
- * 使用方式：{@code java -jar app.jar --artisan make:command SyncDataCommand}
+ * 使用方式：{@code java -jar app.jar artisan make:command SyncDataCommand}
  */
 public class MakeCommandCommand extends ArtisanCommand {
 

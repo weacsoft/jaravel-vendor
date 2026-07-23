@@ -5,7 +5,7 @@ import com.weacsoft.jaravel.vendor.artisan.ArtisanCommand;
 /**
  * make:listener 命令 — 生成 Listener 类。
  * <p>
- * 使用方式：{@code java -jar app.jar --artisan make:listener SendWelcomeEmailListener --event=UserRegisteredEvent}
+ * 使用方式：{@code java -jar app.jar artisan make:listener SendWelcomeEmailListener --event=UserRegisteredEvent}
  */
 public class MakeListenerCommand extends ArtisanCommand {
 
