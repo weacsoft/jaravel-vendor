@@ -1,1 +1,2 @@
 com.weacsoft.jaravel.vendor.migration.autoconfigure.MigrationAutoConfiguration
+com.weacsoft.jaravel.vendor.migration.autoconfigure.MigrationArtisanAutoConfiguration

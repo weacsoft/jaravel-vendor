@@ -3,7 +3,7 @@
 > Module: `migration` | Package: `com.weacsoft.jaravel.vendor.migration` | Version: 0.1.2
 
 ## Overview
-migration 模块提供 Laravel 风格的数据库迁移系统，包含 Blueprint（流式建表蓝图）、Schema（DDL 执行器，支持 MySQL/SQLite/H2/SQL Server 多方言）、Migrator（迁移引擎，支持 migrate/rollback/reset/refresh/status）、MigrationScanner（五种迁移源加载：DIRECTORY 内存编译/DIRECTORY_CLASSES 预编译 class 加载/PACKAGED 预编译 zip 包加载/JAR 加载/CLASSPATH 扫描）、MigrationPrecompiler（预编译工具，开发阶段将 .java 迁移文件预编译为字节码，支持打包为 zip 或散乱 class 输出）、MigrationRepository（迁移记录仓库）、MigrationExecutor（核心执行器，无 SpringBoot 依赖）、MigrationCLI（独立命令行入口）、MigrationPrecompilerMain（预编译命令行工具）、JdbcExecutor（轻量 JDBC 执行器，替代 JdbcTemplate）和 MigrationRunner（SpringBoot 适配器）。迁移文件通过 @MigrationAnnotation 标记，运行时编译/加载、反射实例化、执行后自动释放。核心逻辑完全独立于 SpringBoot，可通过 MigrationCLI 在纯 Java 环境中运行。JDK 不可用时提供 4 种解决方案的错误提示。
+migration 模块提供 Laravel 风格的数据库迁移系统，包含 Blueprint（流式建表蓝图）、Schema（DDL 执行器，支持 MySQL/SQLite/H2/SQL Server 多方言）、Migrator（迁移引擎，支持 migrate/rollback/reset/refresh/status）、MigrationScanner（五种迁移源加载：DIRECTORY 内存编译/DIRECTORY_CLASSES 预编译 class 加载/PACKAGED 预编译 zip 包加载/JAR 加载/CLASSPATH 扫描）、MigrationPrecompiler（预编译工具，开发阶段将 .java 迁移文件预编译为字节码，支持打包为 zip 或散乱 class 输出）、MigrationRepository（迁移记录仓库）、MigrationExecutor（核心执行器，无 SpringBoot 依赖，SpringBoot 环境下注册为 Bean 供 Artisan 命令共享）、MigrationCLI（独立命令行入口）、MigrationPrecompilerMain（预编译命令行工具）、JdbcExecutor（轻量 JDBC 执行器，替代 JdbcTemplate）和 MigrationRunner（SpringBoot 适配器）。当 classpath 中同时存在 artisan 模块时，MigrationArtisanAutoConfiguration 自动注册 5 个迁移命令（migrate、migrate:rollback、migrate:reset、migrate:refresh、migrate:status）为 ArtisanCommand Bean，使开发者可通过 `artisan.call("migrate")` 在代码中调用迁移命令，或通过 `java -jar app.jar artisan migrate` 在命令行执行。迁移文件通过 @MigrationAnnotation 标记，运行时编译/加载、反射实例化、执行后自动释放。核心逻辑完全独立于 SpringBoot，可通过 MigrationCLI 在纯 Java 环境中运行。JDK 不可用时提供 4 种解决方案的错误提示。
 
 ## Package Structure
 
@@ -14,7 +14,8 @@ migration 模块提供 Laravel 风格的数据库迁移系统，包含 Blueprint
 | `com.weacsoft.jaravel.vendor.migration`（根包） | `Migration`, `Schema`, `MigrationAnnotation`, `Blueprint`, `ColumnDefinition`, `ForeignKeyDefinition`, `JdbcExecutor`, `MigrationGenerator`, `MigrationCLI`, `TableMigrator` |
 | `com.weacsoft.jaravel.vendor.migration.dialect` | `Dialect`, `AbstractDialect`, `DialectFactory`, `MysqlDialect`, `H2Dialect`, `SqliteDialect`, `SqlServerDialect`, `PostgresqlDialect`, `OracleDialect` |
 | `com.weacsoft.jaravel.vendor.migration.engine` | `Migrator`, `MigrationExecutor`, `MigrationRunner`, `MigrationScanner`, `MigrationPrecompiler`, `MigrationPrecompilerMain`, `MigrationRepository`, `MigrationSource` |
-| `com.weacsoft.jaravel.vendor.migration.autoconfigure` | `MigrationAutoConfiguration`, `MigrationProperties` |
+| `com.weacsoft.jaravel.vendor.migration.autoconfigure` | `MigrationAutoConfiguration`, `MigrationArtisanAutoConfiguration`, `MigrationProperties` |
+| `com.weacsoft.jaravel.vendor.migration.artisan` | `MigrateCommand`, `MigrateRollbackCommand`, `MigrateResetCommand`, `MigrateRefreshCommand`, `MigrateStatusCommand` |
 
 ## Classes & Interfaces
 
@@ -412,8 +413,15 @@ precompiler.compileAll("precompiled/migrations", CompileMode.CLASSES, null);
 ### MigrationRunner
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.migration.engine`
-- **Description**: SpringBoot 命令行运行器适配层。实现 CommandLineRunner，内部委托给 MigrationExecutor。仅此类需要 SpringBoot 依赖。
+- **Description**: SpringBoot 命令行运行器适配层。实现 CommandLineRunner，内部委托给 MigrationExecutor。仅此类需要 SpringBoot 依赖。支持通过构造器注入已创建的 MigrationExecutor（与 Artisan 命令共享同一实例）。
 - **Implements**: `org.springframework.boot.CommandLineRunner`
+
+#### Constructors
+
+| Constructor | Parameters | Description |
+|-------------|-----------|-------------|
+| `MigrationRunner` | `DataSource dataSource, MigrationProperties properties` | 内部创建 MigrationExecutor |
+| `MigrationRunner` | `MigrationExecutor executor` | 注入已创建的 MigrationExecutor（SpringBoot 自动装配使用） |
 
 #### Supported Commands
 
@@ -448,7 +456,7 @@ java -jar app.jar --jaravel.migration-status
 ### MigrationAutoConfiguration
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.migration.autoconfigure`
-- **Description**: 迁移模块自动装配（SpringBoot 适配层）。通过 @Bean @ConfigurationProperties 绑定配置，注册 MigrationRunner Bean。核心逻辑（MigrationExecutor）已独立于 SpringBoot。
+- **Description**: 迁移模块自动装配（SpringBoot 适配层）。通过 @Bean @ConfigurationProperties 绑定配置，注册 MigrationExecutor 和 MigrationRunner Bean。核心逻辑（MigrationExecutor）已独立于 SpringBoot，注册为 Bean 后可供 MigrationRunner 和 Artisan 迁移命令共享。
 - **Annotations**: `@AutoConfiguration`, `@AutoConfigureAfter(DataSourceAutoConfiguration.class)`, `@ConditionalOnClass(MigrationExecutor.class)`, `@ConditionalOnBean(DataSource.class)`, `@ConditionalOnProperty(prefix = "jaravel.migration", name = "enabled", havingValue = "true", matchIfMissing = true)`
 
 #### Bean Methods
@@ -456,7 +464,8 @@ java -jar app.jar --jaravel.migration-status
 | Bean | Parameters | Return | Description |
 |------|-----------|--------|-------------|
 | `jaravelMigrationProperties` | 无 | `MigrationProperties` | 创建迁移配置（@Bean, @ConfigurationProperties, @ConditionalOnMissingBean） |
-| `jaravelMigrationRunner` | `DataSource dataSource, MigrationProperties properties` | `MigrationRunner` | 创建迁移运行器（@Bean, @ConditionalOnMissingBean, @Order(HIGHEST_PRECEDENCE)） |
+| `migrationExecutor` | `DataSource dataSource, MigrationProperties properties` | `MigrationExecutor` | 创建迁移执行器（@Bean, @ConditionalOnMissingBean），供 MigrationRunner 和 Artisan 命令共享 |
+| `jaravelMigrationRunner` | `MigrationExecutor executor` | `MigrationRunner` | 创建迁移运行器（@Bean, @ConditionalOnMissingBean, @Order(HIGHEST_PRECEDENCE)），注入共享的 MigrationExecutor |
 
 ---
 
@@ -518,7 +527,7 @@ jaravel:
 ### MigrationExecutor
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.migration.engine`
-- **Description**: 迁移执行器，核心逻辑无 SpringBoot 依赖。根据 MigrationProperties 配置的源模式加载迁移，执行 migrate/rollback/reset/refresh/status 命令。可被 MigrationRunner（SpringBoot）或 MigrationCLI（独立）调用。
+- **Description**: 迁移执行器，核心逻辑无 SpringBoot 依赖。根据 MigrationProperties 配置的源模式加载迁移，执行 migrate/rollback/reset/refresh/status 命令。可被 MigrationRunner（SpringBoot）、MigrationCLI（独立）或 Artisan 迁移命令调用。SpringBoot 环境下注册为 Bean，供 MigrationRunner 和 Artisan 命令共享同一实例。
 
 #### Methods
 
@@ -526,6 +535,7 @@ jaravel:
 |--------|-----------|--------|-------------|
 | `MigrationExecutor` | `DataSource dataSource, MigrationProperties properties` | 构造方法 | 创建执行器 |
 | `execute` | `String... args` | `void` | 执行迁移命令（migrate/rollback/reset/refresh/status） |
+| `getProperties` | 无 | `MigrationProperties` | 获取迁移配置 |
 
 #### Usage Example
 ```java
@@ -538,6 +548,57 @@ DataSource dataSource = ...;
 MigrationExecutor executor = new MigrationExecutor(dataSource, properties);
 executor.execute("migrate");
 ```
+
+---
+
+### MigrationArtisanAutoConfiguration
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.migration.autoconfigure`
+- **Description**: 迁移模块与 Artisan CLI 的集成自动装配。当 classpath 中同时存在 `ArtisanCommand`（artisan 模块）和 `MigrationExecutor`（migration 模块）时，自动注册 5 个迁移命令为 Artisan 命令 Bean，使开发者可通过 `artisan.call("migrate")` 在代码中调用迁移命令，或通过 `java -jar app.jar artisan migrate` 在命令行执行。这些命令委托给 `MigrationExecutor` 执行，与 `MigrationRunner` 共享同一个 `MigrationExecutor` Bean 实例。
+- **Annotations**: `@AutoConfiguration`, `@AutoConfigureAfter(MigrationAutoConfiguration.class)`, `@ConditionalOnClass(ArtisanCommand.class)`, `@ConditionalOnBean(MigrationExecutor.class)`
+
+#### Registered Commands
+
+| Command | Signature | Description |
+|---------|-----------|-------------|
+| `migrate` | `migrate {--force}` | 执行数据库迁移 |
+| `migrate:rollback` | `migrate:rollback {--step=1}` | 回滚最近一批（或指定批数）迁移 |
+| `migrate:reset` | `migrate:reset` | 回滚所有迁移 |
+| `migrate:refresh` | `migrate:refresh` | 回滚所有迁移并重新执行 |
+| `migrate:status` | `migrate:status` | 查看迁移状态 |
+
+#### Usage Example
+```java
+// 方式一：在代码中通过 ArtisanApplication 调用
+@Autowired
+ArtisanApplication artisan;
+
+public void runMigrations() {
+    artisan.call("migrate");
+    // 或带参数
+    artisan.call("migrate:rollback", new String[]{"--step=3"});
+}
+
+// 方式二：命令行调用
+// java -jar app.jar artisan migrate
+// java -jar app.jar artisan migrate:rollback --step=5
+// java -jar app.jar artisan migrate:status
+```
+
+---
+
+### MigrateCommand / MigrateRollbackCommand / MigrateResetCommand / MigrateRefreshCommand / MigrateStatusCommand
+- **Type**: class (extends `ArtisanCommand`)
+- **Package**: `com.weacsoft.jaravel.vendor.migration.artisan`
+- **Description**: 5 个迁移 Artisan 命令类，分别对齐 Laravel `php artisan migrate` 系列命令。每个命令委托给 `MigrationExecutor` 执行对应的迁移操作。由 `MigrationArtisanAutoConfiguration` 在 artisan 和 migration 模块同时存在时自动注册为 Spring Bean。
+
+| Class | Signature | Description | Delegate Args |
+|-------|-----------|-------------|---------------|
+| `MigrateCommand` | `migrate {--force}` | 执行迁移 | `execute("migrate")` |
+| `MigrateRollbackCommand` | `migrate:rollback {--step=1}` | 回滚迁移 | `execute("rollback=" + step)` |
+| `MigrateResetCommand` | `migrate:reset` | 回滚所有迁移 | `execute("reset")` |
+| `MigrateRefreshCommand` | `migrate:refresh` | 回滚并重新迁移 | `execute("refresh")` |
+| `MigrateStatusCommand` | `migrate:status` | 查看迁移状态 | `execute("status")` |
 
 ---
 

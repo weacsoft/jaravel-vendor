@@ -19,6 +19,12 @@
             <groupId>io.github.lijialong1313</groupId>
             <artifactId>utils</artifactId>
         </dependency>
+        <!-- Artisan CLI 集成（optional：仅 SpringBoot 环境下注册迁移命令为 artisan 命令） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>artisan</artifactId>
+            <optional>true</optional>
+        </dependency>
         <!-- SpringBoot 适配（optional：独立运行时不需要） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

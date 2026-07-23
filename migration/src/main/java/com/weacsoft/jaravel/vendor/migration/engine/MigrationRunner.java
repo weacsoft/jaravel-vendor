@@ -43,6 +43,15 @@ public class MigrationRunner implements CommandLineRunner {
         this.executor = new MigrationExecutor(dataSource, properties);
     }
 
+    /**
+     * 构造迁移命令行运行器（注入已创建的 MigrationExecutor）。
+     *
+     * @param executor 迁移执行器
+     */
+    public MigrationRunner(MigrationExecutor executor) {
+        this.executor = executor;
+    }
+
     @Override
     public void run(String... args) {
         executor.execute(args);

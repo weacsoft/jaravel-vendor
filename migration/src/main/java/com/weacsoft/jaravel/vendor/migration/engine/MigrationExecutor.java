@@ -57,6 +57,15 @@ public class MigrationExecutor {
     }
 
     /**
+     * 获取迁移配置。
+     *
+     * @return 迁移配置
+     */
+    public MigrationProperties getProperties() {
+        return properties;
+    }
+
+    /**
      * 执行迁移命令，对齐 Laravel artisan migrate 系列命令。
      * <p>
      * 此方法可在纯 Java 环境中直接调用，无需 SpringBoot 容器。

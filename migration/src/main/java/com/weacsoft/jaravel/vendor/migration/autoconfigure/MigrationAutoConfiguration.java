@@ -61,21 +61,36 @@ public class MigrationAutoConfiguration {
     }
 
     /**
+     * 迁移执行器 Bean。
+     * <p>
+     * 将核心迁移逻辑注册为 Spring Bean，供 {@link MigrationRunner} 和
+     * Artisan 迁移命令（{@code migrate}、{@code migrate:rollback} 等）共享。
+     *
+     * @param dataSource 数据源
+     * @param properties 迁移配置
+     * @return MigrationExecutor 实例
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public MigrationExecutor migrationExecutor(DataSource dataSource, MigrationProperties properties) {
+        return new MigrationExecutor(dataSource, properties);
+    }
+
+    /**
      * 注册迁移命令行运行器（SpringBoot 适配）。
      * <p>
      * 内部委托给 {@link MigrationExecutor}，仅实现 {@code CommandLineRunner}
      * 以便在 SpringBoot 启动后自动执行迁移。
      *
-     * @param dataSource 数据源
-     * @param properties 迁移配置
+     * @param executor 迁移执行器
      * @return MigrationRunner 实例
      */
     @Bean
     @ConditionalOnMissingBean
     @Order(Ordered.HIGHEST_PRECEDENCE)
-    public MigrationRunner jaravelMigrationRunner(DataSource dataSource, MigrationProperties properties) {
+    public MigrationRunner jaravelMigrationRunner(MigrationExecutor executor) {
         log.info("[migration] 迁移模块已启用，迁移源模式: {} (directory={}, jar-path={})",
-            properties.getSource(), properties.getDirectory(), properties.getJarPath());
-        return new MigrationRunner(dataSource, properties);
+            executor.getProperties().getSource(), executor.getProperties().getDirectory(), executor.getProperties().getJarPath());
+        return new MigrationRunner(executor);
     }
 }
