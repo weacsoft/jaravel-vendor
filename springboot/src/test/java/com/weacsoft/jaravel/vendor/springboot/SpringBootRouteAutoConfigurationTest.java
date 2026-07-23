@@ -36,6 +36,7 @@ class SpringBootRouteAutoConfigurationTest {
     void setUp() {
         MiddlewareAliasRegistry.getGlobal().clear();
         ControllerRegistry.getGlobal().clear();
+        ControllerRegistry.setFallbackResolver(null);
         ControllerActionResolver.clearCache();
         configuration = new SpringBootRouteAutoConfiguration();
     }
@@ -44,6 +45,7 @@ class SpringBootRouteAutoConfigurationTest {
     void tearDown() {
         MiddlewareAliasRegistry.getGlobal().clear();
         ControllerRegistry.getGlobal().clear();
+        ControllerRegistry.setFallbackResolver(null);
         ControllerActionResolver.clearCache();
     }
 
@@ -290,5 +292,117 @@ class SpringBootRouteAutoConfigurationTest {
         assertThrows(IllegalArgumentException.class,
                 () -> ControllerActionResolver.resolve(TestController.class, "nonExistentMethod"),
                 "方法不存在应抛出 IllegalArgumentException");
+    }
+
+    // ========== Spring @Controller 扫描测试 ==========
+
+    @Test
+    void testScanControllersRegistersSpringAnnotatedBeans() {
+        StaticApplicationContext context = new StaticApplicationContext();
+        context.registerSingleton("springTestController", SpringTestController.class);
+        context.refresh();
+
+        configuration.scanControllers(context);
+
+        assertTrue(ControllerRegistry.getGlobal().isClassRegistered(SpringTestController.class),
+                "应注册标注了 @Controller 的 SpringTestController 类映射");
+        assertTrue(ControllerRegistry.getGlobal().isNameRegistered("SpringTestController"),
+                "应注册 SpringTestController 名称映射");
+    }
+
+    @Test
+    void testSpringControllerActionResolverStringForm() {
+        StaticApplicationContext context = new StaticApplicationContext();
+        context.registerSingleton("springTestController", SpringTestController.class);
+        context.refresh();
+
+        configuration.scanControllers(context);
+
+        Controllers.Runner runner = ControllerActionResolver.resolve("SpringTestController::index");
+        assertNotNull(runner, "Spring @Controller 字符串形式应解析成功");
+
+        Response response = runner.handle(null);
+        assertNotNull(response);
+        assertEquals("spring-index", response.getContent());
+    }
+
+    @Test
+    void testScanControllersByClasspathFindsSpringAnnotated() {
+        StaticApplicationContext context = new StaticApplicationContext();
+        context.refresh();
+
+        // classpath 扫描应同时发现 Controllers 实现类和 @Controller 标注类
+        configuration.scanControllersByClasspath(context, List.of(TEST_PACKAGE));
+
+        assertTrue(ControllerRegistry.getGlobal().isNameRegistered("TestController"),
+                "应通过 classpath 扫描注册 TestController");
+        assertTrue(ControllerRegistry.getGlobal().isNameRegistered("SpringTestController"),
+                "应通过 classpath 扫描注册 SpringTestController（@Controller 标注）");
+    }
+
+    // ========== 回退解析器测试 ==========
+
+    @Test
+    void testFallbackResolverResolvesUnregisteredController() {
+        StaticApplicationContext context = new StaticApplicationContext();
+        context.registerSingleton("springTestController", SpringTestController.class);
+        context.refresh();
+
+        // 设置回退解析器但不调用 scanControllers
+        configuration.setupControllerFallbackResolver(context);
+
+        // 通过回退解析器解析未扫描注册的控制器
+        Object controller = ControllerRegistry.getGlobal().resolve("SpringTestController");
+        assertNotNull(controller, "回退解析器应能从 Spring 容器解析未注册的控制器");
+        assertTrue(controller instanceof SpringTestController);
+    }
+
+    @Test
+    void testFallbackResolverResolvesByFullName() {
+        StaticApplicationContext context = new StaticApplicationContext();
+        context.registerSingleton("springTestController", SpringTestController.class);
+        context.refresh();
+
+        configuration.setupControllerFallbackResolver(context);
+
+        String fullName = SpringTestController.class.getName();
+        Object controller = ControllerRegistry.getGlobal().resolve(fullName);
+        assertNotNull(controller, "回退解析器应能通过全限定名解析控制器");
+    }
+
+    @Test
+    void testFallbackResolverReturnsNullForNonController() {
+        StaticApplicationContext context = new StaticApplicationContext();
+        context.refresh();
+
+        configuration.setupControllerFallbackResolver(context);
+
+        // 非控制器名称应抛出异常（回退解析器返回 null）
+        assertThrows(IllegalArgumentException.class,
+                () -> ControllerRegistry.getGlobal().resolve("NonExistentController"),
+                "回退解析器找不到时应抛出 IllegalArgumentException");
+    }
+
+    @Test
+    void testFallbackResolverCachesResult() {
+        StaticApplicationContext context = new StaticApplicationContext();
+        context.registerSingleton("springTestController", SpringTestController.class);
+        context.refresh();
+
+        configuration.setupControllerFallbackResolver(context);
+
+        // 首次解析触发回退，自动注册到注册表
+        Object controller1 = ControllerRegistry.getGlobal().resolve("SpringTestController");
+        assertNotNull(controller1);
+
+        // 第二次解析应直接命中注册表缓存
+        Object controller2 = ControllerRegistry.getGlobal().resolve("SpringTestController");
+        assertSame(controller1, controller2, "回退解析后应缓存到注册表");
+    }
+
+    @Test
+    void testSetupFallbackResolverWithNullContext() {
+        assertDoesNotThrow(() -> configuration.setupControllerFallbackResolver(null),
+                "applicationContext 为 null 时应安全跳过");
     }
 }

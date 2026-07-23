@@ -210,7 +210,7 @@ String newToken = guard.refresh(refreshToken);
 ### JwtTokenResponseFilter
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.jwt`
-- **Description**: JWT token 响应过滤器，继承 Spring 的 `OncePerRequestFilter`。在请求处理完成后，检查当前 JWT 守卫是否签发了新 token（自动续期或宽限期续期）。如果有，将新 token 写入响应 header（默认 `X-New-Token`），客户端可在响应头中获取新 token。
+- **Description**: JWT token 响应过滤器，继承 Spring 的 `OncePerRequestFilter`。在请求处理完成后，检查当前 JWT 守卫是否签发了新 token（自动续期或宽限期续期）。如果有，将新 token 写入响应 header（默认 `X-New-Token`），客户端可在响应头中获取新 token。当应用未注册任何守卫时（不需要认证功能），过滤器会优雅跳过，不抛异常。
 - **Extends**: `org.springframework.web.filter.OncePerRequestFilter`
 
 #### 典型场景
@@ -244,8 +244,11 @@ JwtTokenResponseFilter.doFilterInternal()
   │     （期间 JwtGuard.user() 可能签发新 token 存入 lastToken）
   │
   └── 请求处理完成后
-        ├── authManager.guard("jwt") → 取出 JwtGuard
-        ├── newToken = jwtGuard.token()
+        ├── authManager.hasGuards() == false？
+        │     └── 直接返回（无守卫配置，跳过 token 检查）
+        ├── authManager.guard() → 取出默认守卫
+        ├── guard instanceof JwtGuard？
+        │     └── newToken = jwtGuard.token()
         └── newToken 非空？
               └── response.setHeader(graceHeader, newToken)
                   （默认响应头名 X-New-Token）
@@ -253,7 +256,8 @@ JwtTokenResponseFilter.doFilterInternal()
 
 #### 设计说明
 - 该过滤器在 `filterChain.doFilter()` **之后**执行 header 写入，确保业务逻辑已完整执行。
-- 通过 `authManager.guard("jwt")` 获取当前请求的守卫实例（ThreadLocal 隔离），取 `token()` 即最近一次签发的新 token。
+- **无守卫优雅跳过**：当 `authManager.hasGuards()` 返回 false（应用未注册任何守卫，不需要认证功能）时，过滤器直接返回，不抛异常。这适用于不涉及登录的纯 API 或页面场景。
+- 通过 `authManager.guard()` 获取默认守卫实例（ThreadLocal 隔离），若为 `JwtGuard` 则取 `token()` 即最近一次签发的新 token。
 - 若取守卫时抛异常（如当前请求未走 jwt 守卫），仅记录 debug 日志，不影响响应。
 - 该 Bean 由 `JwtAutoConfiguration` 自动装配，应用层无需手动注册。
 

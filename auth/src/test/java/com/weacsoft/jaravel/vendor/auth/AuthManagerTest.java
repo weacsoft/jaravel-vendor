@@ -155,6 +155,34 @@ class AuthManagerTest {
     }
 
     @Test
+    void testHasGuardsReturnsFalseWhenEmpty() {
+        AuthManager manager = new AuthManager();
+        assertFalse(manager.hasGuards(), "未注册任何守卫时 hasGuards() 应返回 false");
+    }
+
+    @Test
+    void testHasGuardsReturnsTrueAfterRegistration() {
+        AuthManager manager = new AuthManager();
+        manager.registerProvider("users", new InMemoryProvider());
+        manager.registerGuard("web", "session", "users");
+
+        assertTrue(manager.hasGuards(), "注册守卫后 hasGuards() 应返回 true");
+    }
+
+    @Test
+    void testHasGuardByName() {
+        AuthManager manager = new AuthManager();
+        manager.registerProvider("users", new InMemoryProvider());
+        manager.registerGuard("web", "session", "users");
+        manager.registerGuard("api", "session", "users");
+
+        assertTrue(manager.hasGuard("web"), "已注册的守卫 'web' 应返回 true");
+        assertTrue(manager.hasGuard("api"), "已注册的守卫 'api' 应返回 true");
+        assertFalse(manager.hasGuard("unknown"), "未注册的守卫应返回 false");
+        assertFalse(manager.hasGuard(null), "null 守卫名应返回 false");
+    }
+
+    @Test
     void testLoginUserCheckLogoutViaDefaultGuard() {
         AuthManager manager = new AuthManager();
         manager.registerProvider("users", new InMemoryProvider());

@@ -81,6 +81,31 @@ public class AuthManager {
         driverFactories.put(driver.toLowerCase(), factory);
     }
 
+    /**
+     * 检查是否注册了指定名称的守卫。
+     * <p>
+     * 用于在不需要认证的场景下避免调用 {@link #guard(String)} 抛出异常，
+     * 例如 {@code JwtTokenResponseFilter} 在无守卫配置时优雅跳过。
+     *
+     * @param name 守卫名称
+     * @return 已注册返回 true，未注册返回 false
+     */
+    public boolean hasGuard(String name) {
+        return name != null && guards.containsKey(name);
+    }
+
+    /**
+     * 检查是否注册了任何守卫。
+     * <p>
+     * 当应用不需要认证功能时（未注册任何守卫），调用此方法返回 false，
+     * 过滤器等组件可据此跳过认证相关逻辑，避免抛出异常。
+     *
+     * @return 已注册至少一个守卫返回 true，否则返回 false
+     */
+    public boolean hasGuards() {
+        return !guards.isEmpty();
+    }
+
     /** 获取默认守卫 */
     public AuthGuard guard() {
         return guard(defaultGuard);

@@ -22,6 +22,8 @@ auth 模块提供 Laravel 风格的认证系统，包含 AuthManager（多守卫
 | `registerProvider` | `String name, UserProvider provider` | `void` | 注册用户提供者（启动阶段调用） |
 | `registerGuard` | `String name, String driver, String providerName` | `void` | 注册守卫配置（启动阶段调用） |
 | `registerGuardDriver` | `String driver, GuardFactory factory` | `void` | 注册 Guard 驱动工厂（插件扩展用） |
+| `hasGuard` | `String name` | `boolean` | 检查指定名称的守卫是否已注册；用于无认证场景下避免调用 `guard()` 抛异常 |
+| `hasGuards` | 无 | `boolean` | 检查是否注册了任何守卫；返回 false 时过滤器等组件可跳过认证逻辑 |
 | `guard` | 无 | `AuthGuard` | 获取默认守卫 |
 | `guard` | `String name` | `AuthGuard` | 按名称获取守卫（请求级缓存） |
 | `user` | 无 | `Authenticatable` | 获取默认守卫的当前用户 |

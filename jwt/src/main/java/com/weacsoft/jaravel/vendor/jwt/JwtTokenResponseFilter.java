@@ -38,6 +38,11 @@ public class JwtTokenResponseFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
         filterChain.doFilter(request, response);
 
+        // 无守卫配置时直接跳过（应用可能不需要认证功能）
+        if (!authManager.hasGuards()) {
+            return;
+        }
+
         // 请求处理完成后，检查是否有新 token 需要返回
         try {
             // 使用默认守卫检查是否有新签发的 token（自动续期 / 宽限期续期）

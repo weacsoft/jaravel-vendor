@@ -197,14 +197,15 @@ router.group(Map.of(Route.Group.PREFIX, "api"), api -> {
 
 ### 控制器扫描（SpringBootRouteAutoConfiguration 内置）
 - **Type**: method of `SpringBootRouteAutoConfiguration`
-- **Description**: 控制器扫描逻辑。`jaravelRouterFunction` 在构建路由前调用包级可见方法 `scanControllers(applicationContext)`，扫描控制器并注册到 `ControllerRegistry.getGlobal()`，使路由可通过字符串（`"ControllerName::method"`）或类对象引用控制器方法。支持两种扫描模式：**手动指定扫描包**（用户调用 `ControllerRegistry.setScanBasePackages(...)` 指定基础包后，框架通过 classpath 扫描这些包下所有实现了 `Controllers` 的类，使用 `AutowireCapableBeanFactory.createBean()` 实例化并自动注入依赖，控制器无需标注 `@Component`）与**自动扫描**（默认，通过 `getBeansOfType(Controllers.class)` 获取容器中所有 `Controllers` Bean，需标注 `@Component`）。模式选择由 `ControllerRegistry.hasScanBasePackages()` 决定。
+- **Description**: 控制器扫描逻辑。`jaravelRouterFunction` 在构建路由前调用包级可见方法 `scanControllers(applicationContext)`，扫描控制器并注册到 `ControllerRegistry.getGlobal()`，使路由可通过字符串（`"ControllerName::method"`）或类对象引用控制器方法。支持两种扫描模式：**手动指定扫描包**（用户调用 `ControllerRegistry.setScanBasePackages(...)` 指定基础包后，框架通过 classpath 扫描这些包下所有实现了 `Controllers` 的类以及标注了 Spring `@Controller` / `@RestController` 的类，使用 `AutowireCapableBeanFactory.createBean()` 实例化并自动注入依赖，控制器无需标注 `@Component`）与**自动扫描**（默认，通过 `getBeansOfType(Controllers.class)` 获取容器中所有 `Controllers` Bean，同时通过 `getBeansWithAnnotation(Controller.class)` 获取标注了 `@Controller` / `@RestController` 的 Bean）。此外 `jaravelRouterFunction` 还会调用 `setupControllerFallbackResolver(applicationContext)` 设置回退解析器，当注册表中未找到控制器时从 Spring 容器按需解析，确保标注了 `@Controller` / `@RestController` 的控制器即使未被扫描到也能被路由引用。
 
 #### scanControllers 方法
 
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
-| `scanControllers` | `ApplicationContext applicationContext` | `void` | 包级可见方法。扫描控制器并注册到 `ControllerRegistry.getGlobal()`。若 `ControllerRegistry.hasScanBasePackages()` 为 `true`，走手动指定扫描包模式（内部调用 `scanControllersByClasspath`）；否则走自动扫描模式（`getBeansOfType(Controllers.class)`）。对 `null` 上下文安全处理（直接返回，不抛异常）。在 `jaravelRouterFunction` 构建路由前一次性调用 |
-| `scanControllersByClasspath` | `ApplicationContext applicationContext, List<String> basePackages` | `void` | 包级可见方法，由 `scanControllers` 在手动指定扫描包模式下内部调用。通过 `ClassPathScanningCandidateComponentProvider` + `AssignableTypeFilter(Controllers.class)` 扫描指定基础包中的 `Controllers` 实现类，使用 `AutowireCapableBeanFactory.createBean(clazz)` 实例化并自动注入依赖（控制器无需 `@Component`）。对 `null` 上下文或空包列表安全处理（直接返回，不抛异常）；实例化失败的类记录警告日志并跳过 |
+| `scanControllers` | `ApplicationContext applicationContext` | `void` | 包级可见方法。扫描控制器并注册到 `ControllerRegistry.getGlobal()`。若 `ControllerRegistry.hasScanBasePackages()` 为 `true`，走手动指定扫描包模式（内部调用 `scanControllersByClasspath`）；否则走自动扫描模式（`getBeansOfType(Controllers.class)` + `getBeansWithAnnotation(Controller.class)`）。对 `null` 上下文安全处理（直接返回，不抛异常）。在 `jaravelRouterFunction` 构建路由前一次性调用 |
+| `scanControllersByClasspath` | `ApplicationContext applicationContext, List<String> basePackages` | `void` | 包级可见方法，由 `scanControllers` 在手动指定扫描包模式下内部调用。通过两路 classpath 扫描（`AssignableTypeFilter(Controllers.class)` + `AnnotationTypeFilter(Controller.class)` / `AnnotationTypeFilter(RestController.class)`）发现控制器类，使用 `AutowireCapableBeanFactory.createBean(clazz)` 实例化并自动注入依赖（控制器无需 `@Component`）。对 `null` 上下文或空包列表安全处理；实例化失败的类记录警告日志并跳过；已注册的类跳过避免重复 |
+| `setupControllerFallbackResolver` | `ApplicationContext applicationContext` | `void` | 包级可见方法。设置 `ControllerRegistry` 的回退解析器，当注册表中未找到控制器时从 Spring 容器按简名/全限定名解析 Bean（仅接受标注了 `@Controller` / `@RestController` 或实现了 `Controllers` 的类）。在 `jaravelRouterFunction` 构建路由时调用 |
 
 #### Usage Example
 ```java
@@ -229,16 +230,26 @@ public class UserController implements Controllers {
     }
 }
 
-// —— 模式二：自动扫描（默认，控制器需 @Component）——
+// —— 模式二：自动扫描（默认，控制器需 @Component 或 @Controller）——
 // 若未调用 setScanBasePackages(...)，框架自动扫描容器中 Controllers Bean
 @Component
 public class UserController implements Controllers {
     // ...同上
 }
 
-// 路由中引用控制器（框架启动时自动扫描注册，两种模式均适用）
+// —— 模式三：纯 Spring @Controller（无需实现 Controllers 接口）——
+// 标注了 @Controller 或 @RestController 的类也会被自动扫描注册
+@Controller
+public class TestController {
+    public Response index(Request request) {
+        return ResponseBuilder.content("hello");
+    }
+}
+
+// 路由中引用控制器（框架启动时自动扫描注册，三种模式均适用）
 router.get("/users", "UserController::list");
 router.get("/users/{id}", "UserController::show");
+router.get("/", "TestController::index");  // 纯 Spring @Controller 也可用
 // 或类对象形式
 router.get("/users", UserController.class, "list");
 ```
@@ -246,19 +257,21 @@ router.get("/users", UserController.class, "list");
 ### ControllerRegistry
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.http.controller`
-- **Description**: 控制器注册表，对齐 Laravel 控制器路由引用机制。内部维护两张映射表：`Class → 实例`（类映射）和 `String → 实例`（名称映射，简名和全限定名都写入）。控制器由 `SpringBootRouteAutoConfiguration` 在启动时扫描注册到全局实例，支持两种扫描模式：手动指定扫描包（`setScanBasePackages`，classpath 扫描 + `AutowireCapableBeanFactory` 实例化，无需 `@Component`）与自动扫描（默认，`getBeansOfType(Controllers.class)`，需 `@Component`）。注册后路由可通过字符串（`"ControllerName::method"`）或类对象引用控制器方法。
+- **Description**: 控制器注册表，对齐 Laravel 控制器路由引用机制。内部维护两张映射表：`Class → 实例`（类映射）和 `String → 实例`（名称映射，简名和全限定名都写入）。控制器由 `SpringBootRouteAutoConfiguration` 在启动时扫描注册到全局实例，支持两种扫描模式：手动指定扫描包（`setScanBasePackages`，classpath 扫描 `Controllers` 实现类和 `@Controller` / `@RestController` 标注类，`AutowireCapableBeanFactory` 实例化，无需 `@Component`）与自动扫描（默认，`getBeansOfType(Controllers.class)` + `getBeansWithAnnotation(Controller.class)`）。此外还支持回退解析器（`setFallbackResolver`），当注册表中未找到控制器时从 Spring 容器按需解析。注册后路由可通过字符串（`"ControllerName::method"`）或类对象引用控制器方法。
 
 #### Methods
 
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
 | `getGlobal` | 无 | `ControllerRegistry` | 获取全局静态实例（静态方法） |
-| `setScanBasePackages` | `String... packages` | `void` | 设置控制器扫描的基础包列表（静态方法，对齐 Laravel RouteServiceProvider）；设置后框架通过 classpath 扫描这些包下 `Controllers` 实现类，使用 `AutowireCapableBeanFactory` 实例化并自动注入依赖（无需 `@Component`）；传 `null` 或空数组清除设置回退自动扫描 |
+| `setScanBasePackages` | `String... packages` | `void` | 设置控制器扫描的基础包列表（静态方法，对齐 Laravel RouteServiceProvider）；设置后框架通过 classpath 扫描这些包下 `Controllers` 实现类和 `@Controller` / `@RestController` 标注类，使用 `AutowireCapableBeanFactory` 实例化并自动注入依赖（无需 `@Component`）；传 `null` 或空数组清除设置回退自动扫描 |
 | `getScanBasePackages` | 无 | `List<String>` | 获取用户手动指定的扫描基础包列表（静态方法）；未指定时返回 `null` |
 | `hasScanBasePackages` | 无 | `boolean` | 检查是否已手动指定扫描基础包（静态方法）；已指定且非空返回 `true` |
+| `setFallbackResolver` | `Function<String, Object> resolver` | `void` | 设置回退解析器（静态方法），当注册表中未找到控制器时通过此回调从 Spring 容器按需解析；由 `SpringBootRouteAutoConfiguration` 在启动时设置；传 `null` 清除 |
+| `getFallbackResolver` | 无 | `Function<String, Object>` | 获取当前回退解析器（静态方法）；未设置时返回 `null` |
 | `register` | `Object controller` | `void` | 注册控制器实例。同时写入类映射和名称映射（简名 + 全限定名） |
-| `resolve` | `Class<?> clazz` | `Object` | 按 Class 对象解析控制器实例，类未注册时抛 `IllegalArgumentException` |
-| `resolve` | `String name` | `Object` | 按名称（简名或全限定名）解析控制器实例，名称未注册时抛 `IllegalArgumentException` |
+| `resolve` | `Class<?> clazz` | `Object` | 按 Class 对象解析控制器实例；注册表中未找到时尝试回退解析器；均未找到抛 `IllegalArgumentException` |
+| `resolve` | `String name` | `Object` | 按名称（简名或全限定名）解析控制器实例；注册表中未找到时尝试回退解析器并自动注册；均未找到抛 `IllegalArgumentException` |
 | `isClassRegistered` | `Class<?> clazz` | `boolean` | 检查类是否已注册 |
 | `isNameRegistered` | `String name` | `boolean` | 检查名称是否已注册 |
 | `getRegisteredClasses` | 无 | `Set<Class<?>>` | 获取所有已注册的控制器类（不可修改视图） |

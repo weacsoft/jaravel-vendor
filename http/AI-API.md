@@ -545,7 +545,7 @@ Controllers.Runner handler = request -> {
 ### ControllerRegistry
 - **Type**: class（静态全局）
 - **Package**: `com.weacsoft.jaravel.vendor.http.controller`
-- **Description**: 控制器全局注册表。内部维护**两张映射表**：`Map<Class<?>, Object>`（Class→控制器实例）与 `Map<String, Object>`（名称→控制器实例）。`register(Object)` 注册时会以 `obj.getClass()` 为 Class key、以 `obj.getClass().getSimpleName()` 为名称 key 同时写入两张表。供 `ControllerActionResolver` 在请求时按 Class 或名称懒解析控制器实例；通常在应用启动时注册所有控制器。支持通过 `setScanBasePackages(String...)` 静态指定控制器扫描基础包（对齐 Laravel RouteServiceProvider 手动指定范围），设置后 `springboot` 模块将通过 classpath 扫描这些包下所有实现了 `Controllers` 的类，使用 `AutowireCapableBeanFactory` 实例化并自动注入依赖（控制器无需标注 `@Component`）；未指定时回退自动扫描容器中所有 `Controllers` Bean。所有方法均为静态方法，直接通过类名访问全局注册表。
+- **Description**: 控制器全局注册表。内部维护**两张映射表**：`Map<Class<?>, Object>`（Class→控制器实例）与 `Map<String, Object>`（名称→控制器实例）。`register(Object)` 注册时会以 `obj.getClass()` 为 Class key、以 `obj.getClass().getSimpleName()` 为名称 key 同时写入两张表。供 `ControllerActionResolver` 在请求时按 Class 或名称懒解析控制器实例；通常在应用启动时注册所有控制器。支持通过 `setScanBasePackages(String...)` 静态指定控制器扫描基础包（对齐 Laravel RouteServiceProvider 手动指定范围），设置后 `springboot` 模块将通过 classpath 扫描这些包下所有实现了 `Controllers` 的类以及标注了 Spring `@Controller` / `@RestController` 的类，使用 `AutowireCapableBeanFactory` 实例化并自动注入依赖（控制器无需标注 `@Component`）；未指定时回退自动扫描容器中所有 `Controllers` Bean 和 `@Controller` / `@RestController` Bean。此外支持通过 `setFallbackResolver(Function)` 设置回退解析器，当注册表中未找到控制器时从 Spring 容器按需解析，确保标注了 `@Controller` / `@RestController` 的控制器即使未被扫描到也能被路由引用。所有方法均为静态方法，直接通过类名访问全局注册表。
 - **Annotations**: 无
 
 #### Methods
@@ -553,15 +553,17 @@ Controllers.Runner handler = request -> {
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
 | `register` (static) | `Object controller` | `void` | 注册控制器实例；同时写入 Class→实例 与 名称→实例 两张表（名称取 `getClass().getSimpleName()`） |
-| `resolve` (static) | `Class<?> clazz` | `Object` | 按 Class 解析控制器实例；未注册返回 `null` |
-| `resolve` (static) | `String name` | `Object` | 按简单类名解析控制器实例；未注册返回 `null` |
+| `resolve` (static) | `Class<?> clazz` | `Object` | 按 Class 解析控制器实例；注册表中未找到时尝试通过回退解析器从 Spring 容器解析；均未找到抛 `IllegalArgumentException` |
+| `resolve` (static) | `String name` | `Object` | 按简单类名或全限定名解析控制器实例；注册表中未找到时尝试通过回退解析器从 Spring 容器解析并自动注册到注册表；均未找到抛 `IllegalArgumentException` |
 | `isClassRegistered` (static) | `Class<?> clazz` | `boolean` | Class 是否已注册 |
 | `isNameRegistered` (static) | `String name` | `boolean` | 名称是否已注册 |
 | `getRegisteredClasses` (static) | 无 | `Set<Class<?>>` | 获取所有已注册 Class |
 | `clear` (static) | 无 | `void` | 清除所有注册（主要用于测试） |
-| `setScanBasePackages` (static) | `String... packages` | `void` | 设置控制器扫描的基础包列表（对齐 Laravel RouteServiceProvider）；设置后 `springboot` 模块通过 classpath 扫描这些包下 `Controllers` 实现类，使用 `AutowireCapableBeanFactory` 实例化并自动注入依赖（无需 `@Component`）；传 `null` 或空数组清除设置回退自动扫描 |
+| `setScanBasePackages` (static) | `String... packages` | `void` | 设置控制器扫描的基础包列表（对齐 Laravel RouteServiceProvider）；设置后 `springboot` 模块通过 classpath 扫描这些包下 `Controllers` 实现类和 `@Controller` / `@RestController` 标注类，使用 `AutowireCapableBeanFactory` 实例化并自动注入依赖（无需 `@Component`）；传 `null` 或空数组清除设置回退自动扫描 |
 | `getScanBasePackages` (static) | 无 | `List<String>` | 获取用户手动指定的扫描基础包列表；未指定时返回 `null` |
 | `hasScanBasePackages` (static) | 无 | `boolean` | 检查是否已手动指定扫描基础包；已指定且非空返回 `true` |
+| `setFallbackResolver` (static) | `Function<String, Object> resolver` | `void` | 设置回退解析器，当注册表中未找到控制器时通过此回调从外部容器（如 Spring ApplicationContext）按需解析；由 `SpringBootRouteAutoConfiguration` 在启动时设置；传 `null` 清除回退解析器 |
+| `getFallbackResolver` (static) | 无 | `Function<String, Object>` | 获取当前回退解析器；未设置时返回 `null` |
 
 #### Usage Example
 ```java

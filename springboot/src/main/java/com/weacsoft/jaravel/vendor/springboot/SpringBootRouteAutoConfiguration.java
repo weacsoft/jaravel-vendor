@@ -26,6 +26,8 @@ import org.springframework.core.type.filter.AnnotationTypeFilter;
 import org.springframework.http.HttpMethod;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.function.HandlerFunction;
 import org.springframework.web.servlet.function.RequestPredicate;
 import org.springframework.web.servlet.function.RequestPredicates;
@@ -51,8 +53,10 @@ import java.util.Set;
  *   <li><b>中间件别名扫描</b>：通过 classpath 扫描（非 Bean 扫描）发现 {@link MiddlewareAlias} 注解的类，
  *       反射实例化后注册到 {@link MiddlewareAliasRegistry} 全局注册表。
  *       中间件不是 Spring Bean，不需要 {@code @Component}。</li>
- *   <li><b>控制器注册</b>：扫描容器中实现了 {@link Controllers} 的 Bean，注册到 {@link ControllerRegistry}，
- *       使路由可通过字符串（{@code "ControllerName::method"}）或类对象引用控制器方法。</li>
+ *   <li><b>控制器注册</b>：扫描实现了 {@link Controllers} 接口的类以及标注了
+ *       Spring {@code @Controller} / {@code @RestController} 的类，注册到 {@link ControllerRegistry}，
+ *       使路由可通过字符串（{@code "ControllerName::method"}）或类对象引用控制器方法。
+ *       同时设置回退解析器，当注册表中未找到控制器时从 Spring 容器按需解析。</li>
  * </ul>
  * <p>
  * 流程：
@@ -121,8 +125,10 @@ public class SpringBootRouteAutoConfiguration {
             RouteAuthHandler routeAuthHandler, ApplicationContext applicationContext) {
         // 扫描 @MiddlewareAlias 注解的中间件类（classpath 扫描，非 Bean），注册到全局别名注册表
         scanMiddlewareAliases(applicationContext);
-        // 扫描容器中实现了 Controllers 的 Bean，注册到控制器注册表
+        // 扫描控制器并注册到 ControllerRegistry（支持 Controllers 接口和 Spring @Controller/@RestController）
         scanControllers(applicationContext);
+        // 设置回退解析器：当控制器未在注册表中找到时，从 Spring 容器按需解析
+        setupControllerFallbackResolver(applicationContext);
 
         List<Route> routes = router.getAllRoutes();
         RouterFunctions.Builder builder = RouterFunctions.route();
@@ -211,11 +217,13 @@ public class SpringBootRouteAutoConfiguration {
      * <ul>
      *   <li><b>手动指定扫描包</b>（推荐）：用户在 RouteServiceProvider 中调用
      *       {@code ControllerRegistry.setScanBasePackages("com.example.controller")} 后，
-     *       框架通过 classpath 扫描这些包下所有实现了 {@link Controllers} 的类，
+     *       框架通过 classpath 扫描这些包下所有实现了 {@link Controllers} 的类
+     *       以及标注了 Spring {@code @Controller} / {@code @RestController} 的类，
      *       使用 Spring 的 {@code AutowireCapableBeanFactory} 实例化并自动注入依赖。
      *       此模式下控制器不需要标注 {@code @Component}。</li>
      *   <li><b>自动扫描</b>（默认）：若未指定扫描包，框架扫描容器中所有实现了
-     *       {@link Controllers} 的 Bean（需标注 {@code @Component}）。</li>
+     *       {@link Controllers} 的 Bean 以及标注了 {@code @Controller} / {@code @RestController}
+     *       的 Bean。</li>
      * </ul>
      *
      * @param applicationContext Spring 应用上下文
@@ -234,13 +242,20 @@ public class SpringBootRouteAutoConfiguration {
                 registry.register(controller);
                 log.debug("扫描注册控制器: {}", controller.getClass().getSimpleName());
             });
+            // 同时扫描标注了 @Controller / @RestController 的 Bean（支持纯 Spring 控制器）
+            scanSpringAnnotatedControllerBeans(applicationContext, registry);
         }
     }
 
     /**
-     * 通过 classpath 扫描指定包中的 {@link Controllers} 实现类，使用
+     * 通过 classpath 扫描指定包中的控制器类，使用
      * {@code AutowireCapableBeanFactory} 实例化并自动注入依赖后注册到 {@link ControllerRegistry}。
      * <p>
+     * 扫描范围包括：
+     * <ul>
+     *   <li>实现了 {@link Controllers} 接口的类</li>
+     *   <li>标注了 Spring {@code @Controller} 或 {@code @RestController} 的类</li>
+     * </ul>
      * 此模式下控制器不需要标注 {@code @Component}，框架通过反射发现类，
      * 通过 Spring 的自动装配能力完成依赖注入。
      *
@@ -254,30 +269,75 @@ public class SpringBootRouteAutoConfiguration {
         ConfigurableListableBeanFactory beanFactory =
                 ((ConfigurableApplicationContext) applicationContext).getBeanFactory();
 
-        ClassPathScanningCandidateComponentProvider scanner =
+        // 扫描实现 Controllers 接口的类
+        ClassPathScanningCandidateComponentProvider interfaceScanner =
                 new ClassPathScanningCandidateComponentProvider(false);
-        scanner.addIncludeFilter(new AssignableTypeFilter(Controllers.class));
-        scanner.setResourceLoader(applicationContext);
+        interfaceScanner.addIncludeFilter(new AssignableTypeFilter(Controllers.class));
+        interfaceScanner.setResourceLoader(applicationContext);
         if (applicationContext.getEnvironment() != null) {
-            scanner.setEnvironment(applicationContext.getEnvironment());
+            interfaceScanner.setEnvironment(applicationContext.getEnvironment());
+        }
+
+        // 扫描标注 @Controller / @RestController 的类
+        ClassPathScanningCandidateComponentProvider annotationScanner =
+                new ClassPathScanningCandidateComponentProvider(false);
+        annotationScanner.addIncludeFilter(new AnnotationTypeFilter(Controller.class));
+        annotationScanner.addIncludeFilter(new AnnotationTypeFilter(RestController.class));
+        annotationScanner.setResourceLoader(applicationContext);
+        if (applicationContext.getEnvironment() != null) {
+            annotationScanner.setEnvironment(applicationContext.getEnvironment());
         }
 
         for (String basePackage : basePackages) {
-            Set<BeanDefinition> candidates = scanner.findCandidateComponents(basePackage);
+            // 扫描 Controllers 接口实现类
+            Set<BeanDefinition> candidates = interfaceScanner.findCandidateComponents(basePackage);
             for (BeanDefinition candidate : candidates) {
-                try {
-                    Class<?> clazz = Class.forName(candidate.getBeanClassName());
-                    if (Controllers.class.isAssignableFrom(clazz) && !clazz.isInterface()) {
-                        // 使用 AutowireCapableBeanFactory 实例化并自动注入依赖
-                        Object controller = beanFactory.createBean(clazz);
-                        registry.register(controller);
-                        log.debug("classpath 扫描注册控制器: {}", clazz.getSimpleName());
-                    }
-                } catch (Exception e) {
-                    log.warn("无法实例化控制器: {}", candidate.getBeanClassName(), e);
-                }
+                registerControllerCandidate(beanFactory, registry, candidate);
+            }
+            // 扫描 @Controller / @RestController 标注类
+            Set<BeanDefinition> annotatedCandidates = annotationScanner.findCandidateComponents(basePackage);
+            for (BeanDefinition candidate : annotatedCandidates) {
+                registerControllerCandidate(beanFactory, registry, candidate);
             }
         }
+    }
+
+    /**
+     * 尝试注册一个控制器候选类，已注册的跳过。
+     */
+    private void registerControllerCandidate(ConfigurableListableBeanFactory beanFactory,
+                                             ControllerRegistry registry, BeanDefinition candidate) {
+        try {
+            Class<?> clazz = Class.forName(candidate.getBeanClassName());
+            if (clazz.isInterface()) return;
+            // 跳过已注册的（避免 Controllers 接口扫描和注解扫描重复注册同一类）
+            if (registry.isClassRegistered(clazz)) return;
+            Object controller = beanFactory.createBean(clazz);
+            registry.register(controller);
+            log.debug("classpath 扫描注册控制器: {}", clazz.getSimpleName());
+        } catch (Exception e) {
+            log.warn("无法实例化控制器: {}", candidate.getBeanClassName(), e);
+        }
+    }
+
+    /**
+     * 扫描容器中标注了 Spring {@code @Controller} 或 {@code @RestController} 的 Bean，
+     * 注册到 {@link ControllerRegistry}。已注册的跳过。
+     *
+     * @param applicationContext Spring 应用上下文
+     * @param registry           控制器注册表
+     */
+    private void scanSpringAnnotatedControllerBeans(ApplicationContext applicationContext,
+                                                     ControllerRegistry registry) {
+        // 扫描 @Controller 标注的 Bean
+        Map<String, Object> controllerBeans = applicationContext.getBeansWithAnnotation(Controller.class);
+        controllerBeans.values().forEach(controller -> {
+            if (!registry.isClassRegistered(controller.getClass())) {
+                registry.register(controller);
+                log.debug("扫描注册 Spring @Controller: {}", controller.getClass().getSimpleName());
+            }
+        });
+        // @RestController 被 @Controller 元标注，getBeansWithAnnotation(Controller.class) 已包含
     }
 
     /**
@@ -292,6 +352,52 @@ public class SpringBootRouteAutoConfiguration {
         } catch (Exception e) {
             return Collections.emptyList();
         }
+    }
+
+    /**
+     * 设置控制器回退解析器，使 {@link ControllerRegistry} 在注册表中未找到控制器时
+     * 能从 Spring 容器按需解析。
+     * <p>
+     * 这为以下场景提供安全保障：
+     * <ul>
+     *   <li>使用 Spring {@code @Controller} / {@code @RestController} 但未被扫描到的控制器</li>
+     *   <li>扫描时机晚于路由注册的边缘情况</li>
+     * </ul>
+     * 解析策略：按名称（简名或全限定名）在容器中查找匹配的 Bean。
+     *
+     * @param applicationContext Spring 应用上下文
+     */
+    void setupControllerFallbackResolver(ApplicationContext applicationContext) {
+        if (applicationContext == null) return;
+
+        ControllerRegistry.setFallbackResolver(name -> {
+            // 1. 尝试按全限定名加载类并从容器获取 Bean
+            try {
+                Class<?> clazz = Class.forName(name);
+                try {
+                    return applicationContext.getBean(clazz);
+                } catch (Exception ignored) {
+                    // 不是 Spring Bean，跳过
+                }
+            } catch (ClassNotFoundException ignored) {
+                // 不是全限定名，继续尝试
+            }
+            // 2. 遍历容器中所有 Bean，按简名或全限定名匹配
+            String[] beanNames = applicationContext.getBeanDefinitionNames();
+            for (String beanName : beanNames) {
+                Class<?> beanType = applicationContext.getType(beanName);
+                if (beanType != null &&
+                        (beanType.getSimpleName().equals(name) || beanType.getName().equals(name))) {
+                    // 只接受标注了 @Controller / @RestController 或实现了 Controllers 的类
+                    if (beanType.isAnnotationPresent(Controller.class) ||
+                            beanType.isAnnotationPresent(RestController.class) ||
+                            Controllers.class.isAssignableFrom(beanType)) {
+                        return applicationContext.getBean(beanName);
+                    }
+                }
+            }
+            return null;
+        });
     }
 
     private RequestPredicate createRoutePredicate(Route route) {
