@@ -1,11 +1,12 @@
 package com.weacsoft.jaravel.vendor.database;
 
-import com.weacsoft.jaravel.vendor.core.SpringContext;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.weacsoft.jaravel.vendor.core.SpringContext;
 import gaarason.database.annotation.Column;
 import gaarason.database.annotation.Primary;
 import gaarason.database.contract.connection.GaarasonDataSource;
+import gaarason.database.contract.eloquent.Builder;
 import gaarason.database.contract.eloquent.Record;
 import gaarason.database.contract.eloquent.RecordList;
 import gaarason.database.eloquent.Model;
@@ -16,6 +17,7 @@ import org.springframework.context.annotation.Lazy;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 
@@ -64,14 +66,16 @@ import java.util.List;
  * @param <K> 主键类型
  */
 @JsonAutoDetect(
-    fieldVisibility = JsonAutoDetect.Visibility.ANY,
-    getterVisibility = JsonAutoDetect.Visibility.NONE,
-    setterVisibility = JsonAutoDetect.Visibility.NONE,
-    isGetterVisibility = JsonAutoDetect.Visibility.NONE
+        fieldVisibility = JsonAutoDetect.Visibility.ANY,
+        getterVisibility = JsonAutoDetect.Visibility.NONE,
+        setterVisibility = JsonAutoDetect.Visibility.NONE,
+        isGetterVisibility = JsonAutoDetect.Visibility.NONE
 )
 public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
 
-    /** 数据源（由 Spring 容器懒注入），非数据库字段，需排除 ORM 映射与 JSON 序列化 */
+    /**
+     * 数据源（由 Spring 容器懒注入），非数据库字段，需排除 ORM 映射与 JSON 序列化
+     */
     @Autowired
     @Lazy
     @Column(inDatabase = false)
@@ -162,6 +166,40 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
             }
             clazz = clazz.getSuperclass();
         }
+    }
+
+    protected String getSoftDeleteColumnName() {
+        return "deleted_at";
+    }
+
+    //只查询被删除的数据
+    @Override
+    protected void scopeSoftDeleteOnlyTrashed(Builder<?, T, K> builder) {
+        builder.whereNotNull(getSoftDeleteColumnName());
+    }
+
+    //查询包含被删除的数据
+    @Override
+    protected void scopeSoftDeleteWithTrashed(Builder<?, T, K> builder) {
+        super.scopeSoftDeleteWithTrashed(builder);
+    }
+
+    //查询所有没被删除的数据
+    @Override
+    protected void scopeSoftDelete(Builder<?, T, K> builder) {
+        builder.whereNull(getSoftDeleteColumnName());
+    }
+
+    //执行删除
+    @Override
+    protected int softDelete(Builder<?, T, K> builder) {
+        return builder.data(getSoftDeleteColumnName(), LocalDateTime.now()).update();
+    }
+
+    //撤销执行删除
+    @Override
+    protected int softDeleteRestore(Builder<?, T, K> builder) {
+        return builder.data(getSoftDeleteColumnName(),null).update();
     }
 
     // ==================== 静态工具方法（供业务 Model 的静态方法委托） ====================
