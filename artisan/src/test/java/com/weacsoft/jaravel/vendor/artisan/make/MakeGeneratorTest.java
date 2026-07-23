@@ -14,6 +14,7 @@ import java.time.format.DateTimeFormatter;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -221,5 +222,211 @@ class MakeGeneratorTest {
         assertTrue(Files.exists(Paths.get(commandPath)), "Command 文件应存在");
         assertTrue(Files.exists(Paths.get(eventPath)), "Event 文件应存在");
         assertTrue(Files.exists(Paths.get(listenerPath)), "Listener 文件应存在");
+    }
+
+    // ==================== 导入正确性验证测试 ====================
+    // 以下测试验证生成的代码包含所有必要的 import 语句，确保生成的代码可以直接编译。
+
+    @Test
+    void testControllerImportsComplete() throws IOException {
+        String path = MakeGenerator.generateController(properties, "User", true);
+        String content = Files.readString(Paths.get(path), StandardCharsets.UTF_8);
+
+        // 必须包含的导入
+        assertTrue(content.contains("import com.weacsoft.jaravel.vendor.http.controller.Controllers;"),
+                "Controller 应导入 Controllers 接口");
+        assertTrue(content.contains("import com.weacsoft.jaravel.vendor.http.controller.request.Request;"),
+                "Controller 应导入 Request");
+        assertTrue(content.contains("import com.weacsoft.jaravel.vendor.http.controller.response.Response;"),
+                "Controller 应导入 Response");
+        assertTrue(content.contains("import com.weacsoft.jaravel.vendor.http.controller.response.ResponseBuilder;"),
+                "Controller 应导入 ResponseBuilder");
+        assertTrue(content.contains("import org.springframework.stereotype.Controller;"),
+                "Controller 应导入 @Controller 注解");
+        assertTrue(content.contains("import java.util.HashMap;"), "Controller 应导入 HashMap");
+        assertTrue(content.contains("import java.util.Map;"), "Controller 应导入 Map");
+
+        // 必须包含的注解和接口实现
+        assertTrue(content.contains("@Controller"), "Controller 应标注 @Controller");
+        assertTrue(content.contains("implements Controllers"), "Controller 应实现 Controllers 接口");
+    }
+
+    @Test
+    void testMiddlewareImportsComplete() throws IOException {
+        String path = MakeGenerator.generateMiddleware(properties, "Auth", true);
+        String content = Files.readString(Paths.get(path), StandardCharsets.UTF_8);
+
+        // 必须包含的导入
+        assertTrue(content.contains("import com.weacsoft.jaravel.vendor.http.middleware.Middleware;"),
+                "Middleware 应导入 Middleware 接口");
+        assertTrue(content.contains("import com.weacsoft.jaravel.vendor.http.middleware.Middleware.NextFunction;"),
+                "Middleware 应导入 NextFunction（嵌套类型，不导入会导致编译错误）");
+        assertTrue(content.contains("import com.weacsoft.jaravel.vendor.http.controller.request.Request;"),
+                "Middleware 应导入 Request");
+        assertTrue(content.contains("import com.weacsoft.jaravel.vendor.http.controller.response.Response;"),
+                "Middleware 应导入 Response");
+        assertTrue(content.contains("import com.weacsoft.jaravel.vendor.springboot.annotation.MiddlewareAlias;"),
+                "Middleware 应导入 @MiddlewareAlias 注解");
+
+        // 必须包含的注解和接口实现
+        assertTrue(content.contains("@MiddlewareAlias"), "Middleware 应标注 @MiddlewareAlias");
+        assertTrue(content.contains("implements Middleware"), "Middleware 应实现 Middleware 接口");
+
+        // handle 方法签名必须包含 NextFunction 参数
+        assertTrue(content.contains("NextFunction next"), "handle 方法应包含 NextFunction next 参数");
+    }
+
+    @Test
+    void testModelImportsComplete() throws IOException {
+        String path = MakeGenerator.generateModel(properties, "Setting", true);
+        String content = Files.readString(Paths.get(path), StandardCharsets.UTF_8);
+
+        // 必须包含的导入
+        assertTrue(content.contains("import com.weacsoft.jaravel.vendor.database.BaseModel;"),
+                "Model 应导入 BaseModel");
+        assertTrue(content.contains("import gaarason.database.annotation.Column;"),
+                "Model 应导入 @Column 注解");
+        assertTrue(content.contains("import gaarason.database.annotation.Primary;"),
+                "Model 应导入 @Primary 注解");
+        assertTrue(content.contains("import gaarason.database.annotation.Table;"),
+                "Model 应导入 @Table 注解");
+        assertTrue(content.contains("import gaarason.database.query.QueryBuilder;"),
+                "Model 应导入 QueryBuilder");
+        assertTrue(content.contains("import lombok.Data;"), "Model 应导入 @Data");
+        assertTrue(content.contains("import lombok.EqualsAndHashCode;"),
+                "Model 应导入 @EqualsAndHashCode");
+        assertTrue(content.contains("import org.springframework.stereotype.Repository;"),
+                "Model 应导入 @Repository");
+        assertTrue(content.contains("import java.util.List;"), "Model 应导入 List");
+
+        // 不应包含不存在的 gaarason.database.record.Record 导入
+        assertFalse(content.contains("import gaarason.database.record.Record;"),
+                "Model 不应导入 gaarason.database.record.Record（包不存在，会导致编译错误）");
+
+        // 必须包含的注解和继承
+        assertTrue(content.contains("@Repository"), "Model 应标注 @Repository");
+        assertTrue(content.contains("@Table(name = \"settings\")"), "Model 应标注 @Table(name = \"settings\")");
+        assertTrue(content.contains("@Primary"), "Model 应标注 @Primary");
+        assertTrue(content.contains("@Column(name = \"id\")"), "Model 应标注 @Column(name = \"id\")");
+        assertTrue(content.contains("extends BaseModel<Setting, Long>"), "Model 应继承 BaseModel<Setting, Long>");
+
+        // 类名不应包含 Model 后缀
+        assertTrue(content.contains("public class Setting extends"),
+                "Model 类名应为 Setting，不应包含 Model 后缀");
+        assertFalse(content.contains("public class SettingModel"),
+                "Model 类名不应为 SettingModel");
+    }
+
+    @Test
+    void testModelSnakeCaseInput() throws IOException {
+        // snake_case 输入应正确转为 PascalCase，不加 Model 后缀
+        String path = MakeGenerator.generateModel(properties, "user_profile", true);
+        String content = Files.readString(Paths.get(path), StandardCharsets.UTF_8);
+
+        assertTrue(content.contains("public class UserProfile extends"),
+                "snake_case 输入应转为 PascalCase 类名 UserProfile");
+        assertTrue(content.contains("@Table(name = \"user_profiles\")"),
+                "表名应为 user_profiles");
+    }
+
+    @Test
+    void testMigrationImportsComplete() throws IOException {
+        String path = MakeGenerator.generateMigration(properties, "create_settings_table", true);
+        String content = Files.readString(Paths.get(path), StandardCharsets.UTF_8);
+
+        // 必须包含的导入
+        assertTrue(content.contains("import com.weacsoft.jaravel.vendor.migration.Migration;"),
+                "Migration 应导入 Migration 接口");
+        assertTrue(content.contains("import com.weacsoft.jaravel.vendor.migration.Schema;"),
+                "Migration 应导入 Schema");
+        assertTrue(content.contains("import com.weacsoft.jaravel.vendor.migration.MigrationAnnotation;"),
+                "Migration 应导入 @MigrationAnnotation 注解");
+
+        // 必须包含的注解和接口实现
+        assertTrue(content.contains("@MigrationAnnotation"), "Migration 应标注 @MigrationAnnotation");
+        assertTrue(content.contains("implements Migration"), "Migration 应实现 Migration 接口");
+
+        // 必须包含 up/down 方法
+        assertTrue(content.contains("public void up(Schema schema)"), "Migration 应包含 up 方法");
+        assertTrue(content.contains("public void down(Schema schema)"), "Migration 应包含 down 方法");
+    }
+
+    @Test
+    void testCommandImportsComplete() throws IOException {
+        String path = MakeGenerator.generateCommand(properties, "SyncData", true);
+        String content = Files.readString(Paths.get(path), StandardCharsets.UTF_8);
+
+        // 必须包含的导入
+        assertTrue(content.contains("import com.weacsoft.jaravel.vendor.artisan.ArtisanCommand;"),
+                "Command 应导入 ArtisanCommand");
+        assertTrue(content.contains("import org.springframework.stereotype.Component;"),
+                "Command 应导入 @Component 注解");
+
+        // 必须包含的注解和继承
+        assertTrue(content.contains("@Component"), "Command 应标注 @Component");
+        assertTrue(content.contains("extends ArtisanCommand"), "Command 应继承 ArtisanCommand");
+
+        // 必须包含 signature/description/handle 方法
+        assertTrue(content.contains("public String signature()"), "Command 应包含 signature 方法");
+        assertTrue(content.contains("public String description()"), "Command 应包含 description 方法");
+        assertTrue(content.contains("public int handle()"), "Command 应包含 handle 方法");
+
+        // 注释中的使用方式应为 artisan（不是 --artisan）
+        assertFalse(content.contains("--artisan"),
+                "Command 注释不应包含 --artisan，正确用法是 artisan");
+        assertTrue(content.contains("artisan "),
+                "Command 注释应包含 artisan 用法说明");
+    }
+
+    @Test
+    void testEventImportsComplete() throws IOException {
+        String path = MakeGenerator.generateEvent(properties, "UserRegistered", true);
+        String content = Files.readString(Paths.get(path), StandardCharsets.UTF_8);
+
+        // 必须包含的导入
+        assertTrue(content.contains("import com.weacsoft.jaravel.vendor.event.Event;"),
+                "Event 应导入 Event 接口");
+
+        // 必须实现 Event 接口
+        assertTrue(content.contains("implements Event"), "Event 应实现 Event 接口");
+    }
+
+    @Test
+    void testListenerImportsComplete() throws IOException {
+        String path = MakeGenerator.generateListener(properties, "SendWelcomeEmail", "UserRegisteredEvent", true);
+        String content = Files.readString(Paths.get(path), StandardCharsets.UTF_8);
+
+        // 必须包含的导入
+        assertTrue(content.contains("import com.weacsoft.jaravel.vendor.event.Listener;"),
+                "Listener 应导入 Listener 接口");
+        assertTrue(content.contains("import com.weacsoft.jaravel.vendor.event.ListensTo;"),
+                "Listener 应导入 @ListensTo 注解");
+        assertTrue(content.contains("import org.springframework.stereotype.Component;"),
+                "Listener 应导入 @Component 注解");
+        assertTrue(content.contains("import com.example.test.event.UserRegisteredEvent;"),
+                "Listener 应导入事件类");
+
+        // 必须包含的注解和接口实现
+        assertTrue(content.contains("@Component"), "Listener 应标注 @Component");
+        assertTrue(content.contains("@ListensTo(UserRegisteredEvent.class)"),
+                "Listener 应标注 @ListensTo");
+        assertTrue(content.contains("implements Listener<UserRegisteredEvent>"),
+                "Listener 应实现 Listener<UserRegisteredEvent>");
+
+        // 必须包含 handle 方法
+        assertTrue(content.contains("public void handle(UserRegisteredEvent event)"),
+                "Listener 应包含 handle 方法");
+    }
+
+    @Test
+    void testListenerWithoutEvent() throws IOException {
+        // 不指定事件类型时应使用占位类型 YourEvent
+        String path = MakeGenerator.generateListener(properties, "GenericListener", null, true);
+        String content = Files.readString(Paths.get(path), StandardCharsets.UTF_8);
+
+        assertTrue(content.contains("implements Listener<YourEvent>"),
+                "未指定事件时应使用 YourEvent 占位类型");
+        assertTrue(content.contains("@ListensTo(YourEvent.class)"),
+                "未指定事件时应标注 @ListensTo(YourEvent.class)");
     }
 }

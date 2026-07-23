@@ -100,6 +100,7 @@ public final class MakeGenerator {
         String aliasName = toSnakeCase(className).replaceAll("_middleware$", "");
         return "package " + packageName + ";\n\n" +
                 "import com.weacsoft.jaravel.vendor.http.middleware.Middleware;\n" +
+                "import com.weacsoft.jaravel.vendor.http.middleware.Middleware.NextFunction;\n" +
                 "import com.weacsoft.jaravel.vendor.http.controller.request.Request;\n" +
                 "import com.weacsoft.jaravel.vendor.http.controller.response.Response;\n" +
                 "import com.weacsoft.jaravel.vendor.springboot.annotation.MiddlewareAlias;\n\n" +
@@ -149,7 +150,6 @@ public final class MakeGenerator {
                 "import gaarason.database.annotation.Primary;\n" +
                 "import gaarason.database.annotation.Table;\n" +
                 "import gaarason.database.query.QueryBuilder;\n" +
-                "import gaarason.database.record.Record;\n" +
                 "import lombok.Data;\n" +
                 "import lombok.EqualsAndHashCode;\n" +
                 "import org.springframework.stereotype.Repository;\n\n" +
@@ -246,7 +246,7 @@ public final class MakeGenerator {
                 "/**\n" +
                 " * " + className + " 自定义 Artisan 命令。\n" +
                 " * <p>\n" +
-                " * 使用方式：{@code java -jar app.jar --artisan " + commandName + " [args]}\n" +
+                " * 使用方式：{@code java -jar app.jar artisan " + commandName + " [args]}\n" +
                 " */\n" +
                 "@Component\n" +
                 "public class " + className + " extends ArtisanCommand {\n\n" +
