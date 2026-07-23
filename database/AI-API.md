@@ -3,14 +3,14 @@
 > Module: `database` | Package: `com.weacsoft.jaravel.vendor.database` | Version: 0.1.2
 
 ## Overview
-database 模块提供 Laravel Eloquent 风格的 ORM 基础设施，基于 gaarason/database-all 构建。核心包含 BaseModel（Eloquent 模型基类，合并实体定义与查询职责于单一类）、@DataSource 注解（指定模型使用的数据源，对齐 Laravel `$connection`）和 EloquentUserProvider（基于 Eloquent 的用户提供者，对齐 Laravel EloquentUserProvider）。业务 Model 继承 BaseModel 并加 @Repository 即可像 Laravel 一样使用 find/all/query/save/replicate 等 API。
+database 模块提供 Laravel Eloquent 风格的 ORM 基础设施，基于 gaarason/database-all 构建。核心包含 BaseModel（Eloquent 模型基类，合并实体定义与查询职责于单一类）、@DataSource 注解（指定模型使用的数据源，对齐 Laravel `$connection`）和 EloquentUserProvider（基于 Eloquent 的用户提供者，对齐 Laravel EloquentUserProvider）。BaseModel 还内置软删除支持（基于 `deleted_at` 列，对齐 Laravel `SoftDeletes` trait）。业务 Model 继承 BaseModel 并加 @Repository 即可像 Laravel 一样使用 find/all/query/save/replicate 等 API，并默认获得软删除能力。
 
 ## Classes & Interfaces
 
 ### BaseModel
 - **Type**: abstract class
 - **Package**: `com.weacsoft.jaravel.vendor.database`
-- **Description**: Eloquent 模型基类，对齐 Laravel `Illuminate\Database\Eloquent\Model`。业务 Model 继承本类并加 `@Repository`，泛型为「实体类型, 主键类型」，即可用单一类同时承担实体定义与查询职责，无需拆分实体 POJO 与查询类。数据源通过 `@Autowired @Lazy` 由 Spring 容器注入，支持多数据源（通过 @DataSource 注解指定）。
+- **Description**: Eloquent 模型基类，对齐 Laravel `Illuminate\Database\Eloquent\Model`。业务 Model 继承本类并加 `@Repository`，泛型为「实体类型, 主键类型」，即可用单一类同时承担实体定义与查询职责，无需拆分实体 POJO 与查询类。数据源通过 `@Autowired @Lazy` 由 Spring 容器注入，支持多数据源（通过 @DataSource 注解指定）。内置软删除支持，通过覆盖 gaarason 软删除作用域方法使用 `deleted_at` 列，对齐 Laravel `SoftDeletes` trait。
 - **Extends**: `gaarason.database.eloquent.Model<QueryBuilder<T, K>, T, K>`
 - **Annotations**: `@JsonAutoDetect(fieldVisibility = ANY, getterVisibility = NONE, ...)`
 
@@ -21,6 +21,21 @@ database 模块提供 Laravel Eloquent 风格的 ORM 基础设施，基于 gaara
 | `save` | 无 | `T` | 持久化当前实体（新增），返回保存后的实体（含生成的主键） |
 | `replicate` | 无 | `T` | 复制当前实体（排除主键），可作为新记录再次 save() |
 | `getGaarasonDataSource` | 无 | `GaarasonDataSource` | 获取数据源（优先检查 @DataSource 注解，否则使用注入的默认数据源） |
+
+#### Soft Delete Methods
+
+软删除钩子方法（均为 `protected`，覆盖 gaarason 内置实现），使用 `deleted_at`（可空 `LocalDateTime`）列实现软删除，对齐 Laravel 的 `SoftDeletes` trait。参数 `Builder<?, T, K>` 来自 `gaarason.database.contract.eloquent.Builder`，由 gaarason 查询构造器在对应场景下自动调用，业务代码通常无需直接调用。
+
+> **与 Laravel 默认实现的差异**：Laravel `SoftDeletes` trait 默认即使用 `deleted_at` 时间戳列，语义一致；本模块沿用相同列名与语义，区别在于底层通过覆盖 gaarason 的作用域方法（gaarason 内置可能使用不同的默认列名）统一为 `deleted_at`。业务 Model 可覆盖 `getSoftDeleteColumnName()` 自定义列名。
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `getSoftDeleteColumnName` | 无 | `String` | 返回软删除列名，默认 `deleted_at`，业务 Model 可覆盖以自定义 |
+| `scopeSoftDelete` | `Builder<?, T, K> builder` | `void` | 默认查询作用域，仅查询未删除记录（`WHERE deleted_at IS NULL`） |
+| `scopeSoftDeleteOnlyTrashed` | `Builder<?, T, K> builder` | `void` | 仅查询已软删除记录（`WHERE deleted_at IS NOT NULL`） |
+| `scopeSoftDeleteWithTrashed` | `Builder<?, T, K> builder` | `void` | 查询包含已删除的全部记录（不加软删除过滤） |
+| `softDelete` | `Builder<?, T, K> builder` | `int` | 执行软删除，设置 `deleted_at = LocalDateTime.now()`，返回受影响行数 |
+| `softDeleteRestore` | `Builder<?, T, K> builder` | `int` | 撤销软删除，设置 `deleted_at = NULL`，返回受影响行数 |
 
 #### Static Methods (供业务 Model 静态方法委托)
 
@@ -68,6 +83,30 @@ User u = User.query()
 User clone = user.replicate();         // 复制（不含主键）
 clone.setName("alice_copy");
 clone.save();                          // 作为新记录保存
+```
+
+#### Soft Delete Usage
+```java
+// 默认查询自动排除已软删除的记录（WHERE deleted_at IS NULL）
+List<User> activeUsers = User.query().get().toObjectList();
+
+// 软删除：调用 delete() 时触发 softDelete()，设置 deleted_at 而非物理删除
+User.query().where("id", 1L).delete();
+
+// 仅查询已软删除的记录（触发 scopeSoftDeleteOnlyTrashed）
+List<User> trashedUsers = User.query().onlyTrashed().get().toObjectList();
+
+// 查询包含已删除的全部记录（触发 scopeSoftDeleteWithTrashed）
+List<User> allUsers = User.query().withTrashed().get().toObjectList();
+
+// 恢复软删除的记录：deleted_at 置 NULL（触发 softDeleteRestore）
+User.query().onlyTrashed().where("id", 1L).restore();
+
+// 自定义软删除列名（默认 "deleted_at"）
+@Override
+protected String getSoftDeleteColumnName() {
+    return "removed_at";   // 业务 Model 覆盖即可改用其他列名
+}
 ```
 
 ---

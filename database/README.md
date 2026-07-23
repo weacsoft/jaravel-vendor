@@ -21,7 +21,7 @@
 
 Database 模块是 Jaravel 框架的数据库 ORM 层，基于 `gaarason/database-query`（Laravel 风格的 Java ORM），对齐 Laravel 的 `Illuminate\Database\Eloquent`。它提供了三大核心能力：
 
-- **BaseModel（合并模型）**：对齐 Laravel Eloquent 的「单一类同时承担实体定义与查询职责」设计。业务 Model 继承 `BaseModel` 后，无需再拆分「User 实体 POJO」与「UserModel 查询类」，一个类即可完成实体定义、增删改查、查询构造。
+- **BaseModel（合并模型）**：对齐 Laravel Eloquent 的「单一类同时承担实体定义与查询职责」设计。业务 Model 继承 `BaseModel` 后，无需再拆分「User 实体 POJO」与「UserModel 查询类」，一个类即可完成实体定义、增删改查、查询构造。内置软删除支持（基于 `deleted_at` 列，对齐 Laravel `SoftDeletes` trait）。
 - **@DataSource 注解（多数据源）**：对齐 Laravel Model 的 `$connection` 属性，通过注解指定 Model 使用的数据源 Bean 名称，支持多数据库。
 - **EloquentUserProvider（认证集成）**：对齐 Laravel 的 `EloquentUserProvider`，基于 Eloquent Model 实现 `UserProvider` 契约，仅负责按主键/凭证取出用户，不校验密码。
 
@@ -40,6 +40,12 @@ Database 模块是 Jaravel 框架的数据库 ORM 层，基于 `gaarason/databas
 | `orderBy('col', 'desc')` | `orderBy("col", "desc")` / `orderBy("col", OrderBy.DESC)` |
 | `Model::query()->where()->delete()` | `query().where("id", id).delete()` |
 | `->get()->toObjectList()` | `query().where().get().toObjectList()` |
+| `SoftDeletes` trait | `BaseModel` 软删除作用域方法（覆盖 gaarason 内置） |
+| `deleted_at` 列（SoftDeletes） | `deleted_at` 列（默认，可通过 `getSoftDeleteColumnName()` 自定义） |
+| `$model->delete()`（软删除） | `softDelete()` 设置 `deleted_at = now()` |
+| `$model->restore()` | `softDeleteRestore()` 设置 `deleted_at = NULL` |
+| `Model::withTrashed()` | `scopeSoftDeleteWithTrashed` 查询包含已删除记录 |
+| `Model::onlyTrashed()` | `scopeSoftDeleteOnlyTrashed` 仅查询已删除记录 |
 
 ### 关键设计决策
 
@@ -206,6 +212,72 @@ copy.setName("alice_copy");
 User saved = copy.save();          // 作为新记录保存
 ```
 
+### 软删除
+
+`BaseModel` 覆盖了 gaarason 内置的软删除作用域方法，使用 `deleted_at`（可空 `LocalDateTime`）列实现软删除，对齐 Laravel 的 `SoftDeletes` trait。开启后，普通查询会自动排除已软删除的记录，删除操作变为「设置 `deleted_at`」而非物理删除。
+
+> **与 Laravel 默认实现的差异**：Laravel 的 `SoftDeletes` trait 默认即使用 `deleted_at` 时间戳列，语义完全一致；本模块沿用相同的列名与语义，区别在于底层是通过覆盖 gaarason 的作用域方法（gaarason 内置可能使用不同的默认列名）来统一为 `deleted_at`，使业务代码与 Laravel 习惯保持一致。配合 migration 模块的 `table.softDeletes()` 可直接生成同名列。
+
+#### 软删除列
+
+- 默认列名：`deleted_at`
+- 类型：可空 `LocalDateTime`（`NULL` 表示未删除，非 `NULL` 表示已软删除）
+- 自定义：业务 Model 可覆盖 `getSoftDeleteColumnName()` 修改列名
+
+#### 方法说明
+
+| 方法 | 可见性 | 说明 |
+|------|--------|------|
+| `getSoftDeleteColumnName` | `protected` | 返回软删除列名，默认 `deleted_at`，业务 Model 可覆盖以自定义列名 |
+| `scopeSoftDelete` | `protected`（覆盖） | 默认查询作用域，仅查询未删除记录（`WHERE deleted_at IS NULL`） |
+| `scopeSoftDeleteOnlyTrashed` | `protected`（覆盖） | 仅查询已软删除的记录（`WHERE deleted_at IS NOT NULL`） |
+| `scopeSoftDeleteWithTrashed` | `protected`（覆盖） | 查询包含已删除的全部记录（不加软删除过滤条件） |
+| `softDelete` | `protected`（覆盖） | 执行软删除，设置 `deleted_at = LocalDateTime.now()`，返回受影响行数 |
+| `softDeleteRestore` | `protected`（覆盖） | 撤销软删除，设置 `deleted_at = NULL`，返回受影响行数 |
+
+> 这些方法为 gaarason 软删除钩子，参数 `Builder<?, T, K>` 来自 `gaarason.database.contract.eloquent.Builder`，由 gaarason 查询构造器在对应场景下自动调用（如 `onlyTrashed()`、`withTrashed()`、`delete()`、`restore()` 等），业务代码通常无需直接调用。
+
+#### 使用示例
+
+```java
+// 默认查询自动排除已软删除的记录（WHERE deleted_at IS NULL）
+List<User> activeUsers = User.query().get().toObjectList();
+
+// 仅查询已软删除的记录（触发 scopeSoftDeleteOnlyTrashed）
+List<User> trashedUsers = User.query().onlyTrashed().get().toObjectList();
+
+// 查询包含已删除的全部记录（触发 scopeSoftDeleteWithTrashed）
+List<User> allUsers = User.query().withTrashed().get().toObjectList();
+
+// 软删除：调用 delete() 时触发 softDelete()，设置 deleted_at 而非物理删除
+int affected = User.query().where("id", 1L).delete();
+
+// 恢复软删除的记录：deleted_at 置 NULL（触发 softDeleteRestore）
+int restored = User.query().onlyTrashed().where("id", 1L).restore();
+```
+
+#### 业务 Model 自定义软删除列名
+
+默认列名为 `deleted_at`，若数据库使用其他列名（如 `removed_at`），业务 Model 覆盖 `getSoftDeleteColumnName()` 即可：
+
+```java
+@Repository
+@Table(name = "users")
+public class User extends BaseModel<User, Long> {
+    @Primary @Column private Long id;
+    @Column private String name;
+    @Column private LocalDateTime removedAt;  // 自定义软删除列
+
+    // 覆盖默认列名（默认为 "deleted_at"）
+    @Override
+    protected String getSoftDeleteColumnName() {
+        return "removed_at";
+    }
+
+    // 静态查询方法、getter/setter ...
+}
+```
+
 ### 静态工具方法
 
 > Java 静态方法不可被子类继承，故业务 Model 需自行声明静态方法并委托给 `BaseModel` 的静态方法。
@@ -317,6 +389,12 @@ List<User> users2 = User.query()
 
 // 通过查询构造器删除
 int deleted = User.query().where("id", 1L).delete();  // 返回受影响行数
+
+// 软删除：调用 delete() 时设置 deleted_at（而非物理删除），默认查询自动排除已删除记录
+User.query().where("id", 1L).delete();                          // 软删除
+List<User> trashed = User.query().onlyTrashed().get().toObjectList();  // 仅查已删除
+List<User> withTrashed = User.query().withTrashed().get().toObjectList(); // 含已删除
+User.query().onlyTrashed().where("id", 1L).restore();           // 恢复软删除
 
 // 复制（不含主键）
 User clone = user.replicate();
@@ -566,6 +644,7 @@ import gaarason.database.annotation.Column;
 import gaarason.database.annotation.Primary;
 import gaarason.database.query.QueryBuilder;
 import org.springframework.stereotype.Repository;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Repository
@@ -584,6 +663,9 @@ public class User extends BaseModel<User, Long> implements Authenticatable {
 
     @Column
     private String password;
+
+    @Column
+    private LocalDateTime deletedAt;   // 软删除列（配合 BaseModel 软删除作用域）
 
     // ---- 静态查询方法（委托给 BaseModel） ----
     public static User find(Long id) {
@@ -683,7 +765,13 @@ List<User> recentUsers = User.query()
 // 删除（通过查询构造器）
 int deletedCount = User.query()
         .where("id", 1L)
-        .delete();   // 返回受影响行数
+        .delete();   // 返回受影响行数（软删除时为设置 deleted_at 的行数）
+
+// 软删除操作（基于 deleted_at 列，对齐 Laravel SoftDeletes）
+User.query().where("id", 1L).delete();                                 // 软删除（设置 deleted_at）
+List<User> trashed = User.query().onlyTrashed().get().toObjectList();   // 仅查已软删除
+List<User> allIncTrashed = User.query().withTrashed().get().toObjectList(); // 含已软删除
+User.query().onlyTrashed().where("id", 1L).restore();                  // 恢复（deleted_at 置 NULL）
 
 // 复制
 User copy = found.replicate();
