@@ -294,7 +294,7 @@ JwtTokenResponseFilter.doFilterInternal()
 | `prefix` | `String` | `"Bearer "` | token 前缀 |
 | `refreshEnabled` | `boolean` | `true` | 是否启用 token 自动刷新 |
 | `blacklistEnabled` | `boolean` | `false` | 是否启用黑名单（登出踢 token），关闭时为标准 JWT |
-| `blacklistStore` | `String` | `"array"` | 黑名单缓存 store 名称（仅 `blacklistEnabled=true` 时生效） |
+| `blacklistStore` | `String` | `""` | 黑名单缓存 store 名称，为空时使用 cache 模块默认 store（仅 `blacklistEnabled=true` 时生效） |
 | `blacklistPrefix` | `String` | `"jwt:blacklist:"` | 黑名单缓存键前缀 |
 | `gracePeriodSeconds` | `long` | `0` | 宽限期秒数，0 关闭；需 `blacklistEnabled=true` 才生效 |
 | `graceHeader` | `String` | `"X-New-Token"` | 宽限期/自动续期时新 token 写入响应 header 的名称 |
@@ -360,16 +360,22 @@ JwtConfig config = new JwtConfig()
 #### Bean Details
 
 ##### `jwtService(JwtConfig jwtConfig, CacheManager cacheManager)`
-根据 `blacklistEnabled` 决定是否获取缓存 store：
+根据 `blacklistEnabled` 决定是否获取缓存 store。当开启黑名单时，先检查 `blacklistStore` 是否为空：为空则使用 cache 模块默认 store（`cacheManager.store()`）；非空则按名称获取，若未注册则回退到默认 store：
 
 ```java
 CacheStore blacklistStore = null;
 if (jwtConfig.isBlacklistEnabled()) {
-    try {
-        blacklistStore = cacheManager.store(jwtConfig.getBlacklistStore());
-    } catch (IllegalStateException e) {
-        // 指定的 store 未注册，回退到默认 store
+    String storeName = jwtConfig.getBlacklistStore();
+    if (storeName == null || storeName.isEmpty()) {
+        // 为空时使用 cache 模块默认 store
         blacklistStore = cacheManager.store();
+    } else {
+        try {
+            blacklistStore = cacheManager.store(storeName);
+        } catch (IllegalStateException e) {
+            // 指定的 store 未注册，回退到默认 store
+            blacklistStore = cacheManager.store();
+        }
     }
 }
 return new JwtService(jwtConfig, blacklistStore);
@@ -408,7 +414,7 @@ authManager.registerGuardDriver("jwt",
 | `prefix` | `String` | `"Bearer "` | token 前缀 |
 | `refreshEnabled` | `boolean` | `true` | 是否启用自动刷新 |
 | `blacklistEnabled` | `boolean` | `false` | 是否启用黑名单（登出踢 token），默认关闭 |
-| `blacklistStore` | `String` | `"array"` | 黑名单缓存 store（仅黑名单开启时生效） |
+| `blacklistStore` | `String` | `""` | 黑名单缓存 store，为空时使用 cache 模块默认 store（仅黑名单开启时生效） |
 | `blacklistPrefix` | `String` | `"jwt:blacklist:"` | 黑名单键前缀 |
 | `gracePeriodSeconds` | `long` | `0` | 宽限期秒数，默认 0 关闭（需黑名单开启才生效） |
 | `graceHeader` | `String` | `"X-New-Token"` | 宽限期/自动续期时新 token 响应头名称 |

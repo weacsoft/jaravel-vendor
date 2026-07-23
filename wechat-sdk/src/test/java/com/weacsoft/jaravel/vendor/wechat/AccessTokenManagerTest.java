@@ -96,21 +96,31 @@ class AccessTokenManagerTest {
     }
 
     @Test
-    void testNullCacheManagerFallsBackToArrayStore() {
-        manager = new AccessTokenManager(mockHttpClient, null, "redis");
+    void testNullCacheManagerFallsBackToMemoryStore() {
+        manager = new AccessTokenManager(mockHttpClient, null, "");
         mockWechatResponse(200, "{\"access_token\":\"fallback_token\",\"expires_in\":7200}");
         String token = manager.getToken("wx123", "secret");
         assertEquals("fallback_token", token, "CacheManager 为 null 时应回退到内存存储");
     }
 
     @Test
-    void testPreferredStoreNotRegisteredFallsBackToArray() {
-        // preferredStore 为 "redis" 但未注册，应回退到 "array"
+    void testEmptyStoreUsesDefaultStore() {
+        // preferredStore 为空时，应使用 cache 模块的默认 store（此处为 "array"）
+        manager = new AccessTokenManager(mockHttpClient, cacheManager, "");
+        mockWechatResponse(200, "{\"access_token\":\"default_token\",\"expires_in\":7200}");
+        String token = manager.getToken("wx123", "secret");
+        assertEquals("default_token", token, "preferredStore 为空时应使用默认 store");
+        assertEquals("default_token", spyStore.get("wechat:access_token:wx123", String.class));
+    }
+
+    @Test
+    void testPreferredStoreNotRegisteredFallsBackToDefault() {
+        // preferredStore 为 "redis" 但未注册，应回退到默认 store（此处为 "array"）
         manager = new AccessTokenManager(mockHttpClient, cacheManager, "redis");
         mockWechatResponse(200, "{\"access_token\":\"fb_token\",\"expires_in\":7200}");
         String token = manager.getToken("wx123", "secret");
-        assertEquals("fb_token", token, "preferredStore 未注册时应回退到 array 存储");
-        // 验证 token 被缓存在 array store 中
+        assertEquals("fb_token", token, "preferredStore 未注册时应回退到默认 store");
+        // 验证 token 被缓存在默认 store（array）中
         assertEquals("fb_token", spyStore.get("wechat:access_token:wx123", String.class));
     }
 

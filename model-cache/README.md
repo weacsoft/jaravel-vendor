@@ -250,7 +250,7 @@ public class User extends BaseModel<User, Long> { ... }
 jaravel:
   model-cache:
     enabled: true              # 全局开关
-    store: array               # 缓存 store 名称
+    store: # 为空时使用 cache 模块默认 store
     default-ttl: 3600          # 默认缓存 TTL（秒）
     key-prefix: "model-cache:" # 缓存键前缀
 ```
@@ -258,7 +258,7 @@ jaravel:
 | 属性 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `jaravel.model-cache.enabled` | `boolean` | `true` | 全局开关，关闭后所有模型缓存不生效（直接回源） |
-| `jaravel.model-cache.store` | `String` | `array` | 缓存 store 名称，需在 `CacheManager` 中已注册（array / file / database / redis） |
+| `jaravel.model-cache.store` | `String` | `""` | 缓存 store 名称，为空时使用 cache 模块默认 store（由 `jaravel.cache.default-store` 决定），需在 `CacheManager` 中已注册（array / file / database / redis） |
 | `jaravel.model-cache.default-ttl` | `long` | `3600` | 默认缓存 TTL（秒），`@CachableModel` 未指定或为 -1 时使用 |
 | `jaravel.model-cache.key-prefix` | `String` | `model-cache:` | 缓存键前缀 |
 
@@ -358,7 +358,7 @@ ModelCache（门面，静态 API）
 | 开启方式 | 直接使用 | `@CachableModel` 注解手动开启 |
 | 依赖关系 | 基础 | 依赖 cache 模块 |
 
-`model-cache` 复用 `cache` 模块的 `CacheStore.remember` / `put` / `get` / `forget` / `increment` 等原语，不重新实现存储。`store` 配置项直接指向 `CacheManager` 中已注册的 store 名称，因此切换 array / file / database / redis 只需改一行配置。
+`model-cache` 复用 `cache` 模块的 `CacheStore.remember` / `put` / `get` / `forget` / `increment` 等原语，不重新实现存储。`store` 配置项指向 `CacheManager` 中已注册的 store 名称；为空时使用 cache 模块默认 store（由 `jaravel.cache.default-store` 决定），非空时按名称解析并在未注册时回退到默认 store。因此切换 array / file / database / redis 只需改一行配置。
 
 ---
 
@@ -366,7 +366,7 @@ ModelCache（门面，静态 API）
 
 1. **可选模块**：不引入 `model-cache` 依赖时，自动装配不会被加载，不影响其他模块。
 2. **需 cache 模块就绪**：自动装配带 `@ConditionalOnBean(CacheManager.class)`，仅当容器中存在 `CacheManager` Bean 时生效。
-3. **store 序列化局限**：使用 `file` / `database` store 时，缓存值经 JSON 序列化，复杂对象会还原为 `LinkedHashMap` / `ArrayList`（cache 模块固有特性）。默认 `array` store 存储对象引用，无此问题，推荐用于模型缓存。
+3. **store 序列化局限**：使用 `file` / `database` store 时，缓存值经 JSON 序列化，复杂对象会还原为 `LinkedHashMap` / `ArrayList`（cache 模块固有特性）。`array` store 存储对象引用，无此问题，推荐用于模型缓存。
 4. **不缓存 null**：`find` 等方法对 loader 返回 `null` 的结果不回填，未找到的记录每次回源。如需防止缓存穿透，可在 loader 中返回哨兵对象或使用短 TTL。
 5. **版本号并发**：`increment` 为非原子 get-then-put（cache 模块实现），高并发失效时版本号可能跳跃，但不影响正确性（跳跃仍使旧缓存失效）。
 6. **查询缓存一致性**：`invalidate(Class, id)` 仅失效主键查询键，查询缓存（`findAll`/`query`）可能含旧数据。需整体失效时调用 `invalidate(Class)`。

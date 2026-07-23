@@ -15,7 +15,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *     refresh-enabled: true
  *     # 黑名单（登出踢 token），默认关闭。关闭时为标准 JWT
  *     blacklist-enabled: false
- *     blacklist-store: array
+ *     blacklist-store:                # 为空时使用 cache 模块默认 store
  *     blacklist-prefix: "jwt:blacklist:"
  *     # 宽限期（秒），默认 0 关闭。过期 token 在宽限期内仍可请求一次，返回新 token
  *     grace-period-seconds: 0
@@ -39,8 +39,8 @@ public class JwtProperties {
     private boolean refreshEnabled = true;
     /** 是否启用黑名单（登出踢 token），默认关闭，关闭时为标准 JWT */
     private boolean blacklistEnabled = false;
-    /** 黑名单使用的缓存 store 名称，默认 array */
-    private String blacklistStore = "array";
+    /** 黑名单使用的缓存 store 名称，为空时使用 cache 模块默认 store */
+    private String blacklistStore = "";
     /** 黑名单缓存键前缀 */
     private String blacklistPrefix = "jwt:blacklist:";
     /** 宽限期秒数，默认 0（关闭） */

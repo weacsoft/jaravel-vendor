@@ -8,7 +8,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * jaravel:
  *   model-cache:
  *     enabled: true              # 全局开关，关闭后所有模型缓存不生效（直接回源）
- *     store: array               # 缓存 store 名称（array / file / database / redis）
+ *     store:                     # 缓存 store 名称，为空时使用 cache 模块默认 store
  *     default-ttl: 3600          # 默认缓存 TTL（秒）
  *     key-prefix: "model-cache:" # 缓存键前缀
  * </pre>
@@ -20,8 +20,12 @@ public class ModelCacheProperties {
     /** 全局开关，关闭后所有模型缓存不生效（直接回源） */
     private boolean enabled = true;
 
-    /** 缓存 store 名称，需在 CacheManager 中已注册 */
-    private String store = "array";
+    /**
+     * 缓存 store 名称，为空时使用 cache 模块的默认 store
+     *（由 {@code jaravel.cache.default-store} 决定，不关心具体实现）。
+     * 可显式指定 store 名（如 "redis"）以覆盖默认行为。
+     */
+    private String store = "";
 
     /** 默认缓存 TTL（秒），@CachableModel 未指定或为 -1 时使用 */
     private long defaultTtl = 3600;

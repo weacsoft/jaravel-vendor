@@ -70,10 +70,15 @@ public class JwtAutoConfiguration implements SmartInitializingSingleton {
     public JwtService jwtService(JwtConfig jwtConfig, CacheManager cacheManager) {
         CacheStore blacklistStore = null;
         if (jwtConfig.isBlacklistEnabled()) {
-            try {
-                blacklistStore = cacheManager.store(jwtConfig.getBlacklistStore());
-            } catch (IllegalStateException e) {
+            String storeName = jwtConfig.getBlacklistStore();
+            if (storeName == null || storeName.isEmpty()) {
                 blacklistStore = cacheManager.store();
+            } else {
+                try {
+                    blacklistStore = cacheManager.store(storeName);
+                } catch (IllegalStateException e) {
+                    blacklistStore = cacheManager.store();
+                }
             }
         }
         return new JwtService(jwtConfig, blacklistStore);

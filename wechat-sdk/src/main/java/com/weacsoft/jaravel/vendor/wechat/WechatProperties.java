@@ -72,10 +72,11 @@ public class WechatProperties {
     /**
      * 缓存 store 名称，用于 access_token / jsapi_ticket 缓存。
      * <p>
-     * 优先使用此 store，未注册时回退到默认 store（array）。
-     * 默认 "redis"（多实例共享），单机可设为 "array"。
+     * 为空时使用 cache 模块的默认 store（由 {@code jaravel.cache.default-store} 决定），
+     * 不关心具体是 array / file / redis / database 哪种实现。
+     * 可显式指定 store 名（如 "redis"）以覆盖默认行为。
      */
-    private String cacheStore = "redis";
+    private String cacheStore = "";
 
     /** 公众号配置映射，key 为配置名（如 default、snsapi_userinfo），对齐 PHP official_account 段 */
     private Map<String, OfficialAccountConfig> officialAccounts = new LinkedHashMap<>();

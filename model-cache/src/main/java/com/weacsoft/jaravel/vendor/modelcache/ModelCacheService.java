@@ -212,13 +212,18 @@ public class ModelCacheService {
     }
 
     /**
-     * 解析配置的缓存 store。
+     * 解析配置的缓存 store：为空时使用 cache 模块的默认 store，显式指定时按名解析，
+     * 未注册时回退到默认 store。与 jwt / wechat-sdk 保持一致。
      */
     private CacheStore resolveStore() {
+        String storeName = properties.getStore();
+        if (storeName == null || storeName.isEmpty()) {
+            return cacheManager.store();
+        }
         try {
-            return cacheManager.store(properties.getStore());
+            return cacheManager.store(storeName);
         } catch (IllegalStateException e) {
-            // 配置的 store 未注册时回退到默认 store，与 jwt/wechat-sdk 保持一致
+            log.debug("[model-cache] 缓存 store '{}' 未注册，回退到默认 store: {}", storeName, e.getMessage());
             return cacheManager.store();
         }
     }

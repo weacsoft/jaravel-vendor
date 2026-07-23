@@ -14,7 +14,7 @@ class WechatPropertiesTest {
     void testDefaultValues() {
         WechatProperties props = new WechatProperties();
         assertTrue(props.isEnabled(), "默认应启用微信 SDK");
-        assertEquals("redis", props.getCacheStore(), "默认缓存存储应为 redis");
+        assertEquals("", props.getCacheStore(), "默认缓存存储应为空（使用 cache 模块默认 store）");
         assertNotNull(props.getOfficialAccounts(), "公众号配置 Map 不应为 null");
         assertTrue(props.getOfficialAccounts().isEmpty(), "默认无公众号配置");
         assertNotNull(props.getMiniApps(), "小程序配置 Map 不应为 null");

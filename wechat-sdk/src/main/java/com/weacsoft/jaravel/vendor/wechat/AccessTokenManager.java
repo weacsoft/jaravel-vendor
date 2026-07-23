@@ -21,8 +21,9 @@ import java.util.Map;
  *
  * <h3>缓存策略</h3>
  * <ul>
- *   <li><b>基于 cache 模块</b>：通过 {@link CacheManager} 解析 {@link CacheStore}，优先使用
- *       {@code redis} store（多实例共享），未注册时回退到 {@code array} 内存 store</li>
+ *   <li><b>基于 cache 模块</b>：通过 {@link CacheManager} 获取 {@link CacheStore}，默认使用
+ *       cache 模块的默认 store（由 {@code jaravel.cache.default-store} 决定，不关心具体实现）。
+ *       可通过 {@code jaravel.wechat.cache-store} 显式指定 store 名</li>
  *   <li><b>TTL 缓冲</b>：缓存 TTL = expires_in - 300（提前 5 分钟过期），防止临界点 token 失效</li>
  * </ul>
  *
@@ -35,8 +36,7 @@ import java.util.Map;
  * </pre>
  *
  * <h3>线程安全</h3>
- * 本类为单例，{@link CacheStore} 实现自身保证线程安全（array 基于
- * {@link java.util.concurrent.ConcurrentHashMap}，redis 基于 Redis 单线程模型）。
+ * 本类为单例，{@link CacheStore} 实现自身保证线程安全。
  * OkHttpClient 与 {@link Json} 均为线程安全。
  *
  * @author weacsoft
@@ -63,15 +63,15 @@ public class AccessTokenManager {
     /**
      * 构造 Access Token 管理器。
      * <p>
-     * 通过 {@link CacheManager} 解析缓存仓库：优先使用 {@code redis} store（多实例共享 token），
-     * 当 redis store 未注册（未引入 redis-cache 模块或 Redis 未配置）时回退到 {@code array} 内存 store。
+     * 通过 {@link CacheManager} 解析缓存仓库：使用 cache 模块的默认 store（由
+     * {@code jaravel.cache.default-store} 决定），不关心具体实现。
      *
      * @param httpClient   OkHttp 客户端
      * @param cacheManager 缓存管理器（由 cache 模块提供）
      */
     public AccessTokenManager(OkHttpClient httpClient,
                               CacheManager cacheManager) {
-        this(httpClient, cacheManager, "redis");
+        this(httpClient, cacheManager, "");
     }
 
     /**
@@ -221,11 +221,16 @@ public class AccessTokenManager {
     }
 
     /**
-     * 解析缓存仓库：优先 {@code redis} store（多实例共享），未注册时回退到 {@code array} 内存 store。
+     * 解析缓存仓库：使用 cache 模块的默认 store，或显式指定的 store。
+     * <p>
+     * 当 {@code preferredStore} 为 null 或空时，使用 {@link CacheManager#store()} 获取默认 store
+     *（由 {@code jaravel.cache.default-store} 决定，不关心具体实现）。
+     * 当指定了具体 store 名时，按名解析，未注册时回退到默认 store。
      * <p>
      * 当 {@link CacheManager} 为空（cache 自动装配未启用）时，使用独立的内存 store 保证 SDK 仍可用。
      *
      * @param cacheManager 缓存管理器，可为 null
+     * @param preferredStore 首选 store 名，为空时使用默认 store
      * @return 解析出的缓存仓库
      */
     private static CacheStore resolveStore(CacheManager cacheManager, String preferredStore) {
@@ -234,13 +239,13 @@ public class AccessTokenManager {
             return CacheManager.createDefaultStore();
         }
         if (preferredStore == null || preferredStore.isEmpty()) {
-            preferredStore = "redis";
+            return cacheManager.store();
         }
         try {
             return cacheManager.store(preferredStore);
         } catch (IllegalStateException e) {
-            logger.debug("[wechat] 缓存 store '{}' 未注册，AccessToken 回退到 array 内存缓存: {}", preferredStore, e.getMessage());
-            return cacheManager.store("array");
+            logger.debug("[wechat] 缓存 store '{}' 未注册，AccessToken 回退到默认 store: {}", preferredStore, e.getMessage());
+            return cacheManager.store();
         }
     }
 }

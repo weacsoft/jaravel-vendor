@@ -76,7 +76,8 @@ public class WechatAutoConfiguration {
      * Access Token 管理器 Bean。
      * <p>
      * 注入 OkHttpClient 以及 CacheManager 提供者（由 cache 模块提供）。
-     * AccessTokenManager 通过 CacheManager 解析缓存仓库：优先 redis store，未注册时回退 array 内存缓存。
+     * AccessTokenManager 通过 CacheManager 解析缓存仓库：使用 cache 模块的默认 store
+     *（由 {@code jaravel.cache.default-store} 决定），或通过 {@code jaravel.wechat.cache-store} 显式指定。
      *
      * @param wechatHttpClient     OkHttp 客户端
      * @param cacheManagerProvider 缓存管理器提供者（由 cache 模块提供）
@@ -87,7 +88,9 @@ public class WechatAutoConfiguration {
     public AccessTokenManager accessTokenManager(OkHttpClient wechatHttpClient,
                                                   WechatProperties properties,
                                                   ObjectProvider<CacheManager> cacheManagerProvider) {
-        logger.info("[wechat] 初始化 AccessTokenManager, 首选缓存 store: {}", properties.getCacheStore());
+        String cacheStore = properties.getCacheStore();
+        logger.info("[wechat] 初始化 AccessTokenManager, 缓存 store: {}",
+                (cacheStore == null || cacheStore.isEmpty()) ? "默认 store" : cacheStore);
         return new AccessTokenManager(wechatHttpClient,
                 cacheManagerProvider.getIfAvailable(), properties.getCacheStore());
     }

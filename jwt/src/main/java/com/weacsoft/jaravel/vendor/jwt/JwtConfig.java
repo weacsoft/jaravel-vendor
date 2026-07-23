@@ -41,12 +41,13 @@ public class JwtConfig {
      */
     private boolean blacklistEnabled = false;
     /**
-     * 黑名单使用的缓存 store 名称，默认 {@code array}。
+     * 黑名单使用的缓存 store 名称，为空时使用 cache 模块的默认 store
+     *（由 {@code jaravel.cache.default-store} 决定，不关心具体实现）。
      * <p>
      * 仅当 {@link #blacklistEnabled} 为 {@code true} 时生效。
-     * 可选值：{@code array}（内存）、{@code file}、{@code redis}、{@code database}。
+     * 可显式指定 store 名（如 "redis"）以覆盖默认行为。
      */
-    private String blacklistStore = "array";
+    private String blacklistStore = "";
     /** 黑名单缓存键前缀 */
     private String blacklistPrefix = "jwt:blacklist:";
     /**

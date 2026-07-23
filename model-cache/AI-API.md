@@ -50,7 +50,7 @@ public class User extends BaseModel<User, Long> { ... }
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `enabled` | `boolean` | `true` | 全局开关，关闭后所有模型缓存不生效（直接回源） |
-| `store` | `String` | `"array"` | 缓存 store 名称，需在 CacheManager 中已注册 |
+| `store` | `String` | `""` | 缓存 store 名称，为空时使用 cache 模块默认 store，需在 CacheManager 中已注册 |
 | `defaultTtl` | `long` | `3600` | 默认缓存 TTL（秒），@CachableModel 未指定或为 -1 时使用 |
 | `keyPrefix` | `String` | `"model-cache:"` | 缓存键前缀 |
 
@@ -59,7 +59,7 @@ public class User extends BaseModel<User, Long> { ... }
 jaravel:
   model-cache:
     enabled: true
-    store: array
+    store: # 为空时使用 cache 模块默认 store
     default-ttl: 3600
     key-prefix: "model-cache:"
 ```
@@ -173,7 +173,7 @@ boolean cachable = ModelCache.isCachable(User.class);
 
 | Bean | Parameters | Return | Description |
 |------|-----------|--------|-------------|
-| `modelCacheService` | `CacheManager cacheManager, ModelCacheProperties properties` | `ModelCacheService` | 模型缓存服务（@Bean, @ConditionalOnMissingBean, @ConditionalOnBean(CacheManager.class)）。store 在运行时按 `ModelCacheProperties.getStore()` 从 CacheManager 解析 |
+| `modelCacheService` | `CacheManager cacheManager, ModelCacheProperties properties` | `ModelCacheService` | 模型缓存服务（@Bean, @ConditionalOnMissingBean, @ConditionalOnBean(CacheManager.class)）。store 在运行时按 `ModelCacheProperties.getStore()` 从 CacheManager 解析：为空时使用 `cacheManager.store()`（cache 模块默认 store），非空时用 `cacheManager.store(name)` 并在未注册时回退到默认 store |
 
 #### AutoConfiguration Registration
 `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`:

@@ -53,7 +53,7 @@ import java.util.UUID;
  *
  * <h3>线程安全</h3>
  * 本类为无状态单例（配置、客户端、解析器均为构造后不可变字段），可被多线程并发安全调用。
- * JSSDK ticket 通过 cache 模块的 {@link CacheStore} 缓存（优先 redis，回退 array），线程安全。
+ * JSSDK ticket 通过 cache 模块的 {@link CacheStore} 缓存（使用 cache 默认 store），线程安全。
  *
  * @author weacsoft
  */
@@ -82,14 +82,15 @@ public class OfficialAccountService {
     /** OkHttp 客户端 */
     private final OkHttpClient httpClient;
 
-    /** 缓存仓库（用于 JSSDK ticket 缓存，优先 redis，未注册时回退 array） */
+    /** 缓存仓库（用于 JSSDK ticket 缓存，使用 cache 模块的默认 store） */
     private final CacheStore cacheStore;
 
     /**
      * 构造公众号服务。
      * <p>
-     * 通过 {@link CacheManager} 解析缓存仓库用于 JSSDK ticket 缓存：优先使用 {@code redis} store，
-     * 当 redis store 未注册时回退到 {@code array} 内存 store。
+     * 通过 {@link CacheManager} 解析缓存仓库用于 JSSDK ticket 缓存：使用 cache 模块的默认 store
+     *（由 {@code jaravel.cache.default-store} 决定），或通过 {@code jaravel.wechat.cache-store}
+     * 显式指定 store 名。
      *
      * @param accessTokenManager Access Token 管理器
      * @param properties         微信配置属性
@@ -103,7 +104,7 @@ public class OfficialAccountService {
         this.accessTokenManager = accessTokenManager;
         this.properties = properties;
         this.httpClient = httpClient;
-        this.cacheStore = resolveStore(cacheManager, properties != null ? properties.getCacheStore() : "redis");
+        this.cacheStore = resolveStore(cacheManager, properties != null ? properties.getCacheStore() : "");
     }
 
     // ==================== 用户管理 ====================
@@ -690,7 +691,7 @@ public class OfficialAccountService {
      * 获取 jsapi_ticket（带缓存），对齐 EasyWeChat 的 jsapi_ticket 缓存机制。
      * <p>
      * 缓存 key 格式：{@code wechat:jsapi_ticket:{appId}}，TTL = expires_in - 300（提前 5 分钟过期）。
-     * 缓存仓库优先 redis（多实例共享），未注册时回退 array 内存缓存。
+     * 缓存仓库使用 cache 模块的默认 store（由 {@code jaravel.cache.default-store} 决定）。
      * <p>
      * API: {@code GET /cgi-bin/ticket/getticket?type=jsapi}
      *
@@ -846,11 +847,16 @@ public class OfficialAccountService {
     }
 
     /**
-     * 解析缓存仓库：优先 {@code redis} store（多实例共享），未注册时回退到 {@code array} 内存 store。
+     * 解析缓存仓库：使用 cache 模块的默认 store，或显式指定的 store。
+     * <p>
+     * 当 {@code preferredStore} 为 null 或空时，使用 {@link CacheManager#store()} 获取默认 store
+     *（由 {@code jaravel.cache.default-store} 决定，不关心具体实现）。
+     * 当指定了具体 store 名时，按名解析，未注册时回退到默认 store。
      * <p>
      * 当 {@link CacheManager} 为空（cache 自动装配未启用）时，使用独立的内存 store 保证 SDK 仍可用。
      *
      * @param cacheManager 缓存管理器，可为 null
+     * @param preferredStore 首选 store 名，为空时使用默认 store
      * @return 解析出的缓存仓库
      */
     private static CacheStore resolveStore(CacheManager cacheManager, String preferredStore) {
@@ -859,13 +865,13 @@ public class OfficialAccountService {
             return CacheManager.createDefaultStore();
         }
         if (preferredStore == null || preferredStore.isEmpty()) {
-            preferredStore = "redis";
+            return cacheManager.store();
         }
         try {
             return cacheManager.store(preferredStore);
         } catch (IllegalStateException e) {
-            logger.debug("[wechat] 缓存 store '{}' 未注册，jsapi_ticket 回退到 array 内存缓存: {}", preferredStore, e.getMessage());
-            return cacheManager.store("array");
+            logger.debug("[wechat] 缓存 store '{}' 未注册，jsapi_ticket 回退到默认 store: {}", preferredStore, e.getMessage());
+            return cacheManager.store();
         }
     }
 }
