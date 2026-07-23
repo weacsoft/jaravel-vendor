@@ -210,10 +210,10 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
 <div class="content">
 <div class="hero">
 <h1>jaravel-vendor</h1>
-<div class="subtitle">Laravel 风格的 Java Web 框架 · 路由/模板/ORM/认证/缓存/事件/CLI/插件热加载/远程执行</div>
+<div class="subtitle">Laravel 风格的 Java Web 框架 · 路由/模板/ORM/认证/缓存/事件/CLI/插件热加载/远程执行 · SB3/SB4 双版本支持</div>
 <div class="meta">
-<span>28 个模块</span>
-<span>463 个测试</span>
+<span>29 个模块</span>
+<span>530+ 个测试</span>
 <span>v0.1.2</span>
 </div>
 </div>
@@ -245,11 +245,11 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
 <tr><td>**Wire 渲染**</td><td>Laravel Livewire 风格的反应式 UI，wire.js 自动注入，服务端渲染模板</td></tr>
 </table>
 
-<h5 id="overview-模块总览（28-个模块）">模块总览（28 个模块）</h5>
+<h5 id="overview-模块总览（29-个模块）">模块总览（29 个模块）</h5>
 
 <table>
 <tr><th>分类</th><th>模块</th><th>说明</th></tr>
-<tr><td>核心</td><td>core, utils, http</td><td>容器、工具类、路由</td></tr>
+<tr><td>核心</td><td>core, json, utils, http</td><td>容器、JSON编解码SPI、工具类、路由</td></tr>
 <tr><td>模板</td><td>jblade</td><td>Blade 模板引擎</td></tr>
 <tr><td>数据</td><td>database, migration, model-cache, queue-database</td><td>数据源、迁移、缓存、队列</td></tr>
 <tr><td>认证</td><td>auth, jwt, session-redis</td><td>认证、JWT、会话</td></tr>
@@ -269,7 +269,7 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
 <li><strong>热加载</strong>：引入 <code>plugin-jar-core</code> 即可在任何 SpringBoot 项目中使用 JAR 插件热加载</li>
 <li><strong>远程执行</strong>：引入 <code>plugin-jar-remote-server</code> + <code>plugin-jar-remote-client</code> 即可实现分布式方法调用（无需 plugin-jar-core，通过 BeanResolver 从 Spring 容器获取 Bean）</li>
 <li><strong>两者结合</strong>：远程执行 + 热加载 = 分布式插件热更新，子节点自动同步新版本插件</li>
-<li><strong>SpringBoot 双版本兼容</strong>：热加载插件模块（plugin-jar-core, plugin-java-core）编译期不依赖 javax/jakarta Servlet API，通过 <code>NativeWebRequest</code> 抽象层 + 反射在运行时适配宿主版本，同一构件可运行在 SB 2.7（Spring 5.3, javax.servlet）和 SB 3.x（Spring 6, jakarta.servlet）环境中</li>
+<li><strong>SpringBoot 三版本兼容</strong>：热加载插件模块（plugin-jar-core, plugin-java-core）编译期不依赖 javax/jakarta Servlet API，通过 <code>NativeWebRequest</code> 抽象层 + 反射在运行时适配宿主版本，同一构件可运行在 SB 2.7（Spring 5.3, javax.servlet）、SB 3.x（Spring 6, jakarta.servlet）和 SB 4.x（Spring 7, jakarta.servlet, Jackson 3）环境中</li>
 
 <h6 id="overview-配置重构v012">配置重构（v0.1.2）</h6>
 
@@ -318,7 +318,27 @@ public class App {
 
 <h6 id="overview-测试覆盖">测试覆盖</h6>
 
-<p>全部 28 个模块均有单元测试，共 463 个测试用例，覆盖核心功能、边界条件和异常处理。</p>
+<p>全部 29 个模块均有单元测试，共 530+ 个测试用例，覆盖核心功能、边界条件和异常处理。SB4 兼容性另有 13 项集成测试验证（Jackson 2 排除，原生 Jackson 3）。</p>
+
+<h6 id="overview-spring-boot-版本兼容性">Spring Boot 版本兼容性</h6>
+
+<p>本库基于 Spring Boot 3.2.x / Spring Framework 6.1.x / Java 17 编译，<strong>同一套构件可同时运行在 SB3.x 和 SB4.x 上</strong>，无需消费端额外配置 Jackson 版本。</p>
+
+<table>
+<tr><th>Spring Boot</th><th>Spring Framework</th><th>Jackson</th><th>Servlet</th><th>兼容性</th></tr>
+<tr><td>3.2.x</td><td>6.1.x</td><td>Jackson 2 (<code>com.fasterxml.jackson</code>)</td><td>6.0</td><td>编译基线，完全支持</td></tr>
+<tr><td>4.0.x</td><td>7.0.x</td><td>Jackson 3 (<code>tools.jackson</code>)</td><td>6.1</td><td>运行时验证通过（13 项测试）</td></tr>
+</table>
+
+<p><strong>JsonCodec SPI 机制</strong>：库内部通过 <code>json</code> 模块抽象 JSON 编解码，不直接依赖任何 Jackson 版本：</p>
+
+<li><strong><code>JsonCodec</code> 接口</strong>：定义 <code>toJson</code> / <code>fromJson</code> / <code>fromJsonToMap</code> / <code>convertValue</code> / <code>writeToFile</code> / <code>readFromFile</code> 等方法</li>
+<li><strong><code>Jackson2JsonCodec</code></strong>：SB3 运行时自动选择（classpath 有 <code>com.fasterxml.jackson.databind.ObjectMapper</code>）</li>
+<li><strong><code>Jackson3JsonCodec</code></strong>：SB4 运行时自动选择（classpath 有 <code>tools.jackson.databind.ObjectMapper</code>）</li>
+<li><strong><code>JsonCodecHolder</code></strong>：全局持有器，Spring 环境下由 <code>JsonCodecAutoConfiguration</code> 注入，非 Spring 环境自动检测 classpath</li>
+<li><strong><code>Json</code> 静态门面</strong>：<code>Json.stringify(obj)</code> / <code>Json.parse(json, MyClass.class)</code> / <code>Json.parseToMap(json)</code> 等一行替换原 <code>ObjectMapper</code> 用法</li>
+
+<p>SB4 项目<strong>无需</strong>显式引入 Jackson 2 依赖，库会自动使用 SB4 自带的 Jackson 3。插件模块（plugin-jar-core 等）在 SB4 下已通过实测验证：JsonMetadataPersistence 序列化往返、HotPluginManager 路由操作、JsonCodec 文件读写均正常工作。</p>
 
 </section>
 <h2 id="core">核心模块</h2>
