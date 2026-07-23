@@ -6492,7 +6492,7 @@ jaravel:
     source: DIRECTORY          # DIRECTORY / DIRECTORY_CLASSES / PACKAGED / JAR / CLASSPATH
     directory: migrations
     table: migrations
-    auto-run: true
+    auto-run: false
 </code></pre>
 
 <h6 id="migration-独立运行（cicd-或无-springboot-环境）">独立运行（CI/CD 或无 SpringBoot 环境）</h6>
@@ -8060,7 +8060,7 @@ jaravel:
 jaravel:
   migration:
     source: CLASSPATH
-    auto-run: true
+    auto-run: false
 </code></pre>
 
 <p>---</p>
@@ -8514,7 +8514,7 @@ public class User extends BaseModel&lt;User, Long&gt; { ... }
 jaravel:
   model-cache:
     enabled: true              # 全局开关
-    store: array               # 缓存 store 名称
+    store:                      # 缓存 store 名称，为空时使用 cache 模块默认 store
     default-ttl: 3600          # 默认缓存 TTL（秒）
     key-prefix: &quot;model-cache:&quot; # 缓存键前缀
 </code></pre>
@@ -8522,7 +8522,7 @@ jaravel:
 <table>
 <tr><th>属性</th><th>类型</th><th>默认值</th><th>说明</th></tr>
 <tr><td>`jaravel.model-cache.enabled`</td><td>`boolean`</td><td>`true`</td><td>全局开关，关闭后所有模型缓存不生效（直接回源）</td></tr>
-<tr><td>`jaravel.model-cache.store`</td><td>`String`</td><td>`array`</td><td>缓存 store 名称，需在 `CacheManager` 中已注册（array / file / database / redis）</td></tr>
+<tr><td>`jaravel.model-cache.store`</td><td>`String`</td><td>（空）</td><td>缓存 store 名称，为空时使用 cache 模块默认 store。需在 `CacheManager` 中已注册（array / file / database / redis）</td></tr>
 <tr><td>`jaravel.model-cache.default-ttl`</td><td>`long`</td><td>`3600`</td><td>默认缓存 TTL（秒），`@CachableModel` 未指定或为 -1 时使用</td></tr>
 <tr><td>`jaravel.model-cache.key-prefix`</td><td>`String`</td><td>`model-cache:`</td><td>缓存键前缀</td></tr>
 </table>
@@ -8698,7 +8698,7 @@ public class User extends BaseModel&lt;User, Long&gt; { ... }
 jaravel:
   model-cache:
     enabled: true
-    store: array
+    store:
     default-ttl: 3600
     key-prefix: &quot;model-cache:&quot;
 </code></pre>
@@ -10867,7 +10867,7 @@ JwtConfig config = new JwtConfig()
 
 <h6 id="jwt-blackliststore-详解">blacklistStore 详解</h6>
 
-<p>黑名单使用的缓存 store 名称，默认 <code>array</code>（内存）。仅当 <code>blacklistEnabled=true</code> 时生效。可选值：<code>array</code>、<code>file</code>、<code>redis</code>、<code>database</code>。</p>
+<p>黑名单使用的缓存 store 名称，为空时使用 cache 模块默认 store。仅当 <code>blacklistEnabled=true</code> 时生效。可选值：<code>array</code>、<code>file</code>、<code>redis</code>、<code>database</code>。</p>
 
 <li><strong>单机部署</strong>：可用 <code>array</code>（内存），登出立即生效。</li>
 <li><strong>多实例部署</strong>：应使用 <code>file</code> 或 Redis 等共享缓存，以保证登出后所有节点都能识别黑名单 token。</li>
@@ -11532,10 +11532,10 @@ jaravel:
     # 开启后需配合 cache 模块使用；多实例部署建议用 redis 等共享缓存
     blacklist-enabled: false
 
-    # 黑名单缓存 store，默认 array（内存）
+    # 黑名单缓存 store，为空时使用 cache 模块默认 store
     # 仅当 blacklist-enabled=true 时生效
     # 单机部署可用 array；多实例部署应使用 file 或 redis 等共享缓存
-    blacklist-store: array
+    blacklist-store:
 
     # 黑名单缓存键前缀
     blacklist-prefix: &quot;jwt:blacklist:&quot;
@@ -11560,7 +11560,7 @@ jaravel:
 <tr><td>`jaravel.jwt.prefix`</td><td>String</td><td>`Bearer `</td><td>token 前缀</td></tr>
 <tr><td>`jaravel.jwt.refresh-enabled`</td><td>boolean</td><td>`true`</td><td>是否启用 token 自动刷新</td></tr>
 <tr><td>`jaravel.jwt.blacklist-enabled`</td><td>boolean</td><td>`false`</td><td>是否启用黑名单（登出踢 token）</td></tr>
-<tr><td>`jaravel.jwt.blacklist-store`</td><td>String</td><td>`array`</td><td>黑名单缓存 store 名称（仅黑名单开启时生效）</td></tr>
+<tr><td>`jaravel.jwt.blacklist-store`</td><td>String</td><td>（空）</td><td>黑名单缓存 store 名称，为空时使用 cache 模块默认 store（仅黑名单开启时生效）</td></tr>
 <tr><td>`jaravel.jwt.blacklist-prefix`</td><td>String</td><td>`jwt:blacklist:`</td><td>黑名单缓存键前缀</td></tr>
 <tr><td>`jaravel.jwt.grace-period-seconds`</td><td>long</td><td>`0`</td><td>宽限期秒数（需黑名单开启才生效）</td></tr>
 <tr><td>`jaravel.jwt.grace-header`</td><td>String</td><td>`X-New-Token`</td><td>新 token 写入响应 header 的名称</td></tr>
@@ -18184,7 +18184,7 @@ public interface MetadataPersistence {
 jaravel:
   migration:
     enabled: true       # 是否启用迁移模块（默认 true）
-    auto-run: true      # 启动时是否自动执行 migrate（默认 false，建议设为 true）
+    auto-run: false     # 启动时是否自动执行 migrate（默认 false）
 </code></pre>
 
 <table>
@@ -21601,7 +21601,7 @@ jaravel:
 
 <h5 id="wechat-sdk-模块概述">模块概述</h5>
 
-<p><code>wechat-sdk</code> 模块为 jaravel-vendor 框架提供微信公众号与小程序的 API 访问能力，对齐 PHP 项目的 <code>WechatService</code>、<code>MiniProgramService</code> 等服务。所有 HTTP 调用使用 OkHttp，JSON 解析使用 Jackson，Access Token / jsapi_ticket 通过 cache 模块的 <code>CacheStore</code> 缓存（首选 store 可由 <code>jaravel.wechat.cache-store</code> 配置，默认 <code>redis</code>，未注册时回退 array 内存缓存）。</p>
+<p><code>wechat-sdk</code> 模块为 jaravel-vendor 框架提供微信公众号与小程序的 API 访问能力，对齐 PHP 项目的 <code>WechatService</code>、<code>MiniProgramService</code> 等服务。所有 HTTP 调用使用 OkHttp，JSON 解析使用 Jackson，Access Token / jsapi_ticket 通过 cache 模块的 <code>CacheStore</code> 缓存（首选 store 可由 <code>jaravel.wechat.cache-store</code> 配置，为空时使用 cache 模块默认 store，未注册时回退默认 store）。</p>
 
 <h6 id="wechat-sdk-php-对齐关系">PHP 对齐关系</h6>
 
@@ -21656,7 +21656,7 @@ com.weacsoft.jaravel.vendor.wechat
 jaravel:
   wechat:
     enabled: true                          # 是否启用微信 SDK，默认 true
-    cache-store: redis                     # 首选缓存 store（access_token / jsapi_ticket），默认 redis，单机可设 array
+    cache-store:                            # 首选缓存 store（access_token / jsapi_ticket），为空时使用 cache 模块默认 store，多实例可设 redis
 
     # 公众号配置（对齐 official_account 段）
     official-accounts:
@@ -21705,7 +21705,7 @@ jaravel:
 <table>
 <tr><th>属性</th><th>类型</th><th>默认值</th><th>说明</th></tr>
 <tr><td>`jaravel.wechat.enabled`</td><td>boolean</td><td>`true`</td><td>是否启用微信 SDK</td></tr>
-<tr><td>`jaravel.wechat.cache-store`</td><td>String</td><td>`redis`</td><td>access_token / jsapi_ticket 首选缓存 store 名称。优先使用此 store，未注册时回退到 `array` 内存 store。多实例共享设为 `redis`，单机可设为 `array`</td></tr>
+<tr><td>`jaravel.wechat.cache-store`</td><td>String</td><td>（空）</td><td>access_token / jsapi_ticket 首选缓存 store 名称。为空时使用 cache 模块默认 store；显式指定时优先使用此 store，未注册时回退到默认 store。多实例共享可设为 `redis`</td></tr>
 <tr><td>`jaravel.wechat.official-accounts.{name}.app-id`</td><td>String</td><td>-</td><td>公众号 AppID</td></tr>
 <tr><td>`jaravel.wechat.official-accounts.{name}.secret`</td><td>String</td><td>-</td><td>公众号 AppSecret</td></tr>
 <tr><td>`jaravel.wechat.official-accounts.{name}.token`</td><td>String</td><td>-</td><td>消息校验 Token</td></tr>
@@ -21875,7 +21875,7 @@ Map&lt;String, Object&gt; result = miniProgramService.sendTemplateMessage(
 
 <p><code>AccessTokenManager</code> 负责管理微信 access_token 的获取与缓存，缓存能力委托给 cache 模块的 <code>CacheStore</code>：</p>
 
-<li><strong>基于 cache 模块</strong>：通过 <code>CacheManager</code> 解析 <code>CacheStore</code>，优先使用配置的首选 store（由 <code>jaravel.wechat.cache-store</code> 指定，默认 <code>redis</code>，多实例共享 token），该 store 未注册时回退到 <code>array</code> 内存 store</li>
+<li><strong>基于 cache 模块</strong>：通过 <code>CacheManager</code> 解析 <code>CacheStore</code>，优先使用配置的首选 store（由 <code>jaravel.wechat.cache-store</code> 指定，为空时使用 cache 模块默认 store），该 store 未注册时回退到默认 store</li>
 <li><strong>缓存键</strong>：<code>wechat:access_token:{appId}</code>（jsapi_ticket 缓存键为 <code>wechat:jsapi_ticket:{appId}</code>）</li>
 <li><strong>TTL 缓冲</strong>：缓存 TTL = <code>expires_in - 300</code>（提前 5 分钟过期），防止临界点 token 失效</li>
 <li><strong>强制刷新</strong>：可通过 <code>refreshToken(appId, secret)</code> 忽略缓存强制刷新</li>
@@ -21883,9 +21883,9 @@ Map&lt;String, Object&gt; result = miniProgramService.sendTemplateMessage(
 
 <p>&gt; 微信 access_token 每天获取限额 2000 次，务必使用缓存避免超限。</p>
 <p>&gt;</p>
-<p>&gt; <strong>store 可配置</strong>：<code>jaravel.wechat.cache-store</code> 控制首选缓存 store（默认 <code>redis</code>）。<code>OfficialAccountService</code>（jsapi_ticket 缓存）与 <code>AccessTokenManager</code>（access_token 缓存）均使用该配置值作为首选 store。配置的 store 未注册（未引入 <code>redis-cache</code> 模块或 Redis 未配置）时自动回退到 <code>array</code> 内存 store，无需修改代码。</p>
+<p>&gt; <strong>store 可配置</strong>：<code>jaravel.wechat.cache-store</code> 控制首选缓存 store（为空时使用 cache 模块默认 store）。<code>OfficialAccountService</code>（jsapi_ticket 缓存）与 <code>AccessTokenManager</code>（access_token 缓存）均使用该配置值作为首选 store。配置的 store 未注册（未引入 <code>redis-cache</code> 模块或 Redis 未配置）时自动回退到默认 store，无需修改代码。</p>
 <p>&gt;</p>
-<p>&gt; 默认仅依赖 <code>cache</code> 模块（array 内存缓存，进程级）。若需多实例共享，引入 <code>redis-cache</code> 模块后，<code>redis</code> store 会自动注册并被优先使用。</p>
+<p>&gt; 默认使用 cache 模块的默认 store（由 <code>jaravel.cache.default-store</code> 决定）。若需多实例共享，引入 <code>redis-cache</code> 模块后将 <code>cache-store</code> 设为 <code>redis</code>。</p>
 
 <h5 id="wechat-sdk-线程安全">线程安全</h5>
 
@@ -21901,16 +21901,16 @@ Map&lt;String, Object&gt; result = miniProgramService.sendTemplateMessage(
 
 <h5 id="wechat-sdk-overview">Overview</h5>
 
-<p>wechat-sdk 模块提供了微信开发平台 API 封装，支持公众号（OfficialAccount）和小程序（MiniProgram）两种应用类型。<code>AccessTokenManager</code> 负责获取和缓存 access_token（基于 cache 模块的 <code>CacheStore</code>，首选 store 可配置、默认 redis、回退 array）；<code>OfficialAccountService</code> 封装公众号用户、菜单、模板消息、JSSDK 等 API；<code>MiniProgramService</code> 封装小程序登录（jscode2session）、订阅消息等 API。所有 HTTP 请求通过 OkHttp 发送，响应通过 Jackson 解析。</p>
+<p>wechat-sdk 模块提供了微信开发平台 API 封装，支持公众号（OfficialAccount）和小程序（MiniProgram）两种应用类型。<code>AccessTokenManager</code> 负责获取和缓存 access_token（基于 cache 模块的 <code>CacheStore</code>，首选 store 可配置、为空时使用 cache 模块默认 store、回退默认 store）；<code>OfficialAccountService</code> 封装公众号用户、菜单、模板消息、JSSDK 等 API；<code>MiniProgramService</code> 封装小程序登录（jscode2session）、订阅消息等 API。所有 HTTP 请求通过 OkHttp 发送，响应通过 Jackson 解析。</p>
 
-<p>&gt; 缓存说明：token / jsapi_ticket 缓存委托给 cache 模块的 <code>CacheManager</code>。首选 store 由 <code>jaravel.wechat.cache-store</code> 配置（默认 <code>redis</code>，多实例共享，需引入 <code>redis-cache</code> 模块自动注册）；该 store 未注册时回退到 <code>array</code> 内存 store。可通过 <code>cache-store</code> 切换为 <code>array</code> 或其他已注册 store。</p>
+<p>&gt; 缓存说明：token / jsapi_ticket 缓存委托给 cache 模块的 <code>CacheManager</code>。首选 store 由 <code>jaravel.wechat.cache-store</code> 配置（为空时使用 cache 模块默认 store）；该 store 未注册时回退到默认 store。可通过 <code>cache-store</code> 显式指定 <code>redis</code> 或其他已注册 store。</p>
 
 <h5 id="wechat-sdk-classes--interfaces">Classes & Interfaces</h5>
 
 <h6 id="wechat-sdk-accesstokenmanager">AccessTokenManager</h6>
 <li><strong>Type</strong>: class</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.wechat</code></li>
-<li><strong>Description</strong>: access_token 管理器。调用微信 <code>cgi-bin/token</code> 接口获取 access_token，并通过 cache 模块的 <code>CacheStore</code> 缓存，提前 5 分钟（300 秒）过期避免临界点失效。支持公众号和小程序的 token 获取。首选缓存 store 可通过构造器 <code>preferredStore</code> 参数指定（自动装配时取自 <code>WechatProperties.getCacheStore()</code>，默认 <code>redis</code>），该 store 未注册时回退到 <code>array</code> 内存 store。</li>
+<li><strong>Description</strong>: access_token 管理器。调用微信 <code>cgi-bin/token</code> 接口获取 access_token，并通过 cache 模块的 <code>CacheStore</code> 缓存，提前 5 分钟（300 秒）过期避免临界点失效。支持公众号和小程序的 token 获取。首选缓存 store 可通过构造器 <code>preferredStore</code> 参数指定（自动装配时取自 <code>WechatProperties.getCacheStore()</code>，为空时使用 cache 模块默认 store），该 store 未注册时回退到默认 store。</li>
 
 <h6 id="wechat-sdk-constants">Constants</h6>
 
@@ -21923,8 +21923,8 @@ Map&lt;String, Object&gt; result = miniProgramService.sendTemplateMessage(
 
 <table>
 <tr><th>Constructor</th><th>Parameters</th><th>Description</th></tr>
-<tr><td>`AccessTokenManager`</td><td>`OkHttpClient httpClient, ObjectMapper objectMapper, CacheManager cacheManager`</td><td>构造 access_token 管理器；首选 store 默认为 `redis`，委托到带 `preferredStore` 的全参构造器</td></tr>
-<tr><td>`AccessTokenManager`</td><td>`OkHttpClient httpClient, ObjectMapper objectMapper, CacheManager cacheManager, String preferredStore`</td><td>构造 access_token 管理器并指定首选缓存 store 名称（如 `redis`、`array`）。通过 `resolveStore` 解析：优先使用 `preferredStore`，未注册时回退 `array`；`CacheManager` 为 null 时使用独立的 `DefaultCacheStore(ArrayCacheDriver)`</td></tr>
+<tr><td>`AccessTokenManager`</td><td>`OkHttpClient httpClient, ObjectMapper objectMapper, CacheManager cacheManager`</td><td>构造 access_token 管理器；首选 store 为空（使用 cache 模块默认 store），委托到带 `preferredStore` 的全参构造器</td></tr>
+<tr><td>`AccessTokenManager`</td><td>`OkHttpClient httpClient, ObjectMapper objectMapper, CacheManager cacheManager, String preferredStore`</td><td>构造 access_token 管理器并指定首选缓存 store 名称（如 `redis`）。通过 `resolveStore` 解析：`preferredStore` 为空时使用默认 store；优先 `cacheManager.store(preferredStore)`，未注册时回退默认 store；`CacheManager` 为 null 时使用独立的 `DefaultCacheStore(ArrayCacheDriver)`保证 SDK 可用</td></tr>
 </table>
 
 <h6 id="wechat-sdk-methods">Methods</h6>
@@ -21935,7 +21935,7 @@ Map&lt;String, Object&gt; result = miniProgramService.sendTemplateMessage(
 <tr><td>`refreshToken`</td><td>`String appId, String secret`</td><td>`String`</td><td>强制刷新 access_token（忽略缓存，重新请求微信 API 并回填缓存）</td></tr>
 <tr><td>`invalidateToken`</td><td>`String appId`</td><td>`void`</td><td>清除指定应用的 access_token 缓存（按 key `forget`），下次 `getToken` 会重新请求微信 API</td></tr>
 <tr><td>`invalidateAllTokens`</td><td>无</td><td>`void`</td><td>清除所有应用的 access_token 缓存。**注意**：调用 `flush()` 会清空当前 store 下所有缓存（包括其他模块），仅在独立 store 或全局重置时使用</td></tr>
-<tr><td>`resolveStore`（private static）</td><td>`CacheManager cacheManager, String preferredStore`</td><td>`CacheStore`</td><td>解析缓存仓库：`preferredStore` 为空时默认 `redis`；优先 `cacheManager.store(preferredStore)`，抛 `IllegalStateException`（store 未注册）时回退 `cacheManager.store("array")`；`cacheManager` 为 null 时返回独立的 `DefaultCacheStore(ArrayCacheDriver)` 保证 SDK 可用</td></tr>
+<tr><td>`resolveStore`（private static）</td><td>`CacheManager cacheManager, String preferredStore`</td><td>`CacheStore`</td><td>解析缓存仓库：`preferredStore` 为空时使用 cache 模块默认 store（`cacheManager.store()`）；优先 `cacheManager.store(preferredStore)`，抛 `IllegalStateException`（store 未注册）时回退 `cacheManager.store()`（默认 store）；`cacheManager` 为 null 时返回独立的 `DefaultCacheStore(ArrayCacheDriver)` 保证 SDK 可用</td></tr>
 </table>
 
 <h6 id="wechat-sdk-usage-example">Usage Example</h6>
@@ -21959,7 +21959,7 @@ String freshToken = tokenManager.refreshToken(&quot;wx1234567890abcdef&quot;, &q
 
 <table>
 <tr><th>Constructor</th><th>Parameters</th><th>Description</th></tr>
-<tr><td>`OfficialAccountService`</td><td>`AccessTokenManager accessTokenManager, WechatProperties properties, OkHttpClient httpClient, ObjectMapper objectMapper, CacheManager cacheManager`</td><td>构造公众号服务；`cacheManager` 用于 jsapi_ticket 缓存，首选 store 取自 `properties.getCacheStore()`（默认 `redis`），未注册时回退 `array`</td></tr>
+<tr><td>`OfficialAccountService`</td><td>`AccessTokenManager accessTokenManager, WechatProperties properties, OkHttpClient httpClient, ObjectMapper objectMapper, CacheManager cacheManager`</td><td>构造公众号服务；`cacheManager` 用于 jsapi_ticket 缓存，首选 store 取自 `properties.getCacheStore()`（为空时使用 cache 模块默认 store），未注册时回退到默认 store</td></tr>
 </table>
 
 <h6 id="wechat-sdk-methods">Methods</h6>
@@ -22083,7 +22083,7 @@ Map&lt;String, Object&gt; result = miniService.sendTemplateMessage(
 <table>
 <tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
 <tr><td>`isEnabled`</td><td>-</td><td>`boolean`</td><td>是否启用微信 SDK</td></tr>
-<tr><td>`getCacheStore`</td><td>-</td><td>`String`</td><td>获取首选缓存 store 名称（默认 `redis`）。用于 access_token / jsapi_ticket 缓存，store 未注册时回退 `array`</td></tr>
+<tr><td>`getCacheStore`</td><td>-</td><td>`String`</td><td>获取首选缓存 store 名称（为空时使用 cache 模块默认 store）。用于 access_token / jsapi_ticket 缓存，store 未注册时回退到默认 store</td></tr>
 <tr><td>`setCacheStore`</td><td>`String cacheStore`</td><td>`void`</td><td>设置首选缓存 store 名称</td></tr>
 <tr><td>`getOfficialAccounts`</td><td>-</td><td>`Map<String, OfficialAccountConfig>`</td><td>公众号配置映射</td></tr>
 <tr><td>`getMiniApps`</td><td>-</td><td>`Map<String, MiniAppConfig>`</td><td>小程序配置映射</td></tr>
@@ -22107,7 +22107,7 @@ Map&lt;String, Object&gt; result = miniService.sendTemplateMessage(
 jaravel:
   wechat:
     enabled: true
-    cache-store: redis              # 首选缓存 store（默认 redis），单机可设 array
+    cache-store:                     # 首选缓存 store（为空时使用 cache 模块默认 store），多实例可设 redis
     official-accounts:
       default:
         app-id: wx1234567890abcdef
