@@ -15489,7 +15489,7 @@ java -jar app.jar artisan user:score:cacheOne 20210001  # 带参数
 <tr><th>命令</th><th>签名</th><th>说明</th><th>生成类</th><th>目标包</th></tr>
 <tr><td>`make:controller`</td><td>`make:controller {name} {--force}`</td><td>生成 Controller 类</td><td>`UserController`</td><td>`base-package.controller`</td></tr>
 <tr><td>`make:middleware`</td><td>`make:middleware {name} {--force}`</td><td>生成 Middleware 类</td><td>`AuthMiddleware`</td><td>`base-package.middleware`</td></tr>
-<tr><td>`make:model`</td><td>`make:model {name} {--force}`</td><td>生成 Model 类</td><td>`UserModel`</td><td>`base-package.model`</td></tr>
+<tr><td>`make:model`</td><td>`make:model {name} {--force}`</td><td>生成 Model 类</td><td>`User`</td><td>`base-package.model`</td></tr>
 <tr><td>`make:migration`</td><td>`make:migration {name} {--force}`</td><td>生成 Migration 类</td><td>`Migration_YYYY_MM_DD_Name`</td><td>`base-package.migration`</td></tr>
 <tr><td>`make:command`</td><td>`make:command {name} {--force}`</td><td>生成 ArtisanCommand 类</td><td>`SyncDataCommand`</td><td>`base-package.command`</td></tr>
 <tr><td>`make:event`</td><td>`make:event {name} {--force}`</td><td>生成 Event 类</td><td>`UserRegisteredEvent`</td><td>`base-package.event`</td></tr>
@@ -15517,7 +15517,7 @@ java -jar app.jar artisan make:middleware Auth
 
 # 生成 Model
 java -jar app.jar artisan make:model User
-# =&gt; UserModel.java → base-package.model
+# =&gt; User.java → base-package.model
 
 # 生成 Migration（自动加日期前缀）
 java -jar app.jar artisan make:migration create_users_table
@@ -15568,7 +15568,7 @@ $ java -jar app.jar artisan make:all User
 
   [+] Controller created: com/example/app/controller/UserController.java
   [+] Middleware created: com/example/app/middleware/UserMiddleware.java
-  [+] Model created: com/example/app/model/UserModel.java
+  [+] Model created: com/example/app/model/User.java
   [+] Migration created: com/example/app/migration/Migration_2024_01_01_User.java
   [+] Command created: com/example/app/command/UserCommand.java
   [+] Event created: com/example/app/event/UserEvent.java
@@ -15602,7 +15602,7 @@ java -jar app.jar artisan make:all User --force
 
 <h5 id="artisan-overview">Overview</h5>
 
-<p>artisan 模块提供了 Laravel 风格的命令行工具框架。<code>ArtisanApplication</code> 负责命令注册、查找和执行；<code>ArtisanCommand</code> 是所有自定义命令的抽象基类，子类实现 <code>handle()</code> 方法完成业务逻辑；<code>ArtisanRunner</code> 实现 Spring Boot <code>CommandLineRunner</code>，在应用启动时检测 <code>--artisan</code> 参数并派发到对应命令。支持参数解析（<code>{arg}</code> 位置参数、<code>{--option}</code> 选项参数）和帮助信息输出。</p>
+<p>artisan 模块提供了 Laravel 风格的命令行工具框架。<code>ArtisanApplication</code> 负责命令注册、查找和执行；<code>ArtisanCommand</code> 是所有自定义命令的抽象基类，子类实现 <code>handle()</code> 方法完成业务逻辑；<code>ArtisanRunner</code> 实现 Spring Boot <code>CommandLineRunner</code>，在应用启动时检测 <code>artisan</code> 参数并派发到对应命令。支持参数解析（<code>{arg}</code> 位置参数、<code>{--option}</code> 选项参数）和帮助信息输出。</p>
 
 <h5 id="artisan-classes--interfaces">Classes & Interfaces</h5>
 
@@ -15684,22 +15684,22 @@ artisan.listCommands().forEach((name, cmd) -&gt; {
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.artisan</code></li>
 <li><strong>Implements</strong>: <code>org.springframework.boot.CommandLineRunner</code></li>
 <li><strong>Annotations</strong>: <code>@Component</code></li>
-<li><strong>Description</strong>: Spring Boot 启动钩子。在应用启动时检测启动参数中是否包含 <code>--artisan</code>，若存在则将后续参数传递给 <code>ArtisanApplication.execute()</code> 执行对应命令，执行完毕后调用 <code>System.exit()</code> 退出 JVM。无 <code>--artisan</code> 参数时不做任何操作。</li>
+<li><strong>Description</strong>: Spring Boot 启动钩子。在应用启动时检测启动参数中是否包含 <code>artisan</code>，若存在则将后续参数传递给 <code>ArtisanApplication.execute()</code> 执行对应命令，执行完毕后调用 <code>System.exit()</code> 退出 JVM。无 <code>artisan</code> 参数时不做任何操作。</li>
 
 <h6 id="artisan-methods">Methods</h6>
 
 <table>
 <tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
-<tr><td>`run`</td><td>`String... args`</td><td>`void`</td><td>CommandLineRunner 入口，检测 `--artisan` 并派发命令</td></tr>
+<tr><td>`run`</td><td>`String... args`</td><td>`void`</td><td>CommandLineRunner 入口，检测 `artisan` 并派发命令</td></tr>
 </table>
 
 <h6 id="artisan-usage-example">Usage Example</h6>
 <pre><code>
 # 在命令行运行 Artisan 命令
-java -jar app.jar --artisan make:migration create_users_table --force
+java -jar app.jar artisan make:migration create_users_table --force
 
 # 列出所有可用命令
-java -jar app.jar --artisan list
+java -jar app.jar artisan list
 </code></pre>
 
 <h6 id="artisan-artisanautoconfiguration">ArtisanAutoConfiguration</h6>
@@ -15899,7 +15899,7 @@ java -jar app.jar artisan make:middleware Auth --force
 <h6 id="artisan-usage-example">Usage Example</h6>
 <pre><code>
 java -jar app.jar artisan make:model User
-java -jar app.jar artisan make:model UserModel --force
+java -jar app.jar artisan make:model User --force
 </code></pre>
 
 <h6 id="artisan-makemigrationcommand">MakeMigrationCommand</h6>
@@ -16029,7 +16029,7 @@ java -jar app.jar artisan make:all User --force
 
   [+] Controller created: com/example/app/controller/UserController.java
   [+] Middleware created: com/example/app/middleware/UserMiddleware.java
-  [+] Model created: com/example/app/model/UserModel.java
+  [+] Model created: com/example/app/model/User.java
   [+] Migration created: com/example/app/migration/Migration_2024_01_01_User.java
   [+] Command created: com/example/app/command/UserCommand.java
   [+] Event created: com/example/app/event/UserEvent.java
