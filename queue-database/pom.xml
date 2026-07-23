@@ -45,6 +45,12 @@
             <artifactId>redis-config</artifactId>
             <optional>true</optional>
         </dependency>
+        <!-- Artisan CLI 集成（optional：仅 SpringBoot 环境下注册 queue:table 命令） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>artisan</artifactId>
+            <optional>true</optional>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-configuration-processor</artifactId>

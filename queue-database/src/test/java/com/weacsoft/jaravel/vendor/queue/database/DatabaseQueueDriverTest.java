@@ -59,6 +59,29 @@ class DatabaseQueueDriverTest {
     }
 
     @Test
+    void createTableCreatesJobsAndFailedJobsTables() {
+        // 使用独立的数据源验证 createTable() 方法
+        JdbcDataSource ds2 = new JdbcDataSource();
+        ds2.setURL("jdbc:h2:mem:queue_create_test;MODE=MySQL;DB_CLOSE_DELAY=-1");
+        ds2.setUser("sa");
+        ds2.setPassword("");
+
+        DatabaseQueueDriver d = new DatabaseQueueDriver(ds2, "test_jobs", "test_failed_jobs", 60, 7);
+        boolean success = d.createTable();
+        assertTrue(success, "createTable() 应返回 true");
+
+        // 验证表已创建
+        JdbcTemplate jdbc2 = new JdbcTemplate(ds2);
+        Integer jobCount = jdbc2.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'TEST_JOBS'", Integer.class);
+        assertEquals(1, jobCount, "test_jobs 表应已创建");
+
+        Integer failedCount = jdbc2.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'TEST_FAILED_JOBS'", Integer.class);
+        assertEquals(1, failedCount, "test_failed_jobs 表应已创建");
+    }
+
+    @Test
     void pushAndPopRoundTrip() {
         long id = driver.push("default", "{\"job\":\"hello\"}");
         assertTrue(id > 0);

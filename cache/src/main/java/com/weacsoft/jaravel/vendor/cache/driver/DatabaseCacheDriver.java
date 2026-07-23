@@ -18,7 +18,8 @@ import java.util.concurrent.Executors;
  * <p>
  * 使用 Spring {@link JdbcTemplate} 将缓存条目持久化到 {@code jaravel_cache} 表
  * （表名可通过 {@code CacheProperties#getDatabaseTable()} 配置），缓存值以 JSON 字符串存储。
- * 构造时会自动建表（若不存在），表结构如下：
+ * <b>不会自动建表</b>：需通过 {@code artisan cache:table} 命令或手动调用 {@link #createTable()} 创建表，
+ * 表结构如下：
  * <pre>
  * CREATE TABLE jaravel_cache (
  *   cache_key   VARCHAR(255) NOT NULL PRIMARY KEY,   -- 缓存键
@@ -57,6 +58,13 @@ public class DatabaseCacheDriver implements CacheDriver {
     private final ExecutorService expireCleaner;
 
     /**
+     * @return 缓存表名
+     */
+    public String getTable() {
+        return table;
+    }
+
+    /**
      * 构造数据库缓存驱动，使用默认表名 {@code jaravel_cache}。
      *
      * @param dataSource 数据源
@@ -80,7 +88,7 @@ public class DatabaseCacheDriver implements CacheDriver {
             t.setDaemon(true);
             return t;
         });
-        createTableIfNotExists();
+        // 不自动建表：需通过 artisan cache:table 命令或手动调用 createTable() 创建
     }
 
     @Override
@@ -263,15 +271,22 @@ public class DatabaseCacheDriver implements CacheDriver {
         return !isSqlServer();
     }
 
-    /** 自动建表（若不存在） */
-    private void createTableIfNotExists() {
+    /**
+     * 创建缓存表（若不存在）。
+     * <p>
+     * 由 {@code artisan cache:table} 命令调用，或由业务方手动调用。
+     * 自动适配 MySQL / PostgreSQL / SQLite / H2 / SQL Server 方言。
+     *
+     * @return true 表示建表成功或表已存在
+     */
+    public boolean createTable() {
         try {
             if (isSqlServer()) {
                 Integer cnt = jdbcTemplate.queryForObject(
                         "SELECT COUNT(*) FROM sys.tables WHERE name = ?", Integer.class, table);
                 if (cnt != null && cnt > 0) {
                     logger.info("[cache-db] 缓存表已存在: {}", table);
-                    return;
+                    return true;
                 }
             }
             String sql = "CREATE TABLE " + (supportsIfNotExists() ? "IF NOT EXISTS " : "")
@@ -282,9 +297,11 @@ public class DatabaseCacheDriver implements CacheDriver {
                     + (isMysql() ? ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4" : ")");
             logger.info("[cache-db] 创建缓存表: {}", sql);
             jdbcTemplate.execute(sql);
+            return true;
         } catch (Exception e) {
             // 并发建表或表已存在时可能抛异常，忽略
             logger.warn("[cache-db] 创建缓存表失败（可能已存在，忽略）: {}", e.getMessage());
+            return false;
         }
     }
 

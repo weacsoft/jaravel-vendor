@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -20,19 +21,24 @@ import javax.sql.DataSource;
  * <p>
  * 通过 {@code jaravel.queue.driver} 选择驱动：
  * <ul>
- *   <li>{@code database}（默认）：基于 {@link DataSource} 的 {@link DatabaseQueueDriver}</li>
+ *   <li>{@code sync}（默认）：内存队列，不创建 QueueDriver Bean，EventDispatcher 使用 QueueManager 内存队列</li>
+ *   <li>{@code database}：基于 {@link DataSource} 的 {@link DatabaseQueueDriver}</li>
  *   <li>{@code redis}：基于 {@link RedisManager} 的 {@link RedisQueueDriver}（由
  *       {@link RedisQueueAutoConfiguration} 注册，先于本类处理）</li>
  * </ul>
  * <b>自动回退</b>：当 {@code driver=redis} 但 {@code redis-config} 未引入或无 {@link RedisManager}
  * 时，本类的 database bean 会因 {@code @ConditionalOnMissingBean(QueueDriver.class)} 兜底创建，
  * 并打印回退告警，确保不硬依赖 redis。
+ * <p>
+ * <b>sync 模式</b>：当 {@code driver=sync}（默认）时，不创建任何 QueueDriver Bean，
+ * EventDispatcher 自动降级为内存队列（{@link com.weacsoft.jaravel.vendor.event.QueueManager}），
+ * 不会创建数据库表，无需额外配置。
  *
  * <p>配置项：
  * <pre>
  * jaravel:
  *   queue:
- *     driver: database                # database | redis
+ *     driver: sync                     # sync（默认）| database | redis
  *     redis-connection: ""            # redis 驱动连接名，空 = 默认连接
  *     failed-job-retention-days: 7    # 失败任务保留天数
  *     database:
@@ -49,6 +55,9 @@ import javax.sql.DataSource;
  * <p><b>注意</b>：worker 默认不自动启动。生产环境应通过 artisan 命令
  * {@code java -jar app.jar artisan queue:work} 启动 worker，
  * 或设置 {@code jaravel.queue.database.auto-start=true} 自动启动。
+ * <p>
+ * <b>建表</b>：使用 database 驱动前需先执行 {@code artisan queue:table} 创建 jobs/failed_jobs 表，
+ * 或手动调用 {@link DatabaseQueueDriver#createTable()}。
  */
 @AutoConfiguration
 @ConditionalOnClass(QueueDriver.class)
@@ -58,13 +67,15 @@ public class QueueDatabaseAutoConfiguration {
     private static final Logger logger = LoggerFactory.getLogger(QueueDatabaseAutoConfiguration.class);
 
     /**
-     * 数据库队列驱动 bean（默认驱动，亦是 redis 不可用时的回退驱动）。
+     * 数据库队列驱动 bean。
      * <p>
-     * 仅当尚无 {@link QueueDriver} bean 且存在 {@link DataSource} 时创建。
+     * 仅当 driver 不为 sync 且尚无 {@link QueueDriver} bean 且存在 {@link DataSource} 时创建。
+     * 当 driver=redis 但 RedisManager 不可用时，作为回退驱动自动创建。
      */
     @Bean
     @ConditionalOnMissingBean(QueueDriver.class)
     @ConditionalOnBean(DataSource.class)
+    @ConditionalOnExpression("'${jaravel.queue.driver:sync}' != 'sync'")
     @ConditionalOnProperty(prefix = "jaravel.queue.database", name = "enabled", havingValue = "true", matchIfMissing = true)
     public DatabaseQueueDriver databaseQueueDriver(DataSource dataSource,
                                                    QueueDatabaseProperties dbProps,

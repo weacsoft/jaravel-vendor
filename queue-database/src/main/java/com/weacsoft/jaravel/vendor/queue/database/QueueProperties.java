@@ -10,7 +10,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * <pre>
  * jaravel:
  *   queue:
- *     driver: database                # database 或 redis
+ *     driver: sync                   # sync（默认，内存队列）| database | redis
  *     redis-connection: ""            # redis 驱动使用的连接名，空 = 默认连接
  *     failed-job-retention-days: 7    # 失败任务保留天数（用于清理过期失败任务）
  *     database:
@@ -22,8 +22,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "jaravel.queue")
 public class QueueProperties {
 
-    /** 队列驱动：{@code database} 或 {@code redis} */
-    private String driver = "database";
+    /** 队列驱动：{@code sync}（默认，内存队列）、{@code database} 或 {@code redis} */
+    private String driver = "sync";
 
     /** Redis 驱动使用的连接名，空字符串表示使用默认连接 */
     private String redisConnection = "";

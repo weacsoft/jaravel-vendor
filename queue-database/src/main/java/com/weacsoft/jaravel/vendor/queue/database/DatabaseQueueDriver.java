@@ -27,9 +27,9 @@ import java.util.List;
  * 超过 {@code retryAfterSeconds}（默认 1800 秒 = 30 分钟）未被确认的任务会被重新预约。
  * 超过最大重试次数后通过 {@link #fail} 归档到 {@code failed_jobs} 表。
  *
- * <h3>自动建表</h3>
- * 构造时自动执行 {@code CREATE TABLE IF NOT EXISTS} 创建 {@code jobs} 与 {@code failed_jobs} 表，
- * 无需手动建表。若数据库账号无 DDL 权限则记录警告并跳过（需提前手动建表）。
+ * <h3>手动建表</h3>
+ * <b>不会自动建表</b>：需通过 {@code artisan queue:table} 命令或手动调用 {@link #createTable()} 创建
+ * {@code jobs} 与 {@code failed_jobs} 表。若数据库账号无 DDL 权限则需提前手动建表。
  *
  * <h3>数据库表结构</h3>
  * 对齐 Laravel {@code jobs} / {@code failed_jobs} 表：
@@ -115,11 +115,17 @@ public class DatabaseQueueDriver implements QueueDriver {
         this.failedTable = failedTable;
         this.retryAfterSeconds = retryAfterSeconds;
         this.failedJobRetentionDays = failedJobRetentionDays;
-        initSchema();
+        // 不自动建表：需通过 artisan queue:table 命令或手动调用 createTable() 创建
     }
 
-    /** 自动创建 jobs 与 failed_jobs 表（IF NOT EXISTS） */
-    private void initSchema() {
+    /**
+     * 创建任务表与失败任务表（IF NOT EXISTS）。
+     * <p>
+     * 由 {@code artisan queue:table} 命令调用，或由业务方手动调用。
+     *
+     * @return true 表示建表成功
+     */
+    public boolean createTable() {
         try {
             // 建表（不在 CREATE TABLE 内使用 INDEX，保证 SQLite/MySQL/H2 通用）
             jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS " + table + " (" +
@@ -159,10 +165,22 @@ public class DatabaseQueueDriver implements QueueDriver {
                     // 索引已存在或无权限，忽略
                 }
             }
-            logger.info("[queue-db] 自动建表完成: jobs={}, failed_jobs={}", table, failedTable);
+            logger.info("[queue-db] 建表完成: jobs={}, failed_jobs={}", table, failedTable);
+            return true;
         } catch (Exception e) {
-            logger.warn("[queue-db] 自动建表失败（请确认 DDL 权限或手动建表）: {}", e.getMessage());
+            logger.warn("[queue-db] 建表失败（请确认 DDL 权限或手动建表）: {}", e.getMessage());
+            return false;
         }
+    }
+
+    /** @return 任务表名 */
+    public String getTable() {
+        return table;
+    }
+
+    /** @return 失败任务表名 */
+    public String getFailedTable() {
+        return failedTable;
     }
 
     @Override

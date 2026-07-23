@@ -18,8 +18,11 @@
 
 | 驱动 | 实现类 | 依赖 | 失败队列存储 |
 | --- | --- | --- | --- |
-| `database`（默认） | `DatabaseQueueDriver` | `DataSource` | `failed_jobs` 表 |
+| `sync`（默认） | 内存队列（QueueManager） | 无 | 无 |
+| `database` | `DatabaseQueueDriver` | `DataSource` | `failed_jobs` 表 |
 | `redis` | `RedisQueueDriver` | `RedisManager`（redis-config） | `jaravel:queue:failed` List |
+
+**sync 模式（默认）**：当 `driver=sync` 时，不创建任何 `QueueDriver` Bean，`EventDispatcher` 自动降级为内存队列（`QueueManager`），不会创建数据库表，无需额外配置。对齐 Laravel 的 `sync` 队列驱动。
 
 **自动回退**：当 `driver=redis` 但未引入 `redis-config` 或容器中无 `RedisManager` 时，自动回退到 database 驱动并打印告警，确保不硬依赖 redis。
 
@@ -52,7 +55,7 @@ public interface QueueDriver {
 
 ### DatabaseQueueDriver
 
-数据库队列驱动实现。将任务持久化到 `jobs` 表，使用基于 `reserved_at` 的乐观锁实现多实例抢占式消费。失败任务归档到 `failed_jobs` 表。**构造时自动建表**（`CREATE TABLE IF NOT EXISTS`）。
+数据库队列驱动实现。将任务持久化到 `jobs` 表，使用基于 `reserved_at` 的乐观锁实现多实例抢占式消费。失败任务归档到 `failed_jobs` 表。**不会自动建表**：需通过 `artisan queue:table` 命令或手动调用 `createTable()` 方法创建表。
 
 ```java
 public class DatabaseQueueDriver implements QueueDriver {
@@ -141,7 +144,7 @@ public class DatabaseQueueDispatcher implements QueueDispatcher {
 ```yaml
 jaravel:
   queue:
-    driver: database                # database | redis
+    driver: sync                    # sync（默认，内存队列）| database | redis
     redis-connection: ""            # redis 驱动使用的连接名，空 = 默认连接
     failed-job-retention-days: 7    # 失败任务保留天数（用于清理过期失败任务）
     database:
@@ -161,7 +164,7 @@ jaravel:
 
 ### 数据库表结构
 
-`DatabaseQueueDriver` 构造时自动创建（`CREATE TABLE IF NOT EXISTS`），对齐 Laravel `jobs` / `failed_jobs` 表：
+需通过 `artisan queue:table` 命令创建（`CREATE TABLE IF NOT EXISTS`），对齐 Laravel `jobs` / `failed_jobs` 表：
 
 ```sql
 CREATE TABLE jobs (
@@ -185,6 +188,25 @@ CREATE TABLE failed_jobs (
   INDEX failed_jobs_queue_index (queue)
 );
 ```
+
+### artisan queue:table 命令
+
+使用 database 队列驱动前，需先执行建表命令：
+
+```bash
+java -jar app.jar artisan queue:table
+```
+
+该命令调用 `DatabaseQueueDriver.createTable()` 创建任务表和失败任务表（`CREATE TABLE IF NOT EXISTS`），并创建队列索引。也可手动调用 `createTable()` 方法：
+
+```java
+@Autowired
+private DatabaseQueueDriver queueDriver;
+
+queueDriver.createTable();  // 创建 jobs 和 failed_jobs 表
+```
+
+> **重要**：`DatabaseQueueDriver` **不会在构造时自动建表**。使用 database 队列驱动前，必须先执行 `artisan queue:table` 命令或手动调用 `createTable()` 方法。
 
 ## 使用示例
 
@@ -242,6 +264,7 @@ public void dispatchAsync(String queueName, Object listener, Object event) {
 
 - `RedisQueueAutoConfiguration`（先处理）：当 `redis-config` 在类路径、存在 `RedisManager` bean、`driver=redis` 时注册 `RedisQueueDriver`
 - `QueueDatabaseAutoConfiguration`：注册 `DatabaseQueueDriver`（默认 / 回退驱动）、`DatabaseQueueWorker`、`DatabaseQueueDispatcher`
+- 当 `driver=sync`（默认）时，不创建 `QueueDriver` Bean，`EventDispatcher` 使用内存队列（`QueueManager`），不会创建数据库表
 
 创建的 bean：
 - `QueueDriver`（`DatabaseQueueDriver` 或 `RedisQueueDriver`）— 队列驱动（`@ConditionalOnMissingBean`）

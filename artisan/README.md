@@ -167,7 +167,7 @@ artisan 模块内置 8 个代码生成命令，对齐 Laravel `php artisan make:
 |------|------|------|--------|--------|
 | `make:controller` | `make:controller {name} {--force}` | 生成 Controller 类 | `UserController` | `base-package.controller` |
 | `make:middleware` | `make:middleware {name} {--force}` | 生成 Middleware 类 | `AuthMiddleware` | `base-package.middleware` |
-| `make:model` | `make:model {name} {--force}` | 生成 Model 类 | `UserModel` | `base-package.model` |
+| `make:model` | `make:model {name} {--force}` | 生成 Model 类 | `User` | `base-package.model` |
 | `make:migration` | `make:migration {name} {--force}` | 生成 Migration 类 | `Migration_YYYY_MM_DD_Name` | `base-package.migration` |
 | `make:command` | `make:command {name} {--force}` | 生成 ArtisanCommand 类 | `SyncDataCommand` | `base-package.command` |
 | `make:event` | `make:event {name} {--force}` | 生成 Event 类 | `UserRegisteredEvent` | `base-package.event` |
@@ -177,9 +177,78 @@ artisan 模块内置 8 个代码生成命令，对齐 Laravel `php artisan make:
 ### 命名约定
 
 - 类名自动转为 PascalCase：`user_profile` → `UserProfile`，`user` → `User`
-- 若名称不含 `Controller`/`Middleware`/`Model` 等后缀，自动补全：`User` + `Controller` → `UserController`
+- 若名称不含 `Controller`/`Middleware` 等后缀，自动补全：`User` + `Controller` → `UserController`
 - Migration 类名固定格式 `Migration_YYYY_MM_DD_Name`（自动加当天日期前缀）
 - Listener 可通过 `--event=XXX` 指定监听的事件类型，不指定时使用占位类型 `YourEvent`
+
+### 生成代码结构
+
+#### make:controller
+生成的 Controller 自动包含 `@Controller` 注解并实现 `Controllers` 接口，包含 `index` 方法：
+
+```java
+@Controller
+public class UserController implements Controllers {
+    public Response index(Request request) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("message", "UserController ready");
+        return ResponseBuilder.json(data);
+    }
+}
+```
+
+#### make:middleware
+生成的 Middleware 自动包含 `@MiddlewareAlias` 注解并实现 `Middleware` 接口，`handle` 方法签名包含 `String... params` 参数：
+
+```java
+@MiddlewareAlias("auth")
+public class AuthMiddleware implements Middleware {
+    @Override
+    public Response handle(Request request, NextFunction next, String... params) {
+        Response response = next.apply(request);
+        return response;
+    }
+}
+```
+
+#### make:model
+生成的 Model 继承 `BaseModel`，自带 `@Repository`、`@Table`、`@Primary`、`@Column` 注解及 `find()`/`all()`/`query()` 静态查询方法，对齐 Laravel Eloquent：
+
+```java
+@Data
+@EqualsAndHashCode(callSuper = false)
+@Repository
+@Table(name = "users")
+public class User extends BaseModel<User, Long> {
+    @Primary
+    @Column(name = "id")
+    private Long id;
+
+    @Column(name = "created_at")
+    private String createdAt;
+
+    @Column(name = "updated_at")
+    private String updatedAt;
+
+    public static User find(Long id) { return BaseModel.find(User.class, id); }
+    public static List<User> all() { return BaseModel.all(User.class); }
+    public static QueryBuilder<User, Long> query() { return BaseModel.query(User.class); }
+}
+```
+
+#### make:listener
+生成的 Listener 自动包含 `@Component` 和 `@ListensTo` 注解，由 SpringBoot 自动扫描注册：
+
+```java
+@Component
+@ListensTo(UserRegisteredEvent.class)
+public class SendWelcomeEmailListener implements Listener<UserRegisteredEvent> {
+    @Override
+    public void handle(UserRegisteredEvent event) {
+        // TODO: 实现事件处理逻辑
+    }
+}
+```
 
 ### 使用示例
 
@@ -192,9 +261,9 @@ java -jar app.jar artisan make:controller User
 java -jar app.jar artisan make:middleware Auth
 # => AuthMiddleware.java → base-package.middleware
 
-# 生成 Model
+# 生成 Model（继承 BaseModel，自带 @Repository/@Table/@Primary/@Column 注解及静态查询方法）
 java -jar app.jar artisan make:model User
-# => UserModel.java → base-package.model
+# => User.java → base-package.model
 
 # 生成 Migration（自动加日期前缀）
 java -jar app.jar artisan make:migration create_users_table
@@ -215,6 +284,22 @@ java -jar app.jar artisan make:listener SendWelcomeEmail --event=UserRegisteredE
 # 一键生成全部
 java -jar app.jar artisan make:all User
 ```
+
+### 其他 artisan 命令
+
+除 `make:xxx` 系列外，以下模块也注册了 artisan 命令：
+
+| 命令 | 模块 | 说明 |
+|------|------|------|
+| `migrate` | migration | 执行数据库迁移 |
+| `migrate:rollback` | migration | 回滚最近一批迁移 |
+| `migrate:reset` | migration | 回滚所有迁移 |
+| `migrate:refresh` | migration | 回滚所有并重新迁移 |
+| `migrate:status` | migration | 查看迁移状态 |
+| `cache:table` | cache | 创建数据库缓存表（使用 database 缓存驱动前需执行） |
+| `queue:table` | queue-database | 创建队列任务表和失败任务表（使用 database 队列驱动前需执行） |
+
+> **注意**：cache 和 queue 模块**不会自动创建数据库表**。使用 database 缓存驱动或 database 队列驱动前，必须先执行对应的 `cache:table` 或 `queue:table` 命令建表，或手动调用 `createTable()` 方法。
 
 ### 配置说明
 
@@ -244,7 +329,7 @@ $ java -jar app.jar artisan make:all User
 
   [+] Controller created: com/example/app/controller/UserController.java
   [+] Middleware created: com/example/app/middleware/UserMiddleware.java
-  [+] Model created: com/example/app/model/UserModel.java
+  [+] Model created: com/example/app/model/User.java
   [+] Migration created: com/example/app/migration/Migration_2024_01_01_User.java
   [+] Command created: com/example/app/command/UserCommand.java
   [+] Event created: com/example/app/event/UserEvent.java

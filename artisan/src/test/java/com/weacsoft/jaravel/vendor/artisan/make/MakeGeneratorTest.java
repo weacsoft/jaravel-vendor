@@ -80,11 +80,13 @@ class MakeGeneratorTest {
         Path file = Paths.get(path);
         assertTrue(Files.exists(file), "Controller 文件应存在");
 
-        // 验证内容包含 package / class / implements
+        // 验证内容包含 package / class / implements / @Controller
         String content = Files.readString(file, StandardCharsets.UTF_8);
         assertTrue(content.contains("package com.example.test.controller;"), "应包含 package 声明");
         assertTrue(content.contains("public class UserController"), "应包含 class 声明");
-        assertTrue(content.contains("implements Controllers.Runner"), "应 implements Controllers.Runner");
+        assertTrue(content.contains("implements Controllers"), "应 implements Controllers");
+        assertTrue(content.contains("@Controller"), "应包含 @Controller 注解");
+        assertTrue(content.contains("public Response index(Request request)"), "应包含 index 方法");
     }
 
     @Test
@@ -98,6 +100,8 @@ class MakeGeneratorTest {
         assertTrue(content.contains("package com.example.test.middleware;"), "应包含 package 声明");
         assertTrue(content.contains("public class AuthMiddleware"), "应包含 class 声明");
         assertTrue(content.contains("implements Middleware"), "应 implements Middleware");
+        assertTrue(content.contains("@MiddlewareAlias"), "应包含 @MiddlewareAlias 注解");
+        assertTrue(content.contains("String... params"), "handle 方法应包含 String... params 参数");
     }
 
     @Test
@@ -109,7 +113,14 @@ class MakeGeneratorTest {
 
         String content = Files.readString(file, StandardCharsets.UTF_8);
         assertTrue(content.contains("package com.example.test.model;"), "应包含 package 声明");
-        assertTrue(content.contains("public class UserModel"), "应包含 class 声明");
+        assertTrue(content.contains("public class User"), "应包含 class 声明");
+        assertTrue(content.contains("extends BaseModel<User, Long>"), "应继承 BaseModel");
+        assertTrue(content.contains("@Repository"), "应包含 @Repository");
+        assertTrue(content.contains("@Table(name = \"users\")"), "应包含 @Table");
+        assertTrue(content.contains("@Primary"), "应包含 @Primary");
+        assertTrue(content.contains("@Column(name = \"id\")"), "应包含 @Column");
+        assertTrue(content.contains("public static User find(Long id)"), "应包含静态 find 方法");
+        assertTrue(content.contains("public static List<User> all()"), "应包含静态 all 方法");
     }
 
     @Test
@@ -168,6 +179,8 @@ class MakeGeneratorTest {
         assertTrue(content.contains("package com.example.test.listener;"), "应包含 package 声明");
         assertTrue(content.contains("public class SendWelcomeEmailListener"), "应包含 class 声明");
         assertTrue(content.contains("implements Listener<UserRegisteredEvent>"), "应 implements Listener<UserRegisteredEvent>");
+        assertTrue(content.contains("@Component"), "应包含 @Component 注解");
+        assertTrue(content.contains("@ListensTo(UserRegisteredEvent.class)"), "应包含 @ListensTo 注解");
     }
 
     // ==================== force 覆盖测试 ====================

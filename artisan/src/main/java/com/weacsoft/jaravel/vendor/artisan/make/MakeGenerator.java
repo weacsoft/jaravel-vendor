@@ -61,21 +61,22 @@ public final class MakeGenerator {
                 "import com.weacsoft.jaravel.vendor.http.controller.Controllers;\n" +
                 "import com.weacsoft.jaravel.vendor.http.controller.request.Request;\n" +
                 "import com.weacsoft.jaravel.vendor.http.controller.response.Response;\n" +
-                "import com.weacsoft.jaravel.vendor.http.controller.response.ResponseBuilder;\n\n" +
+                "import com.weacsoft.jaravel.vendor.http.controller.response.ResponseBuilder;\n" +
+                "import org.springframework.stereotype.Controller;\n\n" +
                 "import java.util.HashMap;\n" +
                 "import java.util.Map;\n\n" +
                 "/**\n" +
-                " * " + className + " 控制器。\n" +
+                " * " + className + " 控制器，对齐 Laravel Controller。\n" +
                 " * <p>\n" +
-                " * 在路由中注册：\n" +
+                " * 在路由中通过字符串引用注册：\n" +
                 " * <pre>\n" +
-                " * Router.get(\"/users\", " + className + "::index);\n" +
-                " * Router.post(\"/users\", " + className + "::store);\n" +
+                " * router.get(\"/users\", \"" + className + "::index\");\n" +
+                " * router.post(\"/users\", \"" + className + "::store\");\n" +
                 " * </pre>\n" +
                 " */\n" +
-                "public class " + className + " implements Controllers.Runner {\n\n" +
-                "    @Override\n" +
-                "    public Response handle(Request request) {\n" +
+                "@Controller\n" +
+                "public class " + className + " implements Controllers {\n\n" +
+                "    public Response index(Request request) {\n" +
                 "        Map<String, Object> data = new HashMap<>();\n" +
                 "        data.put(\"message\", \"" + className + " ready\");\n" +
                 "        return ResponseBuilder.json(data);\n" +
@@ -96,21 +97,25 @@ public final class MakeGenerator {
     }
 
     private static String buildMiddlewareSource(String packageName, String className) {
+        String aliasName = toSnakeCase(className).replaceAll("_middleware$", "");
         return "package " + packageName + ";\n\n" +
                 "import com.weacsoft.jaravel.vendor.http.middleware.Middleware;\n" +
                 "import com.weacsoft.jaravel.vendor.http.controller.request.Request;\n" +
-                "import com.weacsoft.jaravel.vendor.http.controller.response.Response;\n\n" +
+                "import com.weacsoft.jaravel.vendor.http.controller.response.Response;\n" +
+                "import com.weacsoft.jaravel.vendor.springboot.annotation.MiddlewareAlias;\n\n" +
                 "/**\n" +
-                " * " + className + " 中间件。\n" +
+                " * " + className + " 中间件，对齐 Laravel Middleware。\n" +
                 " * <p>\n" +
-                " * 在路由中注册：\n" +
+                " * 标注 {@code @MiddlewareAlias} 后由 SpringBoot classpath 扫描自动注册，\n" +
+                " * 路由中通过字符串别名引用：\n" +
                 " * <pre>\n" +
-                " * Router.middleware(\"" + toSnakeCase(className) + "\", " + className + ".class);\n" +
+                " * router.group(Map.of(), g -> { ... }).middleware(\"" + aliasName + "\");\n" +
                 " * </pre>\n" +
                 " */\n" +
+                "@MiddlewareAlias(\"" + aliasName + "\")\n" +
                 "public class " + className + " implements Middleware {\n\n" +
                 "    @Override\n" +
-                "    public Response handle(Request request, NextFunction next) {\n" +
+                "    public Response handle(Request request, NextFunction next, String... params) {\n" +
                 "        // 前置处理：在请求到达控制器前执行\n" +
                 "        // TODO: 添加中间件逻辑\n\n" +
                 "        Response response = next.apply(request);\n\n" +
@@ -125,36 +130,58 @@ public final class MakeGenerator {
 
     /**
      * 生成 Model 类。
+     * <p>
+     * 生成的 Model 继承 {@code BaseModel}，自带 {@code @Repository}、{@code @Table}、
+     * {@code @Primary}、{@code @Column} 注解及静态查询方法，对齐 Laravel Eloquent 用法。
      */
     public static String generateModel(MakeCodeProperties properties, String name, boolean force) throws IOException {
-        String className = ensureSuffix(name, "Model");
+        String className = toPascalCase(name);
         String packageName = properties.getBasePackage() + ".model";
         String content = buildModelSource(packageName, className);
         return writeJavaFile(properties.getOutputDir(), packageName, className, content, force);
     }
 
     private static String buildModelSource(String packageName, String className) {
+        String tableName = toSnakeCase(className) + "s";
         return "package " + packageName + ";\n\n" +
-                "import java.time.LocalDateTime;\n\n" +
+                "import com.weacsoft.jaravel.vendor.database.BaseModel;\n" +
+                "import gaarason.database.annotation.Column;\n" +
+                "import gaarason.database.annotation.Primary;\n" +
+                "import gaarason.database.annotation.Table;\n" +
+                "import gaarason.database.query.QueryBuilder;\n" +
+                "import gaarason.database.record.Record;\n" +
+                "import lombok.Data;\n" +
+                "import lombok.EqualsAndHashCode;\n" +
+                "import org.springframework.stereotype.Repository;\n\n" +
+                "import java.util.List;\n\n" +
                 "/**\n" +
-                " * " + className + " 模型。\n" +
+                " * " + className + " 模型，对齐 Laravel Eloquent。\n" +
                 " * <p>\n" +
-                " * 对应数据库表：{@code " + toSnakeCase(className) + "s}\n" +
+                " * 对应数据库表：{@code " + tableName + "}\n" +
                 " */\n" +
-                "public class " + className + " {\n\n" +
-                "    /** 主键 ID */\n" +
+                "@Data\n" +
+                "@EqualsAndHashCode(callSuper = false)\n" +
+                "@Repository\n" +
+                "@Table(name = \"" + tableName + "\")\n" +
+                "public class " + className + " extends BaseModel<" + className + ", Long> {\n\n" +
+                "    @Primary\n" +
+                "    @Column(name = \"id\")\n" +
                 "    private Long id;\n\n" +
                 "    // TODO: 添加业务字段\n\n" +
-                "    /** 创建时间 */\n" +
-                "    private LocalDateTime createdAt;\n\n" +
-                "    /** 更新时间 */\n" +
-                "    private LocalDateTime updatedAt;\n\n" +
-                "    public Long getId() { return id; }\n" +
-                "    public void setId(Long id) { this.id = id; }\n\n" +
-                "    public LocalDateTime getCreatedAt() { return createdAt; }\n" +
-                "    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }\n\n" +
-                "    public LocalDateTime getUpdatedAt() { return updatedAt; }\n" +
-                "    public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }\n" +
+                "    @Column(name = \"created_at\")\n" +
+                "    private String createdAt;\n\n" +
+                "    @Column(name = \"updated_at\")\n" +
+                "    private String updatedAt;\n\n" +
+                "    // ==================== 静态查询方法 ====================\n\n" +
+                "    public static " + className + " find(Long id) {\n" +
+                "        return BaseModel.find(" + className + ".class, id);\n" +
+                "    }\n\n" +
+                "    public static List<" + className + "> all() {\n" +
+                "        return BaseModel.all(" + className + ".class);\n" +
+                "    }\n\n" +
+                "    public static QueryBuilder<" + className + ", Long> query() {\n" +
+                "        return BaseModel.query(" + className + ".class);\n" +
+                "    }\n" +
                 "}\n";
     }
 
@@ -291,13 +318,25 @@ public final class MakeGenerator {
     private static String buildListenerSource(String packageName, String className, String eventType, String eventImport) {
         return "package " + packageName + ";\n\n" +
                 "import com.weacsoft.jaravel.vendor.event.Listener;\n" +
+                "import com.weacsoft.jaravel.vendor.event.ListensTo;\n" +
+                "import org.springframework.stereotype.Component;\n" +
                 eventImport +
                 "\n" +
                 "/**\n" +
-                " * " + className + " 监听器。\n" +
+                " * " + className + " 监听器，对齐 Laravel Listener。\n" +
                 " * <p>\n" +
+                " * 标注 {@code @Component} + {@code @ListensTo} 后由 SpringBoot 自动扫描注册，\n" +
                 " * 监听 {@link " + eventType + "} 事件。\n" +
+                " * <p>\n" +
+                " * 如需异步队列执行，实现 {@code ShouldQueue} 接口：\n" +
+                " * <pre>\n" +
+                " * public class " + className + " implements Listener<" + eventType + ">, ShouldQueue {\n" +
+                " *     &#64;Override public String queue() { return \"emails\"; }\n" +
+                " * }\n" +
+                " * </pre>\n" +
                 " */\n" +
+                "@Component\n" +
+                "@ListensTo(" + eventType + ".class)\n" +
                 "public class " + className + " implements Listener<" + eventType + "> {\n\n" +
                 "    @Override\n" +
                 "    public void handle(" + eventType + " event) {\n" +

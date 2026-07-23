@@ -1,1 +1,2 @@
 com.weacsoft.jaravel.vendor.cache.autoconfigure.CacheAutoConfiguration
+com.weacsoft.jaravel.vendor.cache.autoconfigure.CacheArtisanAutoConfiguration
