@@ -3,6 +3,7 @@ package com.weacsoft.jaravel.vendor.migration.autoconfigure;
 import com.weacsoft.jaravel.vendor.artisan.ArtisanCommand;
 import com.weacsoft.jaravel.vendor.artisan.make.MakeCodeProperties;
 import com.weacsoft.jaravel.vendor.migration.ReverseModelGenerator;
+import com.weacsoft.jaravel.vendor.migration.artisan.MakeModelFromMigrationCommand;
 import com.weacsoft.jaravel.vendor.migration.artisan.MakeModelFromTableCommand;
 import com.weacsoft.jaravel.vendor.migration.artisan.MigrateCommand;
 import com.weacsoft.jaravel.vendor.migration.artisan.MigrateRefreshCommand;
@@ -29,7 +30,7 @@ import javax.sql.DataSource;
  * Artisan 命令 Bean，使开发者可通过 {@code artisan.call("migrate")} 等方式
  * 在代码中调用迁移命令，或通过命令行 {@code java -jar app.jar artisan migrate} 执行。
  * 当 {@link MakeCodeProperties} 可用时，额外注册 {@code make:model-from-table}
- * 反向工程命令。
+ * 和 {@code make:model-from-migration} 反向工程命令。
  * <p>
  * 注册的命令：
  * <ul>
@@ -39,6 +40,7 @@ import javax.sql.DataSource;
  *   <li>{@code migrate:refresh}            — 回滚全部并重新迁移</li>
  *   <li>{@code migrate:status}             — 查看迁移状态</li>
  *   <li>{@code make:model-from-table}      — 从数据库表反向生成 Model 类</li>
+ *   <li>{@code make:model-from-migration}  — 从迁移 Java 文件生成 Model 类</li>
  * </ul>
  * <p>
  * 这些命令委托给 {@link MigrationExecutor} 执行，与 {@link MigrationRunner}
@@ -93,5 +95,12 @@ public class MigrationArtisanAutoConfiguration {
     public MakeModelFromTableCommand makeModelFromTableCommand(ReverseModelGenerator generator, MakeCodeProperties properties) {
         log.info("[migration-artisan] 注册命令: make:model-from-table");
         return new MakeModelFromTableCommand(generator, properties);
+    }
+
+    @Bean
+    @ConditionalOnBean(MakeCodeProperties.class)
+    public MakeModelFromMigrationCommand makeModelFromMigrationCommand(ReverseModelGenerator generator, MakeCodeProperties properties) {
+        log.info("[migration-artisan] 注册命令: make:model-from-migration");
+        return new MakeModelFromMigrationCommand(generator, properties);
     }
 }

@@ -3,7 +3,9 @@
 > Module: `migration` | Package: `com.weacsoft.jaravel.vendor.migration` | Version: 0.1.2
 
 ## Overview
-migration 模块提供 Laravel 风格的数据库迁移系统，包含 Blueprint（流式建表蓝图）、Schema（DDL 执行器，支持 MySQL/SQLite/H2/SQL Server 多方言）、Migrator（迁移引擎，支持 migrate/rollback/reset/refresh/status）、MigrationScanner（五种迁移源加载：DIRECTORY 内存编译/DIRECTORY_CLASSES 预编译 class 加载/PACKAGED 预编译 zip 包加载/JAR 加载/CLASSPATH 扫描）、MigrationPrecompiler（预编译工具，开发阶段将 .java 迁移文件预编译为字节码，支持打包为 zip 或散乱 class 输出）、MigrationRepository（迁移记录仓库）、MigrationExecutor（核心执行器，无 SpringBoot 依赖，SpringBoot 环境下注册为 Bean 供 Artisan 命令共享）、MigrationCLI（独立命令行入口）、MigrationPrecompilerMain（预编译命令行工具）、JdbcExecutor（轻量 JDBC 执行器，替代 JdbcTemplate）和 MigrationRunner（SpringBoot 适配器）。当 classpath 中同时存在 artisan 模块时，MigrationArtisanAutoConfiguration 自动注册 5 个迁移命令（migrate、migrate:rollback、migrate:reset、migrate:refresh、migrate:status）为 ArtisanCommand Bean，使开发者可通过 `artisan.call("migrate")` 在代码中调用迁移命令，或通过 `java -jar app.jar artisan migrate` 在命令行执行。迁移文件通过 @MigrationAnnotation 标记，运行时编译/加载、反射实例化、执行后自动释放。核心逻辑完全独立于 SpringBoot，可通过 MigrationCLI 在纯 Java 环境中运行。JDK 不可用时提供 4 种解决方案的错误提示。
+migration 模块提供 Laravel 风格的数据库迁移系统，包含 Blueprint（流式建表蓝图）、Schema（DDL 执行器，支持 MySQL/SQLite/H2/SQL Server 多方言）、Migrator（迁移引擎，支持 migrate/rollback/reset/refresh/status）、MigrationScanner（五种迁移源加载：DIRECTORY 内存编译/DIRECTORY_CLASSES 预编译 class 加载/PACKAGED 预编译 zip 包加载/JAR 加载/CLASSPATH 扫描）、MigrationPrecompiler（预编译工具，开发阶段将 .java 迁移文件预编译为字节码，支持打包为 zip 或散乱 class 输出）、MigrationRepository（迁移记录仓库）、MigrationExecutor（核心执行器，无 SpringBoot 依赖，SpringBoot 环境下注册为 Bean 供 Artisan 命令共享）、MigrationCLI（独立命令行入口）、MigrationPrecompilerMain（预编译命令行工具）、JdbcExecutor（轻量 JDBC 执行器，替代 JdbcTemplate）和 MigrationRunner（SpringBoot 适配器）。当 classpath 中同时存在 artisan 模块时，MigrationArtisanAutoConfiguration 自动注册 7 个命令（migrate、migrate:rollback、migrate:reset、migrate:refresh、migrate:status、make:model-from-table、make:model-from-migration）为 ArtisanCommand Bean，使开发者可通过 `artisan.call("migrate")` 在代码中调用迁移命令，或通过 `java -jar app.jar artisan migrate` 在命令行执行。迁移文件通过 @MigrationAnnotation 标记，运行时编译/加载、反射实例化、执行后自动释放。核心逻辑完全独立于 SpringBoot，可通过 MigrationCLI 在纯 Java 环境中运行。JDK 不可用时提供 4 种解决方案的错误提示。
+
+此外，模块提供两种 Model 反向生成能力：`make:model-from-table` 通过 JDBC 连接数据库读取表结构生成 Model 类；`make:model-from-migration` 通过解析迁移 Java 文件中的 Schema.create()/Schema.table() 调用提取表结构定义，无需连接数据库即可生成 Model 类。两种方式均支持类型映射、主键标注和软删除检测。
 
 ## Package Structure
 
@@ -11,11 +13,11 @@ migration 模块提供 Laravel 风格的数据库迁移系统，包含 Blueprint
 
 | 子包 | 类 |
 |------|-----|
-| `com.weacsoft.jaravel.vendor.migration`（根包） | `Migration`, `Schema`, `MigrationAnnotation`, `Blueprint`, `ColumnDefinition`, `ForeignKeyDefinition`, `JdbcExecutor`, `MigrationGenerator`, `MigrationCLI`, `TableMigrator` |
+| `com.weacsoft.jaravel.vendor.migration`（根包） | `Migration`, `Schema`, `CapturingSchema`, `MigrationAnnotation`, `Blueprint`, `ColumnDefinition`, `ForeignKeyDefinition`, `JdbcExecutor`, `MigrationGenerator`, `MigrationCLI`, `TableMigrator`, `ParsedTable`, `ParsedColumn`, `MigrationFileParser`, `ReverseModelGenerator` |
 | `com.weacsoft.jaravel.vendor.migration.dialect` | `Dialect`, `AbstractDialect`, `DialectFactory`, `MysqlDialect`, `H2Dialect`, `SqliteDialect`, `SqlServerDialect`, `PostgresqlDialect`, `OracleDialect` |
 | `com.weacsoft.jaravel.vendor.migration.engine` | `Migrator`, `MigrationExecutor`, `MigrationRunner`, `MigrationScanner`, `MigrationPrecompiler`, `MigrationPrecompilerMain`, `MigrationRepository`, `MigrationSource` |
 | `com.weacsoft.jaravel.vendor.migration.autoconfigure` | `MigrationAutoConfiguration`, `MigrationArtisanAutoConfiguration`, `MigrationProperties` |
-| `com.weacsoft.jaravel.vendor.migration.artisan` | `MigrateCommand`, `MigrateRollbackCommand`, `MigrateResetCommand`, `MigrateRefreshCommand`, `MigrateStatusCommand` |
+| `com.weacsoft.jaravel.vendor.migration.artisan` | `MigrateCommand`, `MigrateRollbackCommand`, `MigrateResetCommand`, `MigrateRefreshCommand`, `MigrateStatusCommand`, `MakeModelFromTableCommand`, `MakeModelFromMigrationCommand` |
 
 ## Classes & Interfaces
 
@@ -554,7 +556,7 @@ executor.execute("migrate");
 ### MigrationArtisanAutoConfiguration
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.migration.autoconfigure`
-- **Description**: 迁移模块与 Artisan CLI 的集成自动装配。当 classpath 中同时存在 `ArtisanCommand`（artisan 模块）和 `MigrationExecutor`（migration 模块）时，自动注册 5 个迁移命令为 Artisan 命令 Bean，使开发者可通过 `artisan.call("migrate")` 在代码中调用迁移命令，或通过 `java -jar app.jar artisan migrate` 在命令行执行。这些命令委托给 `MigrationExecutor` 执行，与 `MigrationRunner` 共享同一个 `MigrationExecutor` Bean 实例。
+- **Description**: 迁移模块与 Artisan CLI 的集成自动装配。当 classpath 中同时存在 `ArtisanCommand`（artisan 模块）和 `MigrationExecutor`（migration 模块）时，自动注册 7 个命令为 Artisan 命令 Bean，使开发者可通过 `artisan.call("migrate")` 在代码中调用迁移命令，或通过 `java -jar app.jar artisan migrate` 在命令行执行。这些命令委托给 `MigrationExecutor` 执行，与 `MigrationRunner` 共享同一个 `MigrationExecutor` Bean 实例。当 `MakeCodeProperties` 可用时，额外注册 `make:model-from-table` 和 `make:model-from-migration` 反向工程命令。
 - **Annotations**: `@AutoConfiguration`, `@AutoConfigureAfter(MigrationAutoConfiguration.class)`, `@ConditionalOnClass(ArtisanCommand.class)`, `@ConditionalOnBean(MigrationExecutor.class)`
 
 #### Registered Commands
@@ -566,6 +568,8 @@ executor.execute("migrate");
 | `migrate:reset` | `migrate:reset` | 回滚所有迁移 |
 | `migrate:refresh` | `migrate:refresh` | 回滚所有迁移并重新执行 |
 | `migrate:status` | `migrate:status` | 查看迁移状态 |
+| `make:model-from-table` | `make:model-from-table {table} {--force}` | 从数据库表反向生成 Model 类（需 MakeCodeProperties） |
+| `make:model-from-migration` | `make:model-from-migration {table?} {--all} {--force}` | 从迁移 Java 文件生成 Model 类（需 MakeCodeProperties，无需数据库） |
 
 #### Usage Example
 ```java
@@ -583,6 +587,9 @@ public void runMigrations() {
 // java -jar app.jar artisan migrate
 // java -jar app.jar artisan migrate:rollback --step=5
 // java -jar app.jar artisan migrate:status
+// java -jar app.jar artisan make:model-from-table users
+// java -jar app.jar artisan make:model-from-migration users
+// java -jar app.jar artisan make:model-from-migration --all
 ```
 
 ---
@@ -696,3 +703,173 @@ java -cp migration.jar:utils.jar \
 | `queryForObject` | `String sql, Class<T> requiredType, Object... args` | `<T> T` | 查询单个值 |
 | `queryForList` | `String sql, Class<T> elementType, Object... args` | `<T> List<T>` | 查询单列值列表 |
 | `queryForMapList` | `String sql, Object... args` | `List<Map<String, Object>>` | 查询多列结果集 |
+
+---
+
+### ReverseModelGenerator
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.migration`
+- **Description**: 反向工程 Model 生成器，从表结构生成 Model Java 源文件。支持两种数据来源：数据库表（通过 JDBC DatabaseMetaData 读取）和迁移文件（从 ParsedTable 读取，由 MigrationFileParser 解析）。两种方式均生成继承 BaseModel 的 Model 类，对齐 Laravel 的 `php artisan make:model` 反向生成能力。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `ReverseModelGenerator` | `DataSource dataSource` | 构造方法 | 创建生成器（迁移文件模式可传 null） |
+| `generate` | `String tableName, String basePackage, String outputDir, boolean force` | `String` | 从数据库表生成 Model（返回文件路径） |
+| `generateFromParsedTable` | `ParsedTable table, String basePackage, String outputDir, boolean force` | `String` | 从迁移文件解析的表定义生成 Model（返回文件路径） |
+| `mapSqlTypeToJava` | `ColumnInfo col, boolean isPrimary` | `String` | SQL 类型映射为 Java 类型 |
+| `mapMigrationTypeToJava` | `String migrationType, boolean isPrimary` | `String` | 迁移类型名称映射为 Java 类型 |
+
+#### Usage Example
+```java
+// 方式一：从数据库表生成（需 DataSource）
+ReverseModelGenerator generator = new ReverseModelGenerator(dataSource);
+String path = generator.generate("users", "com.example.app", "src/main/java", false);
+
+// 方式二：从迁移文件解析的表定义生成（无需 DataSource）
+MigrationFileParser parser = new MigrationFileParser();
+ParsedTable table = parser.findTable("database/migrations", "users");
+ReverseModelGenerator generator = new ReverseModelGenerator(null);
+String path = generator.generateFromParsedTable(table, "com.example.app", "src/main/java", false);
+```
+
+---
+
+### CapturingSchema
+- **Type**: class (extends `Schema`)
+- **Package**: `com.weacsoft.jaravel.vendor.migration`
+- **Description**: 捕获型 Schema，用于从迁移文件中提取表结构定义而不实际执行 SQL。继承 Schema，重写 `create()` 和 `table()` 方法，将 Blueprint 定义捕获到列表中。在 MigrationFileParser 中使用，将此 Schema 传入迁移类的 `up()` 方法，执行后通过 `getBlueprints()` 获取所有表定义。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `CapturingSchema` | 无 | 构造方法 | 创建捕获型 Schema（不连接数据库） |
+| `create` | `String table, Consumer<Blueprint> definition` | `void` | 捕获 CREATE TABLE 定义（重写，不执行 SQL） |
+| `table` | `String table, Consumer<Blueprint> definition` | `void` | 捕获 ALTER TABLE 定义（重写，不执行 SQL） |
+| `dropIfExists` | `String table` | `void` | 空实现 |
+| `drop` | `String table` | `void` | 空实现 |
+| `rename` | `String from, String to` | `void` | 空实现 |
+| `hasTable` | `String table` | `boolean` | 空实现，返回 false |
+| `hasColumn` | `String table, String column` | `boolean` | 空实现，返回 false |
+| `getBlueprints` | 无 | `List<Blueprint>` | 获取所有捕获的 Blueprint |
+| `clear` | 无 | `void` | 清除已捕获的 Blueprint |
+
+#### Usage Example
+```java
+CapturingSchema schema = new CapturingSchema();
+migration.up(schema);  // 执行迁移的 up() 方法，表定义被捕获
+List<Blueprint> blueprints = schema.getBlueprints();
+```
+
+---
+
+### ParsedTable
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.migration`
+- **Description**: 从迁移文件解析出的表结构定义。由 MigrationFileParser 在执行迁移 `up()` 方法后，从 CapturingSchema 捕获的 Blueprint 转换而来。多个迁移对同一张表的定义会合并：`create()` 建立初始定义，后续 `table()` 追加的列会合并进来（同名列覆盖）。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `ParsedTable` | `String tableName` | 构造方法 | 创建解析表定义 |
+| `getTableName` | 无 | `String` | 获取表名 |
+| `addColumn` | `ParsedColumn column` | `void` | 添加或覆盖列定义（同名列覆盖） |
+| `getColumns` | 无 | `List<ParsedColumn>` | 获取所有列定义（保持插入顺序） |
+| `getPrimaryKeyColumn` | 无 | `String` | 获取主键列名（取第一个 primary 列），无主键返回 null |
+| `hasSoftDeletes` | 无 | `boolean` | 检查是否包含 deleted_at 列（软删除标记） |
+| `columnCount` | 无 | `int` | 获取列数量 |
+
+---
+
+### ParsedColumn
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.migration`
+- **Description**: 从迁移文件解析出的列定义。由 MigrationFileParser 从 ColumnDefinition 转换而来，保存列名、迁移类型名称及修饰符信息，供 ReverseModelGenerator 映射为 Java 类型并生成 Model 字段。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `ParsedColumn` | `String name, String migrationType, boolean nullable, boolean primary, boolean unique, boolean autoIncrement, boolean unsigned, Integer length, Integer precision, Integer scale, String comment` | 构造方法 | 创建解析列定义 |
+| `from` | `ColumnDefinition col` | `ParsedColumn` | 静态工厂方法，从 ColumnDefinition 创建 ParsedColumn |
+| `getName` | 无 | `String` | 获取列名 |
+| `getMigrationType` | 无 | `String` | 获取迁移类型名称（如 "bigInteger"、"string"） |
+| `isNullable` | 无 | `boolean` | 是否可空 |
+| `isPrimary` | 无 | `boolean` | 是否主键 |
+| `isUnique` | 无 | `boolean` | 是否唯一索引 |
+| `isAutoIncrement` | 无 | `boolean` | 是否自增 |
+| `isUnsigned` | 无 | `boolean` | 是否无符号 |
+| `getLength` | 无 | `Integer` | 获取长度（可为 null） |
+| `getPrecision` | 无 | `Integer` | 获取精度（可为 null） |
+| `getScale` | 无 | `Integer` | 获取标度（可为 null） |
+| `getComment` | 无 | `String` | 获取列注释（可为 null） |
+
+---
+
+### MigrationFileParser
+- **Type**: class
+- **Package**: `com.weacsoft.jaravel.vendor.migration`
+- **Description**: 迁移文件解析器，从迁移 Java 文件中提取表结构定义。通过 MigrationScanner 编译迁移 .java 文件（或从 classpath 加载），然后使用 CapturingSchema 执行每个迁移的 up() 方法，捕获 Blueprint 中的列定义，转换为 ParsedTable 结构。无需连接数据库，适用于开发阶段、CI/CD 和代码审查场景。
+
+#### Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `parseAll` | `String migrationDir` | `Map<String, ParsedTable>` | 解析指定目录下所有迁移文件，返回表名到表定义的映射 |
+| `findTable` | `String migrationDir, String tableName` | `ParsedTable` | 在迁移文件中查找特定表的定义（未找到返回 null） |
+| `listTables` | `String migrationDir` | `List<String>` | 获取迁移文件中定义的所有表名列表（排序后） |
+
+#### Usage Example
+```java
+MigrationFileParser parser = new MigrationFileParser();
+
+// 解析所有迁移文件
+Map<String, ParsedTable> tables = parser.parseAll("database/migrations");
+
+// 查找特定表
+ParsedTable usersTable = parser.findTable("database/migrations", "users");
+
+// 列出所有表名
+List<String> tableNames = parser.listTables("database/migrations");
+```
+
+---
+
+### MakeModelFromTableCommand
+- **Type**: class (extends `ArtisanCommand`)
+- **Package**: `com.weacsoft.jaravel.vendor.migration.artisan`
+- **Description**: Artisan 命令 `make:model-from-table`，从数据库表反向生成 Model 类。通过 JDBC 读取表结构，由 ReverseModelGenerator 生成包含字段注解、主键标注、软删除检测的 Model Java 源文件。
+- **Signature**: `make:model-from-table {table} {--force}`
+
+#### Usage Example
+```bash
+# 从数据库表生成 Model
+java -jar app.jar artisan make:model-from-table users
+
+# 强制覆盖
+java -jar app.jar artisan make:model-from-table users --force
+```
+
+---
+
+### MakeModelFromMigrationCommand
+- **Type**: class (extends `ArtisanCommand`)
+- **Package**: `com.weacsoft.jaravel.vendor.migration.artisan`
+- **Description**: Artisan 命令 `make:model-from-migration`，从迁移 Java 文件生成 Model 类。通过 MigrationFileParser 解析迁移文件中的表结构定义（无需连接数据库），再由 ReverseModelGenerator 生成包含字段注解、主键标注、软删除检测的 Model Java 源文件。与 `make:model-from-table`（从数据库表反向生成）互补。
+- **Signature**: `make:model-from-migration {table?} {--all} {--force}`
+
+#### Usage Example
+```bash
+# 为指定表生成 Model（从迁移文件解析，无需数据库）
+java -jar app.jar artisan make:model-from-migration users
+
+# 为所有迁移中定义的表生成 Model
+java -jar app.jar artisan make:model-from-migration --all
+
+# 强制覆盖
+java -jar app.jar artisan make:model-from-migration users --force
+java -jar app.jar artisan make:model-from-migration --all --force
+```

@@ -17,6 +17,7 @@
 - [9. MigrationScanner —— 迁移源扫描器](#9-migrationscanner--迁移源扫描器)
 - [10. MigrationGenerator —— 迁移类源码生成器](#10-migrationgenerator--迁移类源码生成器)
 - [make:model-from-table —— 从数据库表生成 Model 类](#makemodel-from-table--从数据库表生成-model-类)
+- [make:model-from-migration —— 从迁移文件生成 Model 类](#makemodel-from-migration--从迁移文件生成-model-类)
 - [11. Schema —— 表结构构建器](#11-schema--表结构构建器)
 - [12. Blueprint —— 表结构蓝图](#12-blueprint--表结构蓝图)
 - [13. ColumnDefinition —— 列定义](#13-columndefinition--列定义)
@@ -143,6 +144,11 @@ com.weacsoft.jaravel.vendor.migration
 ├── PostgresqlDialect            // PostgreSQL 方言
 ├── OracleDialect                // Oracle 方言
 ├── TableMigrator                // 跨库表迁移工具（1步直连/2步导出导入）
+├── ReverseModelGenerator        // 反向工程 Model 生成器（从数据库表/迁移文件生成 Model）
+├── CapturingSchema              // 捕获型 Schema（从迁移 up() 提取表定义，不执行 SQL）
+├── ParsedTable                  // 迁移文件解析的表结构定义
+├── ParsedColumn                 // 迁移文件解析的列定义
+├── MigrationFileParser          // 迁移文件解析器（从 .java 文件提取表结构）
 ├── Migrator                     // 迁移引擎（run/rollback/reset/refresh/status/pending）
 ├── MigrationRepository          // 迁移记录仓库（migrations 表 CRUD）
 ├── MigrationRunner              // 命令行运行器（--jaravel.migrate 等参数）
@@ -815,6 +821,82 @@ java -jar app.jar artisan make:model-from-table users --force
 ```
 
 > **与 `make:model` 的区别**：`make:model {name}` 仅根据类名生成空壳模板（仅含 id/created_at/updated_at 占位字段）；`make:model-from-table {table}` 则连接数据库读取真实表结构，生成包含全部字段、正确类型映射与软删除检测的完整 Model。
+
+---
+
+## make:model-from-migration —— 从迁移文件生成 Model 类
+
+`make:model-from-migration` 命令通过解析迁移 Java 文件中的 `Schema.create()` / `Schema.table()` 调用，提取表结构定义（列名、类型、主键、软删除等），自动生成对应的 Eloquent Model 类。与 `make:model-from-table` 不同，此命令**无需连接数据库**，直接从迁移源码中提取表结构，适用于以下场景：
+
+- 开发阶段：表结构尚未迁移到数据库，但迁移文件已编写完成
+- CI/CD：在无数据库环境中从迁移文件生成 Model 类
+- 代码审查：快速查看迁移文件定义了哪些表和字段
+
+### 核心组件
+
+| 组件 | 说明 |
+| --- | --- |
+| `CapturingSchema` | 继承 `Schema`，重写 `create()` / `table()` 方法，将 Blueprint 定义捕获到列表而非执行 SQL |
+| `ParsedTable` | 表示从迁移文件解析的表结构，包含表名和有序列定义，支持多迁移合并 |
+| `ParsedColumn` | 表示从迁移文件解析的列定义，保存迁移类型名称及修饰符信息 |
+| `MigrationFileParser` | 迁移文件解析器，通过 `MigrationScanner` 编译迁移 `.java` 文件，使用 `CapturingSchema` 执行 `up()` 提取表定义 |
+| `ReverseModelGenerator` | 反向工程 Model 生成器，提供 `generateFromParsedTable()` 方法从解析的表定义生成 Model 源文件 |
+
+### 用法
+
+```bash
+java -jar app.jar artisan make:model-from-migration {table?} {--all} {--force}
+```
+
+| 参数 / 选项 | 必填 | 说明 |
+| --- | --- | --- |
+| `{table}` | 否 | 迁移文件中定义的表名，如 `users`。未指定时需配合 `--all` |
+| `--all` | 否 | 为迁移文件中定义的所有表生成 Model |
+| `--force` | 否 | 强制覆盖已存在的 Model 文件 |
+
+### 多迁移合并
+
+若多个迁移操作同一张表（如先 `create()` 建表再 `table()` 添加字段），解析器会按迁移类名排序后依次执行，将列定义合并到同一个 `ParsedTable` 中。同名列以最后一次定义为准（模拟 ALTER TABLE MODIFY 语义）。
+
+### 类型映射
+
+迁移类型名称（Blueprint 方法名）到 Java 类型的映射：
+
+| 迁移类型 | Java 类型 | 说明 |
+| --- | --- | --- |
+| `bigInteger` | `Long` | BIGINT |
+| `integer` | `Long`（主键）/ `Integer` | INT |
+| `tinyInteger` / `smallInteger` | `Long`（主键）/ `Integer` | TINYINT / SMALLINT |
+| `string` / `char` | `String` | VARCHAR / CHAR |
+| `text` / `mediumText` / `longText` | `String` | TEXT 系列 |
+| `json` | `String` | JSON |
+| `boolean` | `Boolean` | TINYINT(1) |
+| `decimal` | `BigDecimal` | DECIMAL |
+| `float` | `Float` | FLOAT |
+| `double` | `Double` | DOUBLE |
+| `date` / `dateTime` / `timestamp` / `time` / `year` | `String` | 日期时间类型 |
+| `binary` | `byte[]` | BLOB |
+
+### 软删除检测
+
+当迁移文件中调用了 `table.softDeletes()`（生成 `deleted_at` 列）时，生成的 Model 会自动包含软删除支持，覆盖 `softDeleting()` 方法返回 `true`。
+
+### 使用示例
+
+```bash
+# 为指定表生成 Model（从迁移文件解析，无需连接数据库）
+java -jar app.jar artisan make:model-from-migration users
+# => 解析迁移文件 → 提取 users 表定义 → 生成 User.java
+
+# 为迁移文件中定义的所有表生成 Model
+java -jar app.jar artisan make:model-from-migration --all
+
+# 强制覆盖已有文件
+java -jar app.jar artisan make:model-from-migration users --force
+java -jar app.jar artisan make:model-from-migration --all --force
+```
+
+> **与 `make:model-from-table` 的区别**：`make:model-from-table` 通过 JDBC 连接数据库读取表结构；`make:model-from-migration` 直接从迁移 `.java` 文件中解析表结构定义，无需数据库连接。两种方式生成的 Model 内容一致，均包含全部字段、类型映射与软删除检测。
 
 ---
 
