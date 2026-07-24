@@ -2430,6 +2430,7 @@ public Response store(Request request) {
 <li><code>buildFromServerRequest</code> 会同时调用 <code>setCurrentRequest</code> 设置线程局部变量。</li>
 <li>multipart 解析通过 <code>submittedFileName</code> 是否为 null 区分文件字段与文本字段。</li>
 <li>form-urlencoded 优先使用 Servlet API 的 <code>getParameterMap</code>（更可靠），失败时回退到手动读取 body。</li>
+<li><strong>URL 自动解码</strong>：默认对 query string 和 form 参数自动进行 URL 解码（<code>URLDecoder.decode</code>，UTF-8）。可通过配置 <code>jaravel.http.url-decode-auto: false</code> 关闭。由 <code>HttpProperties</code> 绑定配置，<code>SpringBootRouteAutoConfiguration</code> 在初始化时同步到 <code>RequestFactory.setUrlDecodeAuto()</code>。</li>
 
 <pre><code>
 // 通常由框架自动调用，无需手动构建
@@ -2736,7 +2737,14 @@ ControllerRegistry.register(&quot;user&quot;, new UserController());
 
 <h5 id="http-9-配置选项">9. 配置选项</h5>
 
-<p><code>http</code> 模块本身不读取外部配置文件，各中间件的行为通过继承式配置（覆盖 <code>protected</code> 方法）配置：</p>
+<p><code>http</code> 模块通过 <code>HttpProperties</code>（前缀 <code>jaravel.http</code>）读取外部配置：</p>
+
+<table>
+<tr><th>配置项</th><th>类型</th><th>默认值</th><th>说明</th></tr>
+<tr><td>`jaravel.http.url-decode-auto`</td><td>`boolean`</td><td>`true`</td><td>是否自动 URL 解码请求参数。设为 `false` 可关闭自动解码</td></tr>
+</table>
+
+<p>各中间件的行为通过继承式配置（覆盖 <code>protected</code> 方法）配置：</p>
 
 <table>
 <tr><th>中间件</th><th>可覆盖的 protected 方法</th><th>默认值</th></tr>
@@ -5248,14 +5256,16 @@ getGaarasonDataSource()
 
 <h6 id="database-save">save()</h6>
 
-<p>持久化当前实体（新增），对齐 Laravel Eloquent 的 <code>$model-&gt;save()</code>。</p>
+<p>持久化当前实体（新增或更新），对齐 Laravel Eloquent 的 <code>$model-&gt;save()</code>。</p>
+
+<p>当主键为 <code>null</code> 时执行 INSERT（新增），当主键已有值时执行 UPDATE（更新）。通过反射检测 <code>@Primary</code> 注解字段判断主键是否已设值。</p>
 
 <pre><code>
 /**
- * 当前实例由 new 创建（非 Spring Bean），通过 SpringContext 取出本类的
- * Spring 单例执行 create(this)，返回保存后的实体（含生成的主键）。
+ * 当主键为 null 时执行 INSERT（新增），当主键已有值时执行 UPDATE（更新）。
+ * 通过反射检测 @Primary 注解字段判断主键是否已设值。
  *
- * @return 保存后的实体；无记录时返回 null
+ * @return 保存后的实体；INSERT 时返回含生成主键的实体，UPDATE 时返回当前实体
  */
 public T save()
 </code></pre>
@@ -5263,11 +5273,17 @@ public T save()
 <p>示例：</p>
 
 <pre><code>
+// 新增（INSERT）：主键为 null
 User user = new User();
 user.setName(&quot;alice&quot;);
 user.setNumber(&quot;1001&quot;);
-User saved = user.save();  // 持久化，返回含主键的实体
+User saved = user.save();  // INSERT，返回含主键的实体
 System.out.println(saved.getId());  // 生成的主键
+
+// 更新（UPDATE）：主键已有值
+User existing = User.find(1L);
+existing.setName(&quot;alice_updated&quot;);
+existing.save();  // UPDATE，根据主键更新记录
 </code></pre>
 
 <h6 id="database-replicate">replicate()</h6>
@@ -5383,10 +5399,15 @@ public class User extends BaseModel&lt;User, Long&gt; {
 <h6 id="database-使用方式">使用方式</h6>
 
 <pre><code>
-// 新增
+// 新增（INSERT：主键为 null）
 User user = new User();
 user.setName(&quot;alice&quot;);
-user.save();                       // 持久化（新增），返回保存后的实体
+user.save();                       // INSERT，返回含主键的实体
+
+// 更新（UPDATE：主键已有值）
+User existing = User.find(1L);
+existing.setName(&quot;alice_updated&quot;);
+existing.save();                   // UPDATE，根据主键更新
 
 // 按主键查
 User found = User.find(1L);
@@ -5425,8 +5446,8 @@ clone.save();                      // 作为新记录保存
 <p><code>new User()</code> 创建的是普通实例（非 Spring Bean），调用 <code>save()</code> 等实例方法或静态查询时，统一通过 <code>SpringContext.bean(Class)</code> 取回本类的 Spring 单例来真正执行 gaarason 的查询/写入。Spring 单例上的 <code>gaarasonDataSource</code> 字段由容器注入，因此所有数据库操作均经由单例完成。</p>
 
 <pre><code>
-new User()  ──save()──→  SpringContext.bean(User.class)  ──→  gaarason create()
-                              (Spring 单例，已注入数据源)
+new User()  ──save()──→  SpringContext.bean(User.class)  ──→  主键为 null ? INSERT : UPDATE
+                              (Spring 单例，已注入数据源)         (gaarason create / QueryBuilder update)
 </code></pre>
 
 <p>---</p>
@@ -5881,7 +5902,7 @@ public Response login(@RequestBody LoginRequest req, UserProvider provider) {
 
 <table>
 <tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
-<tr><td>`save`</td><td>无</td><td>`T`</td><td>持久化当前实体（新增），返回保存后的实体（含生成的主键）</td></tr>
+<tr><td>`save`</td><td>无</td><td>`T`</td><td>持久化当前实体（主键为 null 时 INSERT 新增，主键有值时 UPDATE 更新），INSERT 返回含生成主键的实体，UPDATE 返回当前实体</td></tr>
 <tr><td>`replicate`</td><td>无</td><td>`T`</td><td>复制当前实体（排除主键），可作为新记录再次 save()</td></tr>
 <tr><td>`getGaarasonDataSource`</td><td>无</td><td>`GaarasonDataSource`</td><td>获取数据源（优先检查 @DataSource 注解，否则使用注入的默认数据源）</td></tr>
 </table>
@@ -5922,7 +5943,7 @@ public class User extends BaseModel&lt;User, Long&gt; implements Authenticatable
 User user = new User();
 user.setName(&quot;alice&quot;);
 user.setEmail(&quot;alice@example.com&quot;);
-User saved = user.save();              // 持久化，返回含主键的实体
+User saved = user.save();              // INSERT（主键为 null），返回含主键的实体
 
 User found = User.find(1L);            // 按主键查
 List&lt;User&gt; all = User.all();           // 全部
@@ -7403,7 +7424,7 @@ java -jar app.jar --jaravel.migration-status
 
 <p><code>com.weacsoft.jaravel.vendor.migration.MigrationArtisanAutoConfiguration</code></p>
 
-<p>迁移模块与 Artisan CLI 的集成自动装配。当 classpath 中同时存在 <code>ArtisanCommand</code>（artisan 模块）和 <code>MigrationExecutor</code>（migration 模块）时，自动注册 5 个迁移命令为 Artisan 命令 Bean，使开发者可通过 <code>artisan.call("migrate")</code> 在代码中调用迁移命令，或通过 <code>java -jar app.jar artisan migrate</code> 在命令行执行。</p>
+<p>迁移模块与 Artisan CLI 的集成自动装配。当 classpath 中同时存在 <code>ArtisanCommand</code>（artisan 模块）和 <code>MigrationExecutor</code>（migration 模块）时，自动注册 5 个迁移命令为 Artisan 命令 Bean，使开发者可通过 <code>artisan.call("migrate")</code> 在代码中调用迁移命令，或通过 <code>java -jar app.jar artisan migrate</code> 在命令行执行。当 <code>MakeCodeProperties</code> 可用时，额外注册 <code>make:model-from-table</code> 反向工程命令。</p>
 
 <p>&gt; <strong>注解</strong>：<code>@AutoConfiguration</code>, <code>@AutoConfigureAfter(MigrationAutoConfiguration.class)</code>, <code>@ConditionalOnClass(ArtisanCommand.class)</code>, <code>@ConditionalOnBean(MigrationExecutor.class)</code></p>
 
@@ -7414,9 +7435,12 @@ java -jar app.jar --jaravel.migration-status
 <tr><td>`migrate:reset`</td><td>`migrate:reset`</td><td>回滚所有迁移</td></tr>
 <tr><td>`migrate:refresh`</td><td>`migrate:refresh`</td><td>回滚所有迁移并重新执行</td></tr>
 <tr><td>`migrate:status`</td><td>`migrate:status`</td><td>查看迁移状态</td></tr>
+<tr><td>`make:model-from-table`</td><td>`make:model-from-table {table} {--force}`</td><td>从数据库表反向生成 Model 类（含字段注解、PK 检测、软删除检测）</td></tr>
 </table>
 
-<p>这些命令委托给 <code>MigrationExecutor</code> 执行，与 <code>MigrationRunner</code> 共享同一个 <code>MigrationExecutor</code> Bean 实例。命令类位于 <code>com.weacsoft.jaravel.vendor.migration.artisan</code> 包：<code>MigrateCommand</code>、<code>MigrateRollbackCommand</code>、<code>MigrateResetCommand</code>、<code>MigrateRefreshCommand</code>、<code>MigrateStatusCommand</code>。</p>
+<p>这些命令委托给 <code>MigrationExecutor</code> 执行，与 <code>MigrationRunner</code> 共享同一个 <code>MigrationExecutor</code> Bean 实例。命令类位于 <code>com.weacsoft.jaravel.vendor.migration.artisan</code> 包：<code>MigrateCommand</code>、<code>MigrateRollbackCommand</code>、<code>MigrateResetCommand</code>、<code>MigrateRefreshCommand</code>、<code>MigrateStatusCommand</code>、<code>MakeModelFromTableCommand</code>。</p>
+
+<p><code>make:model-from-table</code> 命令通过 <code>ReverseModelGenerator</code> 使用 JDBC <code>DatabaseMetaData</code> 读取表结构，自动映射 SQL 类型到 Java 类型，生成继承 <code>BaseModel</code> 的 Model 类。当检测到 <code>deleted_at</code> 列时，自动添加 <code>softDeleting()</code> 重写以启用软删除。</p>
 
 <pre><code>// 在代码中通过 ArtisanApplication 调用
 @Autowired
@@ -15487,13 +15511,13 @@ java -jar app.jar artisan user:score:cacheOne 20210001  # 带参数
 
 <table>
 <tr><th>命令</th><th>签名</th><th>说明</th><th>生成类</th><th>目标包</th></tr>
-<tr><td>`make:controller`</td><td>`make:controller {name} {--force}`</td><td>生成 Controller 类</td><td>`UserController`</td><td>`base-package.controller`</td></tr>
-<tr><td>`make:middleware`</td><td>`make:middleware {name} {--force}`</td><td>生成 Middleware 类</td><td>`AuthMiddleware`</td><td>`base-package.middleware`</td></tr>
-<tr><td>`make:model`</td><td>`make:model {name} {--force}`</td><td>生成 Model 类</td><td>`User`</td><td>`base-package.model`</td></tr>
-<tr><td>`make:migration`</td><td>`make:migration {name} {--force}`</td><td>生成 Migration 类</td><td>`Migration_YYYY_MM_DD_Name`</td><td>`base-package.migration`</td></tr>
-<tr><td>`make:command`</td><td>`make:command {name} {--force}`</td><td>生成 ArtisanCommand 类</td><td>`SyncDataCommand`</td><td>`base-package.command`</td></tr>
-<tr><td>`make:event`</td><td>`make:event {name} {--force}`</td><td>生成 Event 类</td><td>`UserRegisteredEvent`</td><td>`base-package.event`</td></tr>
-<tr><td>`make:listener`</td><td>`make:listener {name} {--event=} {--force}`</td><td>生成 Listener 类</td><td>`SendWelcomeEmailListener`</td><td>`base-package.listener`</td></tr>
+<tr><td>`make:controller`</td><td>`make:controller {name} {--force}`</td><td>生成 Controller 类</td><td>`UserController`</td><td>`base-package.http.controllers`</td></tr>
+<tr><td>`make:middleware`</td><td>`make:middleware {name} {--force}`</td><td>生成 Middleware 类</td><td>`AuthMiddleware`</td><td>`base-package.http.middleware`</td></tr>
+<tr><td>`make:model`</td><td>`make:model {name} {--force}`</td><td>生成 Model 类</td><td>`User`</td><td>`base-package.models`</td></tr>
+<tr><td>`make:migration`</td><td>`make:migration {name} {--force}`</td><td>生成 Migration 类</td><td>`Migration_YYYY_MM_DD_Name`</td><td>`migration-dir` (database/migrations)</td></tr>
+<tr><td>`make:command`</td><td>`make:command {name} {--force}`</td><td>生成 ArtisanCommand 类</td><td>`SyncDataCommand`</td><td>`base-package.console.commands`</td></tr>
+<tr><td>`make:event`</td><td>`make:event {name} {--force}`</td><td>生成 Event 类</td><td>`UserRegisteredEvent`</td><td>`base-package.events`</td></tr>
+<tr><td>`make:listener`</td><td>`make:listener {name} {--event=} {--force}`</td><td>生成 Listener 类</td><td>`SendWelcomeEmailListener`</td><td>`base-package.listeners`</td></tr>
 <tr><td>`make:all`</td><td>`make:all {name} {--force}`</td><td>一键生成以上全部</td><td>全部 7 类</td><td>各自包目录</td></tr>
 </table>
 
