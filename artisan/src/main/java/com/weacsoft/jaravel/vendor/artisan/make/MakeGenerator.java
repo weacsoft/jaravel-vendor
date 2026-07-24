@@ -51,7 +51,7 @@ public final class MakeGenerator {
      */
     public static String generateController(MakeCodeProperties properties, String name, boolean force) throws IOException {
         String className = ensureSuffix(name, "Controller");
-        String packageName = properties.getBasePackage() + ".http.controllers";
+        String packageName = properties.getBasePackage() + ".app.http.controllers";
         String content = buildControllerSource(packageName, className);
         return writeJavaFile(properties.getOutputDir(), packageName, className, content, force);
     }
@@ -91,7 +91,7 @@ public final class MakeGenerator {
      */
     public static String generateMiddleware(MakeCodeProperties properties, String name, boolean force) throws IOException {
         String className = ensureSuffix(name, "Middleware");
-        String packageName = properties.getBasePackage() + ".http.middleware";
+        String packageName = properties.getBasePackage() + ".app.http.middleware";
         String content = buildMiddlewareSource(packageName, className);
         return writeJavaFile(properties.getOutputDir(), packageName, className, content, force);
     }
@@ -137,7 +137,7 @@ public final class MakeGenerator {
      */
     public static String generateModel(MakeCodeProperties properties, String name, boolean force) throws IOException {
         String className = toPascalCase(name);
-        String packageName = properties.getBasePackage() + ".models";
+        String packageName = properties.getBasePackage() + ".app.models";
         String content = buildModelSource(packageName, className);
         return writeJavaFile(properties.getOutputDir(), packageName, className, content, force);
     }
@@ -236,7 +236,7 @@ public final class MakeGenerator {
      */
     public static String generateCommand(MakeCodeProperties properties, String name, boolean force) throws IOException {
         String className = ensureSuffix(name, "Command");
-        String packageName = properties.getBasePackage() + ".console.commands";
+        String packageName = properties.getBasePackage() + ".app.console.commands";
         String content = buildCommandSource(packageName, className);
         return writeJavaFile(properties.getOutputDir(), packageName, className, content, force);
     }
@@ -277,7 +277,7 @@ public final class MakeGenerator {
      */
     public static String generateEvent(MakeCodeProperties properties, String name, boolean force) throws IOException {
         String className = ensureSuffix(name, "Event");
-        String packageName = properties.getBasePackage() + ".events";
+        String packageName = properties.getBasePackage() + ".app.events";
         String content = buildEventSource(packageName, className);
         return writeJavaFile(properties.getOutputDir(), packageName, className, content, force);
     }
@@ -307,13 +307,13 @@ public final class MakeGenerator {
      */
     public static String generateListener(MakeCodeProperties properties, String name, String eventName, boolean force) throws IOException {
         String className = ensureSuffix(name, "Listener");
-        String packageName = properties.getBasePackage() + ".listeners";
+        String packageName = properties.getBasePackage() + ".app.listeners";
         String eventType = eventName != null && !eventName.isEmpty()
                 ? ensureSuffix(eventName, "Event")
                 : "YourEvent";
         String eventImport = eventName != null && !eventName.isEmpty()
-                ? "import " + properties.getBasePackage() + ".events." + eventType + ";\n"
-                : "// import " + properties.getBasePackage() + ".events.YourEvent;\n";
+                ? "import " + properties.getBasePackage() + ".app.events." + eventType + ";\n"
+                : "// import " + properties.getBasePackage() + ".app.events.YourEvent;\n";
         String content = buildListenerSource(packageName, className, eventType, eventImport);
         return writeJavaFile(properties.getOutputDir(), packageName, className, content, force);
     }

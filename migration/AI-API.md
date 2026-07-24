@@ -716,8 +716,8 @@ java -cp migration.jar:utils.jar \
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
 | `ReverseModelGenerator` | `DataSource dataSource` | 构造方法 | 创建生成器（迁移文件模式可传 null） |
-| `generate` | `String tableName, String basePackage, String outputDir, boolean force` | `String` | 从数据库表生成 Model（返回文件路径） |
-| `generateFromParsedTable` | `ParsedTable table, String basePackage, String outputDir, boolean force` | `String` | 从迁移文件解析的表定义生成 Model（返回文件路径） |
+| `generate` | `String tableName, String basePackage, String outputDir, boolean force` | `String` | 从数据库表生成 Model（包路径 `basePackage.app.models`，返回文件路径） |
+| `generateFromParsedTable` | `ParsedTable table, String basePackage, String outputDir, boolean force` | `String` | 从迁移文件解析的表定义生成 Model（包路径 `basePackage.app.models`，返回文件路径） |
 | `mapSqlTypeToJava` | `ColumnInfo col, boolean isPrimary` | `String` | SQL 类型映射为 Java 类型 |
 | `mapMigrationTypeToJava` | `String migrationType, boolean isPrimary` | `String` | 迁移类型名称映射为 Java 类型 |
 
@@ -725,13 +725,15 @@ java -cp migration.jar:utils.jar \
 ```java
 // 方式一：从数据库表生成（需 DataSource）
 ReverseModelGenerator generator = new ReverseModelGenerator(dataSource);
-String path = generator.generate("users", "com.example.app", "src/main/java", false);
+String path = generator.generate("users", "com.example", "src/main/java", false);
+// => src/main/java/com/example/app/models/User.java
 
 // 方式二：从迁移文件解析的表定义生成（无需 DataSource）
 MigrationFileParser parser = new MigrationFileParser();
 ParsedTable table = parser.findTable("database/migrations", "users");
 ReverseModelGenerator generator = new ReverseModelGenerator(null);
-String path = generator.generateFromParsedTable(table, "com.example.app", "src/main/java", false);
+String path = generator.generateFromParsedTable(table, "com.example", "src/main/java", false);
+// => src/main/java/com/example/app/models/User.java
 ```
 
 ---

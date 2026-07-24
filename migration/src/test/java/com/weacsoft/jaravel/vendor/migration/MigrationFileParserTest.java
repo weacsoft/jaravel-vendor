@@ -246,7 +246,7 @@ class MigrationFileParserTest {
         table.addColumn(new ParsedColumn("updated_at", "timestamp", true, false, false, false, false, null, null, null, null));
         table.addColumn(new ParsedColumn("deleted_at", "timestamp", true, false, false, false, false, null, null, null, null));
 
-        String outputPath = generator.generateFromParsedTable(table, "com.example.app", tempDir.getAbsolutePath(), true);
+        String outputPath = generator.generateFromParsedTable(table, "com.example", tempDir.getAbsolutePath(), true);
 
         // 验证文件存在
         Path expectedFile = Path.of(tempDir.getAbsolutePath(), "com/example/app/models", "User.java");

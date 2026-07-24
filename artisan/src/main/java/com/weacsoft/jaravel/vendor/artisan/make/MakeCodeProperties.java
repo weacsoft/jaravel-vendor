@@ -15,13 +15,13 @@ package com.weacsoft.jaravel.vendor.artisan.make;
  * <p>
  * 生成路径映射（对齐 Laravel app/Http/Controllers 等）：
  * <ul>
- *   <li>Controller  → {@code base-package}.http.controllers</li>
- *   <li>Middleware  → {@code base-package}.http.middleware</li>
- *   <li>Model       → {@code base-package}.models</li>
+ *   <li>Controller  → {@code base-package}.app.http.controllers</li>
+ *   <li>Middleware  → {@code base-package}.app.http.middleware</li>
+ *   <li>Model       → {@code base-package}.app.models</li>
  *   <li>Migration   → {@code migration-dir}（e.g. database/migrations）</li>
- *   <li>Command     → {@code base-package}.console.commands</li>
- *   <li>Event       → {@code base-package}.events</li>
- *   <li>Listener    → {@code base-package}.listeners</li>
+ *   <li>Command     → {@code base-package}.app.console.commands</li>
+ *   <li>Event       → {@code base-package}.app.events</li>
+ *   <li>Listener    → {@code base-package}.app.listeners</li>
  * </ul>
  */
 public class MakeCodeProperties {

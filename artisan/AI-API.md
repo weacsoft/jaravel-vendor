@@ -128,9 +128,9 @@ java -jar app.jar artisan list
 jaravel:
   artisan:
     make:
-      base-package: com.example.app
+      base-package: com.example
       output-dir: src/main/java
-      migration-dir: migrations
+      migration-dir: database/migrations
 ```
 
 ---
@@ -141,7 +141,7 @@ jaravel:
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.artisan.make`
 - **Annotations**: `@ConfigurationProperties(prefix = "jaravel.artisan.make")`（由 `ArtisanAutoConfiguration` 注册）
-- **Description**: 代码生成配置属性，前缀 `jaravel.artisan.make`。控制 `make:xxx` 系列命令生成文件的基包名、输出目录和迁移目录。对齐 Laravel 的目录约定，Controller/Middleware/Model/Migration/Command/Event/Listener 均在 `base-package` 下创建子包。
+- **Description**: 代码生成配置属性，前缀 `jaravel.artisan.make`。控制 `make:xxx` 系列命令生成文件的基包名、输出目录和迁移目录。对齐 Laravel 的目录约定，Controller/Middleware/Model/Command/Event/Listener 均在 `base-package.app` 下创建子包（如 `com.example.app.models`），Migration 在 `migration-dir` 下。
 
 #### Fields
 
@@ -168,9 +168,9 @@ jaravel:
 jaravel:
   artisan:
     make:
-      base-package: com.example.app
+      base-package: com.example
       output-dir: src/main/java
-      migration-dir: migrations
+      migration-dir: database/migrations
 ```
 
 ```java
@@ -180,14 +180,14 @@ private MakeCodeProperties properties;
 
 // 或手动构建
 MakeCodeProperties properties = new MakeCodeProperties();
-properties.setBasePackage("com.example.app");
-properties.setOutputDir("/tmp/generated");
+properties.setBasePackage("com.example");
+properties.setOutputDir("src/main/java");
 ```
 
 ### MakeGenerator
 - **Type**: final class（工具类，不可实例化）
 - **Package**: `com.weacsoft.jaravel.vendor.artisan.make`
-- **Description**: 代码生成器核心，对齐 Laravel `php artisan make:xxx`。根据 `MakeCodeProperties` 配置的基包和输出目录，生成 Controller、Middleware、Model、Migration、Command、Event、Listener 的 Java 源文件，并自动放到对应包目录下。类名自动转为 PascalCase，缺失后缀时自动补全；文件已存在时抛出 `IllegalStateException`，除非 `force=true`。所有生成方法均为 `static`。
+- **Description**: 代码生成器核心，对齐 Laravel `php artisan make:xxx`。根据 `MakeCodeProperties` 配置的基包和输出目录，生成 Controller、Middleware、Model、Migration、Command、Event、Listener 的 Java 源文件，并自动放到对应包目录下。所有业务代码（Controller/Middleware/Model/Command/Event/Listener）生成到 `base-package.app.*` 子包下（对齐 Laravel 的 `app/` 目录），Migration 生成到 `migration-dir`。类名自动转为 PascalCase，缺失后缀时自动补全；文件已存在时抛出 `IllegalStateException`，除非 `force=true`。所有生成方法均为 `static`。
 
 #### Methods
 
@@ -209,20 +209,24 @@ properties.setOutputDir("/tmp/generated");
 #### Usage Example
 ```java
 MakeCodeProperties properties = new MakeCodeProperties();
-properties.setBasePackage("com.example.app");
+properties.setBasePackage("com.example");
 properties.setOutputDir("src/main/java");
 
 // 生成 Controller（自动补全 Controller 后缀）
 String path = MakeGenerator.generateController(properties, "User", false);
-// => src/main/java/com/example/app/controller/UserController.java
+// => src/main/java/com/example/app/http/controllers/UserController.java
+
+// 生成 Model（含 id/created_at/updated_at 字段及 TimestampFill 注解）
+path = MakeGenerator.generateModel(properties, "User", false);
+// => src/main/java/com/example/app/models/User.java
 
 // 生成 Migration（自动加日期前缀）
 path = MakeGenerator.generateMigration(properties, "create_users_table", false);
-// => .../migration/Migration_2024_01_01_CreateUsersTable.java
+// => database/migrations/Migration_2024_01_01_CreateUsersTable.java
 
 // 生成 Listener（关联指定事件）
 path = MakeGenerator.generateListener(properties, "SendWelcomeEmail", "UserRegisteredEvent", false);
-// => .../listener/SendWelcomeEmailListener.java
+// => src/main/java/com/example/app/listeners/SendWelcomeEmailListener.java
 
 // 强制覆盖已存在文件
 path = MakeGenerator.generateController(properties, "User", true);

@@ -68,7 +68,7 @@ public class ReverseModelGenerator {
 
         // 2. 生成类名和包名
         String className = toPascalCase(singularize(tableName));
-        String packageName = basePackage + ".models";
+        String packageName = basePackage + ".app.models";
 
         // 3. 构建源代码
         String source = buildModelSource(packageName, className, tableName, columns, pkColumn);
@@ -102,7 +102,7 @@ public class ReverseModelGenerator {
 
         // 生成类名和包名
         String className = toPascalCase(singularize(tableName));
-        String packageName = basePackage + ".models";
+        String packageName = basePackage + ".app.models";
 
         // 构建源代码
         String source = buildModelSourceFromParsed(packageName, className, tableName, table);
