@@ -242,6 +242,8 @@ class MigrationFileParserTest {
         table.addColumn(new ParsedColumn("id", "bigInteger", false, true, false, true, false, null, null, null, null));
         table.addColumn(new ParsedColumn("name", "string", false, false, false, false, false, 50, null, null, null));
         table.addColumn(new ParsedColumn("email", "string", false, false, true, false, false, 100, null, null, null));
+        table.addColumn(new ParsedColumn("created_at", "timestamp", true, false, false, false, false, null, null, null, null));
+        table.addColumn(new ParsedColumn("updated_at", "timestamp", true, false, false, false, false, null, null, null, null));
         table.addColumn(new ParsedColumn("deleted_at", "timestamp", true, false, false, false, false, null, null, null, null));
 
         String outputPath = generator.generateFromParsedTable(table, "com.example.app", tempDir.getAbsolutePath(), true);
@@ -262,6 +264,12 @@ class MigrationFileParserTest {
         assertTrue(content.contains("private String name;"));
         assertTrue(content.contains("@Column(name = \"email\")"));
         assertTrue(content.contains("private String email;"));
+        // 时间戳自动填充注解
+        assertTrue(content.contains("import com.weacsoft.jaravel.vendor.database.TimestampFill;"));
+        assertTrue(content.contains("@Column(name = \"created_at\", fill = TimestampFill.CreatedTimeStringFill.class)"));
+        assertTrue(content.contains("@Column(name = \"updated_at\", fill = TimestampFill.UpdatedTimeStringFill.class)"));
+        assertTrue(content.contains("@Column(name = \"deleted_at\")"));
+        // 软删除支持
         assertTrue(content.contains("protected boolean softDeleting()"));
         assertTrue(content.contains("return true;"));
         assertTrue(content.contains("由 make:model-from-migration 从迁移文件生成"));

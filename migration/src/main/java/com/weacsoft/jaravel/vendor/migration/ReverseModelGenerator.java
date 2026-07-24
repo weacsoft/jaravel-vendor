@@ -282,6 +282,35 @@ public class ReverseModelGenerator {
         }
     }
 
+    // ==================== 时间戳填充注解 ====================
+
+    /**
+     * 根据列名返回对应的时间戳自动填充注解类名。
+     * <p>
+     * 列名与填充器的对应关系：
+     * <ul>
+     *   <li>{@code created_at} → {@code TimestampFill.CreatedTimeStringFill.class}（仅插入时填充）</li>
+     *   <li>{@code updated_at} → {@code TimestampFill.UpdatedTimeStringFill.class}（插入和更新时填充）</li>
+     *   <li>其他列 → {@code null}（无自动填充）</li>
+     * </ul>
+     *
+     * @param columnName 列名
+     * @return 填充器类名表达式，或 null 表示不需要自动填充
+     */
+    String getTimestampFillAnnotation(String columnName) {
+        if (columnName == null) {
+            return null;
+        }
+        String lower = columnName.toLowerCase();
+        if ("created_at".equals(lower)) {
+            return "TimestampFill.CreatedTimeStringFill.class";
+        }
+        if ("updated_at".equals(lower)) {
+            return "TimestampFill.UpdatedTimeStringFill.class";
+        }
+        return null;
+    }
+
     // ==================== 名称转换 ====================
 
     /**
@@ -379,6 +408,7 @@ public class ReverseModelGenerator {
 
         // 导入
         sb.append("import com.weacsoft.jaravel.vendor.database.BaseModel;\n");
+        sb.append("import com.weacsoft.jaravel.vendor.database.TimestampFill;\n");
         sb.append("import gaarason.database.annotation.Column;\n");
         sb.append("import gaarason.database.annotation.Primary;\n");
         sb.append("import gaarason.database.annotation.Table;\n");
@@ -417,11 +447,18 @@ public class ReverseModelGenerator {
             boolean isPrimary = pkColumn != null && col.getName().equalsIgnoreCase(pkColumn);
             String javaType = mapSqlTypeToJava(col, isPrimary);
             String fieldName = toCamelCase(col.getName());
+            String colName = col.getName();
 
             if (isPrimary) {
                 sb.append("    @Primary\n");
             }
-            sb.append("    @Column(name = \"").append(col.getName()).append("\")\n");
+            // 时间戳字段添加自动填充注解
+            String fillAnnotation = getTimestampFillAnnotation(colName);
+            if (fillAnnotation != null) {
+                sb.append("    @Column(name = \"").append(colName).append("\", fill = ").append(fillAnnotation).append(")\n");
+            } else {
+                sb.append("    @Column(name = \"").append(colName).append("\")\n");
+            }
             sb.append("    private ").append(javaType).append(" ").append(fieldName).append(";\n\n");
         }
 
@@ -478,6 +515,7 @@ public class ReverseModelGenerator {
 
         // 导入
         sb.append("import com.weacsoft.jaravel.vendor.database.BaseModel;\n");
+        sb.append("import com.weacsoft.jaravel.vendor.database.TimestampFill;\n");
         sb.append("import gaarason.database.annotation.Column;\n");
         sb.append("import gaarason.database.annotation.Primary;\n");
         sb.append("import gaarason.database.annotation.Table;\n");
@@ -516,11 +554,18 @@ public class ReverseModelGenerator {
             boolean isPrimary = pkColumn != null && col.getName().equalsIgnoreCase(pkColumn);
             String javaType = mapMigrationTypeToJava(col.getMigrationType(), isPrimary);
             String fieldName = toCamelCase(col.getName());
+            String colName = col.getName();
 
             if (isPrimary) {
                 sb.append("    @Primary\n");
             }
-            sb.append("    @Column(name = \"").append(col.getName()).append("\")\n");
+            // 时间戳字段添加自动填充注解
+            String fillAnnotation = getTimestampFillAnnotation(colName);
+            if (fillAnnotation != null) {
+                sb.append("    @Column(name = \"").append(colName).append("\", fill = ").append(fillAnnotation).append(")\n");
+            } else {
+                sb.append("    @Column(name = \"").append(colName).append("\")\n");
+            }
             sb.append("    private ").append(javaType).append(" ").append(fieldName).append(";\n\n");
         }
 

@@ -34,8 +34,8 @@ database 模块提供 Laravel Eloquent 风格的 ORM 基础设施，基于 gaara
 | `scopeSoftDelete` | `Builder<?, T, K> builder` | `void` | 默认查询作用域，仅查询未删除记录（`WHERE deleted_at IS NULL`） |
 | `scopeSoftDeleteOnlyTrashed` | `Builder<?, T, K> builder` | `void` | 仅查询已软删除记录（`WHERE deleted_at IS NOT NULL`） |
 | `scopeSoftDeleteWithTrashed` | `Builder<?, T, K> builder` | `void` | 查询包含已删除的全部记录（不加软删除过滤） |
-| `softDelete` | `Builder<?, T, K> builder` | `int` | 执行软删除，设置 `deleted_at = LocalDateTime.now()`，返回受影响行数 |
-| `softDeleteRestore` | `Builder<?, T, K> builder` | `int` | 撤销软删除，设置 `deleted_at = NULL`，返回受影响行数 |
+| `softDelete` | `Builder<?, T, K> builder` | `int` | 执行软删除，设置 `deleted_at` 和 `updated_at` 为当前时间字符串，返回受影响行数 |
+| `softDeleteRestore` | `Builder<?, T, K> builder` | `int` | 撤销软删除，设置 `deleted_at = NULL`，`updated_at` 更新为当前时间字符串，返回受影响行数 |
 
 #### Static Methods (供业务 Model 静态方法委托)
 
@@ -177,4 +177,89 @@ if (user == null || !passwordEncoder.matches(inputPassword, user.getPassword()))
 }
 // 登入
 Auth.login(user);
+```
+
+---
+
+### TimestampFill
+- **Type**: final class (含两个静态内部类)
+- **Package**: `com.weacsoft.jaravel.vendor.database`
+- **Description**: 时间戳自动填充器，将当前时间以 `yyyy-MM-dd HH:mm:ss` 格式的 String 填充到字段。解决 gaarason 内置 `CreatedTimeFill`/`UpdatedTimeFill` 不支持 String 类型的问题（`DateTimeUtils.currentDateTime()` 仅支持 Date/LocalDateTime 等 8 种类型，String 会抛出 `TypeNotSupportedException`）。时间格式为本地时间，与 Laravel 迁移的 `timestamps()` 生成的列类型兼容。
+
+#### Constants
+
+| Constant | Type | Value | Description |
+|----------|------|-------|-------------|
+| `DEFAULT_FORMAT` | `String` | `"yyyy-MM-dd HH:mm:ss"` | 标准日期时间格式 |
+| `FORMATTER` | `DateTimeFormatter` | `ofPattern("yyyy-MM-dd HH:mm:ss")` | 日期时间格式化器（线程安全） |
+
+#### Static Methods
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `nowString` | 无 | `String` | 返回当前本地时间的格式化字符串，如 `"2023-04-28 16:06:33"` |
+
+#### Inner Class: CreatedTimeStringFill
+- **Implements**: `gaarason.database.contract.support.FieldFill`
+- **Description**: 创建时间填充器，仅插入时填充当前时间，更新时保留原值。对齐 Laravel Eloquent 中 `created_at` 的行为。
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `inserting` | `Object entity, Field field, W originalValue` | `W` | 返回当前时间字符串 |
+| `updating` | `Object entity, Field field, W originalValue` | `W` | 返回原值（不填充） |
+| `condition` | `Object entity, Field field, W originalValue` | `W` | 返回原值（不填充） |
+
+#### Inner Class: UpdatedTimeStringFill
+- **Implements**: `gaarason.database.contract.support.FieldFill`
+- **Description**: 更新时间填充器，插入和更新时均填充当前时间。对齐 Laravel Eloquent 中 `updated_at` 的行为。与 gaarason 内置 `UpdatedTimeFill` 不同，本实现在插入时也填充。
+
+| Method | Parameters | Return | Description |
+|--------|-----------|--------|-------------|
+| `inserting` | `Object entity, Field field, W originalValue` | `W` | 返回当前时间字符串 |
+| `updating` | `Object entity, Field field, W originalValue` | `W` | 返回当前时间字符串 |
+| `condition` | `Object entity, Field field, W originalValue` | `W` | 返回原值（不填充） |
+
+#### Timestamp Auto-Fill Rules
+
+| 操作 | created_at | updated_at | deleted_at |
+|------|-----------|-----------|------------|
+| 创建 (INSERT) | 当前时间（FieldFill） | 当前时间（FieldFill） | 不设置 |
+| 更新 (UPDATE) | 不变（FieldFill 保留原值） | 当前时间（FieldFill + BaseModel 手动） | 不设置 |
+| 软删除 (softDelete) | 不变 | 当前时间（BaseModel 手动） | 当前时间（BaseModel 手动） |
+| 恢复软删除 (restore) | 不变 | 当前时间（BaseModel 手动） | NULL（BaseModel 手动） |
+
+> **注意**：`BaseModel.save()` 的 UPDATE 路径使用 `query.data()` 直接操作列值，绕过了 gaarason 的 FieldFill 机制，因此在 `fillColumnData()` 中手动检测 `updated_at` 列并填充当前时间。软删除同理，通过 `builder.data()` 手动设置 `deleted_at` 和 `updated_at`。
+
+#### Usage Example
+```java
+@Repository
+@Table(name = "users")
+public class User extends BaseModel<User, Long> {
+    @Primary
+    @Column(name = "id")
+    private Long id;
+
+    @Column(name = "name")
+    private String name;
+
+    // 创建时间：仅插入时自动填充
+    @Column(name = "created_at", fill = TimestampFill.CreatedTimeStringFill.class)
+    private String createdAt;
+
+    // 更新时间：插入和更新时自动填充
+    @Column(name = "updated_at", fill = TimestampFill.UpdatedTimeStringFill.class)
+    private String updatedAt;
+
+    // 软删除时间：由 BaseModel.softDelete() 手动设置
+    @Column(name = "deleted_at")
+    private String deletedAt;
+
+    // 启用软删除
+    @Override
+    protected boolean softDeleting() {
+        return true;
+    }
+
+    // getter/setter ...
+}
 ```

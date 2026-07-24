@@ -17,7 +17,6 @@ import org.springframework.context.annotation.Lazy;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
-import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 
@@ -188,6 +187,9 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
 
     /**
      * 将实体中所有非主键、非排除字段的值填入查询构造器，用于 UPDATE。
+     * <p>
+     * 当遇到 {@code updated_at} 列时，自动填充为当前时间字符串（{@code "yyyy-MM-dd HH:mm:ss"}），
+     * 因为 {@code query.data()} 直接操作列值，绕过了 gaarason 的 FieldFill 机制。
      *
      * @param query 查询构造器
      */
@@ -211,7 +213,12 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
                     field.setAccessible(true);
                     String colName = (column != null && !column.name().isEmpty())
                             ? column.name() : toSnakeCase(field.getName());
-                    query.data(colName, field.get(this));
+                    // updated_at 列在 UPDATE 时自动刷新为当前时间
+                    if ("updated_at".equals(colName)) {
+                        query.data(colName, TimestampFill.nowString());
+                    } else {
+                        query.data(colName, field.get(this));
+                    }
                 } catch (IllegalAccessException e) {
                     // 跳过无法访问的字段
                 }
@@ -307,13 +314,20 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
     //执行删除
     @Override
     protected int softDelete(Builder<?, T, K> builder) {
-        return builder.data(getSoftDeleteColumnName(), LocalDateTime.now()).update();
+        String now = TimestampFill.nowString();
+        // 删除时：deleted_at 和 updated_at 都更新为当前时间
+        return builder.data(getSoftDeleteColumnName(), now)
+                      .data("updated_at", now)
+                      .update();
     }
 
     //撤销执行删除
     @Override
     protected int softDeleteRestore(Builder<?, T, K> builder) {
-        return builder.data(getSoftDeleteColumnName(),null).update();
+        // 恢复时：deleted_at 置空，updated_at 更新为当前时间
+        return builder.data(getSoftDeleteColumnName(), null)
+                      .data("updated_at", TimestampFill.nowString())
+                      .update();
     }
 
     // ==================== 静态工具方法（供业务 Model 的静态方法委托） ====================

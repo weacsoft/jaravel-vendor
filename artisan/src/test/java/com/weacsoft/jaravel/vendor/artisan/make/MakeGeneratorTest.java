@@ -123,6 +123,11 @@ class MakeGeneratorTest {
         assertTrue(content.contains("@Column(name = \"id\")"), "应包含 @Column");
         assertTrue(content.contains("public static User find(Long id)"), "应包含静态 find 方法");
         assertTrue(content.contains("public static List<User> all()"), "应包含静态 all 方法");
+        // 时间戳自动填充注解
+        assertTrue(content.contains("TimestampFill.CreatedTimeStringFill.class"),
+                "应包含 created_at 的 TimestampFill 填充器");
+        assertTrue(content.contains("TimestampFill.UpdatedTimeStringFill.class"),
+                "应包含 updated_at 的 TimestampFill 填充器");
     }
 
     @Test
@@ -285,6 +290,8 @@ class MakeGeneratorTest {
         // 必须包含的导入
         assertTrue(content.contains("import com.weacsoft.jaravel.vendor.database.BaseModel;"),
                 "Model 应导入 BaseModel");
+        assertTrue(content.contains("import com.weacsoft.jaravel.vendor.database.TimestampFill;"),
+                "Model 应导入 TimestampFill");
         assertTrue(content.contains("import gaarason.database.annotation.Column;"),
                 "Model 应导入 @Column 注解");
         assertTrue(content.contains("import gaarason.database.annotation.Primary;"),
@@ -299,6 +306,12 @@ class MakeGeneratorTest {
         assertTrue(content.contains("import org.springframework.stereotype.Repository;"),
                 "Model 应导入 @Repository");
         assertTrue(content.contains("import java.util.List;"), "Model 应导入 List");
+
+        // 时间戳自动填充注解
+        assertTrue(content.contains("@Column(name = \"created_at\", fill = TimestampFill.CreatedTimeStringFill.class)"),
+                "Model 的 created_at 列应使用 TimestampFill.CreatedTimeStringFill 填充器");
+        assertTrue(content.contains("@Column(name = \"updated_at\", fill = TimestampFill.UpdatedTimeStringFill.class)"),
+                "Model 的 updated_at 列应使用 TimestampFill.UpdatedTimeStringFill 填充器");
 
         // 不应包含不存在的 gaarason.database.record.Record 导入
         assertFalse(content.contains("import gaarason.database.record.Record;"),

@@ -146,6 +146,7 @@ public final class MakeGenerator {
         String tableName = toSnakeCase(className) + "s";
         return "package " + packageName + ";\n\n" +
                 "import com.weacsoft.jaravel.vendor.database.BaseModel;\n" +
+                "import com.weacsoft.jaravel.vendor.database.TimestampFill;\n" +
                 "import gaarason.database.annotation.Column;\n" +
                 "import gaarason.database.annotation.Primary;\n" +
                 "import gaarason.database.annotation.Table;\n" +
@@ -168,9 +169,11 @@ public final class MakeGenerator {
                 "    @Column(name = \"id\")\n" +
                 "    private Long id;\n\n" +
                 "    // TODO: 添加业务字段\n\n" +
-                "    @Column(name = \"created_at\")\n" +
+                "    // 创建时间：仅插入时自动填充，格式 yyyy-MM-dd HH:mm:ss（本地时间）\n" +
+                "    @Column(name = \"created_at\", fill = TimestampFill.CreatedTimeStringFill.class)\n" +
                 "    private String createdAt;\n\n" +
-                "    @Column(name = \"updated_at\")\n" +
+                "    // 更新时间：插入和更新时自动填充，格式 yyyy-MM-dd HH:mm:ss（本地时间）\n" +
+                "    @Column(name = \"updated_at\", fill = TimestampFill.UpdatedTimeStringFill.class)\n" +
                 "    private String updatedAt;\n\n" +
                 "    // ==================== 静态查询方法 ====================\n\n" +
                 "    public static " + className + " find(Long id) {\n" +
