@@ -18,7 +18,7 @@ database 模块提供 Laravel Eloquent 风格的 ORM 基础设施，基于 gaara
 
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
-| `save` | 无 | `T` | 持久化当前实体（新增），返回保存后的实体（含生成的主键） |
+| `save` | 无 | `T` | 持久化当前实体（新增或更新）：主键为 null 时执行 INSERT（新增），主键已设置时执行 UPDATE（更新）；返回保存后的实体 |
 | `replicate` | 无 | `T` | 复制当前实体（排除主键），可作为新记录再次 save() |
 | `getGaarasonDataSource` | 无 | `GaarasonDataSource` | 获取数据源（优先检查 @DataSource 注解，否则使用注入的默认数据源） |
 

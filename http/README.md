@@ -1222,7 +1222,7 @@ router.get("/users/{id}", UserController.class, "show");            // 类对象
 
 ## 9. 配置选项
 
-`http` 模块本身不读取外部配置文件。内置中间件**不是** Spring Bean，不再通过构造器参数配置，而是采用**继承式配置**——使用者继承预定义中间件后覆盖 `protected` 方法自定义行为，并标注 `@MiddlewareAlias` 注解：
+`http` 模块除 URL 自动解码开关外不读取外部配置文件。内置中间件**不是** Spring Bean，不再通过构造器参数配置，而是采用**继承式配置**——使用者继承预定义中间件后覆盖 `protected` 方法自定义行为，并标注 `@MiddlewareAlias` 注解：
 
 | 中间件 | 可覆盖方法（protected） | 默认值 |
 | --- | --- | --- |
@@ -1233,6 +1233,22 @@ router.get("/users/{id}", UserController.class, "show");            // 类对象
 | `VerifyCsrfToken` | `except()`（排除 URI） | 空数组 |
 
 全局中间件不再通过独立的注册表管理，而是直接在根 `Router` 上通过 `router.middleware(...)` 声明；`springboot` 模块的 `SpringBootRouteAutoConfiguration` 负责在启动时扫描 `@MiddlewareAlias` 注解的类，通过反射实例化（要求有无参构造器，中间件不是 Spring Bean）并注册到全局 `MiddlewareAliasRegistry`。预定义中间件本身不标注 `@MiddlewareAlias`，由使用者继承后自行标注。
+
+### URL 自动解码（jaravel.http.url-decode-auto）
+
+`http` 模块在构建 `Request` 时默认对请求 URL（含 query string）自动执行 URL 解码，对齐 Laravel 的默认行为。通过以下配置项控制：
+
+| 配置项 | 默认值 | 说明 |
+| --- | --- | --- |
+| `jaravel.http.url-decode-auto` | `true` | 是否自动对请求 URL 进行解码。`true`（默认）开启自动解码；设为 `false` 可关闭自动解码，此时 URL 与 query string 保持原始未解码形式 |
+
+```yaml
+jaravel:
+  http:
+    url-decode-auto: true   # 默认开启自动解码；设为 false 可关闭
+```
+
+> 当应用自带反向代理或网关已完成 URL 解码时，可将此选项设为 `false` 以避免二次解码导致的数据失真。
 
 ---
 

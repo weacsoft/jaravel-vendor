@@ -4,6 +4,7 @@ import com.weacsoft.jaravel.vendor.http.controller.ControllerRegistry;
 import com.weacsoft.jaravel.vendor.http.controller.Controllers;
 import com.weacsoft.jaravel.vendor.http.controller.request.Request;
 import com.weacsoft.jaravel.vendor.http.controller.request.RequestFactory;
+import com.weacsoft.jaravel.vendor.http.HttpProperties;
 import com.weacsoft.jaravel.vendor.http.controller.response.Response;
 import com.weacsoft.jaravel.vendor.http.middleware.Middleware;
 import com.weacsoft.jaravel.vendor.http.middleware.MiddlewareAliasRegistry;
@@ -14,6 +15,7 @@ import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigurationPackages;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -76,9 +78,23 @@ public class SpringBootRouteAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public Router baseRouter() {
+    public Router baseRouter(HttpProperties httpProperties) {
+        RequestFactory.setUrlDecodeAuto(httpProperties.isUrlDecodeAuto());
         Router router = new Router();
         return router;
+    }
+
+    /**
+     * HTTP 配置属性 bean，绑定 {@code jaravel.http.*} 配置。
+     * <p>
+     * 在 {@code baseRouter} bean 创建时将 {@code url-decode-auto} 配置同步到 {@link RequestFactory}，
+     * 控制是否对请求参数自动进行 URL 解码。
+     */
+    @Bean
+    @ConfigurationProperties(prefix = "jaravel.http")
+    @ConditionalOnMissingBean
+    public HttpProperties httpProperties() {
+        return new HttpProperties();
     }
 
     /**

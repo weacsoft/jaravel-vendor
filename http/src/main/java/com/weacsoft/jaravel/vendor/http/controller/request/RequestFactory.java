@@ -37,6 +37,14 @@ public class RequestFactory {
         currentRequest.remove();
     }
 
+    /** 是否自动 URL 解码（默认开启），通过 jaravel.http.url-decode-auto 配置 */
+    private static volatile boolean urlDecodeAuto = true;
+
+    /** 设置是否自动 URL 解码（由自动装配调用） */
+    public static void setUrlDecodeAuto(boolean flag) {
+        urlDecodeAuto = flag;
+    }
+
     public static Request buildFromHttpServletRequest(HttpServletRequest baseRequest) {
         Request request = new Request();
         if (baseRequest != null) {
@@ -122,7 +130,7 @@ public class RequestFactory {
                 .build()
                 .getQueryParams().forEach((name, values) -> {
                     values.forEach(v -> {
-                        request.addQuery(name, v);
+                        request.addQuery(decode(name), decode(v));
                     });
                 });
         if (contentType != null) {
@@ -222,6 +230,9 @@ public class RequestFactory {
     }
 
     private static String decode(String encoded) {
+        if (!urlDecodeAuto) {
+            return encoded;
+        }
         try {
             return URLDecoder.decode(encoded, StandardCharsets.UTF_8.name());
         } catch (Exception e) {

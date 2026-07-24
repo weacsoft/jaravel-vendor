@@ -44,6 +44,7 @@ class MakeGeneratorTest {
         properties = new MakeCodeProperties();
         properties.setBasePackage("com.example.test");
         properties.setOutputDir(tempDir.toString());
+        properties.setMigrationDir(tempDir.resolve("database/migrations").toString());
     }
 
     // ==================== 工具方法测试 ====================
@@ -83,7 +84,7 @@ class MakeGeneratorTest {
 
         // 验证内容包含 package / class / implements / @Controller
         String content = Files.readString(file, StandardCharsets.UTF_8);
-        assertTrue(content.contains("package com.example.test.controller;"), "应包含 package 声明");
+        assertTrue(content.contains("package com.example.test.http.controllers;"), "应包含 package 声明");
         assertTrue(content.contains("public class UserController"), "应包含 class 声明");
         assertTrue(content.contains("implements Controllers"), "应 implements Controllers");
         assertTrue(content.contains("@Controller"), "应包含 @Controller 注解");
@@ -98,7 +99,7 @@ class MakeGeneratorTest {
         assertTrue(Files.exists(file), "Middleware 文件应存在");
 
         String content = Files.readString(file, StandardCharsets.UTF_8);
-        assertTrue(content.contains("package com.example.test.middleware;"), "应包含 package 声明");
+        assertTrue(content.contains("package com.example.test.http.middleware;"), "应包含 package 声明");
         assertTrue(content.contains("public class AuthMiddleware"), "应包含 class 声明");
         assertTrue(content.contains("implements Middleware"), "应 implements Middleware");
         assertTrue(content.contains("@MiddlewareAlias"), "应包含 @MiddlewareAlias 注解");
@@ -113,7 +114,7 @@ class MakeGeneratorTest {
         assertTrue(Files.exists(file), "Model 文件应存在");
 
         String content = Files.readString(file, StandardCharsets.UTF_8);
-        assertTrue(content.contains("package com.example.test.model;"), "应包含 package 声明");
+        assertTrue(content.contains("package com.example.test.models;"), "应包含 package 声明");
         assertTrue(content.contains("public class User"), "应包含 class 声明");
         assertTrue(content.contains("extends BaseModel<User, Long>"), "应继承 BaseModel");
         assertTrue(content.contains("@Repository"), "应包含 @Repository");
@@ -139,7 +140,7 @@ class MakeGeneratorTest {
                 "Migration 文件名应以日期前缀 '" + expectedPrefix + "' 开头，实际: " + fileName);
 
         String content = Files.readString(file, StandardCharsets.UTF_8);
-        assertTrue(content.contains("package com.example.test.migration;"), "应包含 package 声明");
+        assertTrue(content.contains("package com.example.test.database.migrations;"), "应包含 package 声明");
         assertTrue(content.contains("implements Migration"), "应 implements Migration");
     }
 
@@ -151,7 +152,7 @@ class MakeGeneratorTest {
         assertTrue(Files.exists(file), "Command 文件应存在");
 
         String content = Files.readString(file, StandardCharsets.UTF_8);
-        assertTrue(content.contains("package com.example.test.command;"), "应包含 package 声明");
+        assertTrue(content.contains("package com.example.test.console.commands;"), "应包含 package 声明");
         assertTrue(content.contains("public class SyncDataCommand"), "应包含 class 声明");
         assertTrue(content.contains("extends ArtisanCommand"), "应 extends ArtisanCommand");
     }
@@ -164,7 +165,7 @@ class MakeGeneratorTest {
         assertTrue(Files.exists(file), "Event 文件应存在");
 
         String content = Files.readString(file, StandardCharsets.UTF_8);
-        assertTrue(content.contains("package com.example.test.event;"), "应包含 package 声明");
+        assertTrue(content.contains("package com.example.test.events;"), "应包含 package 声明");
         assertTrue(content.contains("public class UserRegisteredEvent"), "应包含 class 声明");
         assertTrue(content.contains("implements Event"), "应 implements Event");
     }
@@ -177,7 +178,7 @@ class MakeGeneratorTest {
         assertTrue(Files.exists(file), "Listener 文件应存在");
 
         String content = Files.readString(file, StandardCharsets.UTF_8);
-        assertTrue(content.contains("package com.example.test.listener;"), "应包含 package 声明");
+        assertTrue(content.contains("package com.example.test.listeners;"), "应包含 package 声明");
         assertTrue(content.contains("public class SendWelcomeEmailListener"), "应包含 class 声明");
         assertTrue(content.contains("implements Listener<UserRegisteredEvent>"), "应 implements Listener<UserRegisteredEvent>");
         assertTrue(content.contains("@Component"), "应包含 @Component 注解");
@@ -403,7 +404,7 @@ class MakeGeneratorTest {
                 "Listener 应导入 @ListensTo 注解");
         assertTrue(content.contains("import org.springframework.stereotype.Component;"),
                 "Listener 应导入 @Component 注解");
-        assertTrue(content.contains("import com.example.test.event.UserRegisteredEvent;"),
+        assertTrue(content.contains("import com.example.test.events.UserRegisteredEvent;"),
                 "Listener 应导入事件类");
 
         // 必须包含的注解和接口实现

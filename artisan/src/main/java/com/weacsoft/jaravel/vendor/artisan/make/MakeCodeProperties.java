@@ -10,18 +10,18 @@ package com.weacsoft.jaravel.vendor.artisan.make;
  *     make:
  *       base-package: com.example.app      # 基包名（默认 com.weacsoft.jaravel）
  *       output-dir: src/main/java          # 输出根目录（默认 src/main/java）
- *       migration-dir: migrations          # 迁移文件目录（默认 migrations）
+ *       migration-dir: database/migrations # 迁移文件目录（默认 database/migrations）
  * </pre>
  * <p>
  * 生成路径映射（对齐 Laravel app/Http/Controllers 等）：
  * <ul>
- *   <li>Controller  → {@code base-package}.controller</li>
- *   <li>Middleware  → {@code base-package}.middleware</li>
- *   <li>Model       → {@code base-package}.model</li>
- *   <li>Migration   → {@code migration-dir}</li>
- *   <li>Command     → {@code base-package}.command</li>
- *   <li>Event       → {@code base-package}.event</li>
- *   <li>Listener    → {@code base-package}.listener</li>
+ *   <li>Controller  → {@code base-package}.http.controllers</li>
+ *   <li>Middleware  → {@code base-package}.http.middleware</li>
+ *   <li>Model       → {@code base-package}.models</li>
+ *   <li>Migration   → {@code migration-dir}（e.g. database/migrations）</li>
+ *   <li>Command     → {@code base-package}.console.commands</li>
+ *   <li>Event       → {@code base-package}.events</li>
+ *   <li>Listener    → {@code base-package}.listeners</li>
  * </ul>
  */
 public class MakeCodeProperties {
@@ -33,7 +33,7 @@ public class MakeCodeProperties {
     private String outputDir = "src/main/java";
 
     /** 迁移文件目录（相对路径，不带包名前缀） */
-    private String migrationDir = "migrations";
+    private String migrationDir = "database/migrations";
 
     public String getBasePackage() { return basePackage; }
     public void setBasePackage(String basePackage) { this.basePackage = basePackage; }

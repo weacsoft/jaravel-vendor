@@ -113,18 +113,132 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
     // ==================== 实例方法 ====================
 
     /**
-     * 持久化当前实体（新增），对齐 Laravel Eloquent 的 {@code $model->save()}。
+     * 持久化当前实体（新增或更新），对齐 Laravel Eloquent 的 {@code $model->save()}。
      * <p>
-     * 当前实例由 {@code new} 创建（非 Spring Bean），通过 {@link SpringContext} 取出本类的
-     * Spring 单例执行 {@code create(this)}，返回保存后的实体（含生成的主键）。
+     * 当主键为 null 时执行 INSERT（新增），当主键已有值时执行 UPDATE（更新）。
+     * 通过反射检测 {@link Primary} 注解字段判断主键是否已设值。
      *
-     * @return 保存后的实体；无记录时返回 {@code null}
+     * @return 保存后的实体；INSERT 时返回含生成主键的实体，UPDATE 时返回当前实体
      */
     @SuppressWarnings("unchecked")
     public T save() {
         BaseModel<T, K> bean = (BaseModel<T, K>) SpringContext.bean(this.getClass());
-        Record<T, K> record = bean.create((T) this);
-        return record == null ? null : record.toObject();
+        Object pkValue = getPrimaryKeyValue();
+        if (pkValue != null) {
+            // UPDATE：主键已存在，执行更新
+            String pkName = resolvePrimaryKeyColumnName();
+            QueryBuilder<T, K> query = bean.newQuery().where(pkName, pkValue);
+            fillColumnData(query);
+            query.update();
+            return (T) this;
+        } else {
+            // INSERT：主键为空，执行新增
+            Record<T, K> record = bean.create((T) this);
+            return record == null ? null : record.toObject();
+        }
+    }
+
+    /**
+     * 反射获取主键字段的值。
+     *
+     * @return 主键值，未找到 @Primary 字段或值为 null 时返回 null
+     */
+    private Object getPrimaryKeyValue() {
+        Class<?> clazz = this.getClass();
+        while (clazz != null && clazz != BaseModel.class && clazz != Object.class) {
+            for (Field field : clazz.getDeclaredFields()) {
+                if (field.isAnnotationPresent(Primary.class)) {
+                    try {
+                        field.setAccessible(true);
+                        return field.get(this);
+                    } catch (IllegalAccessException e) {
+                        return null;
+                    }
+                }
+            }
+            clazz = clazz.getSuperclass();
+        }
+        return null;
+    }
+
+    /**
+     * 反射获取主键列名（优先取 @Column(name=...)，否则字段名转 snake_case）。
+     * <p>
+     * 注意：父类 {@link Model} 已有 public {@code getPrimaryKeyColumnName()} 方法，
+     * 此处用不同方法名避免访问权限冲突。
+     *
+     * @return 主键列名
+     */
+    private String resolvePrimaryKeyColumnName() {
+        Class<?> clazz = this.getClass();
+        while (clazz != null && clazz != BaseModel.class && clazz != Object.class) {
+            for (Field field : clazz.getDeclaredFields()) {
+                if (field.isAnnotationPresent(Primary.class)) {
+                    Column column = field.getAnnotation(Column.class);
+                    if (column != null && !column.name().isEmpty()) {
+                        return column.name();
+                    }
+                    return toSnakeCase(field.getName());
+                }
+            }
+            clazz = clazz.getSuperclass();
+        }
+        return "id";
+    }
+
+    /**
+     * 将实体中所有非主键、非排除字段的值填入查询构造器，用于 UPDATE。
+     *
+     * @param query 查询构造器
+     */
+    @SuppressWarnings("unchecked")
+    private void fillColumnData(QueryBuilder<T, K> query) {
+        Class<?> clazz = this.getClass();
+        while (clazz != null && clazz != BaseModel.class && clazz != Object.class) {
+            for (Field field : clazz.getDeclaredFields()) {
+                int mods = field.getModifiers();
+                if (Modifier.isStatic(mods) || Modifier.isTransient(mods)) {
+                    continue;
+                }
+                if (field.isAnnotationPresent(Primary.class)) {
+                    continue;
+                }
+                Column column = field.getAnnotation(Column.class);
+                if (column != null && !column.inDatabase()) {
+                    continue;
+                }
+                try {
+                    field.setAccessible(true);
+                    String colName = (column != null && !column.name().isEmpty())
+                            ? column.name() : toSnakeCase(field.getName());
+                    query.data(colName, field.get(this));
+                } catch (IllegalAccessException e) {
+                    // 跳过无法访问的字段
+                }
+            }
+            clazz = clazz.getSuperclass();
+        }
+    }
+
+    /**
+     * 将 camelCase 转为 snake_case。
+     *
+     * @param input 输入字符串
+     * @return snake_case 字符串
+     */
+    private static String toSnakeCase(String input) {
+        if (input == null || input.isEmpty()) {
+            return "generated";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < input.length(); i++) {
+            char c = input.charAt(i);
+            if (Character.isUpperCase(c) && i > 0) {
+                sb.append('_');
+            }
+            sb.append(Character.toLowerCase(c));
+        }
+        return sb.toString();
     }
 
     /**

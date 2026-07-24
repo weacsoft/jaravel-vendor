@@ -51,7 +51,7 @@ public final class MakeGenerator {
      */
     public static String generateController(MakeCodeProperties properties, String name, boolean force) throws IOException {
         String className = ensureSuffix(name, "Controller");
-        String packageName = properties.getBasePackage() + ".controller";
+        String packageName = properties.getBasePackage() + ".http.controllers";
         String content = buildControllerSource(packageName, className);
         return writeJavaFile(properties.getOutputDir(), packageName, className, content, force);
     }
@@ -91,7 +91,7 @@ public final class MakeGenerator {
      */
     public static String generateMiddleware(MakeCodeProperties properties, String name, boolean force) throws IOException {
         String className = ensureSuffix(name, "Middleware");
-        String packageName = properties.getBasePackage() + ".middleware";
+        String packageName = properties.getBasePackage() + ".http.middleware";
         String content = buildMiddlewareSource(packageName, className);
         return writeJavaFile(properties.getOutputDir(), packageName, className, content, force);
     }
@@ -137,7 +137,7 @@ public final class MakeGenerator {
      */
     public static String generateModel(MakeCodeProperties properties, String name, boolean force) throws IOException {
         String className = toPascalCase(name);
-        String packageName = properties.getBasePackage() + ".model";
+        String packageName = properties.getBasePackage() + ".models";
         String content = buildModelSource(packageName, className);
         return writeJavaFile(properties.getOutputDir(), packageName, className, content, force);
     }
@@ -194,9 +194,9 @@ public final class MakeGenerator {
         String datePrefix = LocalDate.now().format(DATE_FORMATTER);
         String pascalName = toPascalCase(name);
         String className = "Migration_" + datePrefix + "_" + pascalName;
-        String packageName = properties.getBasePackage() + ".migration";
+        String packageName = properties.getBasePackage() + ".database.migrations";
         String content = buildMigrationSource(packageName, className, name);
-        return writeJavaFile(properties.getOutputDir(), packageName, className, content, force);
+        return writeMigrationFile(properties.getMigrationDir(), className, content, force);
     }
 
     private static String buildMigrationSource(String packageName, String className, String description) {
@@ -233,7 +233,7 @@ public final class MakeGenerator {
      */
     public static String generateCommand(MakeCodeProperties properties, String name, boolean force) throws IOException {
         String className = ensureSuffix(name, "Command");
-        String packageName = properties.getBasePackage() + ".command";
+        String packageName = properties.getBasePackage() + ".console.commands";
         String content = buildCommandSource(packageName, className);
         return writeJavaFile(properties.getOutputDir(), packageName, className, content, force);
     }
@@ -274,7 +274,7 @@ public final class MakeGenerator {
      */
     public static String generateEvent(MakeCodeProperties properties, String name, boolean force) throws IOException {
         String className = ensureSuffix(name, "Event");
-        String packageName = properties.getBasePackage() + ".event";
+        String packageName = properties.getBasePackage() + ".events";
         String content = buildEventSource(packageName, className);
         return writeJavaFile(properties.getOutputDir(), packageName, className, content, force);
     }
@@ -304,13 +304,13 @@ public final class MakeGenerator {
      */
     public static String generateListener(MakeCodeProperties properties, String name, String eventName, boolean force) throws IOException {
         String className = ensureSuffix(name, "Listener");
-        String packageName = properties.getBasePackage() + ".listener";
+        String packageName = properties.getBasePackage() + ".listeners";
         String eventType = eventName != null && !eventName.isEmpty()
                 ? ensureSuffix(eventName, "Event")
                 : "YourEvent";
         String eventImport = eventName != null && !eventName.isEmpty()
-                ? "import " + properties.getBasePackage() + ".event." + eventType + ";\n"
-                : "// import " + properties.getBasePackage() + ".event.YourEvent;\n";
+                ? "import " + properties.getBasePackage() + ".events." + eventType + ";\n"
+                : "// import " + properties.getBasePackage() + ".events.YourEvent;\n";
         String content = buildListenerSource(packageName, className, eventType, eventImport);
         return writeJavaFile(properties.getOutputDir(), packageName, className, content, force);
     }
@@ -362,6 +362,22 @@ public final class MakeGenerator {
                     + "（使用 --force 强制覆盖）");
         }
 
+        Files.write(file, content.getBytes(StandardCharsets.UTF_8));
+        return file.toAbsolutePath().toString();
+    }
+
+    /**
+     * 写入迁移文件到指定目录（不通过包路径映射，直接写入 migrationDir）。
+     */
+    private static String writeMigrationFile(String migrationDir, String className,
+                                              String content, boolean force) throws IOException {
+        Path dir = Paths.get(migrationDir);
+        Files.createDirectories(dir);
+        Path file = dir.resolve(className + ".java");
+        if (Files.exists(file) && !force) {
+            throw new IllegalStateException("文件已存在，拒绝覆盖: " + file.toAbsolutePath()
+                    + "（使用 --force 强制覆盖）");
+        }
         Files.write(file, content.getBytes(StandardCharsets.UTF_8));
         return file.toAbsolutePath().toString();
     }

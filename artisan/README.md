@@ -165,14 +165,14 @@ artisan 模块内置 8 个代码生成命令，对齐 Laravel `php artisan make:
 
 | 命令 | 签名 | 说明 | 生成类 | 目标包 |
 |------|------|------|--------|--------|
-| `make:controller` | `make:controller {name} {--force}` | 生成 Controller 类 | `UserController` | `base-package.controller` |
-| `make:middleware` | `make:middleware {name} {--force}` | 生成 Middleware 类 | `AuthMiddleware` | `base-package.middleware` |
-| `make:model` | `make:model {name} {--force}` | 生成 Model 类 | `User` | `base-package.model` |
-| `make:migration` | `make:migration {name} {--force}` | 生成 Migration 类 | `Migration_YYYY_MM_DD_Name` | `base-package.migration` |
-| `make:command` | `make:command {name} {--force}` | 生成 ArtisanCommand 类 | `SyncDataCommand` | `base-package.command` |
-| `make:event` | `make:event {name} {--force}` | 生成 Event 类 | `UserRegisteredEvent` | `base-package.event` |
-| `make:listener` | `make:listener {name} {--event=} {--force}` | 生成 Listener 类 | `SendWelcomeEmailListener` | `base-package.listener` |
-| `make:all` | `make:all {name} {--force}` | 一键生成以上全部 | 全部 7 类 | 各自包目录 |
+| `make:controller` | `make:controller {name} {--force}` | 生成 Controller 类 | `UserController` | `{base-package}.http.controllers` |
+| `make:middleware` | `make:middleware {name} {--force}` | 生成 Middleware 类 | `AuthMiddleware` | `{base-package}.http.middleware` |
+| `make:model` | `make:model {name} {--force}` | 生成 Model 类 | `User` | `{base-package}.models` |
+| `make:migration` | `make:migration {name} {--force}` | 生成 Migration 类 | `Migration_YYYY_MM_DD_Name` | `database/migrations/` 目录 |
+| `make:command` | `make:command {name} {--force}` | 生成 ArtisanCommand 类 | `SyncDataCommand` | `{base-package}.console.commands` |
+| `make:event` | `make:event {name} {--force}` | 生成 Event 类 | `UserRegisteredEvent` | `{base-package}.events` |
+| `make:listener` | `make:listener {name} {--event=} {--force}` | 生成 Listener 类 | `SendWelcomeEmailListener` | `{base-package}.listeners` |
+| `make:all` | `make:all {name} {--force}` | 一键生成以上全部 | 全部 7 类 | 各自目录 |
 
 ### 命名约定
 
@@ -255,31 +255,31 @@ public class SendWelcomeEmailListener implements Listener<UserRegisteredEvent> {
 ```bash
 # 生成 Controller（自动补全 Controller 后缀）
 java -jar app.jar artisan make:controller User
-# => UserController.java → base-package.controller
+# => UserController.java → {base-package}.http.controllers
 
 # 生成 Middleware
 java -jar app.jar artisan make:middleware Auth
-# => AuthMiddleware.java → base-package.middleware
+# => AuthMiddleware.java → {base-package}.http.middleware
 
 # 生成 Model（继承 BaseModel，自带 @Repository/@Table/@Primary/@Column 注解及静态查询方法）
 java -jar app.jar artisan make:model User
-# => User.java → base-package.model
+# => User.java → {base-package}.models
 
 # 生成 Migration（自动加日期前缀）
 java -jar app.jar artisan make:migration create_users_table
-# => Migration_2024_01_01_CreateUsersTable.java → base-package.migration
+# => Migration_2024_01_01_CreateUsersTable.java → database/migrations/
 
 # 生成自定义 Artisan 命令
 java -jar app.jar artisan make:command SyncData
-# => SyncDataCommand.java → base-package.command
+# => SyncDataCommand.java → {base-package}.console.commands
 
 # 生成 Event
 java -jar app.jar artisan make:event UserRegistered
-# => UserRegisteredEvent.java → base-package.event
+# => UserRegisteredEvent.java → {base-package}.events
 
 # 生成 Listener（关联指定事件）
 java -jar app.jar artisan make:listener SendWelcomeEmail --event=UserRegisteredEvent
-# => SendWelcomeEmailListener.java → base-package.listener
+# => SendWelcomeEmailListener.java → {base-package}.listeners
 
 # 一键生成全部
 java -jar app.jar artisan make:all User
@@ -311,14 +311,14 @@ jaravel:
     make:
       base-package: com.example.app      # 基包名（生成类的根包，默认 com.weacsoft.jaravel）
       output-dir: src/main/java          # 输出根目录（Java 源码根目录，默认 src/main/java）
-      migration-dir: migrations          # 迁移文件目录（默认 migrations）
+      migration-dir: database/migrations # 迁移文件目录（默认 database/migrations）
 ```
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
-| `jaravel.artisan.make.base-package` | `com.weacsoft.jaravel` | 生成类的基包名，Controller/Middleware/Model/Migration/Command/Event/Listener 均在此包下创建子包 |
+| `jaravel.artisan.make.base-package` | `com.weacsoft.jaravel` | 生成类的基包名，Controller/Middleware/Model/Command/Event/Listener 均在此包下创建子包（Migration 生成到 `migration-dir` 指定目录） |
 | `jaravel.artisan.make.output-dir` | `src/main/java` | Java 源文件输出根目录，生成文件会按包路径写入此目录下 |
-| `jaravel.artisan.make.migration-dir` | `migrations` | 迁移文件目录（相对路径） |
+| `jaravel.artisan.make.migration-dir` | `database/migrations` | 迁移文件目录（相对路径，Migration 类生成到此目录而非 Java 包路径下） |
 
 ### make:all 输出示例
 
@@ -327,13 +327,13 @@ $ java -jar app.jar artisan make:all User
 
 ===== make:all User =====
 
-  [+] Controller created: com/example/app/controller/UserController.java
-  [+] Middleware created: com/example/app/middleware/UserMiddleware.java
-  [+] Model created: com/example/app/model/User.java
-  [+] Migration created: com/example/app/migration/Migration_2024_01_01_User.java
-  [+] Command created: com/example/app/command/UserCommand.java
-  [+] Event created: com/example/app/event/UserEvent.java
-  [+] Listener created: com/example/app/listener/UserListener.java
+  [+] Controller created: com/example/app/http/controllers/UserController.java
+  [+] Middleware created: com/example/app/http/middleware/UserMiddleware.java
+  [+] Model created: com/example/app/models/User.java
+  [+] Migration created: database/migrations/Migration_2024_01_01_User.java
+  [+] Command created: com/example/app/console/commands/UserCommand.java
+  [+] Event created: com/example/app/events/UserEvent.java
+  [+] Listener created: com/example/app/listeners/UserListener.java
 
 ===== 完成: 7 成功, 0 跳过 =====
 ```

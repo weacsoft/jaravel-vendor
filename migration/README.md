@@ -16,6 +16,7 @@
 - [8. MigrationAnnotation —— 迁移标记注解](#8-migrationannotation--迁移标记注解)
 - [9. MigrationScanner —— 迁移源扫描器](#9-migrationscanner--迁移源扫描器)
 - [10. MigrationGenerator —— 迁移类源码生成器](#10-migrationgenerator--迁移类源码生成器)
+- [make:model-from-table —— 从数据库表生成 Model 类](#makemodel-from-table--从数据库表生成-model-类)
 - [11. Schema —— 表结构构建器](#11-schema--表结构构建器)
 - [12. Blueprint —— 表结构蓝图](#12-blueprint--表结构蓝图)
 - [13. ColumnDefinition —— 列定义](#13-columndefinition--列定义)
@@ -760,6 +761,60 @@ public class Migration_2024_06_20_CreateProductsTable implements Migration {
     }
 }
 ```
+
+---
+
+## make:model-from-table —— 从数据库表生成 Model 类
+
+`make:model-from-table` 命令通过连接数据库读取现有表结构，自动逆向生成对应的 Eloquent Model 类，对齐 Laravel 中根据已有数据表生成模型的需求。与 `make:model` 仅生成空壳模板不同，`make:model-from-table` 会读取目标表的所有列信息（列名、类型、可空性、主键等），生成包含全部字段与类型映射的完整 Model 类。
+
+生成的 Model 继承 `BaseModel`，包含 `@Repository` / `@Table` / `@Primary` / `@Column` 注解以及 `find()` / `all()` / `query()` 静态查询方法。
+
+### 用法
+
+```bash
+java -jar app.jar artisan make:model-from-table {table} {--force}
+```
+
+| 参数 / 选项 | 必填 | 说明 |
+| --- | --- | --- |
+| `{table}` | 是 | 数据库表名，如 `users` |
+| `--force` | 否 | 强制覆盖已存在的 Model 文件 |
+
+### 生成内容
+
+命令连接数据库读取目标表的列元数据（通过 `DatabaseMetaData`），生成包含以下内容的 Model 类：
+
+- `@Repository` / `@Table(name = "表名")` 类注解
+- 主键字段标注 `@Primary` + `@Column`
+- 所有列字段标注 `@Column`，Java 类型根据数据库列类型自动映射
+- `find()` / `all()` / `query()` 静态查询方法（委托给 `BaseModel`）
+
+### 软删除检测
+
+当命令检测到表中存在 `deleted_at` 列时，生成的 Model 会自动包含软删除支持，覆盖 `softDeleting()` 方法返回 `true` 以启用 gaarason 软删除机制：
+
+```java
+@Override
+protected boolean softDeleting() {
+    return true;
+}
+```
+
+配合 `BaseModel` 的软删除作用域方法（`scopeSoftDelete` / `scopeSoftDeleteOnlyTrashed` / `scopeSoftDeleteWithTrashed` 等），启用后默认查询自动排除已软删除记录（`WHERE deleted_at IS NULL`），与 `migration` 模块的 `table.softDeletes()` 生成的列名保持一致。
+
+### 使用示例
+
+```bash
+# 根据 users 表结构自动生成完整 Model（含所有字段与类型映射）
+java -jar app.jar artisan make:model-from-table users
+# => 读取 users 表结构 → 生成 User.java（含 id/name/.../deleted_at 等全部字段）
+
+# 强制覆盖已有文件
+java -jar app.jar artisan make:model-from-table users --force
+```
+
+> **与 `make:model` 的区别**：`make:model {name}` 仅根据类名生成空壳模板（仅含 id/created_at/updated_at 占位字段）；`make:model-from-table {table}` 则连接数据库读取真实表结构，生成包含全部字段、正确类型映射与软删除检测的完整 Model。
 
 ---
 

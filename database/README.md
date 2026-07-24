@@ -160,12 +160,13 @@ getGaarasonDataSource()
 
 #### save()
 
-持久化当前实体（新增），对齐 Laravel Eloquent 的 `$model->save()`。
+持久化当前实体（新增或更新），对齐 Laravel Eloquent 的 `$model->save()`。当主键为 `null` 时执行 INSERT（新增），当主键已设置时执行 UPDATE（更新）。
 
 ```java
 /**
  * 当前实例由 new 创建（非 Spring Bean），通过 SpringContext 取出本类的
- * Spring 单例执行 create(this)，返回保存后的实体（含生成的主键）。
+ * Spring 单例执行持久化：主键为 null 时执行 INSERT（新增），主键已设置时
+ * 执行 UPDATE（更新），返回保存后的实体。
  *
  * @return 保存后的实体；无记录时返回 null
  */
@@ -175,11 +176,17 @@ public T save()
 示例：
 
 ```java
+// 新增：主键为 null，执行 INSERT
 User user = new User();
 user.setName("alice");
 user.setNumber("1001");
-User saved = user.save();  // 持久化，返回含主键的实体
+User saved = user.save();  // 持久化（新增），返回含主键的实体
 System.out.println(saved.getId());  // 生成的主键
+
+// 更新：主键已设置，执行 UPDATE
+User found = User.find(1L);
+found.setName("alice_updated");
+User updated = found.save();  // 持久化（更新），返回更新后的实体
 ```
 
 #### replicate()
@@ -358,10 +365,15 @@ public class User extends BaseModel<User, Long> {
 ### 使用方式
 
 ```java
-// 新增
+// 新增（主键为 null 时执行 INSERT）
 User user = new User();
 user.setName("alice");
-user.save();                       // 持久化（新增），返回保存后的实体
+user.save();                       // 持久化（新增或更新），返回保存后的实体
+
+// 更新（主键已设置时执行 UPDATE）
+User found = User.find(1L);
+found.setName("alice_updated");
+found.save();                      // 持久化（更新），返回更新后的实体
 
 // 按主键查
 User found = User.find(1L);
@@ -406,8 +418,10 @@ clone.save();                      // 作为新记录保存
 `new User()` 创建的是普通实例（非 Spring Bean），调用 `save()` 等实例方法或静态查询时，统一通过 `SpringContext.bean(Class)` 取回本类的 Spring 单例来真正执行 gaarason 的查询/写入。Spring 单例上的 `gaarasonDataSource` 字段由容器注入，因此所有数据库操作均经由单例完成。
 
 ```
-new User()  ──save()──→  SpringContext.bean(User.class)  ──→  gaarason create()
+new User()  ──save()──→  SpringContext.bean(User.class)  ──→  gaarason create()/update()
                               (Spring 单例，已注入数据源)
+                              主键为 null → create()（INSERT）
+                              主键已设置 → update()（UPDATE）
 ```
 
 ---
@@ -729,12 +743,17 @@ public class Product extends BaseModel<Product, Long> {
 ### 3. CRUD 操作
 
 ```java
-// 新增
+// 新增（主键为 null 时执行 INSERT）
 User user = new User();
 user.setName("alice");
 user.setNumber("1001");
 user.setPassword(passwordEncoder.encode("secret"));
-User saved = user.save();
+User saved = user.save();  // 主键为 null → INSERT
+
+// 更新（主键已设置时执行 UPDATE）
+User found = User.find(1L);
+found.setName("alice_updated");
+User updated = found.save();  // 主键已设置 → UPDATE
 
 // 查询
 User found = User.find(1L);

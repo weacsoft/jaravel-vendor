@@ -522,6 +522,7 @@ returnValue == null？
 | 指定控制器扫描包 | 在 RouteServiceProvider 中调用 `ControllerRegistry.setScanBasePackages(...)` | 设置后框架通过 classpath 扫描指定包下 `Controllers` 实现类，使用 `AutowireCapableBeanFactory` 实例化（无需 `@Component`）；未设置则回退自动扫描容器中 `Controllers` Bean |
 | 关闭响应自动装配 | 排除 `ResponseAutoConfiguration` | `@SpringBootApplication(exclude = ResponseAutoConfiguration.class)` |
 | 关闭路由自动装配 | 排除 `SpringBootRouteAutoConfiguration` | 同上 |
+| URL 自动解码开关 | `application.yml` 配置 `jaravel.http.url-decode-auto` | 控制是否对请求 URL 自动解码，默认 `true`（开启自动解码），设为 `false` 可关闭。由 `http` 模块读取，`springboot` 模块桥接时生效 |
 
 ### 排除自动装配示例
 
