@@ -44,7 +44,6 @@ class MakeGeneratorTest {
         properties = new MakeCodeProperties();
         properties.setBasePackage("com.example.test");
         properties.setOutputDir(tempDir.toString());
-        properties.setMigrationDir(tempDir.resolve("database/migrations").toString());
     }
 
     // ==================== 工具方法测试 ====================
@@ -145,7 +144,7 @@ class MakeGeneratorTest {
                 "Migration 文件名应以日期前缀 '" + expectedPrefix + "' 开头，实际: " + fileName);
 
         String content = Files.readString(file, StandardCharsets.UTF_8);
-        assertTrue(content.contains("package com.example.test.database.migrations;"), "应包含 package 声明");
+        assertTrue(content.contains("package com.example.test.database.migration;"), "应包含 package 声明");
         assertTrue(content.contains("implements Migration"), "应 implements Migration");
     }
 

@@ -130,7 +130,6 @@ jaravel:
     make:
       base-package: com.example
       output-dir: src/main/java
-      migration-dir: database/migrations
 ```
 
 ---
@@ -141,7 +140,7 @@ jaravel:
 - **Type**: class
 - **Package**: `com.weacsoft.jaravel.vendor.artisan.make`
 - **Annotations**: `@ConfigurationProperties(prefix = "jaravel.artisan.make")`（由 `ArtisanAutoConfiguration` 注册）
-- **Description**: 代码生成配置属性，前缀 `jaravel.artisan.make`。控制 `make:xxx` 系列命令生成文件的基包名、输出目录和迁移目录。对齐 Laravel 的目录约定，Controller/Middleware/Model/Command/Event/Listener 均在 `base-package.app` 下创建子包（如 `com.example.app.models`），Migration 在 `migration-dir` 下。
+- **Description**: 代码生成配置属性，前缀 `jaravel.artisan.make`。控制 `make:xxx` 系列命令生成文件的基包名和输出目录。对齐 Laravel 的目录约定，Controller/Middleware/Model/Command/Event/Listener 均在 `base-package.app` 下创建子包（如 `com.example.app.models`），Migration 在 `base-package.database.migration` 下（生成到 Java 源码树中，与其他类型一致）。
 
 #### Fields
 
@@ -149,7 +148,6 @@ jaravel:
 |-------|------|---------|-------------|
 | `basePackage` | `String` | `com.weacsoft.jaravel` | 基包名（生成类的根包） |
 | `outputDir` | `String` | `src/main/java` | 输出根目录（Java 源码根目录） |
-| `migrationDir` | `String` | `migrations` | 迁移文件目录（相对路径，不带包名前缀） |
 
 #### Methods
 
@@ -159,8 +157,8 @@ jaravel:
 | `setBasePackage` | `String basePackage` | `void` | 设置基包名 |
 | `getOutputDir` | - | `String` | 获取输出根目录 |
 | `setOutputDir` | `String outputDir` | `void` | 设置输出根目录 |
-| `getMigrationDir` | - | `String` | 获取迁移文件目录 |
-| `setMigrationDir` | `String migrationDir` | `void` | 设置迁移文件目录 |
+| `getMigrationPackage` | - | `String` | 获取迁移文件完整包名（`basePackage + ".database.migration"`） |
+| `getMigrationSourceDir` | - | `String` | 获取迁移文件源码目录路径（`outputDir` + 包路径，供 `make:model-from-migration` 解析使用） |
 
 #### Usage Example
 ```yaml
@@ -170,7 +168,6 @@ jaravel:
     make:
       base-package: com.example
       output-dir: src/main/java
-      migration-dir: database/migrations
 ```
 
 ```java
@@ -187,7 +184,7 @@ properties.setOutputDir("src/main/java");
 ### MakeGenerator
 - **Type**: final class（工具类，不可实例化）
 - **Package**: `com.weacsoft.jaravel.vendor.artisan.make`
-- **Description**: 代码生成器核心，对齐 Laravel `php artisan make:xxx`。根据 `MakeCodeProperties` 配置的基包和输出目录，生成 Controller、Middleware、Model、Migration、Command、Event、Listener 的 Java 源文件，并自动放到对应包目录下。所有业务代码（Controller/Middleware/Model/Command/Event/Listener）生成到 `base-package.app.*` 子包下（对齐 Laravel 的 `app/` 目录），Migration 生成到 `migration-dir`。类名自动转为 PascalCase，缺失后缀时自动补全；文件已存在时抛出 `IllegalStateException`，除非 `force=true`。所有生成方法均为 `static`。
+- **Description**: 代码生成器核心，对齐 Laravel `php artisan make:xxx`。根据 `MakeCodeProperties` 配置的基包和输出目录，生成 Controller、Middleware、Model、Migration、Command、Event、Listener 的 Java 源文件，并自动放到对应包目录下。所有业务代码（Controller/Middleware/Model/Command/Event/Listener）生成到 `base-package.app.*` 子包下（对齐 Laravel 的 `app/` 目录），Migration 生成到 `base-package.database.migration`（Java 源码树中，确保能被编译器编译并由 CLASSPATH 模式自动发现）。类名自动转为 PascalCase，缺失后缀时自动补全；文件已存在时抛出 `IllegalStateException`，除非 `force=true`。所有生成方法均为 `static`。
 
 #### Methods
 

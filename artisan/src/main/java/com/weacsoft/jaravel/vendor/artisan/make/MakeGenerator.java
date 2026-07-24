@@ -192,14 +192,17 @@ public final class MakeGenerator {
 
     /**
      * 生成 Migration 类。
+     * <p>
+     * 迁移文件生成到 Java 源码树中（{@code output-dir/基包/database/migration/}），
+     * 与 Controller、Model 等保持一致的生成方式，确保能被编译器编译并由 CLASSPATH 模式加载。
      */
     public static String generateMigration(MakeCodeProperties properties, String name, boolean force) throws IOException {
         String datePrefix = LocalDate.now().format(DATE_FORMATTER);
         String pascalName = toPascalCase(name);
         String className = "Migration_" + datePrefix + "_" + pascalName;
-        String packageName = properties.getBasePackage() + ".database.migrations";
+        String packageName = properties.getBasePackage() + ".database.migration";
         String content = buildMigrationSource(packageName, className, name);
-        return writeMigrationFile(properties.getMigrationDir(), className, content, force);
+        return writeJavaFile(properties.getOutputDir(), packageName, className, content, force);
     }
 
     private static String buildMigrationSource(String packageName, String className, String description) {
@@ -365,22 +368,6 @@ public final class MakeGenerator {
                     + "（使用 --force 强制覆盖）");
         }
 
-        Files.write(file, content.getBytes(StandardCharsets.UTF_8));
-        return file.toAbsolutePath().toString();
-    }
-
-    /**
-     * 写入迁移文件到指定目录（不通过包路径映射，直接写入 migrationDir）。
-     */
-    private static String writeMigrationFile(String migrationDir, String className,
-                                              String content, boolean force) throws IOException {
-        Path dir = Paths.get(migrationDir);
-        Files.createDirectories(dir);
-        Path file = dir.resolve(className + ".java");
-        if (Files.exists(file) && !force) {
-            throw new IllegalStateException("文件已存在，拒绝覆盖: " + file.toAbsolutePath()
-                    + "（使用 --force 强制覆盖）");
-        }
         Files.write(file, content.getBytes(StandardCharsets.UTF_8));
         return file.toAbsolutePath().toString();
     }

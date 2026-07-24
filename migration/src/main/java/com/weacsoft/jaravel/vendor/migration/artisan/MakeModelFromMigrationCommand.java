@@ -74,13 +74,13 @@ public class MakeModelFromMigrationCommand extends ArtisanCommand {
             return 1;
         }
 
-        String migrationDir = properties.getMigrationDir();
+        String migrationDir = properties.getMigrationSourceDir();
         info("解析迁移文件目录: " + migrationDir);
 
         Map<String, ParsedTable> tables = parser.parseAll(migrationDir);
         if (tables.isEmpty()) {
             error("未在迁移目录中找到任何表定义: " + migrationDir);
-            error("请检查 jaravel.artisan.make.migration-dir 配置");
+            error("请检查 jaravel.artisan.make.base-package 和 output-dir 配置");
             return 1;
         }
 

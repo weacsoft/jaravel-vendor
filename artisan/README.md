@@ -311,14 +311,14 @@ jaravel:
     make:
       base-package: com.example.app      # 基包名（生成类的根包，默认 com.weacsoft.jaravel）
       output-dir: src/main/java          # 输出根目录（Java 源码根目录，默认 src/main/java）
-      migration-dir: database/migrations # 迁移文件目录（默认 database/migrations）
 ```
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
-| `jaravel.artisan.make.base-package` | `com.weacsoft.jaravel` | 生成类的基包名，Controller/Middleware/Model/Command/Event/Listener 均在此包下创建子包（Migration 生成到 `migration-dir` 指定目录） |
+| `jaravel.artisan.make.base-package` | `com.weacsoft.jaravel` | 生成类的基包名，Controller/Middleware/Model/Command/Event/Listener/Migration 均在此包下创建子包 |
 | `jaravel.artisan.make.output-dir` | `src/main/java` | Java 源文件输出根目录，生成文件会按包路径写入此目录下 |
-| `jaravel.artisan.make.migration-dir` | `database/migrations` | 迁移文件目录（相对路径，Migration 类生成到此目录而非 Java 包路径下） |
+
+> Migration 文件生成到 `output-dir/基包/database/migration/` 目录下，与其他生成类型一样写入 Java 源码树，确保能被编译器编译并由 CLASSPATH 模式自动发现。
 
 ### make:all 输出示例
 
@@ -330,7 +330,7 @@ $ java -jar app.jar artisan make:all User
   [+] Controller created: com/example/app/http/controllers/UserController.java
   [+] Middleware created: com/example/app/http/middleware/UserMiddleware.java
   [+] Model created: com/example/app/models/User.java
-  [+] Migration created: database/migrations/Migration_2024_01_01_User.java
+  [+] Migration created: com/example/app/database/migration/Migration_2024_01_01_User.java
   [+] Command created: com/example/app/console/commands/UserCommand.java
   [+] Event created: com/example/app/events/UserEvent.java
   [+] Listener created: com/example/app/listeners/UserListener.java
