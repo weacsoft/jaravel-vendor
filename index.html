@@ -9779,8 +9779,14 @@ public interface AuthGuard {
     /** 是否访客（未登录） */
     boolean guest();
 
-    /** 当前用户，未登录返回 null */
-    Authenticatable user();
+    /**
+     * 当前用户，未登录返回 null。
+     * 泛型方法 + 目标类型推断：调用方可直接赋值给具体用户类型，无需强转。
+     *
+     * @param &lt;T&gt; 具体用户类型（必须是 Authenticatable 的子类型）
+     * @return 当前已认证用户，未登录返回 null
+     */
+    &lt;T extends Authenticatable&gt; T user();
 
     /** 当前用户 id，未登录返回 null（默认实现） */
     default Object id() {
@@ -9810,12 +9816,19 @@ public interface AuthGuard {
 <tr><th>方法</th><th>说明</th></tr>
 <tr><td>`check()`</td><td>返回当前是否已登录（`user() != null`）</td></tr>
 <tr><td>`guest()`</td><td>返回当前是否为访客（`!check()`）</td></tr>
-<tr><td>`user()`</td><td>返回当前已认证用户，未登录返回 `null`</td></tr>
+<tr><td>`&lt;T extends Authenticatable&gt; T user()`</td><td>返回当前已认证用户（泛型方法 + 目标类型推断，可直接赋值给具体用户类型无需强转），未登录返回 `null`</td></tr>
 <tr><td>`id()`</td><td>返回当前用户主键，未登录返回 `null`</td></tr>
 <tr><td>`login(Authenticatable)`</td><td>登入指定用户（写入 session / 签发 token）</td></tr>
 <tr><td>`logout()`</td><td>登出（清除 session / 加入黑名单）</td></tr>
 <tr><td>`token()`</td><td>登录后获取签发的 token，不支持 token 的守卫返回 `null`</td></tr>
 </table>
+
+<p><strong>类型推断示例</strong>：</p>
+
+<pre><code>
+// 泛型方法 + 目标类型推断：编译器根据左侧目标类型推断 T，无需强转
+User user = Auth.guard(&quot;web&quot;).user();   // 编译器推断 T = User
+</code></pre>
 
 <p>---</p>
 
@@ -9907,6 +9920,83 @@ public AuthGuardDriver jwtGuardDriver(JwtService jwtService, JwtConfig jwtConfig
 
 <p>---</p>
 
+<h6 id="auth-userproviderdriver">UserProviderDriver</h6>
+
+<p>提供者驱动契约，采用工厂模式注册新的 UserProvider 驱动，与 <code>AuthGuardDriver</code> 共同构成 auth 模块的<strong>双层工厂模式</strong>（守卫驱动 + 提供者驱动）。每个驱动通过 <code>support(String)</code> 自报其支持的驱动名，并由 <code>AuthAutoConfiguration</code> 自动收集容器中所有 <code>UserProviderDriver</code> Bean 注册到 <code>AuthManager</code>。</p>
+
+<p>第三方模块只需将驱动实现注册为 Spring Bean，即可被自动收集并扩展 AuthManager 支持的 provider driver，无需修改 auth 模块本身，也无需手动调用注册方法。</p>
+
+<pre><code>
+public interface UserProviderDriver {
+
+    /**
+     * 是否支持指定驱动名（如 &quot;eloquent&quot;、&quot;ldap&quot;，不区分大小写）。
+     * @param driver 驱动名
+     * @return 是否支持
+     */
+    boolean support(String driver);
+
+    /**
+     * 创建提供者实例。
+     *
+     * @param config 提供者配置（字段映射等，由具体驱动解释）
+     * @return 提供者实例
+     */
+    UserProvider create(Map&lt;String, Object&gt; config);
+}
+</code></pre>
+
+<p><strong>注册示例</strong>（将自定义提供者驱动注册为 Spring Bean，由 AuthAutoConfiguration 自动收集）：</p>
+
+<pre><code>
+@Bean
+@ConditionalOnMissingBean
+public UserProviderDriver eloquentUserProviderDriver() {
+    return new EloquentUserProviderDriver();
+}
+</code></pre>
+
+<p>---</p>
+
+<h6 id="auth-guarddefinition">GuardDefinition</h6>
+
+<p>守卫定义，<code>record</code> 类型，用于以 <code>@Bean</code> 声明式注册守卫。通过 <code>AuthAutoConfiguration</code> 自动收集容器中所有 <code>GuardDefinition</code> Bean 完成守卫注册（Bean 名称即守卫名称），无需手动调用 <code>registerGuard()</code>。</p>
+
+<pre><code>
+public record GuardDefinition(String driver, String provider) {
+
+    /**
+     * 快捷工厂方法。
+     * @param driver   守卫驱动名（如 &quot;session&quot;、&quot;jwt&quot;）
+     * @param provider 绑定的 UserProvider 名称
+     * @return 守卫定义
+     */
+    public static GuardDefinition of(String driver, String provider) {
+        return new GuardDefinition(driver, provider);
+    }
+}
+</code></pre>
+
+<p><strong>声明式注册示例</strong>（Bean 名称即守卫名称）：</p>
+
+<pre><code>
+@Configuration
+public class AuthConfig {
+
+    @Bean(&quot;web&quot;)
+    public GuardDefinition webGuard() {
+        return GuardDefinition.of(&quot;session&quot;, &quot;users&quot;);
+    }
+
+    @Bean(&quot;api&quot;)
+    public GuardDefinition apiGuard() {
+        return GuardDefinition.of(&quot;jwt&quot;, &quot;users&quot;);
+    }
+}
+</code></pre>
+
+<p>---</p>
+
 <h6 id="auth-sessionstore">SessionStore</h6>
 
 <p>会话存储契约，抽象 Session 数据的读写。Session 守卫（<code>SessionGuard</code>）不再直接依赖 Servlet <code>HttpSession</code>，而是通过 <code>SessionStore</code> 读写登录态，从而支持不同的会话后端（内置 Cookie/Servlet Session、Redis 等）。</p>
@@ -9993,11 +10083,12 @@ public class SessionGuardDriver implements AuthGuardDriver {
 
 <h6 id="auth-authmanager">AuthManager</h6>
 
-<p>认证管理器，对齐 Laravel <code>AuthManager</code>。维护多个守卫（guard）与用户提供者（provider），按名称解析守卫实例（请求级缓存于 ThreadLocal）。</p>
+<p>认证管理器，对齐 Laravel <code>AuthManager</code>。维护多个守卫（guard）与用户提供者（provider），按名称解析守卫实例（请求级缓存于 ThreadLocal）。采用<strong>双层工厂模式</strong>（<code>AuthGuardDriver</code> 守卫驱动 + <code>UserProviderDriver</code> 提供者驱动），第三方模块将驱动实现注册为 Spring Bean 即可由 <code>AuthAutoConfiguration</code> 自动收集，无需修改 auth 模块。</p>
 
 <p><strong>核心特性</strong>：</p>
 <li>多守卫、多提供者管理</li>
-<li>工厂模式 Guard 驱动注册（<code>registerGuardDriver</code>，Spring Bean 自动收集）</li>
+<li>双层工厂模式：守卫驱动（<code>registerGuardDriver</code>）+ 提供者驱动（<code>registerProviderDriver</code>），Spring Bean 自动收集</li>
+<li>声明式注册：<code>UserProvider</code> 与 <code>GuardDefinition</code> 可直接注册为 <code>@Bean</code>，由自动装配按 Bean 名称收集</li>
 <li>ThreadLocal 请求级守卫实例隔离</li>
 <li>ConcurrentHashMap / CopyOnWriteArrayList 注册表保证并发安全</li>
 
@@ -10008,6 +10099,7 @@ public class SessionGuardDriver implements AuthGuardDriver {
 <tr><td>`guards`</td><td>`ConcurrentHashMap<String, GuardConfig>`</td><td>守卫配置：name -> {driver, providerName}，进程级共享，启动后只读</td></tr>
 <tr><td>`providers`</td><td>`ConcurrentHashMap<String, UserProvider>`</td><td>提供者：name -> UserProvider，进程级共享，启动后只读</td></tr>
 <tr><td>`guardDrivers`</td><td>`CopyOnWriteArrayList<AuthGuardDriver>`</td><td>守卫驱动列表（工厂模式）：由 AuthAutoConfiguration 自动收集容器中的 AuthGuardDriver Bean，进程级共享</td></tr>
+<tr><td>`providerDrivers`</td><td>`CopyOnWriteArrayList<UserProviderDriver>`</td><td>提供者驱动列表（工厂模式）：由 AuthAutoConfiguration 自动收集容器中的 UserProviderDriver Bean，用于按驱动名创建 UserProvider，进程级共享</td></tr>
 <tr><td>`current`</td><td>`ThreadLocal<Map<String, AuthGuard>>`</td><td>请求级守卫实例：name -> AuthGuard，每线程独立，请求结束清理</td></tr>
 <tr><td>`defaultGuard`</td><td>`volatile String`</td><td>默认守卫名，启动阶段设置后不再变更，`volatile` 保证可见性</td></tr>
 </table>
@@ -10017,11 +10109,36 @@ public class SessionGuardDriver implements AuthGuardDriver {
 <p><strong>注册方法（应用启动阶段调用）</strong>：</p>
 
 <pre><code>
-/** 注册用户提供者 */
+/** 注册用户提供者（直接传入实例，编程式 @Bean 自动收集时使用） */
 public void registerProvider(String name, UserProvider provider)
 
-/** 注册守卫 */
+/**
+ * 通过提供者驱动（工厂模式）创建并注册用户提供者。
+ * 按 driver 名从 providerDrivers 列表查找匹配的 UserProviderDriver，调用其 create(config) 创建。
+ * @param name    提供者名称
+ * @param driver  提供者驱动名（如 &quot;eloquent&quot;）
+ * @param config  提供者配置（字段映射等，由具体驱动解释）
+ */
+public void registerProvider(String name, String driver, Map&lt;String, Object&gt; config)
+
+/**
+ * 注册提供者驱动（工厂模式），允许插件模块扩展支持的 provider driver 类型。
+ * 驱动名由 UserProviderDriver.support() 自报。
+ * @param driver 提供者驱动实例
+ */
+public void registerProviderDriver(UserProviderDriver driver)
+
+/** 注册守卫（便捷重载，等价于传入空 config） */
 public void registerGuard(String name, String driver, String providerName)
+
+/**
+ * 注册守卫配置（工厂模式）。守卫实例按需由 guardDrivers 中匹配的驱动 create(name, provider, config) 创建。
+ * @param name         守卫名称
+ * @param driver       守卫驱动名（如 &quot;session&quot;、&quot;jwt&quot;）
+ * @param providerName 绑定的 UserProvider 名称
+ * @param config       额外配置（由具体守卫驱动解释，可为空 Map）
+ */
+public void registerGuard(String name, String driver, String providerName, Map&lt;String, Object&gt; config)
 
 /**
  * 注册 Guard 驱动（工厂模式），允许插件模块扩展支持的 driver 类型。
@@ -10046,18 +10163,23 @@ public boolean hasGuards()
 <p>示例：</p>
 
 <pre><code>
-// 注册用户提供者
+// 方式一（推荐）：声明式 @Bean，由 AuthAutoConfiguration 自动收集
+//   @Bean(&quot;users&quot;) UserProvider usersProvider(...) 与 @Bean(&quot;web&quot;) GuardDefinition webGuard()
+//   详见下文「注册提供者与守卫」示例
+
+// 方式二：编程式注册（启动阶段调用）
+// 直接注册提供者实例
 authManager.registerProvider(&quot;users&quot;, new EloquentUserProvider(userModel, &quot;number&quot;));
+// 或通过提供者驱动（工厂模式）创建
+authManager.registerProvider(&quot;admins&quot;, &quot;eloquent&quot;, Map.of(&quot;model&quot;, adminModel, &quot;identifier&quot;, &quot;username&quot;));
 
-// 注册 session 守卫
+// 注册 session 守卫（便捷重载，等价于传入空 config）
 authManager.registerGuard(&quot;web&quot;, &quot;session&quot;, &quot;users&quot;);
+// 注册 jwt 守卫（携带额外 config）
+authManager.registerGuard(&quot;api&quot;, &quot;jwt&quot;, &quot;users&quot;, Map.of());
 
-// 注册 jwt 守卫（由 jwt 模块自动装配完成）
-authManager.registerGuard(&quot;api&quot;, &quot;jwt&quot;, &quot;users&quot;);
-
-// jwt 驱动注册为 Spring Bean（JwtGuardDriver），由 AuthAutoConfiguration 自动收集
-// 无需手动调用 registerGuardDriver；此处仅作演示
-// authManager.registerGuardDriver(new JwtGuardDriver(jwtService, jwtConfig));
+// 驱动注册为 Spring Bean（JwtGuardDriver / 自定义 UserProviderDriver），
+// 由 AuthAutoConfiguration 自动收集，无需手动调用 registerGuardDriver / registerProviderDriver
 </code></pre>
 
 <p><strong>默认守卫管理</strong>：</p>
@@ -10094,7 +10216,7 @@ assert g1 == g2; // true
 <p><strong>便捷方法（作用于默认守卫）</strong>：</p>
 
 <pre><code>
-public Authenticatable user()                          // 当前用户
+public &lt;T extends Authenticatable&gt; T user()                          // 当前用户
 public Object id()                                     // 当前用户 id
 public boolean check()                                 // 是否已登录
 public boolean guest()                                 // 是否访客
@@ -10223,7 +10345,7 @@ public final class Auth {
     // 状态查询
     public static boolean check()                         // 是否已登录（默认守卫）
     public static boolean guest()                         // 是否访客（默认守卫）
-    public static Authenticatable user()                  // 当前用户（默认守卫）
+    public static &lt;T extends Authenticatable&gt; T user()    // 当前用户（默认守卫，泛型方法，目标类型推断无需强转）
     public static Object id()                             // 当前用户 id（默认守卫）
 
     // 守卫获取
@@ -10357,7 +10479,7 @@ public class AuthLifecycleFilter extends OncePerRequestFilter {
 
 <h6 id="auth-authautoconfiguration">AuthAutoConfiguration</h6>
 
-<p>Spring Boot 自动装配类，注册 <code>AuthManager</code>、<code>AuthLifecycleFilter</code>、内置 <code>CookieSessionStore</code> 与 <code>SessionGuardDriver</code>，并通过 <code>SmartInitializingSingleton</code> 自动收集容器中所有 <code>AuthGuardDriver</code> Bean 注册到 <code>AuthManager</code>。</p>
+<p>Spring Boot 自动装配类，注册 <code>AuthManager</code>、<code>AuthLifecycleFilter</code>、内置 <code>CookieSessionStore</code> 与 <code>SessionGuardDriver</code>。实现 <code>SmartInitializingSingleton</code>，在 <code>afterSingletonsInstantiated()</code> 中按固定顺序自动收集并注册：提供者驱动（<code>List&lt;UserProviderDriver&gt;</code>）、配置式提供者、编程式提供者（<code>Map&lt;String, UserProvider&gt;</code>）、配置式守卫、编程式守卫（<code>Map&lt;String, GuardDefinition&gt;</code>）、守卫驱动（<code>List&lt;AuthGuardDriver&gt;</code>）。编程式 <code>@Bean</code> 优先于配置式（同名时覆盖）。</p>
 
 <pre><code>
 @AutoConfiguration
@@ -10411,10 +10533,23 @@ public class AuthAutoConfiguration implements SmartInitializingSingleton {
 
     @Override
     public void afterSingletonsInstantiated() {
-        // 使用容器中注入的 AuthManager 单例，而非直接调用 authManager() 方法
-        // （@AutoConfiguration 的 proxyBeanMethods=false 不会拦截方法调用）
-        for (AuthGuardDriver driver : guardDrivers) {
-            authManager.registerGuardDriver(driver);
+        // 所有单例 Bean 就绪后，按固定顺序自动收集并注册。
+        // 约定：编程式 @Bean 优先于配置式，同名时编程式覆盖配置式。
+
+        // 1. 提供者驱动（List&lt;UserProviderDriver&gt;）
+        for (UserProviderDriver d : applicationContext.getBeansOfType(UserProviderDriver.class).values()) {
+            authManager.registerProviderDriver(d);
+        }
+        // 2. 配置式提供者（由 AuthProperties 配置经提供者驱动创建）
+        // 3. 编程式提供者（Map&lt;String, UserProvider&gt;，Bean 名称即提供者名）
+        applicationContext.getBeansOfType(UserProvider.class).forEach(authManager::registerProvider);
+        // 4. 配置式守卫（AuthProperties.guards）
+        // 5. 编程式守卫（Map&lt;String, GuardDefinition&gt;，Bean 名称即守卫名）
+        applicationContext.getBeansOfType(GuardDefinition.class)
+                .forEach((name, gd) -&gt; authManager.registerGuard(name, gd.driver(), gd.provider(), Map.of()));
+        // 6. 守卫驱动（List&lt;AuthGuardDriver&gt;，含内置 SessionGuardDriver 与第三方 JwtGuardDriver 等）
+        for (AuthGuardDriver d : applicationContext.getBeansOfType(AuthGuardDriver.class).values()) {
+            authManager.registerGuardDriver(d);
         }
     }
 }
@@ -10424,7 +10559,17 @@ public class AuthAutoConfiguration implements SmartInitializingSingleton {
 <li>Servlet Web 应用环境</li>
 <li>classpath 存在 <code>AuthManager</code> 类</li>
 
-<p><strong>说明</strong>：所有 <code>AuthGuardDriver</code> 实现（如 <code>SessionGuardDriver</code>、<code>JwtGuardDriver</code>）注册为 Spring Bean 后，本配置类在所有单例就绪后自动将它们注册到 <code>AuthManager</code>，无需各模块手动调用注册方法。<code>SessionStore</code> 作为全局唯一 Bean 注入到 <code>SessionGuardDriver</code>，应用可在 <code>config/SessionConfig.java</code> 中注册自定义 <code>SessionStore</code> Bean 覆盖默认实现（如 Redis）。认证中间件 <code>Authenticate</code> 为普通 <code>Middleware</code> 实现，可直接传入 <code>Router.middleware()</code> 使用，无需别名注册。</p>
+<p><strong>说明</strong>：JWT 等扩展驱动只需将实现 <code>AuthGuardDriver</code> / <code>UserProviderDriver</code> 接口的类（如 <code>JwtGuardDriver</code>）注册为 Spring Bean，<code>AuthAutoConfiguration</code> 会通过 <code>SmartInitializingSingleton</code> 自动收集并注册到 <code>AuthManager</code>，无需手动调用 <code>registerGuardDriver()</code> / <code>registerProviderDriver()</code>。auth 模块本身不包含 JWT 实现。认证中间件 <code>Authenticate</code> 为普通 <code>Middleware</code> 实现，可直接传入 <code>Router.middleware()</code> 使用，无需别名注册。</p>
+
+<p><strong>自动收集与注册顺序</strong>（在 <code>afterSingletonsInstantiated()</code> 中执行）：</p>
+<li>1. 提供者驱动：<code>List&lt;UserProviderDriver&gt;</code></li>
+<li>2. 配置式提供者：由 <code>AuthProperties</code> 配置经提供者驱动创建</li>
+<li>3. 编程式提供者：<code>Map&lt;String, UserProvider&gt;</code>（Bean 名称即提供者名）</li>
+<li>4. 配置式守卫：<code>AuthProperties.guards</code></li>
+<li>5. 编程式守卫：<code>Map&lt;String, GuardDefinition&gt;</code>（Bean 名称即守卫名）</li>
+<li>6. 守卫驱动：<code>List&lt;AuthGuardDriver&gt;</code></li>
+
+<p>&gt; 编程式 <code>@Bean</code> 优先于配置式：同名时编程式覆盖配置式（提供者 / 守卫均适用）。</p>
 
 <p>---</p>
 
@@ -10486,7 +10631,7 @@ jaravel:
 
 <h6 id="auth-完整多守卫配置示例">完整多守卫配置示例</h6>
 
-<p>守卫与提供者的注册通常在应用启动时通过 <code>@Configuration</code> 完成：</p>
+<p>守卫与提供者采用纯 <code>@Bean</code> 声明式注册，由 <code>AuthAutoConfiguration</code> 自动收集（Bean 名称即提供者 / 守卫名称）：</p>
 
 <pre><code>
 jaravel:
@@ -10498,21 +10643,19 @@ jaravel:
 @Configuration
 public class AuthConfig {
 
-    @Bean
-    public UserProvider userProvider(UserModel userModel) {
-        return new EloquentUserProvider(userModel, &quot;number&quot;);
+    @Bean(&quot;users&quot;)
+    public UserProvider usersProvider(UserModel userModel) {
+        return new EloquentUserProvider&lt;&gt;(userModel, &quot;number&quot;);
     }
 
-    @Bean
-    public ApplicationRunner authRegistrar(AuthManager authManager, UserProvider userProvider) {
-        return args -&gt; {
-            // 注册提供者
-            authManager.registerProvider(&quot;users&quot;, userProvider);
-            // 注册 session 守卫
-            authManager.registerGuard(&quot;web&quot;, &quot;session&quot;, &quot;users&quot;);
-            // 注册 jwt 守卫（jwt 驱动由 jwt 模块自动注册）
-            authManager.registerGuard(&quot;api&quot;, &quot;jwt&quot;, &quot;users&quot;);
-        };
+    @Bean(&quot;web&quot;)
+    public GuardDefinition webGuard() {
+        return GuardDefinition.of(&quot;session&quot;, &quot;users&quot;);
+    }
+
+    @Bean(&quot;api&quot;)
+    public GuardDefinition apiGuard() {
+        return GuardDefinition.of(&quot;jwt&quot;, &quot;users&quot;);
     }
 }
 </code></pre>
@@ -10542,21 +10685,34 @@ public class User implements Authenticatable {
 
 <h6 id="auth-2-注册提供者与守卫">2. 注册提供者与守卫</h6>
 
+<p>采用纯 <code>@Bean</code> 声明式注册：<code>UserProvider</code> 与 <code>GuardDefinition</code> 直接声明为 Bean（Bean 名称即提供者 / 守卫名称），由 <code>AuthAutoConfiguration</code> 自动收集，无需 <code>ApplicationRunner</code> 或手动调用 <code>registerProvider()</code> / <code>registerGuard()</code>。</p>
+
 <pre><code>
 @Configuration
 public class AuthConfig {
-
-    @Bean
-    public UserProvider userProvider(UserModel userModel) {
-        return new EloquentUserProvider(userModel, &quot;number&quot;);
+    @Bean(&quot;users&quot;)
+    public UserProvider usersProvider(User userModel) {
+        return new EloquentUserProvider&lt;&gt;(userModel, &quot;number&quot;);
     }
 
-    @Bean
-    public ApplicationRunner authRegistrar(AuthManager authManager, UserProvider userProvider) {
-        return args -&gt; {
-            authManager.registerProvider(&quot;users&quot;, userProvider);
-            authManager.registerGuard(&quot;web&quot;, &quot;session&quot;, &quot;users&quot;);
-        };
+    @Bean(&quot;admins&quot;)
+    public UserProvider adminsProvider(Admin adminModel) {
+        return new EloquentUserProvider&lt;&gt;(adminModel, &quot;username&quot;);
+    }
+
+    @Bean(&quot;web&quot;)
+    public GuardDefinition webGuard() {
+        return GuardDefinition.of(&quot;session&quot;, &quot;users&quot;);
+    }
+
+    @Bean(&quot;api&quot;)
+    public GuardDefinition apiGuard() {
+        return GuardDefinition.of(&quot;jwt&quot;, &quot;users&quot;);
+    }
+
+    @Bean(&quot;admin&quot;)
+    public GuardDefinition adminGuard() {
+        return GuardDefinition.of(&quot;jwt&quot;, &quot;admins&quot;);
     }
 }
 </code></pre>
@@ -10595,12 +10751,21 @@ router.get(&quot;/admin&quot;, this::admin)
 @GetMapping(&quot;/profile&quot;)
 public Response profile() {
     if (Auth.check()) {
-        User user = (User) Auth.user();
+        User user = Auth.user();          // 泛型方法 + 目标类型推断，无需强转
         return ResponseBuilder.success(user);
     }
     return ResponseBuilder.error(401, &quot;未登录&quot;);
 }
 </code></pre>
+
+<p><strong>类型推断说明</strong>：</p>
+
+<pre><code>
+User user = Auth.guard(&quot;web&quot;).user();     // 编译器推断 T = User，无需 (User) 强转
+Admin admin = Auth.guard(&quot;admin&quot;).user(); // 自动推断 T = Admin
+</code></pre>
+
+<p><strong>原理</strong>：<code>user()</code> 为泛型方法 <code>&lt;T extends Authenticatable&gt; T user()</code>，编译器根据赋值目标类型推断 <code>T</code>；运行时的类型转换在守卫内部完成，调用方无需显式强转。</p>
 
 <h6 id="auth-6-登出">6. 登出</h6>
 
@@ -13207,13 +13372,15 @@ Cache.store(&quot;file&quot;).put(&quot;report&quot;, reportData, 3600);
 
 <p>&gt; <strong>注意</strong>：本类<strong>不使用 <code>@Component</code></strong> 注解，而是由 <code>CacheAutoConfiguration</code> 以 <code>@Bean @ConditionalOnMissingBean</code> 方式注册。这是为了避免组件扫描创建空实例（构造时需注入各 store）。</p>
 
+<p><strong>Store 自动收集</strong>：<code>CacheStore</code> 实例可直接声明为 <code>@Bean</code>（Bean 名称即 store 名称），由 <code>CacheAutoConfiguration</code> 通过 <code>Map&lt;String, CacheStore&gt;</code> 自动收集并注册到 <code>CacheManager</code>，无需手动调用 <code>addStore()</code>。命令式 <code>addStore()</code> 仍保留供编程式注册使用。</p>
+
 <h6 id="cache-方法文档">方法文档</h6>
 
 <table>
 <tr><th>方法签名</th><th>说明</th></tr>
 <tr><td>`CacheStore store()`</td><td>返回默认 store</td></tr>
 <tr><td>`CacheStore store(String name)`</td><td>按名称返回指定 store，未注册则抛 `IllegalStateException`</td></tr>
-<tr><td>`void addStore(String name, CacheStore store)`</td><td>注册一个命名 store</td></tr>
+<tr><td>`void addStore(String name, CacheStore store)`</td><td>注册一个命名 store（命令式；推荐改用 @Bean + `Map&lt;String, CacheStore&gt;` 自动收集）</td></tr>
 <tr><td>`void setDefaultStore(String name)`</td><td>设置默认 store 名称</td></tr>
 <tr><td>`String getDefaultStore()`</td><td>获取默认 store 名称</td></tr>
 </table>
@@ -13231,9 +13398,16 @@ CacheStore store = cacheManager.store();
 // 按名称获取 store
 CacheStore fileStore = cacheManager.store(&quot;file&quot;);
 
-// 注册自定义 store
-cacheManager.addStore(&quot;redis&quot;, new DefaultCacheStore(redisDriver, &quot;jaravel&quot;));
-cacheManager.setDefaultStore(&quot;redis&quot;);
+// 注册自定义 store（推荐：声明式 @Bean，Bean 名即 store 名，由自动装配通过
+// Map&lt;String, CacheStore&gt; 自动收集，无需手动 addStore）
+@Bean(&quot;redis&quot;)
+public CacheStore redisStore(RedisCacheDriver redisDriver, CacheProperties properties) {
+    return new DefaultCacheStore(redisDriver, properties.getPrefix());
+}
+
+// 命令式注册（仍支持，用于编程式场景）
+// cacheManager.addStore(&quot;redis&quot;, new DefaultCacheStore(redisDriver, &quot;jaravel&quot;));
+// cacheManager.setDefaultStore(&quot;redis&quot;);
 </code></pre>
 
 <p>---</p>
@@ -13716,7 +13890,7 @@ Object value = Cache.store(&quot;database&quot;).get(&quot;user:1&quot;);
 <tr><td>`CacheManager`</td><td>无</td><td>构造方法</td><td>创建缓存管理器（默认 store 为 "array"）</td></tr>
 <tr><td>`store`</td><td>无</td><td>`CacheStore`</td><td>返回默认 store</td></tr>
 <tr><td>`store`</td><td>`String name`</td><td>`CacheStore`</td><td>按名称返回指定 store，未注册则抛异常</td></tr>
-<tr><td>`addStore`</td><td>`String name, CacheStore store`</td><td>`void`</td><td>注册一个命名 store</td></tr>
+<tr><td>`addStore`</td><td>`String name, CacheStore store`</td><td>`void`</td><td>注册一个命名 store（命令式；推荐改用 @Bean + Map&lt;String, CacheStore&gt; 自动收集）</td></tr>
 <tr><td>`setDefaultStore`</td><td>`String name`</td><td>`void`</td><td>设置默认 store 名称</td></tr>
 <tr><td>`getDefaultStore`</td><td>无</td><td>`String`</td><td>获取默认 store 名称</td></tr>
 </table>
@@ -13732,8 +13906,9 @@ cacheManager.store().put(&quot;key&quot;, &quot;value&quot;, 60);
 // 使用指定 store
 cacheManager.store(&quot;file&quot;).put(&quot;key&quot;, &quot;value&quot;, 3600);
 
-// 注册自定义 store
-cacheManager.addStore(&quot;redis&quot;, redisStore);
+// 注册自定义 store（推荐：声明式 @Bean，Bean 名即 store 名，由 Map&lt;String, CacheStore&gt; 自动收集）
+// @Bean(&quot;redis&quot;) public CacheStore redisStore(...) { return new DefaultCacheStore(...); }
+// 命令式注册（仍支持）：cacheManager.addStore(&quot;redis&quot;, redisStore);
 cacheManager.setDefaultStore(&quot;redis&quot;);
 </code></pre>
 
