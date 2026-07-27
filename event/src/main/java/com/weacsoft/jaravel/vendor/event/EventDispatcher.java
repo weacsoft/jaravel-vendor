@@ -2,7 +2,6 @@ package com.weacsoft.jaravel.vendor.event;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,7 +26,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * <p>
  * 单个监听器最终失败（重试耗尽）后仅记录日志，不会中断其它监听器的执行。
  */
-@Component
 public class EventDispatcher implements Dispatcher {
 
     private static final Logger logger = LoggerFactory.getLogger(EventDispatcher.class);

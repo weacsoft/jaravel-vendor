@@ -103,8 +103,9 @@ public class JwtGuard implements AuthGuard {
      * </ol>
      */
     @Override
-    public Authenticatable user() {
-        if (resolved) return cachedUser;
+    @SuppressWarnings("unchecked")
+    public <T extends Authenticatable> T user() {
+        if (resolved) return (T) cachedUser;
         resolved = true;
         Request req = AuthContext.get();
         if (req == null) return null;
@@ -121,7 +122,7 @@ public class JwtGuard implements AuthGuard {
             if (cachedUser != null && refreshEnabled && jwtService.shouldRefresh(token)) {
                 lastToken = jwtService.generate(String.valueOf(cachedUser.getAuthIdentifier()));
             }
-            return cachedUser;
+            return (T) cachedUser;
         }
 
         // 2. 宽限期：token 已过期但在宽限期窗口内
@@ -137,7 +138,7 @@ public class JwtGuard implements AuthGuard {
                     jwtService.blacklist(token);
                 }
             }
-            return cachedUser;
+            return (T) cachedUser;
         }
 
         return null;

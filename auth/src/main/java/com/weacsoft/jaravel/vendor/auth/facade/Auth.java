@@ -7,19 +7,21 @@ import com.weacsoft.jaravel.vendor.core.Facade;
 
 /**
  * Auth 门面，对齐 Laravel {@code Auth::}。
+ * <p>
+ * {@link #user()} 使用泛型方法 + 目标类型推断，调用方可直接赋值给具体用户类型而无需强转：
  * <pre>
- * if (Auth::check()) { ... }
- * Authenticatable user = Auth::user();
- * Auth::login(user);
- * Auth::guard("admin").user();
- * String token = Auth::token();   // JWT 登录后获取 token
+ * if (Auth.check()) { ... }
+ * User user = Auth.user();               // 类型推断，无需强转
+ * Auth.login(user);
+ * Admin admin = Auth.guard("admin").user();  // 指定守卫也能推断
+ * String token = Auth.token();           // JWT 登录后获取 token
  *
  * // 多 guard 用法
- * Auth::guard("api").login(user);   // 通过 api guard（JWT）登录
- * Auth::guard("web").login(user);   // 通过 web guard（Session）登录
- * Auth::guard("api").check();       // 检查 api guard 登录态
- * Auth::guard("web").check();       // 检查 web guard 登录态
- * Auth::logout("api");              // 登出指定 guard
+ * Auth.guard("api").login(user);   // 通过 api guard（JWT）登录
+ * Auth.guard("web").login(user);   // 通过 web guard（Session）登录
+ * Auth.guard("api").check();       // 检查 api guard 登录态
+ * Auth.guard("web").check();       // 检查 web guard 登录态
+ * Auth.logout("api");              // 登出指定 guard
  * </pre>
  */
 public final class Auth {
@@ -39,7 +41,7 @@ public final class Auth {
         return inst().guest();
     }
 
-    public static Authenticatable user() {
+    public static <T extends Authenticatable> T user() {
         return inst().user();
     }
 

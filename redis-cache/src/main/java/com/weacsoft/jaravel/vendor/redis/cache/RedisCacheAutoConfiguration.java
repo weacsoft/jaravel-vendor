@@ -1,20 +1,21 @@
 package com.weacsoft.jaravel.vendor.redis.cache;
 
-import com.weacsoft.jaravel.vendor.cache.CacheManager;
+import com.weacsoft.jaravel.vendor.cache.CacheStore;
 import com.weacsoft.jaravel.vendor.cache.store.DefaultCacheStore;
 import com.weacsoft.jaravel.vendor.redis.RedisManager;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 
 /**
  * Redis 缓存自动装配。
  * <p>
- * 当 {@link RedisManager} 和 {@link CacheManager} 均存在时，
- * 创建 {@link RedisCacheDriver} 并将其注册为 {@code redis} store 到 {@link CacheManager}。
+ * 当 {@link RedisManager} 存在时，创建 {@link RedisCacheDriver} 并注册为 {@code @Bean("redis")} CacheStore。
+ * {@code CacheManager} 通过 {@code Map<String, CacheStore>} 自动收集，无需手动 {@code addStore}。
  * <p>
  * 配置项：
  * <pre>
@@ -29,10 +30,9 @@ import org.springframework.context.annotation.Bean;
  * 或将 {@code jaravel.cache.default-store} 设为 {@code redis} 使其成为默认 store。
  */
 @AutoConfiguration
-@AutoConfigureAfter({com.weacsoft.jaravel.vendor.cache.autoconfigure.CacheAutoConfiguration.class,
-                     com.weacsoft.jaravel.vendor.redis.RedisAutoConfiguration.class})
-@ConditionalOnClass({RedisCacheDriver.class, CacheManager.class, RedisManager.class})
-@ConditionalOnBean({RedisManager.class, CacheManager.class})
+@AutoConfigureAfter(com.weacsoft.jaravel.vendor.redis.RedisAutoConfiguration.class)
+@ConditionalOnClass({RedisCacheDriver.class, CacheStore.class, RedisManager.class})
+@ConditionalOnBean(RedisManager.class)
 @ConditionalOnProperty(prefix = "jaravel.cache.redis", name = "auto-register", havingValue = "true", matchIfMissing = true)
 public class RedisCacheAutoConfiguration {
 
@@ -43,30 +43,22 @@ public class RedisCacheAutoConfiguration {
      * 以 {@code @ConditionalOnMissingBean} 暴露，便于业务方覆盖。
      */
     @Bean
-    @org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
+    @ConditionalOnMissingBean
     public RedisCacheDriver redisCacheDriver(RedisManager redisManager,
                                              RedisCacheProperties properties) {
         return new RedisCacheDriver(redisManager, properties.getConnection());
     }
 
     /**
-     * 将 Redis 缓存驱动注册到 CacheManager，作为 {@code redis} store。
+     * Redis 缓存 store（bean name "redis" 即 store name）。
      * <p>
-     * 通过 {@link CacheManager#addStore} 动态注册，使用全局缓存前缀。
+     * 由 {@code CacheManager} 通过 {@code Map<String, CacheStore>} 自动收集，无需手动 {@code addStore}。
+     * 使用全局缓存前缀。
      */
-    @Bean
-    public RedisCacheRegistrar redisCacheRegistrar(CacheManager cacheManager,
-                                                   RedisCacheDriver redisCacheDriver,
-                                                   com.weacsoft.jaravel.vendor.cache.autoconfigure.CacheProperties cacheProperties) {
-        return new RedisCacheRegistrar(cacheManager, redisCacheDriver, cacheProperties.getPrefix());
-    }
-
-    /** 注册器：将 Redis store 添加到 CacheManager */
-    public static class RedisCacheRegistrar {
-        public RedisCacheRegistrar(CacheManager cacheManager,
-                                   RedisCacheDriver driver,
-                                   String prefix) {
-            cacheManager.addStore("redis", new DefaultCacheStore(driver, prefix));
-        }
+    @Bean("redis")
+    @ConditionalOnMissingBean(name = "redis")
+    public CacheStore redisCacheStore(RedisCacheDriver redisCacheDriver,
+                                      com.weacsoft.jaravel.vendor.cache.autoconfigure.CacheProperties cacheProperties) {
+        return new DefaultCacheStore(redisCacheDriver, cacheProperties.getPrefix());
     }
 }

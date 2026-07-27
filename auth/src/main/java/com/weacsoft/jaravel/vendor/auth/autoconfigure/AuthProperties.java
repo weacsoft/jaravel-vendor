@@ -11,6 +11,15 @@ import java.util.Map;
  * jaravel:
  *   auth:
  *     default-guard: api
+ *     providers:
+ *       users:
+ *         driver: eloquent
+ *         model: com.weacsoft.jaravel.app.model.User
+ *         credential-field: number
+ *       admins:
+ *         driver: eloquent
+ *         model: com.weacsoft.jaravel.app.model.admin.Admin
+ *         credential-field: username
  *     guards:
  *       web:
  *         driver: session
@@ -25,9 +34,17 @@ import java.util.Map;
  * <p>
  * 认证架构分两层：
  * <ul>
- *   <li><b>认证驱动</b>（driver）：session | jwt | ...（通过 {@link com.weacsoft.jaravel.vendor.auth.contract.AuthGuardDriver} 的 support 方法匹配）</li>
- *   <li><b>Session 存储</b>：全局配置，不与 Guard 绑定。由应用的 {@code config/SessionConfig.java} 决定具体实现（默认 cookie）</li>
+ *   <li><b>提供者</b>（provider）：定义用户来源，由 {@link com.weacsoft.jaravel.vendor.auth.contract.UserProviderDriver}
+ *       工厂驱动按配置创建（如 {@code eloquent} 驱动从 Eloquent Model 查询用户）</li>
+ *   <li><b>守卫</b>（guard）：定义认证方式（session/jwt），绑定一个 provider</li>
  * </ul>
+ * <p>
+ * 除了配置式注册，也支持编程式 {@code @Bean} 注册：
+ * <ul>
+ *   <li>{@code @Bean("users")} 声明 {@link com.weacsoft.jaravel.vendor.auth.contract.UserProvider}（bean name 即 provider name）</li>
+ *   <li>{@code @Bean("web")} 声明 {@link com.weacsoft.jaravel.vendor.auth.contract.GuardDefinition}（bean name 即 guard name）</li>
+ * </ul>
+ * 编程式优先于配置式（同名时覆盖）。
  * <p>
  * JWT 相关配置在独立 jwt 模块的 {@code JwtProperties}（前缀 {@code jaravel.jwt}）。
  */
@@ -36,6 +53,9 @@ public class AuthProperties {
 
     /** 默认守卫名 */
     private String defaultGuard = "web";
+
+    /** 提供者配置，key 为提供者名称 */
+    private Map<String, ProviderConfig> providers = new LinkedHashMap<>();
 
     /** 守卫配置，key 为守卫名称 */
     private Map<String, GuardConfig> guards = new LinkedHashMap<>();
@@ -48,12 +68,64 @@ public class AuthProperties {
         this.defaultGuard = defaultGuard;
     }
 
+    public Map<String, ProviderConfig> getProviders() {
+        return providers;
+    }
+
+    public void setProviders(Map<String, ProviderConfig> providers) {
+        this.providers = providers;
+    }
+
     public Map<String, GuardConfig> getGuards() {
         return guards;
     }
 
     public void setGuards(Map<String, GuardConfig> guards) {
         this.guards = guards;
+    }
+
+    /** 单个提供者的配置 */
+    public static class ProviderConfig {
+        /** 驱动名称：eloquent / 自定义 */
+        private String driver;
+        /** Model 类全名（eloquent 驱动使用） */
+        private String model;
+        /** 凭证字段名（如 number / username） */
+        private String credentialField;
+
+        public String getDriver() {
+            return driver;
+        }
+
+        public void setDriver(String driver) {
+            this.driver = driver;
+        }
+
+        public String getModel() {
+            return model;
+        }
+
+        public void setModel(String model) {
+            this.model = model;
+        }
+
+        public String getCredentialField() {
+            return credentialField;
+        }
+
+        public void setCredentialField(String credentialField) {
+            this.credentialField = credentialField;
+        }
+
+        /**
+         * 转为工厂驱动的配置 Map。
+         */
+        public Map<String, Object> toConfigMap() {
+            Map<String, Object> map = new LinkedHashMap<>();
+            if (model != null) map.put("model", model);
+            if (credentialField != null) map.put("credential-field", credentialField);
+            return map;
+        }
     }
 
     /** 单个守卫的配置 */

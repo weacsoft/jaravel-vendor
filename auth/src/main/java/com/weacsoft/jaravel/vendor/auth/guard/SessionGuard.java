@@ -51,15 +51,16 @@ public class SessionGuard implements AuthGuard {
     }
 
     @Override
-    public Authenticatable user() {
-        if (resolved) return cachedUser;
+    @SuppressWarnings("unchecked")
+    public <T extends Authenticatable> T user() {
+        if (resolved) return (T) cachedUser;
         resolved = true;
 
         Object id = sessionStore.get(sessionKey());
         if (id == null) return null;
 
         cachedUser = provider.retrieveById(id);
-        return cachedUser;
+        return (T) cachedUser;
     }
 
     @Override

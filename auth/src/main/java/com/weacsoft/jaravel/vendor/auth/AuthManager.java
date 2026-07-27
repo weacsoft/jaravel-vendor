@@ -4,6 +4,7 @@ import com.weacsoft.jaravel.vendor.auth.contract.AuthGuard;
 import com.weacsoft.jaravel.vendor.auth.contract.AuthGuardDriver;
 import com.weacsoft.jaravel.vendor.auth.contract.Authenticatable;
 import com.weacsoft.jaravel.vendor.auth.contract.UserProvider;
+import com.weacsoft.jaravel.vendor.auth.contract.UserProviderDriver;
 
 import java.util.List;
 import java.util.Map;
@@ -15,24 +16,36 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * <p>
  * 维护多个守卫（guard）与用户提供者（provider），按名称解析守卫实例（请求级缓存于 ThreadLocal）。
  * <p>
- * 采用工厂模式 + support 方法匹配（对齐 database-all 多数据库支持）：
- * 守卫驱动（{@link AuthGuardDriver}）自行声明 {@code support(String)} 方法，
- * AuthManager 在创建守卫时遍历所有已注册的驱动，找到第一个匹配的驱动并调用 {@code create}。
- * 第三方模块只需将 {@link AuthGuardDriver} 实现注册为 Spring Bean，
+ * 采用双层工厂模式 + support 方法匹配（对齐 database-all 多数据库支持）：
+ * <ul>
+ *   <li><b>守卫驱动</b>（{@link AuthGuardDriver}）：创建守卫实例（如 SessionGuard、JwtGuard）</li>
+ *   <li><b>提供者驱动</b>（{@link UserProviderDriver}）：创建提供者实例（如 EloquentUserProvider）</li>
+ * </ul>
+ * 两层驱动均自行声明 {@code support(String)} 方法，AuthManager 在创建时遍历所有已注册的驱动，
+ * 找到第一个匹配的驱动并调用 {@code create}。第三方模块只需将驱动实现注册为 Spring Bean，
  * {@code AuthAutoConfiguration} 会自动收集并注册到 AuthManager。
  *
- * <h3>认证架构</h3>
- * <ul>
- *   <li><b>认证驱动</b>（数据来源）：{@code session}（登录态存储）| {@code jwt}（无状态 token）</li>
- *   <li><b>Session 存储</b>：全局配置，不与 Guard 绑定。由应用的 {@code config/SessionConfig.java}
- *       决定具体实现（默认 {@code cookie}，即 Servlet HttpSession；可切换为 {@code redis} 等）</li>
- * </ul>
- * session 驱动通过 {@link com.weacsoft.jaravel.vendor.auth.contract.SessionStore} 接口抽象存储后端，
- * 具体使用哪个实现由全局 {@code SessionStore} Bean 决定，而非在注册守卫时指定。
+ * <h3>三种注册方式（可共存，编程式优先）</h3>
+ * <ol>
+ *   <li><b>编程式 @Bean</b>：在 Config 类中 {@code @Bean("users")} 声明 UserProvider，
+ *       {@code @Bean("web")} 声明 {@link com.weacsoft.jaravel.vendor.auth.contract.GuardDefinition}。
+ *       AuthAutoConfiguration 通过 {@code Map<String, ?>} 自动收集</li>
+ *   <li><b>配置式</b>：通过 {@code jaravel.auth.providers} 和 {@code jaravel.auth.guards} 配置，
+ *       由工厂驱动按配置自动创建</li>
+ *   <li><b>手动调用</b>：直接调用 {@link #registerProvider} / {@link #registerGuard}（向后兼容）</li>
+ * </ol>
+ *
+ * <h3>类型推断</h3>
+ * {@link #user()} 和 {@link AuthGuard#user()} 使用泛型方法 + 目标类型推断，
+ * 调用方可直接赋值给具体用户类型而无需强转：
+ * <pre>
+ * User user = Auth.user();              // 从赋值目标推断 T = User
+ * Admin admin = Auth.guard("admin").user();
+ * </pre>
  *
  * <h3>线程安全说明</h3>
  * <ul>
- *   <li><b>注册表（guards / providers / guardDrivers）</b>：使用 {@link ConcurrentHashMap} 和
+ *   <li><b>注册表（guards / providers / guardDrivers / providerDrivers）</b>：使用 {@link ConcurrentHashMap} 和
  *       {@link CopyOnWriteArrayList}，支持并发读写。注册阶段（应用启动时）与运行阶段（请求线程调用
  *       {@code guard(name)}）可安全并发。注册表本身是进程级共享的不可变配置
  *       （启动后不再修改），并发集合保证可见性与原子性。</li>
@@ -55,6 +68,8 @@ public class AuthManager {
     private final Map<String, UserProvider> providers = new ConcurrentHashMap<>();
     /** 守卫驱动列表（工厂模式），进程级共享，启动后只读 */
     private final List<AuthGuardDriver> guardDrivers = new CopyOnWriteArrayList<>();
+    /** 提供者驱动列表（工厂模式），进程级共享，启动后只读 */
+    private final List<UserProviderDriver> providerDrivers = new CopyOnWriteArrayList<>();
     /** 请求级守卫实例：name -> AuthGuard，每线程独立，请求结束清理 */
     private final ThreadLocal<Map<String, AuthGuard>> current = ThreadLocal.withInitial(ConcurrentHashMap::new);
 
@@ -73,9 +88,35 @@ public class AuthManager {
         providers.put(name, provider);
     }
 
+    /**
+     * 通过工厂驱动创建并注册用户提供者（配置式注册）。
+     * <p>
+     * 遍历所有已注册的 {@link UserProviderDriver}，找到第一个匹配 {@code driver} 名称的驱动，
+     * 调用 {@code create(config)} 创建提供者实例并注册。
+     *
+     * @param name   提供者名称
+     * @param driver 驱动名称（如 {@code "eloquent"}）
+     * @param config 配置参数（含 {@code model}、{@code credential-field} 等）
+     */
+    public void registerProvider(String name, String driver, Map<String, Object> config) {
+        for (UserProviderDriver drv : providerDrivers) {
+            if (drv.support(driver)) {
+                providers.put(name, drv.create(config));
+                return;
+            }
+        }
+        throw new IllegalStateException(
+                "未知 provider driver: " + driver + "，请引入对应插件（如 database 模块）");
+    }
+
     /** 注册守卫（应用启动阶段调用），使用默认配置 */
     public void registerGuard(String name, String driver, String providerName) {
         guards.put(name, new GuardConfig(driver, providerName, Map.of()));
+    }
+
+    /** 注册守卫（应用启动阶段调用），带额外配置 */
+    public void registerGuard(String name, String driver, String providerName, Map<String, Object> config) {
+        guards.put(name, new GuardConfig(driver, providerName, config));
     }
 
     /**
@@ -88,6 +129,18 @@ public class AuthManager {
      */
     public void registerGuardDriver(AuthGuardDriver driver) {
         guardDrivers.add(driver);
+    }
+
+    /**
+     * 注册提供者驱动（工厂模式）。
+     * <p>
+     * 通常由 {@code AuthAutoConfiguration} 在启动时自动收集所有 {@link UserProviderDriver} Bean 并注册，
+     * 业务方无需手动调用。如需编程式注册，也可直接调用此方法。
+     *
+     * @param driver 提供者驱动实例
+     */
+    public void registerProviderDriver(UserProviderDriver driver) {
+        providerDrivers.add(driver);
     }
 
     /**
@@ -151,8 +204,17 @@ public class AuthManager {
 
     // ---- 便捷方法，作用于默认守卫 ----
 
-    public Authenticatable user() {
-        return guard().user();
+    /**
+     * 当前登录用户（类型推断）。
+     * <p>
+     * 使用泛型方法，调用方可直接赋值给具体用户类型而无需强转：
+     * <pre>
+     * User user = AuthManager.user();
+     * </pre>
+     */
+    @SuppressWarnings("unchecked")
+    public <T extends Authenticatable> T user() {
+        return (T) guard().user();
     }
 
     public Object id() {
