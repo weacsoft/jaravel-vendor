@@ -9,14 +9,15 @@
 - [1. 模块概述](#1-模块概述)
 - [2. 依赖信息](#2-依赖信息)
 - [3. 类总览](#3-类总览)
-- [4. Facade —— 门面基类](#4-facade--门面基类)
-- [5. SpringContext —— Spring 上下文持有器](#5-springcontext--spring-上下文持有器)
-- [6. 配置体系（Config / ConfigRepository / ConfigDefinition / ConfigDefinitionRegistrar）](#6-配置体系config--configrepository--configdefinition--configdefinitionregistrar)
-- [7. 服务提供者（ServiceProvider / ProviderRegistry）](#7-服务提供者serviceprovider--providerregistry)
-- [8. 工具类（Str / Arr）](#8-工具类str--arr)
-- [9. 校验体系（FormRequest / Validator / Rule / Rules）](#9-校验体系formrequest--validator--rule--rules)
-- [10. 异常类（ValidationException / UnauthorizedException）](#10-异常类validationexception--unauthorizedexception)
-- [11. 线程安全说明](#11-线程安全说明)
+- [4. Application / App —— 应用容器（替代 Facade）](#4-application--app--应用容器替代-facade)
+- [5. Facade —— 门面基类（传统方式）](#5-facade--门面基类传统方式)
+- [6. SpringContext —— Spring 上下文持有器](#6-springcontext--spring-上下文持有器)
+- [7. 配置体系（Config / ConfigRepository / ConfigDefinition / ConfigDefinitionRegistrar）](#7-配置体系config--configrepository--configdefinition--configdefinitionregistrar)
+- [8. 服务提供者（ServiceProvider / ProviderRegistry）](#8-服务提供者serviceprovider--providerregistry)
+- [9. 工具类（Str / Arr）](#9-工具类str--arr)
+- [10. 校验体系（FormRequest / Validator / Rule / Rules）](#10-校验体系formrequest--validator--rule--rules)
+- [11. 异常类（ValidationException / UnauthorizedException）](#11-异常类validationexception--unauthorizedexception)
+- [12. 线程安全说明](#12-线程安全说明)
 
 ---
 
@@ -26,7 +27,8 @@
 
 | Laravel 特性 | core 对应实现 | 说明 |
 | --- | --- | --- |
-| Facade 门面 | `Facade` + `SpringContext` | 静态代理，背后从 Spring 容器解析真实 Bean |
+| `app()` 应用容器 | `Application` + `App` | 继承式服务定位器，替代 Facade 静态代理 |
+| Facade 门面 | `Facade` + `SpringContext` | 静态代理（传统方式，推荐改用 `App.app()`） |
 | `config()` 配置仓库 | `Config` / `ConfigRepository` | 三层配置来源，支持点号取值 |
 | `config/*.php` 代码级配置 | `ConfigDefinition` / `ConfigDefinitionRegistrar` | 以 Java 接口形式定义配置数组 |
 | Service Provider | `ServiceProvider` / `ProviderRegistry` | 两阶段引导（register → boot） |
@@ -66,8 +68,10 @@
 
 ```
 com.weacsoft.jaravel.vendor.core
-├── Facade                         // 门面基类（静态代理工具）
-├── SpringContext                  // ApplicationContext 持有器
+├── Application                   // 应用容器基类（服务定位器，替代 Facade）
+├── App                           // 静态入口：App.app() 获取 Application 实例
+├── Facade                        // 门面基类（传统静态代理，推荐改用 App.app()）
+├── SpringContext                 // ApplicationContext 持有器
 ├── config
 │   ├── Config                     // Config 门面（静态 API）
 │   ├── ConfigRepository           // 配置仓库（三层来源）
@@ -90,7 +94,119 @@ com.weacsoft.jaravel.vendor.core
 
 ---
 
-## 4. Facade —— 门面基类
+## 4. Application / App —— 应用容器（替代 Facade）
+
+`Application` 和 `App` 提供继承式服务定位器，对齐 Laravel 的 `app()` / `Application` / `Container`。
+推荐使用此方式替代 Facade 静态代理，更面向对象、可测试、可扩展。
+
+### 4.1 Application —— 应用容器基类
+
+`com.weacsoft.jaravel.vendor.core.Application`
+
+应用配置类继承本类后，既保持 `@Configuration` 功能，又获得服务定位器能力。
+
+#### 方法文档
+
+| 方法签名 | 说明 |
+| --- | --- |
+| `<T> T make(Class<T> type)` | 从 Spring 容器按类型解析 Bean（等价于 `SpringContext.bean(type)`） |
+| `<T> T make(String name, Class<T> type)` | 从 Spring 容器按名称 + 类型解析 Bean |
+| `<T> T make(String name)` | 按名称解析自定义注册的服务，未注册返回 `null` |
+| `void singleton(String name, Supplier<Object> factory)` | 注册单例工厂，首次 `make(name)` 时创建并缓存（对齐 `App::singleton`） |
+| `void bind(String name, Supplier<Object> factory)` | 注册工厂，每次 `make(name)` 创建新实例（对齐 `App::bind`） |
+| `void register(String name, Object instance)` | 直接注册现成实例（对齐 `App::instance`） |
+| `boolean bound(String name)` | 检查指定名称的服务是否已注册 |
+| `void forget(String name)` | 注销指定名称的服务 |
+
+#### CGLIB 兼容性
+
+`@Configuration` 类会被 Spring CGLIB 代理子类化。本类的服务注册表使用 `static` 字段，确保代理对象与原始实例共享同一份注册表，不会因 CGLIB 代理导致字段未初始化的问题。
+
+### 4.2 App —— 静态入口
+
+`com.weacsoft.jaravel.vendor.core.App`
+
+`final` 工具类，提供 `app()` 静态方法获取 `Application` 实例。
+
+| 方法签名 | 说明 |
+| --- | --- |
+| `static Application app()` | 获取 Spring 容器中唯一的 `Application` Bean |
+
+### 使用示例
+
+**基本用法**（任何模块均可使用）：
+
+```java
+import static com.weacsoft.jaravel.vendor.core.App.app;
+
+// 通过 make(Class) 获取 Spring Bean
+AuthManager auth = app().make(AuthManager.class);
+CacheManager cache = app().make(CacheManager.class);
+Dispatcher event = app().make(Dispatcher.class);
+
+// 自定义服务注册
+app().singleton("myService", () -> new MyService(dependency));
+MyService svc = app().make("myService");
+
+// 检查是否已注册
+if (app().bound("myService")) { /* ... */ }
+```
+
+**typed 访问器**（继承扩展）：
+
+应用配置类继承 `Application`，添加 typed 方法：
+
+```java
+@Configuration
+public class AppConfig extends Application {
+    public AuthManager auth()       { return make(AuthManager.class); }
+    public CacheManager cache()     { return make(CacheManager.class); }
+    public ConfigRepository config() { return make(ConfigRepository.class); }
+    public Dispatcher event()       { return make(Dispatcher.class); }
+    public SessionStore session()   { return make(SessionStore.class); }
+    public Router router()          { return make(Router.class); }
+}
+```
+
+在应用代码中使用（需强转为 `AppConfig`，或在应用模块自定义 `App` 类返回具体子类）：
+
+```java
+// 方式一：强转
+AppConfig app = (AppConfig) App.app();
+app.auth().check();
+app.cache().get("key");
+
+// 方式二：在应用模块自定义 App 类（免去强转）
+public final class App {
+    public static AppConfig app() {
+        return SpringContext.bean(AppConfig.class);
+    }
+}
+// 使用：App.app().auth().check();
+```
+
+**自定义扩展**：
+
+```java
+@Configuration
+public class MyAppConfig extends AppConfig {
+    public MyService myService() { return make(MyService.class); }
+}
+```
+
+### Application vs Facade 对比
+
+| 维度 | `App.app()` (Application) | Facade (Auth/Cache/Config...) |
+| --- | --- | --- |
+| 调用方式 | 实例方法 `app().make(Type)` | 静态方法 `Auth.check()` |
+| 可扩展性 | 继承添加 typed 方法 | 需新建 Facade 类 |
+| 自定义注册 | `bind()` / `singleton()` / `register()` | 不支持 |
+| 可测试性 | 可 mock 实例 | 静态方法难以 mock |
+| 推荐度 | **推荐** | 传统方式，保持兼容 |
+
+---
+
+## 5. Facade —— 门面基类（传统方式）
 
 `com.weacsoft.jaravel.vendor.core.Facade`
 
@@ -134,7 +250,7 @@ if (Auth.check()) {
 
 ---
 
-## 5. SpringContext —— Spring 上下文持有器
+## 6. SpringContext —— Spring 上下文持有器
 
 `com.weacsoft.jaravel.vendor.core.SpringContext`
 
@@ -169,7 +285,7 @@ if (SpringContext.contains("myService")) {
 
 ---
 
-## 6. 配置体系（Config / ConfigRepository / ConfigDefinition / ConfigDefinitionRegistrar）
+## 7. 配置体系（Config / ConfigRepository / ConfigDefinition / ConfigDefinitionRegistrar）
 
 ### 6.1 Config —— 配置门面
 
@@ -292,7 +408,7 @@ public class Database implements ConfigDefinition {
 
 ---
 
-## 7. 服务提供者（ServiceProvider / ProviderRegistry）
+## 8. 服务提供者（ServiceProvider / ProviderRegistry）
 
 ### 7.1 ServiceProvider —— 服务提供者基类
 
@@ -350,7 +466,7 @@ public class AppServiceProvider extends ServiceProvider {
 
 ---
 
-## 8. 工具类（Str / Arr）
+## 9. 工具类（Str / Arr）
 
 ### 8.1 Str —— 字符串工具
 
@@ -424,7 +540,7 @@ Map<String, Object> rest = Arr.except(data, "user");      // 排除 user
 
 ---
 
-## 9. 校验体系（FormRequest / Validator / Rule / Rules）
+## 10. 校验体系（FormRequest / Validator / Rule / Rules）
 
 ### 9.1 Rule —— 校验规则契约
 
@@ -590,7 +706,7 @@ try {
 
 ---
 
-## 10. 异常类（ValidationException / UnauthorizedException）
+## 11. 异常类（ValidationException / UnauthorizedException）
 
 ### ValidationException
 
@@ -615,10 +731,12 @@ try {
 
 ---
 
-## 11. 线程安全说明
+## 12. 线程安全说明
 
 | 类 | 线程安全性 | 说明 |
 | --- | --- | --- |
+| `Application` | 线程安全 | `singletons` 和 `factories` 使用 `ConcurrentHashMap`，支持并发读写。注册阶段（启动时）与解析阶段（运行时）可安全并发 |
+| `App` | 线程安全 | 无状态静态方法，委托给 `SpringContext` |
 | `SpringContext` | 需注意 | `context` 为静态字段，Spring 启动时单次写入，之后只读。写入与读取非原子，但 Spring 容器刷新完成后并发读取是安全的 |
 | `ConfigRepository` | 非线程安全 | `overrides` 与 `codeConfig` 使用 `LinkedHashMap`，`set` / `registerConfigDefinition` 写入与 `get` 并发读取时需外部同步。配置通常在启动阶段写入、运行时只读，实际使用中风险较低 |
 | `Validator` | 非线程安全 | `errors` 字段懒初始化且非同步，单个 `Validator` 实例应在单线程内使用（每次校验新建实例） |
