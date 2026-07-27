@@ -13,11 +13,6 @@ public interface Authenticatable {
     /** 主键值，Auth 比对一般只用主键进行比对 */
     Object getAuthIdentifier();
 
-    /** 主键字段名，如 {@code "id"} */
-    default String getAuthIdentifierName() {
-        return "id";
-    }
-
     /** 记住我令牌字段名 */
     default String getRememberTokenName() {
         return "remember_token";

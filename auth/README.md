@@ -132,11 +132,6 @@ public interface Authenticatable {
     /** 主键值，Auth 比对一般只用主键进行比对 */
     Object getAuthIdentifier();
 
-    /** 主键字段名，如 "id"（默认 "id"） */
-    default String getAuthIdentifierName() {
-        return "id";
-    }
-
     /** 记住我令牌字段名（默认 "remember_token"） */
     default String getRememberTokenName() {
         return "remember_token";
@@ -158,7 +153,6 @@ public interface Authenticatable {
 | 方法 | 说明 |
 |---|---|
 | `getAuthIdentifier()` | 返回用户主键值，`Auth.check()` / `Auth.user()` 通过主键比对登录态 |
-| `getAuthIdentifierName()` | 返回主键字段名，默认 `"id"` |
 | `getRememberTokenName()` | 返回「记住我」令牌字段名，默认 `"remember_token"` |
 | `getRememberToken()` | 返回「记住我」令牌，未启用返回 `null` |
 | `setRememberToken(String)` | 设置「记住我」令牌，未启用为空实现 |
@@ -176,11 +170,6 @@ public class User implements Authenticatable {
     @Override
     public Object getAuthIdentifier() {
         return id;
-    }
-
-    @Override
-    public String getAuthIdentifierName() {
-        return "id";
     }
 
     // getter/setter ...

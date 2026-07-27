@@ -34,6 +34,14 @@ public class EloquentUserProvider<T extends Authenticatable, K> implements UserP
     private final Model<?, T, K> model;
     private final String credentialField;
 
+
+    /**
+     * @param model           Eloquent Model（Spring 单例）
+     */
+    public EloquentUserProvider(Model<?, T, K> model) {
+         this(model,model.getPrimaryKeyColumnName());
+    }
+
     /**
      * @param model           Eloquent Model（Spring 单例）
      * @param credentialField 凭证字段名（如 {@code "number"}），用于 {@link #retrieveByCredentials}
