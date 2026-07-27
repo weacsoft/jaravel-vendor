@@ -2,7 +2,9 @@ package com.weacsoft.jaravel.vendor.auth.guard;
 
 import com.weacsoft.jaravel.vendor.auth.AuthContext;
 import com.weacsoft.jaravel.vendor.auth.contract.Authenticatable;
+import com.weacsoft.jaravel.vendor.auth.contract.SessionStore;
 import com.weacsoft.jaravel.vendor.auth.contract.UserProvider;
+import com.weacsoft.jaravel.vendor.auth.session.CookieSessionStore;
 import com.weacsoft.jaravel.vendor.http.controller.request.Request;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
@@ -11,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -21,8 +24,8 @@ import static org.mockito.Mockito.*;
  * <p>
  * 分两部分：
  * <ul>
- *   <li>无请求上下文时的缓存用户基本逻辑（login/user/check/logout）；</li>
- *   <li>有请求上下文时与 HTTP Session 的交互（login 写入、user 读取、logout 移除），
+ *   <li>使用内存 SessionStore 的基本逻辑（login/user/check/logout）；</li>
+ *   <li>使用 CookieSessionStore 与 HTTP Session 的交互（login 写入、user 读取、logout 移除），
  *       使用 Mockito 模拟 HttpServletRequest / HttpSession。</li>
  * </ul>
  */
@@ -51,19 +54,39 @@ class SessionGuardTest {
         }
     }
 
-    // ==================== 无请求上下文：缓存用户基本逻辑 ====================
+    /** 内存 Session 存储，用于无请求上下文的测试 */
+    static class InMemorySessionStore implements SessionStore {
+        private final Map<String, Object> data = new HashMap<>();
+
+        @Override
+        public boolean support(String store) { return true; }
+        @Override
+        public Object get(String key) { return data.get(key); }
+        @Override
+        public void put(String key, Object value) { data.put(key, value); }
+        @Override
+        public void remove(String key) { data.remove(key); }
+        @Override
+        public void destroy() { data.clear(); }
+    }
+
+    private SessionStore memoryStore() {
+        return new InMemorySessionStore();
+    }
+
+    // ==================== 内存存储：基本逻辑 ====================
 
     @Test
-    void testGuestWhenNoUserAndNoRequest() {
-        SessionGuard guard = new SessionGuard("web", new StubProvider());
+    void testGuestWhenNoUser() {
+        SessionGuard guard = new SessionGuard("web", new StubProvider(), memoryStore());
         assertTrue(guard.guest());
         assertFalse(guard.check());
         assertNull(guard.user());
     }
 
     @Test
-    void testLoginCheckLogoutWithoutRequest() {
-        SessionGuard guard = new SessionGuard("web", new StubProvider());
+    void testLoginCheckLogout() {
+        SessionGuard guard = new SessionGuard("web", new StubProvider(), memoryStore());
 
         TestUser user = new TestUser(2001L);
         guard.login(user);
@@ -79,21 +102,20 @@ class SessionGuardTest {
 
     @Test
     void testIdReturnsNullWhenNotLoggedIn() {
-        SessionGuard guard = new SessionGuard("web", new StubProvider());
+        SessionGuard guard = new SessionGuard("web", new StubProvider(), memoryStore());
         assertNull(guard.id());
     }
 
     @Test
     void testTokenIsNullByDefault() {
-        SessionGuard guard = new SessionGuard("web", new StubProvider());
+        SessionGuard guard = new SessionGuard("web", new StubProvider(), memoryStore());
         assertNull(guard.token(), "SessionGuard 不签发 token，应返回 null");
     }
 
-    // ==================== 有请求上下文：Session 交互 ====================
+    // ==================== CookieSessionStore：HTTP Session 交互 ====================
 
     @Test
     void testLoginWritesToSessionAndUserReadsFromSession() {
-        // 准备 mock servlet request 与 session
         HttpSession sessionMock = Mockito.mock(HttpSession.class);
         when(sessionMock.getAttributeNames()).thenReturn(Collections.enumeration(Collections.emptyList()));
 
@@ -107,7 +129,7 @@ class SessionGuardTest {
         req.setRequest(servletMock);
         AuthContext.set(req);
 
-        SessionGuard guard = new SessionGuard("web", new StubProvider());
+        SessionGuard guard = new SessionGuard("web", new StubProvider(), new CookieSessionStore());
 
         // login 应将用户标识写入 session
         TestUser user = new TestUser(3001L);
@@ -122,7 +144,6 @@ class SessionGuardTest {
     @Test
     void testUserRetrievesFromSessionWhenNotResolved() {
         HttpSession sessionMock = Mockito.mock(HttpSession.class);
-        // session 中已存在登录标识
         when(sessionMock.getAttribute("login_web_id")).thenReturn(4001L);
         when(sessionMock.getAttributeNames()).thenReturn(Collections.enumeration(Collections.emptyList()));
 
@@ -135,7 +156,7 @@ class SessionGuardTest {
         req.setRequest(servletMock);
         AuthContext.set(req);
 
-        SessionGuard guard = new SessionGuard("web", new StubProvider());
+        SessionGuard guard = new SessionGuard("web", new StubProvider(), new CookieSessionStore());
 
         // 首次 user() 应从 session 读取并通过 provider 还原用户
         Authenticatable user = guard.user();
@@ -159,7 +180,7 @@ class SessionGuardTest {
         req.setRequest(servletMock);
         AuthContext.set(req);
 
-        SessionGuard guard = new SessionGuard("web", new StubProvider());
+        SessionGuard guard = new SessionGuard("web", new StubProvider(), new CookieSessionStore());
         guard.login(new TestUser(5001L));
         assertTrue(guard.check());
 
@@ -181,7 +202,7 @@ class SessionGuardTest {
         req.setRequest(servletMock);
         AuthContext.set(req);
 
-        SessionGuard guard = new SessionGuard("web", new StubProvider());
+        SessionGuard guard = new SessionGuard("web", new StubProvider(), new CookieSessionStore());
         assertNull(guard.user(), "无 session 时 user 应返回 null");
         assertFalse(guard.check());
     }

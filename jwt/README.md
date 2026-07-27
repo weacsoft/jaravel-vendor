@@ -12,6 +12,7 @@
 - [JwtConfig](#jwtconfig)
 - [JwtService](#jwtservice)
 - [JwtGuard](#jwtguard)
+- [JwtGuardDriver](#jwtguarddriver)
 - [JwtTokenResponseFilter](#jwttokenresponsefilter)
 - [JwtProperties](#jwtproperties)
 - [JwtAutoConfiguration](#jwtautoconfiguration)
@@ -26,7 +27,7 @@
 
 ## 模块概述
 
-JWT 模块是 Jaravel 框架的 JWT 认证插件，对齐 Laravel 的 `tymon/jwt-auth` 扩展包。它作为 `auth` 模块的**插件式驱动**，通过 `GuardFactory` 机制注册到 `AuthManager`，提供完整的 JWT 认证能力：
+JWT 模块是 Jaravel 框架的 JWT 认证插件，对齐 Laravel 的 `tymon/jwt-auth` 扩展包。它作为 `auth` 模块的**插件式驱动**，通过实现 `AuthGuardDriver` 接口（`JwtGuardDriver`）注册为 Spring Bean，由 `AuthAutoConfiguration` 自动收集后注册到 `AuthManager`，提供完整的 JWT 认证能力：
 
 - **Token 签发与解析**：基于 HS256 签名算法签发 access token 与 refresh token。
 - **自动续期（Auto-Refresh）**：当 access token 已过其 TTL 的一半时，下次请求自动签发新 token（默认启用，可关闭）。
@@ -37,15 +38,17 @@ JWT 模块是 Jaravel 框架的 JWT 认证插件，对齐 Laravel 的 `tymon/jwt
 
 ### 与 auth 模块的关系
 
-JWT 模块**依赖** auth 模块，但**不修改** auth 模块代码。它通过 auth 模块提供的 `GuardFactory` 插件机制注册 `"jwt"` 驱动：
+JWT 模块**依赖** auth 模块，但**不修改** auth 模块代码。它通过实现 auth 模块的 `AuthGuardDriver` 接口（`JwtGuardDriver`）注册为 Spring Bean，由 `AuthAutoConfiguration` 自动收集后注册到 `AuthManager`：
 
 ```
 auth 模块（核心）
-  ├── AuthManager.registerGuardDriver("jwt", factory)  ← 插件注册点
-  └── 内置 "session" 驱动
+  ├── AuthAutoConfiguration     → 自动收集所有 AuthGuardDriver Bean 并注册到 AuthManager
+  ├── AuthManager.registerGuardDriver(AuthGuardDriver)  ← 自动收集注册点
+  └── 内置 "session" 驱动（SessionGuardDriver）
 
 jwt 模块（插件）
-  ├── JwtAutoConfiguration      → 注册 "jwt" 驱动工厂到 AuthManager，装配 JwtTokenResponseFilter
+  ├── JwtAutoConfiguration      → 注册 JwtGuardDriver Bean，装配 JwtTokenResponseFilter
+  ├── JwtGuardDriver            → 实现 AuthGuardDriver，support("jwt") 返回 true
   ├── JwtService                → JWT 签发/解析/校验/刷新/黑名单/宽限期
   ├── JwtGuard                  → 实现 AuthGuard 契约
   └── JwtTokenResponseFilter    → 响应 header 自动写入新 token
@@ -105,7 +108,7 @@ JWT 模块通过 `blacklistEnabled` 与 `gracePeriodSeconds` 两个配置项的�
 ```
 
 该模块传递依赖：
-- `auth` 模块（提供 `AuthManager`、`AuthGuard`、`GuardFactory` 等契约）
+- `auth` 模块（提供 `AuthManager`、`AuthGuard`、`AuthGuardDriver` 等契约）
 - `cache` 模块（提供 `CacheStore`，用于 JWT 黑名单；**仅当 `blacklist-enabled=true` 时实际使用**，标准 JWT 模式下不读写缓存）
 - `io.jsonwebtoken:jjwt-api` / `jjwt-impl` / `jjwt-jackson`（JWT 库）
 
@@ -118,6 +121,7 @@ com.weacsoft.jaravel.vendor.jwt
 ├── JwtConfig                # JWT 配置（token 签发/刷新/黑名单/宽限期参数）
 ├── JwtService               # JWT 服务（签发/解析/校验/刷新/黑名单/宽限期判断）
 ├── JwtGuard                 # JWT 守卫（实现 AuthGuard 契约）
+├── JwtGuardDriver           # JWT 守卫驱动（实现 AuthGuardDriver，support("jwt")）
 ├── JwtTokenResponseFilter   # 响应过滤器（自动将新 token 写入响应 header）
 └── autoconfigure
     ├── JwtProperties        # 配置属性（jaravel.jwt.*）
@@ -504,7 +508,7 @@ public JwtGuard(String name, UserProvider provider, JwtService jwtService)
 | `refreshEnabled` | 是否启用自动续期（默认 true） |
 | `jwtConfig` | JWT 配置（用于宽限期等高级特性；旧构造器传 `null`） |
 
-> `JwtAutoConfiguration` 注册驱动工厂时使用带 `JwtConfig` 的完整构造器，确保宽限期逻辑可用。
+> `JwtGuardDriver.create()` 创建守卫时使用带 `JwtConfig` 的完整构造器，确保宽限期逻辑可用。
 
 ### 请求级状态字段
 
@@ -666,6 +670,51 @@ public String getName()
 
 ---
 
+## JwtGuardDriver
+
+JWT 守卫驱动，实现 `AuthGuardDriver` 接口，采用工厂模式 + `support` 方法匹配。`support("jwt")` 返回 `true`，`create()` 方法创建 `JwtGuard` 实例。
+
+本驱动由 `JwtAutoConfiguration` 注册为 Spring Bean，再由 auth 模块的 `AuthAutoConfiguration` 自动收集并注册到 `AuthManager`。引入 `jwt` 模块即自动启用 JWT 认证能力；未引入时 `AuthManager` 不会识别 `"jwt"` 驱动。
+
+### 构造器
+
+```java
+public JwtGuardDriver(JwtService jwtService, JwtConfig jwtConfig)
+```
+
+| 参数 | 说明 |
+|---|---|
+| `jwtService` | JWT 服务（签发/解析/校验/刷新/黑名单） |
+| `jwtConfig` | JWT 配置（用于读取 `refreshEnabled`、宽限期参数等） |
+
+### 方法
+
+```java
+/** 判断本驱动是否支持指定的 driver 名称，"jwt" 返回 true（不区分大小写） */
+@Override
+public boolean support(String driver)
+
+/** 创建 JwtGuard 实例（带 JwtConfig 完整构造器，支持自动续期与宽限期逻辑） */
+@Override
+public AuthGuard create(String name, UserProvider provider, Map<String, Object> config)
+```
+
+`create()` 内部使用带 `JwtConfig` 的完整构造器创建 `JwtGuard`，确保自动续期与宽限期逻辑可用：
+
+```java
+@Override
+public AuthGuard create(String name, UserProvider provider, Map<String, Object> config) {
+    boolean refreshEnabled = jwtConfig.isRefreshEnabled();
+    return new JwtGuard(name, provider, jwtService, refreshEnabled, jwtConfig);
+}
+```
+
+### 与 AuthManager 的关系
+
+`AuthManager` 在创建守卫时遍历所有已注册的 `AuthGuardDriver`，找到第一个 `support(driver)` 返回 `true` 的驱动并调用其 `create()` 方法。`AuthAutoConfiguration` 会在所有单例 Bean 就绪后自动收集所有 `AuthGuardDriver` Bean 并注册到 `AuthManager`，因此 `JwtGuardDriver` 只需声明为 Bean 即可，无需手动调用注册方法。
+
+---
+
 ## JwtTokenResponseFilter
 
 JWT token 响应过滤器，继承 Spring 的 `OncePerRequestFilter`。在请求处理完成后，检查当前 JWT 守卫是否签发了新 token（自动续期或宽限期续期）。如果有，将新 token 写入响应 header（默认 `X-New-Token`），客户端可在响应头中获取新 token。
@@ -743,14 +792,14 @@ public class JwtProperties {
 
 ## JwtAutoConfiguration
 
-JWT 自动装配类，注册 `JwtConfig`、`JwtService`、`JwtTokenResponseFilter` Bean，并通过 `AuthManager.registerGuardDriver` 将 jwt 驱动插件式注册到 `AuthManager`。
+JWT 自动装配类，注册 `JwtConfig`、`JwtService`、`JwtGuardDriver`、`JwtTokenResponseFilter` Bean。其中 `JwtGuardDriver` 实现 `AuthGuardDriver` 接口，注册为 Spring Bean 后由 auth 模块的 `AuthAutoConfiguration` 自动收集并注册到 `AuthManager`，无需手动调用 `registerGuardDriver`。
 
 ```java
 @AutoConfiguration
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @ConditionalOnClass({AuthManager.class, JwtService.class})
 @EnableConfigurationProperties(JwtProperties.class)
-public class JwtAutoConfiguration implements SmartInitializingSingleton {
+public class JwtAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
@@ -762,14 +811,11 @@ public class JwtAutoConfiguration implements SmartInitializingSingleton {
 
     @Bean
     @ConditionalOnMissingBean
-    public JwtTokenResponseFilter jwtTokenResponseFilter(JwtConfig jwtConfig, AuthManager authManager) { ... }
+    public JwtGuardDriver jwtGuardDriver(JwtService jwtService, JwtConfig jwtConfig) { ... }
 
-    @Override
-    public void afterSingletonsInstantiated() {
-        // 所有单例 Bean 就绪后，注册 jwt 守卫工厂到 AuthManager
-        authManager.registerGuardDriver("jwt",
-            (name, provider, config) -> new JwtGuard(name, provider, jwtService, refreshEnabled, jwtConfig));
-    }
+    @Bean
+    @ConditionalOnMissingBean
+    public JwtTokenResponseFilter jwtTokenResponseFilter(JwtConfig jwtConfig, AuthManager authManager) { ... }
 }
 ```
 
@@ -810,11 +856,11 @@ return new JwtService(jwtConfig, blacklistStore);
 
 `jwtTokenResponseFilter()` Bean 方法注入 `JwtConfig` 与 `AuthManager`，构造响应过滤器。该过滤器在请求结束后自动将新 token 写入响应 header（自动续期或宽限期续期场景）。
 
-#### 3. 延迟注册驱动工厂
+#### 3. 守卫驱动自动收集
 
-`JwtService` 由本类的 `@Bean` 方法产生，因此不能在字段上 `@Autowired` 自身产生的 Bean（Spring 6 默认禁止循环引用）。这里改为在 `afterSingletonsInstantiated()` 中通过 `ApplicationContext` 获取，该回调在所有单例 Bean 就绪后才执行，天然避免循环依赖。
+`JwtGuardDriver` 实现 `AuthGuardDriver` 接口，`support("jwt")` 返回 `true`，`create()` 方法创建 `JwtGuard` 实例。本类将其注册为 `@Bean`，由 auth 模块的 `AuthAutoConfiguration` 在所有单例就绪后自动收集所有 `AuthGuardDriver` Bean 并注册到 `AuthManager`，无需各模块手动调用 `registerGuardDriver`。
 
-工厂创建 `JwtGuard` 时传入 `JwtConfig`（带完整构造器），控制是否启用自动续期并支持宽限期逻辑。
+`JwtGuardDriver.create()` 创建守卫时传入 `JwtConfig`（带完整构造器），控制是否启用自动续期并支持宽限期逻辑。
 
 ---
 

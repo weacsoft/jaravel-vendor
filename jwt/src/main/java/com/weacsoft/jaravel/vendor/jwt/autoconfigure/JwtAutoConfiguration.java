@@ -4,22 +4,22 @@ import com.weacsoft.jaravel.vendor.auth.AuthManager;
 import com.weacsoft.jaravel.vendor.cache.CacheManager;
 import com.weacsoft.jaravel.vendor.cache.CacheStore;
 import com.weacsoft.jaravel.vendor.jwt.JwtConfig;
-import com.weacsoft.jaravel.vendor.jwt.JwtGuard;
+import com.weacsoft.jaravel.vendor.jwt.JwtGuardDriver;
 import com.weacsoft.jaravel.vendor.jwt.JwtService;
 import com.weacsoft.jaravel.vendor.jwt.JwtTokenResponseFilter;
-import org.springframework.beans.factory.SmartInitializingSingleton;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 
 /**
- * JWT 自动装配：注册 JwtConfig、JwtService Bean，并通过 {@link AuthManager#registerGuardDriver}
- * 将 jwt 驱动插件式注册到 AuthManager。
+ * JWT 自动装配：注册 JwtConfig、JwtService、JwtGuardDriver Bean。
+ * <p>
+ * <b>工厂模式</b>：{@link JwtGuardDriver} 实现 {@link com.weacsoft.jaravel.vendor.auth.contract.AuthGuardDriver}，
+ * 注册为 Spring Bean 后由 auth 模块的 {@code AuthAutoConfiguration} 自动收集并注册到 {@link AuthManager}，
+ * 无需手动调用 {@code registerGuardDriver}。
  * <p>
  * 引入 {@code jwt} 模块即自动启用 JWT 认证能力；未引入时 AuthManager 不会识别 "jwt" 驱动。
  * <p>
@@ -34,13 +34,7 @@ import org.springframework.context.annotation.Bean;
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @ConditionalOnClass({AuthManager.class, JwtService.class})
 @EnableConfigurationProperties(JwtProperties.class)
-public class JwtAutoConfiguration implements SmartInitializingSingleton {
-
-    @Autowired
-    private AuthManager authManager;
-
-    @Autowired
-    private ApplicationContext applicationContext;
+public class JwtAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
@@ -85,6 +79,18 @@ public class JwtAutoConfiguration implements SmartInitializingSingleton {
     }
 
     /**
+     * JWT 守卫驱动（工厂模式）。
+     * <p>
+     * 实现 {@link com.weacsoft.jaravel.vendor.auth.contract.AuthGuardDriver}，支持 "jwt" 驱动。
+     * 由 auth 模块的 {@code AuthAutoConfiguration} 自动收集并注册到 {@link AuthManager}。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public JwtGuardDriver jwtGuardDriver(JwtService jwtService, JwtConfig jwtConfig) {
+        return new JwtGuardDriver(jwtService, jwtConfig);
+    }
+
+    /**
      * JWT token 响应过滤器：当请求中签发了新 token（自动续期或宽限期续期）时，
      * 自动将新 token 写入响应 header。
      */
@@ -92,17 +98,5 @@ public class JwtAutoConfiguration implements SmartInitializingSingleton {
     @ConditionalOnMissingBean
     public JwtTokenResponseFilter jwtTokenResponseFilter(JwtConfig jwtConfig, AuthManager authManager) {
         return new JwtTokenResponseFilter(jwtConfig, authManager);
-    }
-
-    /**
-     * 所有单例 Bean 就绪后，将 jwt 守卫工厂注册到 AuthManager。
-     */
-    @Override
-    public void afterSingletonsInstantiated() {
-        JwtService jwtService = applicationContext.getBean(JwtService.class);
-        JwtConfig jwtConfig = applicationContext.getBean(JwtConfig.class);
-        boolean refreshEnabled = jwtConfig.isRefreshEnabled();
-        authManager.registerGuardDriver("jwt",
-                (name, provider, config) -> new JwtGuard(name, provider, jwtService, refreshEnabled, jwtConfig));
     }
 }

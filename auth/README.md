@@ -13,12 +13,17 @@
   - [Authenticatable](#authenticatable)
   - [AuthGuard](#authguard)
   - [UserProvider](#userprovider)
-  - [GuardFactory](#guardfactory)
+  - [AuthGuardDriver](#authguarddriver)
+  - [SessionStore](#sessionstore)
 - [核心层](#核心层)
   - [AuthManager](#authmanager)
   - [AuthContext](#authcontext)
+- [守卫驱动（guard）](#守卫驱动guard)
+  - [SessionGuardDriver](#sessionguarddriver)
 - [守卫实现（guard）](#守卫实现guard)
   - [SessionGuard](#sessionguard)
+- [Session 存储（session）](#session-存储session)
+  - [CookieSessionStore](#cookiesessionstore)
 - [门面（facade）](#门面facade)
   - [Auth](#auth)
 - [中间件（middleware）](#中间件middleware)
@@ -40,7 +45,8 @@ Auth 模块是 Jaravel 框架的认证核心，对齐 Laravel 的 `Illuminate\Au
 
 - **多守卫（Multi-Guard）**：支持在同一应用中配置多个认证守卫（如 `web` 使用 Session、`api` 使用 JWT），按名称解析。
 - **多提供者（Multi-Provider）**：支持注册多个 `UserProvider`，不同守卫可绑定不同提供者。
-- **插件式驱动**：通过 `GuardFactory` 机制，第三方模块（如 `jwt` 模块）可在不修改 auth 模块的前提下注册新的 Guard 驱动。
+- **工厂模式驱动**：通过 `AuthGuardDriver` 的 `support()` 方法匹配驱动（对齐 database-all 多数据库支持），第三方模块只需注册为 Spring Bean 即可自动收集。
+- **Session 存储分离**：Session 驱动内部通过 `SessionStore` 的 `support()` 方法匹配存储后端（cookie / redis / ...），默认使用 cookie（Servlet HttpSession）。
 - **请求级隔离**：基于 `ThreadLocal` 实现每请求独立的认证上下文，杜绝线程池复用导致的串态问题。
 - **密码校验解耦**：`Authenticatable` 与 `UserProvider` 均不包含密码相关方法，密码校验完全由应用层负责。
 
@@ -52,10 +58,12 @@ Auth 模块是 Jaravel 框架的认证核心，对齐 Laravel 的 `Illuminate\Au
 | `Illuminate\Contracts\Auth\Authenticatable` | `Authenticatable` |
 | `Illuminate\Contracts\Auth\Guard` | `AuthGuard` |
 | `Illuminate\Contracts\Auth\UserProvider` | `UserProvider` |
+| `Illuminate\Contracts\Auth\AuthGuard` (factory) | `AuthGuardDriver`（工厂模式：`support()` 匹配） |
+| Session 存储后端配置 | `SessionStore`（工厂模式：`support()` 匹配） |
 | `SessionGuard` | `SessionGuard` |
 | `Auth` 门面 | `Auth` 门面 |
 | `auth` 中间件 | `Authenticate` 中间件 |
-| `auth:api` 语法 | `new Authenticate("api")` |
+| `auth:api` 语法 | `new Authenticate("api")` 或中间件别名 `"auth:api"` |
 
 ### 关键设计决策：密码校验解耦
 
@@ -96,23 +104,27 @@ Laravel 的 `Authenticatable` 接口包含 `getAuthPassword()`，`UserProvider` 
 
 ```
 com.weacsoft.jaravel.vendor.auth
-├── AuthManager              # 认证管理器：多守卫/多提供者/ThreadLocal 请求级隔离
+├── AuthManager              # 认证管理器：多守卫/多提供者/工厂模式驱动/ThreadLocal 请求级隔离
 ├── AuthContext              # 认证上下文：ThreadLocal 持有当前请求
 ├── contract
 │   ├── Authenticatable      # 可认证实体契约（仅主键标识，无密码方法）
 │   ├── AuthGuard            # 认证守卫契约
 │   ├── UserProvider         # 用户提供者契约（仅取出用户，无密码校验）
-│   └── GuardFactory         # 守卫工厂契约（插件式驱动注册）
+│   ├── AuthGuardDriver      # 守卫驱动契约（工厂模式：support() 匹配 + create() 创建）
+│   └── SessionStore         # Session 存储契约（工厂模式：support() 匹配存储后端）
 ├── facade
 │   └── Auth                 # Auth 门面（静态 API）
 ├── guard
-│   └── SessionGuard         # Session 守卫实现
+│   ├── SessionGuard         # Session 守卫实现（使用 SessionStore 读写登录态）
+│   └── SessionGuardDriver   # Session 守卫驱动（support("session") → 创建 SessionGuard）
+├── session
+│   └── CookieSessionStore   # Cookie Session 存储（Servlet HttpSession，默认实现）
 ├── middleware
 │   └── Authenticate         # 认证中间件（支持守卫名称参数）
 ├── filter
 │   └── AuthLifecycleFilter  # 认证生命周期过滤器
 └── autoconfigure
-    ├── AuthAutoConfiguration # Spring Boot 自动装配
+    ├── AuthAutoConfiguration # Spring Boot 自动装配（自动收集 AuthGuardDriver Bean）
     └── AuthProperties        # 配置属性（jaravel.auth.*）
 ```
 
@@ -291,34 +303,89 @@ Auth.login(user);
 
 ---
 
-### GuardFactory
+### AuthGuardDriver
 
-守卫工厂契约，用于插件式注册新的 Guard 驱动。这是一个 `@FunctionalInterface`。
-
-第三方模块（如 `jwt` 模块）通过实现此接口并向 `AuthManager` 注册，即可扩展 AuthManager 支持的 guard driver，无需修改 auth 模块本身。
+守卫驱动契约，工厂模式核心接口。第三方模块（如 `jwt` 模块）实现此接口并注册为 Spring Bean，`AuthAutoConfiguration` 自动收集并注册到 `AuthManager`。
 
 ```java
-@FunctionalInterface
-public interface GuardFactory {
+public interface AuthGuardDriver {
+
+    /**
+     * 是否支持指定的驱动名称（工厂模式匹配）。
+     * 对齐 database-all 多数据库支持的 support 方法模式。
+     *
+     * @param driver 驱动名称（如 "session"、"jwt"）
+     * @return 匹配返回 true
+     */
+    boolean support(String driver);
 
     /**
      * 创建守卫实例。
      *
      * @param name     守卫名称
      * @param provider 用户提供者
-     * @param config  额外配置（由具体驱动解释，可为空）
+     * @param config  额外配置（如 sessionStore 名称）
      * @return 守卫实例
      */
-    AuthGuard create(String name, UserProvider provider, Object... config);
+    AuthGuard create(String name, UserProvider provider, Map<String, Object> config);
 }
 ```
 
-**注册示例**（jwt 模块在自动装配时调用）：
+**方法说明**：
+
+| 方法 | 说明 |
+|---|---|
+| `support(String)` | 声明此驱动支持的名称（如 `"session"`、`"jwt"`），`AuthManager` 遍历所有驱动找到第一个匹配的 |
+| `create(String, UserProvider, Map)` | 创建守卫实例，config 可携带额外配置（如 session 存储名称） |
+
+**内置实现**：
+- `SessionGuardDriver`：`support("session")` → 创建 `SessionGuard`（注入所有 `SessionStore` Bean，按 config 中的 `sessionStore` 匹配存储后端）
+- `JwtGuardDriver`（jwt 模块）：`support("jwt")` → 创建 `JwtGuard`
+
+---
+
+### SessionStore
+
+Session 存储契约，工厂模式接口。Session 驱动内部通过此接口匹配存储后端，对齐认证驱动与存储后端分离的架构。
 
 ```java
-authManager.registerGuardDriver("jwt", (name, provider, config) ->
-    new JwtGuard(name, provider, jwtService));
+public interface SessionStore {
+
+    /**
+     * 是否支持指定的存储后端（工厂模式匹配）。
+     *
+     * @param store 存储名称（如 "cookie"、"redis"）
+     * @return 匹配返回 true
+     */
+    boolean support(String store);
+
+    /** 从 session 读取值 */
+    Object get(String key);
+
+    /** 写入 session */
+    void put(String key, Object value);
+
+    /** 移除 session 中的值 */
+    void remove(String key);
+
+    /** 销毁当前 session */
+    void destroy();
+}
 ```
+
+**方法说明**：
+
+| 方法 | 说明 |
+|---|---|
+| `support(String)` | 声明此存储支持的名称（如 `"cookie"`、`"redis"`），`SessionGuardDriver` 遍历所有存储找到匹配的 |
+| `get(String)` | 从当前 session 读取值（需通过 `AuthContext` 获取当前请求） |
+| `put(String, Object)` | 写入当前 session |
+| `remove(String)` | 移除 session 中的指定 key |
+| `destroy()` | 销毁当前 session |
+
+**内置实现**：
+- `CookieSessionStore`（auth 模块）：`support("cookie")` → 使用 Servlet HttpSession
+- `RedisSessionStore`（session-redis 模块）：`support("redis")` → 使用 Redis Hash 存储
 
 ---
 
@@ -330,17 +397,17 @@ authManager.registerGuardDriver("jwt", (name, provider, config) ->
 
 **核心特性**：
 - 多守卫、多提供者管理
-- 插件式 Guard 驱动注册（`registerGuardDriver`）
+- 工厂模式驱动注册（`AuthGuardDriver` 的 `support()` 方法匹配，Spring Bean 自动收集）
 - ThreadLocal 请求级守卫实例隔离
-- ConcurrentHashMap 注册表保证并发安全
+- ConcurrentHashMap / CopyOnWriteArrayList 注册表保证并发安全
 
 #### 字段说明
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `guards` | `ConcurrentHashMap<String, GuardConfig>` | 守卫配置：name -> {driver, providerName}，进程级共享，启动后只读 |
+| `guards` | `ConcurrentHashMap<String, GuardConfig>` | 守卫配置：name -> {driver, providerName, config}，进程级共享，启动后只读 |
 | `providers` | `ConcurrentHashMap<String, UserProvider>` | 提供者：name -> UserProvider，进程级共享，启动后只读 |
-| `driverFactories` | `ConcurrentHashMap<String, GuardFactory>` | 插件式驱动工厂：driver(lowercase) -> GuardFactory，进程级共享 |
+| `guardDrivers` | `CopyOnWriteArrayList<AuthGuardDriver>` | 守卫驱动列表（工厂模式），进程级共享，启动后只读 |
 | `current` | `ThreadLocal<Map<String, AuthGuard>>` | 请求级守卫实例：name -> AuthGuard，每线程独立，请求结束清理 |
 | `defaultGuard` | `volatile String` | 默认守卫名，启动阶段设置后不再变更，`volatile` 保证可见性 |
 
@@ -352,15 +419,24 @@ authManager.registerGuardDriver("jwt", (name, provider, config) ->
 /** 注册用户提供者 */
 public void registerProvider(String name, UserProvider provider)
 
-/** 注册守卫 */
+/** 注册守卫（使用默认配置） */
 public void registerGuard(String name, String driver, String providerName)
 
 /**
- * 注册 Guard 驱动工厂，允许插件模块扩展支持的 driver 类型。
- * @param driver  驱动名称（不区分大小写）
- * @param factory 守卫工厂
+ * 注册守卫（可指定 session 存储后端）。
+ * @param name         守卫名称
+ * @param driver       驱动名称（session / jwt）
+ * @param providerName 提供者名称
+ * @param sessionStore session 存储名称（cookie / redis），仅 session 驱动使用
  */
-public void registerGuardDriver(String driver, GuardFactory factory)
+public void registerGuard(String name, String driver, String providerName, String sessionStore)
+
+/**
+ * 注册守卫驱动（工厂模式）。
+ * 通常由 AuthAutoConfiguration 自动收集所有 AuthGuardDriver Bean 并注册，
+ * 业务方无需手动调用。
+ */
+public void registerGuardDriver(AuthGuardDriver driver)
 ```
 
 示例：
@@ -369,15 +445,11 @@ public void registerGuardDriver(String driver, GuardFactory factory)
 // 注册用户提供者
 authManager.registerProvider("users", new EloquentUserProvider(userModel, "number"));
 
-// 注册 session 守卫
-authManager.registerGuard("web", "session", "users");
+// 注册 session 守卫（cookie 存储，默认）
+authManager.registerGuard("web", "session", "users", "cookie");
 
-// 注册 jwt 守卫（由 jwt 模块自动装配完成）
+// 注册 jwt 守卫（jwt 驱动由 jwt 模块自动注册为 Bean）
 authManager.registerGuard("api", "jwt", "users");
-
-// 插件式注册 jwt 驱动工厂
-authManager.registerGuardDriver("jwt", (name, provider, config) ->
-    new JwtGuard(name, provider, jwtService));
 ```
 
 **默认守卫管理**：
@@ -440,11 +512,11 @@ public void clear()
 
 `createGuard(name)` 的解析顺序：
 
-1. 从 `guards` 注册表查找守卫配置（driver + providerName）
+1. 从 `guards` 注册表查找守卫配置（driver + providerName + config）
 2. 从 `providers` 注册表查找对应的 UserProvider
-3. 若 driver 为 `"session"`（不区分大小写），创建内置 `SessionGuard`
-4. 否则从 `driverFactories` 查找插件式驱动工厂（如 `"jwt"`），调用工厂创建
-5. 均未命中则抛出 `IllegalStateException`
+3. 遍历 `guardDrivers` 列表，调用 `driver.support(cfg.driver)` 找到第一个匹配的驱动
+4. 调用 `driver.create(name, provider, cfg.config)` 创建守卫实例
+5. 均未匹配则抛出 `IllegalStateException`
 
 ---
 
@@ -472,22 +544,60 @@ public final class AuthContext {
 
 ---
 
+## 守卫驱动（guard）
+
+### SessionGuardDriver
+
+Session 守卫驱动，实现 `AuthGuardDriver` 接口。`support("session")` 匹配成功后，根据 config 中的 `sessionStore` 名称从已注入的 `SessionStore` Bean 列表中匹配存储后端，创建 `SessionGuard`。
+
+```java
+public class SessionGuardDriver implements AuthGuardDriver {
+
+    private static final String DEFAULT_STORE = "cookie";
+    private final List<SessionStore> sessionStores;
+
+    public SessionGuardDriver(List<SessionStore> sessionStores) {
+        this.sessionStores = sessionStores;
+    }
+
+    @Override
+    public boolean support(String driver) {
+        return "session".equalsIgnoreCase(driver);
+    }
+
+    @Override
+    public AuthGuard create(String name, UserProvider provider, Map<String, Object> config) {
+        String storeName = DEFAULT_STORE;
+        if (config != null && config.containsKey("sessionStore")) {
+            storeName = config.get("sessionStore").toString();
+        }
+        SessionStore sessionStore = resolveStore(storeName);
+        return new SessionGuard(name, provider, sessionStore);
+    }
+}
+```
+
+由 `AuthAutoConfiguration` 自动注册为 Spring Bean，无需手动配置。
+
+---
+
 ## 守卫实现（guard）
 
 ### SessionGuard
 
-Session 守卫，对齐 Laravel 的 `SessionGuard`。登录态写入 HTTP Session，用户信息按需通过 `UserProvider` 取出并缓存于当前线程。
+Session 守卫，对齐 Laravel 的 `SessionGuard`。通过 `SessionStore` 读写登录态，用户信息按需通过 `UserProvider` 取出并缓存于当前线程。
 
 #### 构造器
 
 ```java
-public SessionGuard(String name, UserProvider provider)
+public SessionGuard(String name, UserProvider provider, SessionStore sessionStore)
 ```
 
 | 参数 | 说明 |
 |---|---|
 | `name` | 守卫名称，用于生成 session key（`login_{name}_id`） |
 | `provider` | 用户提供者，用于按主键取出用户 |
+| `sessionStore` | Session 存储后端（cookie / redis / ...），由 `SessionGuardDriver` 注入 |
 
 #### 方法文档
 
@@ -495,9 +605,9 @@ public SessionGuard(String name, UserProvider provider)
 |---|---|
 | `check()` | 是否已登录（`user() != null`） |
 | `guest()` | 是否访客（`!check()`） |
-| `user()` | 从 session 读取主键，通过 `provider.retrieveById()` 取出用户并缓存。首次调用后缓存结果，同一请求内不再重复查询 |
-| `login(Authenticatable)` | 将用户主键写入 HTTP Session，并缓存用户实例 |
-| `logout()` | 从 session 移除登录标记，清理缓存 |
+| `user()` | 从 SessionStore 读取主键，通过 `provider.retrieveById()` 取出用户并缓存。首次调用后缓存结果，同一请求内不再重复查询 |
+| `login(Authenticatable)` | 将用户主键写入 SessionStore，并缓存用户实例 |
+| `logout()` | 从 SessionStore 移除登录标记，清理缓存 |
 
 #### Session Key 规则
 
@@ -509,8 +619,7 @@ public SessionGuard(String name, UserProvider provider)
 user()
   ├── 已解析过？ → 返回缓存
   └── 首次解析
-        ├── 获取 HttpSession（不创建新 session）
-        ├── 读取 session 中的主键 (login_{name}_id)
+        ├── 从 SessionStore 读取主键 (login_{name}_id)
         ├── 主键为 null？ → 返回 null
         └── provider.retrieveById(主键) → 缓存并返回
 ```
@@ -521,11 +630,62 @@ user()
 public void login(Authenticatable user) {
     cachedUser = user;
     resolved = true;
-    // 将主键写入 session（getSession(true) 会创建新 session）
-    HttpSession session = servlet.getSession(true);
-    session.setAttribute(sessionKey(), user.getAuthIdentifier());
+    // 将主键写入 SessionStore（cookie 存储会自动创建 HttpSession）
+    sessionStore.put(sessionKey(), user.getAuthIdentifier());
 }
 ```
+
+---
+
+## Session 存储（session）
+
+### CookieSessionStore
+
+Cookie Session 存储，默认实现。使用 Servlet HttpSession 持久化登录态，浏览器通过 JSESSIONID cookie 自动携带。
+
+```java
+public class CookieSessionStore implements SessionStore {
+
+    @Override
+    public boolean support(String store) {
+        return "cookie".equalsIgnoreCase(store);
+    }
+
+    @Override
+    public Object get(String key) {
+        HttpSession session = session(false);
+        return session != null ? session.getAttribute(key) : null;
+    }
+
+    @Override
+    public void put(String key, Object value) {
+        HttpSession session = session(true);
+        if (session != null) {
+            session.setAttribute(key, value);
+        }
+    }
+
+    @Override
+    public void remove(String key) {
+        HttpSession session = session(false);
+        if (session != null) {
+            session.removeAttribute(key);
+        }
+    }
+
+    @Override
+    public void destroy() {
+        HttpSession session = session(false);
+        if (session != null) {
+            session.invalidate();
+        }
+    }
+}
+```
+
+由 `AuthAutoConfiguration` 自动注册为 Spring Bean（`@ConditionalOnMissingBean(CookieSessionStore.class)`），业务方可通过覆盖此 Bean 使用自定义存储。
+
+**扩展 Redis 存储**：引入 `session-redis` 模块后，`RedisSessionStore` 自动注册为 Bean（`support("redis")`），在 `registerGuard` 时指定 `"redis"` 即可使用。
 
 ---
 
@@ -701,27 +861,40 @@ public class AuthLifecycleFilter extends OncePerRequestFilter {
 
 ### AuthAutoConfiguration
 
-Spring Boot 自动装配类，注册 `AuthManager` 与 `AuthLifecycleFilter`。
+Spring Boot 自动装配类，注册 `AuthManager`、`AuthLifecycleFilter`、内置 `CookieSessionStore` 和 `SessionGuardDriver`，并自动收集所有 `AuthGuardDriver` Bean 注册到 `AuthManager`。
 
 ```java
 @AutoConfiguration
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @ConditionalOnClass(AuthManager.class)
 @EnableConfigurationProperties(AuthProperties.class)
-public class AuthAutoConfiguration {
+public class AuthAutoConfiguration implements SmartInitializingSingleton {
 
     @Bean
     @ConditionalOnMissingBean
-    public AuthManager authManager(AuthProperties properties) {
-        AuthManager manager = new AuthManager();
-        manager.setDefaultGuard(properties.getDefaultGuard());
-        return manager;
-    }
+    public AuthManager authManager(AuthProperties properties) { ... }
 
     @Bean
     @ConditionalOnMissingBean
-    public AuthLifecycleFilter authLifecycleFilter(AuthManager authManager) {
-        return new AuthLifecycleFilter(authManager);
+    public AuthLifecycleFilter authLifecycleFilter(AuthManager authManager) { ... }
+
+    /** 默认 Cookie Session 存储 */
+    @Bean
+    @ConditionalOnMissingBean(CookieSessionStore.class)
+    public SessionStore cookieSessionStore() { ... }
+
+    /** Session 守卫驱动 */
+    @Bean
+    @ConditionalOnMissingBean
+    public SessionGuardDriver sessionGuardDriver(List<SessionStore> sessionStores) { ... }
+
+    /** 所有单例就绪后，自动将所有 AuthGuardDriver Bean 注册到 AuthManager */
+    @Override
+    public void afterSingletonsInstantiated() {
+        AuthManager manager = authManager();
+        for (AuthGuardDriver driver : guardDrivers) {
+            manager.registerGuardDriver(driver);
+        }
     }
 }
 ```
@@ -730,7 +903,7 @@ public class AuthAutoConfiguration {
 - Servlet Web 应用环境
 - classpath 存在 `AuthManager` 类
 
-**说明**：JWT 等扩展驱动由独立插件模块（如 `jwt` 模块）通过 `AuthManager.registerGuardDriver()` 自行注册，auth 模块本身不包含 JWT 实现。认证中间件 `Authenticate` 为普通 `Middleware` 实现，可直接传入 `Router.middleware()` 使用，无需别名注册。
+**自动收集机制**：所有 `AuthGuardDriver` 实现（如 auth 模块的 `SessionGuardDriver`、jwt 模块的 `JwtGuardDriver`）注册为 Spring Bean 后，本配置类在所有单例就绪后自动将它们注册到 `AuthManager`，无需各模块手动调用注册方法。
 
 ---
 
@@ -743,9 +916,16 @@ public class AuthAutoConfiguration {
 public class AuthProperties {
 
     /** 默认守卫名（默认 "web"） */
-    private final String defaultGuard = "web";
+    private String defaultGuard = "web";
 
-    // getter/setter ...
+    /** 守卫配置，key 为守卫名称 */
+    private Map<String, GuardConfig> guards = new LinkedHashMap<>();
+
+    public static class GuardConfig {
+        private String driver;        // session / jwt
+        private String provider;      // 提供者名称
+        private String sessionStore;  // cookie / redis，仅 session 驱动使用，默认 cookie
+    }
 }
 ```
 
@@ -759,13 +939,27 @@ public class AuthProperties {
 jaravel:
   auth:
     # 默认守卫名，未指定守卫时 Auth.check() / Auth.user() 等便捷方法作用于此守卫
-    # 内置支持 "session" 驱动；引入 jwt 模块后还支持 "jwt" 驱动
-    default-guard: web
+    default-guard: api
+    # 配置式守卫注册（也可通过 AuthServiceProvider 编程式注册，两者可共存）
+    guards:
+      web:
+        driver: session
+        provider: users
+        session-store: cookie      # 可选，默认 cookie（cookie / redis）
+      api:
+        driver: jwt
+        provider: users
+      admin:
+        driver: jwt
+        provider: admins
 ```
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
 | `jaravel.auth.default-guard` | String | `web` | 默认守卫名称 |
+| `jaravel.auth.guards.<name>.driver` | String | - | 驱动名称（session / jwt） |
+| `jaravel.auth.guards.<name>.provider` | String | - | 提供者名称 |
+| `jaravel.auth.guards.<name>.session-store` | String | `cookie` | Session 存储后端，仅 session 驱动使用 |
 
 ### 完整多守卫配置示例
 
@@ -791,9 +985,9 @@ public class AuthConfig {
         return args -> {
             // 注册提供者
             authManager.registerProvider("users", userProvider);
-            // 注册 session 守卫
-            authManager.registerGuard("web", "session", "users");
-            // 注册 jwt 守卫（jwt 驱动由 jwt 模块自动注册）
+            // 注册 session 守卫（cookie 存储，默认）
+            authManager.registerGuard("web", "session", "users", "cookie");
+            // 注册 jwt 守卫（jwt 驱动由 jwt 模块自动注册为 Bean）
             authManager.registerGuard("api", "jwt", "users");
         };
     }
@@ -838,7 +1032,7 @@ public class AuthConfig {
     public ApplicationRunner authRegistrar(AuthManager authManager, UserProvider userProvider) {
         return args -> {
             authManager.registerProvider("users", userProvider);
-            authManager.registerGuard("web", "session", "users");
+            authManager.registerGuard("web", "session", "users", "cookie");
         };
     }
 }
@@ -901,13 +1095,13 @@ public Response logout() {
 
 Auth 模块在设计上充分考虑了并发场景，核心线程安全策略如下：
 
-### 1. 注册表（guards / providers / driverFactories）
+### 1. 注册表（guards / providers / guardDrivers）
 
-使用 `ConcurrentHashMap`，支持并发读写。
+使用 `ConcurrentHashMap` 和 `CopyOnWriteArrayList`，支持并发读写。
 
-- **注册阶段**：应用启动时由 ServiceProvider 调用 `registerProvider` / `registerGuard` / `registerGuardDriver`。
+- **注册阶段**：应用启动时由 ServiceProvider 调用 `registerProvider` / `registerGuard`，`AuthAutoConfiguration` 自动收集 `AuthGuardDriver` Bean 调用 `registerGuardDriver`。
 - **运行阶段**：请求线程调用 `guard(name)`。
-- 两者可安全并发。注册表本身是进程级共享的不可变配置（启动后不再修改），`ConcurrentHashMap` 保证可见性与原子性。
+- 两者可安全并发。注册表本身是进程级共享的不可变配置（启动后不再修改），并发集合保证可见性与原子性。
 
 ### 2. 请求级守卫实例（current）
 
@@ -930,7 +1124,7 @@ Auth 模块在设计上充分考虑了并发场景，核心线程安全策略如
 
 | 组件 | 隔离机制 | 生命周期 |
 |---|---|---|
-| `guards` / `providers` / `driverFactories` | `ConcurrentHashMap` | 进程级，启动后只读 |
+| `guards` / `providers` / `guardDrivers` | `ConcurrentHashMap` / `CopyOnWriteArrayList` | 进程级，启动后只读 |
 | `current`（守卫实例缓存） | `ThreadLocal` | 请求级，请求结束清理 |
 | `defaultGuard` | `volatile` | 进程级，启动后不变 |
 | `AuthContext`（当前请求） | `ThreadLocal` | 请求级，请求结束清理 |

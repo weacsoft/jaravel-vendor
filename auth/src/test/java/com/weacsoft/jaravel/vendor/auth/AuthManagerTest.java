@@ -1,12 +1,15 @@
 package com.weacsoft.jaravel.vendor.auth;
 
 import com.weacsoft.jaravel.vendor.auth.contract.AuthGuard;
+import com.weacsoft.jaravel.vendor.auth.contract.AuthGuardDriver;
 import com.weacsoft.jaravel.vendor.auth.contract.Authenticatable;
+import com.weacsoft.jaravel.vendor.auth.contract.SessionStore;
 import com.weacsoft.jaravel.vendor.auth.contract.UserProvider;
 import com.weacsoft.jaravel.vendor.auth.guard.SessionGuard;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -14,14 +17,13 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * {@link AuthManager} 认证管理器测试。
  * <p>
- * 覆盖默认守卫、守卫注册与切换、请求级守卫缓存、GuardFactory 插件机制、
+ * 覆盖默认守卫、守卫注册与切换、请求级守卫缓存、AuthGuardDriver 工厂模式、
  * 未注册守卫抛异常，以及 login/logout/user/check 便捷方法。
  */
 class AuthManagerTest {
 
     @AfterEach
     void clearThreadLocal() {
-        // 清理 ThreadLocal，避免跨测试串态
         AuthContext.clear();
     }
 
@@ -48,6 +50,47 @@ class AuthManagerTest {
         }
     }
 
+    /** 内存 Session 存储，用于测试 */
+    static class InMemorySessionStore implements SessionStore {
+        private final Map<String, Object> data = new HashMap<>();
+
+        @Override
+        public boolean support(String store) {
+            return "cookie".equalsIgnoreCase(store) || "memory".equalsIgnoreCase(store);
+        }
+
+        @Override
+        public Object get(String key) { return data.get(key); }
+
+        @Override
+        public void put(String key, Object value) { data.put(key, value); }
+
+        @Override
+        public void remove(String key) { data.remove(key); }
+
+        @Override
+        public void destroy() { data.clear(); }
+    }
+
+    /** Session 驱动（使用内存存储） */
+    static class TestSessionGuardDriver implements AuthGuardDriver {
+        private final SessionStore sessionStore;
+
+        TestSessionGuardDriver(SessionStore sessionStore) {
+            this.sessionStore = sessionStore;
+        }
+
+        @Override
+        public boolean support(String driver) {
+            return "session".equalsIgnoreCase(driver);
+        }
+
+        @Override
+        public AuthGuard create(String name, UserProvider provider, Map<String, Object> config) {
+            return new SessionGuard(name, provider, sessionStore);
+        }
+    }
+
     @Test
     void testDefaultGuardName() {
         AuthManager manager = new AuthManager();
@@ -59,6 +102,7 @@ class AuthManagerTest {
         AuthManager manager = new AuthManager();
         manager.registerProvider("users", new InMemoryProvider());
         manager.registerGuard("web", "session", "users");
+        manager.registerGuardDriver(new TestSessionGuardDriver(new InMemorySessionStore()));
 
         AuthGuard guard = manager.guard("web");
         assertNotNull(guard);
@@ -70,6 +114,7 @@ class AuthManagerTest {
         AuthManager manager = new AuthManager();
         manager.registerProvider("users", new InMemoryProvider());
         manager.registerGuard("web", "session", "users");
+        manager.registerGuardDriver(new TestSessionGuardDriver(new InMemorySessionStore()));
 
         AuthGuard defaultGuard = manager.guard();
         assertNotNull(defaultGuard);
@@ -82,6 +127,7 @@ class AuthManagerTest {
         manager.registerProvider("users", new InMemoryProvider());
         manager.registerGuard("web", "session", "users");
         manager.registerGuard("api", "session", "users");
+        manager.registerGuardDriver(new TestSessionGuardDriver(new InMemorySessionStore()));
 
         AuthGuard webGuard = manager.guard("web");
         AuthGuard apiGuard = manager.guard("api");
@@ -100,6 +146,7 @@ class AuthManagerTest {
         AuthManager manager = new AuthManager();
         manager.registerProvider("users", new InMemoryProvider());
         manager.registerGuard("web", "session", "users");
+        manager.registerGuardDriver(new TestSessionGuardDriver(new InMemorySessionStore()));
 
         AuthGuard first = manager.guard("web");
         AuthGuard second = manager.guard("web");
@@ -112,17 +159,27 @@ class AuthManagerTest {
     }
 
     @Test
-    void testGuardFactoryPlugin() {
+    void testGuardDriverFactoryPattern() {
         AuthManager manager = new AuthManager();
         manager.registerProvider("users", new InMemoryProvider());
         manager.registerGuard("jwt", "jwt", "users");
 
-        // 注册自定义 jwt 驱动工厂
-        manager.registerGuardDriver("jwt", (name, provider, config) -> new StubTokenGuard());
+        // 注册自定义 jwt 驱动（工厂模式）
+        manager.registerGuardDriver(new AuthGuardDriver() {
+            @Override
+            public boolean support(String driver) {
+                return "jwt".equalsIgnoreCase(driver);
+            }
+
+            @Override
+            public AuthGuard create(String name, UserProvider provider, Map<String, Object> config) {
+                return new StubTokenGuard();
+            }
+        });
 
         AuthGuard guard = manager.guard("jwt");
         assertNotNull(guard);
-        assertTrue(guard instanceof StubTokenGuard, "应使用注册的 GuardFactory 创建守卫");
+        assertTrue(guard instanceof StubTokenGuard, "应使用注册的 AuthGuardDriver 创建守卫");
     }
 
     @Test
@@ -187,12 +244,13 @@ class AuthManagerTest {
         AuthManager manager = new AuthManager();
         manager.registerProvider("users", new InMemoryProvider());
         manager.registerGuard("web", "session", "users");
+        manager.registerGuardDriver(new TestSessionGuardDriver(new InMemorySessionStore()));
 
         // 初始未登录
         assertFalse(manager.check(), "初始应为未登录");
         assertTrue(manager.guest());
 
-        // 登录（无请求上下文，仅缓存用户）
+        // 登录
         TestUser user = new TestUser(1001L);
         manager.login(user);
 
@@ -210,7 +268,7 @@ class AuthManagerTest {
         assertNull(manager.user());
     }
 
-    /** 用于测试 GuardFactory 的桩 Guard */
+    /** 用于测试 AuthGuardDriver 的桩 Guard */
     static class StubTokenGuard implements AuthGuard {
         @Override
         public boolean check() { return false; }

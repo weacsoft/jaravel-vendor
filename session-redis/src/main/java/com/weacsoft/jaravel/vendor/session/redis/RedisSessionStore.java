@@ -1,17 +1,19 @@
 package com.weacsoft.jaravel.vendor.session.redis;
 
+import com.weacsoft.jaravel.vendor.auth.AuthContext;
+import com.weacsoft.jaravel.vendor.auth.contract.SessionStore;
+import com.weacsoft.jaravel.vendor.http.controller.request.Request;
 import com.weacsoft.jaravel.vendor.json.Json;
 import com.weacsoft.jaravel.vendor.redis.RedisManager;
 import io.lettuce.core.api.sync.RedisCommands;
+import jakarta.servlet.http.Cookie;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.UUID;
 
 /**
- * Redis Session 存储，对齐 Laravel {@code RedisSessionHandler}。
+ * Redis Session 存储，实现 {@link SessionStore} 接口，对齐 Laravel {@code RedisSessionHandler}。
  * <p>
  * 将 Session 数据以 Hash 结构存储在 Redis 中，键格式为 {@code <prefix>:<sessionId>}，
  * TTL 为 Session 生命周期（分钟级）。所有应用实例共享同一 Redis，天然实现多机 Session 同步。
@@ -19,7 +21,7 @@ import java.util.UUID;
  * <h3>Session ID 管理</h3>
  * <ul>
  *   <li>Session ID 通过 Cookie 传递（Cookie 名由配置指定，如 {@code manage_session}）</li>
- *   <li>首次访问时生成新的 UUID 作为 Session ID</li>
+ *   <li>首次访问时不创建新 Session（惰性创建，仅在 {@link #put} 时生成）</li>
  *   <li>每次读写都会刷新 TTL，实现滑动过期</li>
  * </ul>
  *
@@ -31,36 +33,19 @@ import java.util.UUID;
  * </pre>
  *
  * <h3>线程安全</h3>
+ * 本类为无状态单例，通过 {@link AuthContext} 获取当前请求上下文。
  * Redis 命令本身是原子的，多线程并发读写同一 Session 时通过 Redis 保证一致性。
  */
-public class RedisSessionStore {
+public class RedisSessionStore implements SessionStore {
 
     private static final Logger logger = LoggerFactory.getLogger(RedisSessionStore.class);
 
-    /** Redis 管理器 */
     private final RedisManager redisManager;
-
-    /** Redis 连接名（如 session），对应 jaravel.redis.connections 中的配置 */
     private final String connectionName;
-
-    /** Session 键前缀，对齐 Laravel Session 前缀 */
     private final String prefix;
-
-    /** Session 生命周期（秒），默认 30 分钟 */
     private final long lifetimeSeconds;
-
-    /** Cookie 名称，用于传递 Session ID */
     private final String cookieName;
 
-    /**
-     * 构造 Redis Session 存储。
-     *
-     * @param redisManager    Redis 管理器
-     * @param connectionName  Redis 连接名，null 使用默认连接
-     * @param prefix          Session 键前缀
-     * @param lifetimeMinutes Session 生命周期（分钟）
-     * @param cookieName      Cookie 名称
-     */
     public RedisSessionStore(RedisManager redisManager, String connectionName,
                              String prefix, long lifetimeMinutes, String cookieName) {
         this.redisManager = redisManager;
@@ -70,62 +55,50 @@ public class RedisSessionStore {
         this.cookieName = cookieName;
     }
 
-    /** 获取 Redis 同步命令接口 */
+    @Override
+    public boolean support(String store) {
+        return "redis".equalsIgnoreCase(store);
+    }
+
     private RedisCommands<String, String> commands() {
         return redisManager.sync(connectionName);
     }
 
-    /** 构建 Redis 中的 Session 键 */
     private String sessionKey(String sessionId) {
         return prefix + ":" + sessionId;
     }
 
-    /**
-     * 生成新的 Session ID。
-     *
-     * @return 新的 UUID Session ID
-     */
-    public String generateSessionId() {
+    /** 从当前请求的 Cookie 中获取 Session ID */
+    private String getSessionId() {
+        Request req = AuthContext.get();
+        if (req == null) return null;
+        String cookieValue = req.cookie(cookieName);
+        if (cookieValue != null && !cookieValue.isEmpty()) {
+            return cookieValue;
+        }
+        return null;
+    }
+
+    /** 生成新的 Session ID */
+    private String generateSessionId() {
         return UUID.randomUUID().toString().replace("-", "");
     }
 
-    /**
-     * 读取 Session 中的所有属性。
-     *
-     * @param sessionId Session ID，null 返回空 Map
-     * @return 属性名 -> 属性值（反序列化后的 Java 对象）
-     */
-    public Map<String, Object> getAll(String sessionId) {
-        if (sessionId == null || sessionId.isEmpty()) {
-            return new HashMap<>();
-        }
-        try {
-            RedisCommands<String, String> cmd = commands();
-            Map<String, String> raw = cmd.hgetall(sessionKey(sessionId));
-            if (raw == null || raw.isEmpty()) {
-                return new HashMap<>();
-            }
-            Map<String, Object> result = new HashMap<>();
-            for (Map.Entry<String, String> entry : raw.entrySet()) {
-                result.put(entry.getKey(), deserialize(entry.getValue()));
-            }
-            // 刷新 TTL（滑动过期）
-            cmd.expire(sessionKey(sessionId), lifetimeSeconds);
-            return result;
-        } catch (Exception e) {
-            logger.error("[session-redis] 读取 Session 失败 sessionId={}: {}", sessionId, e.getMessage());
-            return new HashMap<>();
+    /** 将 Session ID 写入响应 Cookie */
+    private void setCookie(String sessionId) {
+        Request req = AuthContext.get();
+        if (req != null) {
+            Cookie cookie = new Cookie(cookieName, sessionId);
+            cookie.setPath("/");
+            cookie.setHttpOnly(true);
+            cookie.setMaxAge((int) lifetimeSeconds);
+            req.addCookie(cookie);
         }
     }
 
-    /**
-     * 读取 Session 中的单个属性。
-     *
-     * @param sessionId Session ID
-     * @param key       属性名
-     * @return 属性值，不存在返回 null
-     */
-    public Object get(String sessionId, String key) {
+    @Override
+    public Object get(String key) {
+        String sessionId = getSessionId();
         if (sessionId == null || sessionId.isEmpty()) {
             return null;
         }
@@ -135,7 +108,7 @@ public class RedisSessionStore {
             if (raw == null) {
                 return null;
             }
-            // 刷新 TTL
+            // 刷新 TTL（滑动过期）
             cmd.expire(sessionKey(sessionId), lifetimeSeconds);
             return deserialize(raw);
         } catch (Exception e) {
@@ -144,16 +117,13 @@ public class RedisSessionStore {
         }
     }
 
-    /**
-     * 写入 Session 属性。
-     *
-     * @param sessionId Session ID
-     * @param key       属性名
-     * @param value     属性值
-     */
-    public void put(String sessionId, String key, Object value) {
+    @Override
+    public void put(String key, Object value) {
+        String sessionId = getSessionId();
+        // 惰性创建：无 Session 时生成新 Session ID 并设置 Cookie
         if (sessionId == null || sessionId.isEmpty()) {
-            return;
+            sessionId = generateSessionId();
+            setCookie(sessionId);
         }
         try {
             RedisCommands<String, String> cmd = commands();
@@ -164,13 +134,9 @@ public class RedisSessionStore {
         }
     }
 
-    /**
-     * 移除 Session 属性。
-     *
-     * @param sessionId Session ID
-     * @param key       属性名
-     */
-    public void remove(String sessionId, String key) {
+    @Override
+    public void remove(String key) {
+        String sessionId = getSessionId();
         if (sessionId == null || sessionId.isEmpty()) {
             return;
         }
@@ -183,12 +149,9 @@ public class RedisSessionStore {
         }
     }
 
-    /**
-     * 销毁整个 Session。
-     *
-     * @param sessionId Session ID
-     */
-    public void destroy(String sessionId) {
+    @Override
+    public void destroy() {
+        String sessionId = getSessionId();
         if (sessionId == null || sessionId.isEmpty()) {
             return;
         }
@@ -197,38 +160,6 @@ public class RedisSessionStore {
         } catch (Exception e) {
             logger.error("[session-redis] 销毁 Session 失败 sessionId={}: {}", sessionId, e.getMessage());
         }
-    }
-
-    /**
-     * 检查 Session 是否存在且未过期。
-     *
-     * @param sessionId Session ID
-     * @return 是否存在
-     */
-    public boolean exists(String sessionId) {
-        if (sessionId == null || sessionId.isEmpty()) {
-            return false;
-        }
-        try {
-            return commands().exists(sessionKey(sessionId)) > 0;
-        } catch (Exception e) {
-            logger.error("[session-redis] 检查 Session 存在失败 sessionId={}: {}", sessionId, e.getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * @return Cookie 名称
-     */
-    public String getCookieName() {
-        return cookieName;
-    }
-
-    /**
-     * @return Session 生命周期（秒）
-     */
-    public long getLifetimeSeconds() {
-        return lifetimeSeconds;
     }
 
     /** 序列化对象为 JSON 字符串 */

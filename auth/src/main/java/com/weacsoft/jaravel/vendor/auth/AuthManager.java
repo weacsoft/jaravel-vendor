@@ -1,33 +1,43 @@
 package com.weacsoft.jaravel.vendor.auth;
 
 import com.weacsoft.jaravel.vendor.auth.contract.AuthGuard;
+import com.weacsoft.jaravel.vendor.auth.contract.AuthGuardDriver;
 import com.weacsoft.jaravel.vendor.auth.contract.Authenticatable;
-import com.weacsoft.jaravel.vendor.auth.contract.GuardFactory;
 import com.weacsoft.jaravel.vendor.auth.contract.UserProvider;
-import com.weacsoft.jaravel.vendor.auth.guard.SessionGuard;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * 认证管理器，对齐 Laravel {@code AuthManager}。
  * <p>
  * 维护多个守卫（guard）与用户提供者（provider），按名称解析守卫实例（请求级缓存于 ThreadLocal）。
- * 支持通过 {@link #registerGuardDriver(String, GuardFactory)} 插件式注册新的 Guard 驱动，
- * 第三方模块（如 jwt 模块）可在不修改本类的前提下扩展支持的 driver 类型。
+ * <p>
+ * 采用工厂模式 + support 方法匹配（对齐 database-all 多数据库支持）：
+ * 守卫驱动（{@link AuthGuardDriver}）自行声明 {@code support(String)} 方法，
+ * AuthManager 在创建守卫时遍历所有已注册的驱动，找到第一个匹配的驱动并调用 {@code create}。
+ * 第三方模块只需将 {@link AuthGuardDriver} 实现注册为 Spring Bean，
+ * {@code AuthAutoConfiguration} 会自动收集并注册到 AuthManager。
+ *
+ * <h3>认证架构</h3>
+ * <ul>
+ *   <li><b>认证驱动</b>（数据来源）：{@code session}（登录态存储）| {@code jwt}（无状态 token）</li>
+ *   <li><b>Session 存储</b>：{@code cookie}（默认，Servlet HttpSession）| {@code redis} | {@code file} | ...</li>
+ * </ul>
+ * session 驱动内部再通过 {@link com.weacsoft.jaravel.vendor.auth.contract.SessionStore} 的 support 方法匹配存储后端。
  *
  * <h3>线程安全说明</h3>
  * <ul>
- *   <li><b>注册表（guards / providers / driverFactories）</b>：使用 {@link ConcurrentHashMap}，
- *       支持并发读写。注册阶段（应用启动时由 ServiceProvider 调用 {@code registerProvider} /
- *       {@code registerGuard} / {@code registerGuardDriver}）与运行阶段（请求线程调用
+ *   <li><b>注册表（guards / providers / guardDrivers）</b>：使用 {@link ConcurrentHashMap} 和
+ *       {@link CopyOnWriteArrayList}，支持并发读写。注册阶段（应用启动时）与运行阶段（请求线程调用
  *       {@code guard(name)}）可安全并发。注册表本身是进程级共享的不可变配置
- *       （启动后不再修改），ConcurrentHashMap 保证可见性与原子性。</li>
+ *       （启动后不再修改），并发集合保证可见性与原子性。</li>
  *   <li><b>请求级守卫实例（current）</b>：使用 {@link ThreadLocal}，每个请求线程持有独立的
- *       {@code Map<String, AuthGuard>}，因此 {@link AuthGuard} 实例（如 {@link SessionGuard}、
- *       JwtGuard）中缓存的 {@code cachedUser}、{@code resolved}、{@code lastToken} 等可变状态
- *       天然按请求隔离，<b>不会</b>跨请求共享。请求结束时由
- *       {@link com.weacsoft.jaravel.vendor.auth.filter.AuthLifecycleFilter} 调用 {@link #clear()}
+ *       {@code Map<String, AuthGuard>}，因此 {@link AuthGuard} 实例中缓存的 {@code cachedUser}、
+ *       {@code resolved}、{@code lastToken} 等可变状态天然按请求隔离，<b>不会</b>跨请求共享。
+ *       请求结束时由 {@link com.weacsoft.jaravel.vendor.auth.filter.AuthLifecycleFilter} 调用 {@link #clear()}
  *       清理 ThreadLocal，防止线程池复用导致的串态。</li>
  *   <li><b>defaultGuard</b>：启动阶段设置后不再变更，使用 {@code volatile} 保证可见性。</li>
  * </ul>
@@ -37,12 +47,12 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class AuthManager {
 
-    /** 守卫配置：name -> {driver, providerName}，进程级共享，启动后只读 */
+    /** 守卫配置：name -> {driver, providerName, config}，进程级共享，启动后只读 */
     private final Map<String, GuardConfig> guards = new ConcurrentHashMap<>();
     /** 提供者：name -> UserProvider，进程级共享，启动后只读 */
     private final Map<String, UserProvider> providers = new ConcurrentHashMap<>();
-    /** 插件式驱动工厂：driver(lowercase) -> GuardFactory，进程级共享，启动后只读 */
-    private final Map<String, GuardFactory> driverFactories = new ConcurrentHashMap<>();
+    /** 守卫驱动列表（工厂模式），进程级共享，启动后只读 */
+    private final List<AuthGuardDriver> guardDrivers = new CopyOnWriteArrayList<>();
     /** 请求级守卫实例：name -> AuthGuard，每线程独立，请求结束清理 */
     private final ThreadLocal<Map<String, AuthGuard>> current = ThreadLocal.withInitial(ConcurrentHashMap::new);
 
@@ -61,31 +71,38 @@ public class AuthManager {
         providers.put(name, provider);
     }
 
-    /** 注册守卫（应用启动阶段调用） */
+    /** 注册守卫（应用启动阶段调用），使用默认配置 */
     public void registerGuard(String name, String driver, String providerName) {
-        guards.put(name, new GuardConfig(driver, providerName));
+        guards.put(name, new GuardConfig(driver, providerName, Map.of()));
     }
 
     /**
-     * 注册 Guard 驱动工厂，允许插件模块扩展支持的 driver 类型。
-     * <p>
-     * 例如 jwt 模块在自动装配时调用：
-     * <pre>
-     * authManager.registerGuardDriver("jwt", (name, provider, config) -> new JwtGuard(name, provider, jwtService));
-     * </pre>
+     * 注册守卫（应用启动阶段调用），可指定 session 存储后端。
      *
-     * @param driver  驱动名称（不区分大小写）
-     * @param factory 守卫工厂
+     * @param name         守卫名称
+     * @param driver       驱动名称（session / jwt）
+     * @param providerName 提供者名称
+     * @param sessionStore session 存储名称（cookie / redis），仅 session 驱动使用
      */
-    public void registerGuardDriver(String driver, GuardFactory factory) {
-        driverFactories.put(driver.toLowerCase(), factory);
+    public void registerGuard(String name, String driver, String providerName, String sessionStore) {
+        guards.put(name, new GuardConfig(driver, providerName,
+                sessionStore != null ? Map.of("sessionStore", sessionStore) : Map.of()));
+    }
+
+    /**
+     * 注册守卫驱动（工厂模式）。
+     * <p>
+     * 通常由 {@code AuthAutoConfiguration} 在启动时自动收集所有 {@link AuthGuardDriver} Bean 并注册，
+     * 业务方无需手动调用。如需编程式注册，也可直接调用此方法。
+     *
+     * @param driver 守卫驱动实例
+     */
+    public void registerGuardDriver(AuthGuardDriver driver) {
+        guardDrivers.add(driver);
     }
 
     /**
      * 检查是否注册了指定名称的守卫。
-     * <p>
-     * 用于在不需要认证的场景下避免调用 {@link #guard(String)} 抛出异常，
-     * 例如 {@code JwtTokenResponseFilter} 在无守卫配置时优雅跳过。
      *
      * @param name 守卫名称
      * @return 已注册返回 true，未注册返回 false
@@ -96,9 +113,6 @@ public class AuthManager {
 
     /**
      * 检查是否注册了任何守卫。
-     * <p>
-     * 当应用不需要认证功能时（未注册任何守卫），调用此方法返回 false，
-     * 过滤器等组件可据此跳过认证相关逻辑，避免抛出异常。
      *
      * @return 已注册至少一个守卫返回 true，否则返回 false
      */
@@ -136,14 +150,11 @@ public class AuthManager {
         if (provider == null) {
             throw new IllegalStateException("未注册的提供者: " + cfg.providerName);
         }
-        // 内置 session 驱动
-        if ("session".equalsIgnoreCase(cfg.driver)) {
-            return new SessionGuard(name, provider);
-        }
-        // 插件式驱动（如 jwt）
-        GuardFactory factory = driverFactories.get(cfg.driver.toLowerCase());
-        if (factory != null) {
-            return factory.create(name, provider);
+        // 工厂模式：遍历所有驱动，找到第一个匹配的
+        for (AuthGuardDriver driver : guardDrivers) {
+            if (driver.support(cfg.driver)) {
+                return driver.create(name, provider, cfg.config);
+            }
         }
         throw new IllegalStateException(
                 "未知 guard driver: " + cfg.driver + "，请引入对应插件（如 jwt 模块）");
@@ -203,6 +214,7 @@ public class AuthManager {
         return guard(guardName).token();
     }
 
-    private record GuardConfig(String driver, String providerName) {
+    /** 守卫配置 */
+    private record GuardConfig(String driver, String providerName, Map<String, Object> config) {
     }
 }
