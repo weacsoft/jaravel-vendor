@@ -1,6 +1,8 @@
 package com.weacsoft.jaravel.vendor.core;
 
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
@@ -54,7 +56,25 @@ import java.util.function.Supplier;
  *   <li>它们只能通过 {@code make(name)} 获取</li>
  *   <li>适用于非 Spring Bean 的自定义服务</li>
  * </ul>
- * 如果需要 Spring 管理，应使用 {@code @Bean} 方法注册。
+ * 如果需要 Spring 管理，应使用 {@code @Bean} 方法注册，或在运行时调用
+ * {@link #publishToSpring(String)} / {@link #publishAllToSpring()} 将服务发布到 Spring。
+ *
+ * <h3>发布到 Spring 容器</h3>
+ * 默认情况下，{@code singleton} / {@code bind} / {@code register} 注册的服务不进入 Spring 容器。
+ * 当需要让 Spring 管理（如 {@code @Autowired} 注入）时，可手动发布：
+ * <ul>
+ *   <li>{@link #publishToSpring(String)} — 发布单个服务到 Spring（如已存在则替换）</li>
+ *   <li>{@link #publishAllToSpring()} — 批量发布所有已注册服务到 Spring</li>
+ * </ul>
+ * <b>注意</b>：{@code registerDefaultBinding} 注册的别名（如 "auth" -> AuthManager.class）
+ * 不会被发布，因为它们指向的 Bean 已经存在于 Spring 容器中。
+ * <pre>
+ * // 发布单个服务
+ * AppConfig.app().publishToSpring("myService");
+ *
+ * // 批量发布所有自定义服务
+ * int count = AppConfig.app().publishAllToSpring();
+ * </pre>
  */
 public class Application {
 
@@ -218,5 +238,61 @@ public class Application {
         singletons.remove(name);
         factories.remove(name);
         defaultBindings.remove(name);
+    }
+
+    // ==================== 发布到 Spring 容器 ====================
+
+    /**
+     * 发布指定名称的服务到 Spring 容器（默认单例）。
+     * <p>
+     * 从 Application 的注册表中解析服务实例，然后通过 {@link SpringContext#registerSingleton}
+     * 注册为 Spring 单例 Bean。如果 Spring 中已存在同名 Bean，会先销毁旧实例再注册新实例。
+     * <p>
+     * <b>别名不会被发布</b>：{@link #registerDefaultBinding} 注册的别名（如 "auth" -> AuthManager.class）
+     * 指向的 Bean 已存在于 Spring 容器中，无需重复发布。只有通过 {@code singleton} /
+     * {@code bind} / {@code register} 注册的自定义服务才会被发布。
+     * <p>
+     * 默认不调用此方法——服务仅在 Application 的 static Map 中，不进入 Spring。
+     * 需要让 Spring 管理（如 {@code @Autowired} 注入）时才手动调用。
+     *
+     * @param name 服务名称
+     * @return 发布成功返回 {@code true}，服务不存在返回 {@code false}
+     */
+    public boolean publishToSpring(String name) {
+        Object instance = make(name);
+        if (instance == null) {
+            return false;
+        }
+        SpringContext.registerSingleton(name, instance);
+        return true;
+    }
+
+    /**
+     * 发布所有已注册的自定义服务到 Spring 容器（默认单例）。
+     * <p>
+     * 遍历 {@code singleton} 和 {@code bind} 注册的所有服务，解析实例后注册到 Spring。
+     * 别名（{@code defaultBindings}）不会被发布，因为它们指向的 Bean 已在 Spring 中。
+     * <p>
+     * 默认不调用此方法。需要批量发布时才手动调用。
+     *
+     * @return 成功发布的服务数量
+     */
+    public int publishAllToSpring() {
+        int count = 0;
+        Set<String> published = new HashSet<>();
+        // 发布单例服务
+        for (String name : singletons.keySet()) {
+            if (publishToSpring(name)) {
+                published.add(name);
+                count++;
+            }
+        }
+        // 发布工厂服务（调用一次 factory 创建实例）
+        for (String name : factories.keySet()) {
+            if (!published.contains(name) && publishToSpring(name)) {
+                count++;
+            }
+        }
+        return count;
     }
 }

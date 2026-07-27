@@ -115,12 +115,31 @@ com.weacsoft.jaravel.vendor.core
 | `void singleton(String name, Supplier<Object> factory)` | 注册单例工厂，首次 `make(name)` 时创建并缓存（对齐 `App::singleton`） |
 | `void bind(String name, Supplier<Object> factory)` | 注册工厂，每次 `make(name)` 创建新实例（对齐 `App::bind`） |
 | `void register(String name, Object instance)` | 直接注册现成实例（对齐 `App::instance`） |
+| `static void registerDefaultBinding(String name, Class<?> type)` | 注册别名到 Spring Bean 类型的映射（对齐 Laravel aliases 数组） |
 | `boolean bound(String name)` | 检查指定名称的服务是否已注册 |
 | `void forget(String name)` | 注销指定名称的服务 |
+| `boolean publishToSpring(String name)` | 发布单个服务到 Spring 容器（如已存在则替换），别名不会被发布 |
+| `int publishAllToSpring()` | 批量发布所有自定义服务到 Spring 容器，返回发布数量 |
 
 #### CGLIB 兼容性
 
 `@Configuration` 类会被 Spring CGLIB 代理子类化。本类的服务注册表使用 `static` 字段，确保代理对象与原始实例共享同一份注册表，不会因 CGLIB 代理导致字段未初始化的问题。
+
+#### 发布到 Spring 容器
+
+默认情况下，`singleton` / `bind` / `register` 注册的服务仅存在于 Application 的 static Map 中，**不会**进入 Spring 的 BeanFactory。这意味着 `@Autowired` 无法注入这些服务，它们只能通过 `make(name)` 获取。
+
+当需要让 Spring 管理（如 `@Autowired` 注入）时，可手动发布：
+
+```java
+// 发布单个服务到 Spring
+AppConfig.app().publishToSpring("myService");
+
+// 批量发布所有自定义服务到 Spring
+int count = AppConfig.app().publishAllToSpring();
+```
+
+**注意**：`registerDefaultBinding` 注册的别名（如 `"auth" -> AuthManager.class`）不会被发布，因为它们指向的 Bean 已经存在于 Spring 容器中。只有通过 `singleton` / `bind` / `register` 注册的自定义服务才会被发布。
 
 ### 4.2 App —— 静态入口
 
@@ -201,6 +220,7 @@ public class MyAppConfig extends AppConfig {
 | 调用方式 | 实例方法 `app().make(Type)` | 静态方法 `Auth.check()` |
 | 可扩展性 | 继承添加 typed 方法 | 需新建 Facade 类 |
 | 自定义注册 | `bind()` / `singleton()` / `register()` | 不支持 |
+| 发布到 Spring | `publishToSpring()` / `publishAllToSpring()` | 不支持 |
 | 可测试性 | 可 mock 实例 | 静态方法难以 mock |
 | 推荐度 | **推荐** | 传统方式，保持兼容 |
 
@@ -265,6 +285,7 @@ if (Auth.check()) {
 | `static <T> T bean(String name, Class<T> type)` | 按名称 + 类型获取 Bean |
 | `static <T> T bean(String name)` | 按名称获取 Bean（无类型检查） |
 | `static boolean contains(String name)` | 判断容器中是否存在指定名称的 Bean |
+| `static void registerSingleton(String name, Object bean)` | 运行时注册/替换单例 Bean。如已存在同名 Bean，先销毁旧实例再注册新实例 |
 
 ### 使用示例
 
@@ -279,6 +300,12 @@ Object dataSource = SpringContext.bean("dataSource");
 if (SpringContext.contains("myService")) {
     // ...
 }
+
+// 运行时注册单例到 Spring
+SpringContext.registerSingleton("myService", new MyService());
+
+// 替换已存在的 Bean
+SpringContext.registerSingleton("authManager", newCustomAuthManager());
 ```
 
 > 注意：`SpringContext` 必须在 ApplicationContext 初始化后才能使用。在单元测试等未启动 Spring 的场景下调用 `get()` 会抛出 `IllegalStateException`。
