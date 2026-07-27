@@ -9828,7 +9828,7 @@ public interface SessionStore {
 }
 </code></pre>
 
-<p>实现该接口即可接入自定义的会话后端（如 <code>RedisSessionStore</code>），通过 guard 配置项 <code>sessionStore</code> 指定使用哪个 SessionStore。</p>
+<p>实现该接口即可接入自定义的会话后端（如 <code>RedisSessionStore</code>）。Session 存储是全局配置，由 <code>config/SessionConfig.java</code> 决定具体实现，不绑定到具体 guard。</p>
 
 <p>---</p>
 
@@ -9847,34 +9847,30 @@ public class CookieSessionStore implements SessionStore {
 }
 </code></pre>
 
-<p><strong>适用场景</strong>：单机部署或具备会话亲和性的场景。多机部署需要共享会话时，请使用 <code>RedisSessionStore</code>（session-redis 模块）并通过 <code>sessionStore=redis</code> 指定。</p>
+<p><strong>适用场景</strong>：单机部署或具备会话亲和性的场景。多机部署需要共享会话时，请引入 <code>RedisSessionStore</code>（session-redis 模块）作为全局 SessionStore Bean。</p>
 
 <p>---</p>
 
 <h6 id="auth-sessionguarddriver">SessionGuardDriver</h6>
 
-<p>内置的 <code>&quot;session&quot;</code> 驱动实现，采用工厂模式。根据 guard 配置中的 <code>sessionStore</code> 项选择对应的 <code>SessionStore</code>（默认 <code>CookieSessionStore</code>），创建 <code>SessionGuard</code> 实例。</p>
+<p>内置的 <code>&quot;session&quot;</code> 驱动实现，采用工厂模式。直接注入全局 <code>SessionStore</code> Bean（由 <code>config/SessionConfig.java</code> 决定具体实现，默认 <code>CookieSessionStore</code>），创建 <code>SessionGuard</code> 实例。</p>
 
 <pre><code>
 public class SessionGuardDriver implements AuthGuardDriver {
 
-    public SessionGuardDriver(Map&lt;String, SessionStore&gt; sessionStores);
+    public SessionGuardDriver(SessionStore sessionStore);
 
     @Override
     public String driver() { return &quot;session&quot;; }
 
     @Override
     public AuthGuard create(String name, UserProvider provider, Object... config) {
-        String storeName = (config.length &gt; 0) ? (String) config[0] : null;
-        SessionStore store = (storeName != null &amp;&amp; sessionStores.containsKey(storeName))
-            ? sessionStores.get(storeName)
-            : sessionStores.getOrDefault(null, new CookieSessionStore());
-        return new SessionGuard(name, provider, store);
+        return new SessionGuard(name, provider, sessionStore);
     }
 }
 </code></pre>
 
-<p>由 <code>AuthAutoConfiguration</code> 注册为 <code>@Bean</code>，作为内置 <code>&quot;session&quot;</code> 驱动自动收集到 <code>AuthManager</code>。第三方 SessionStore 实现（如 <code>RedisSessionStore</code>）注册为 Spring Bean 后，可通过 guard 配置项 <code>sessionStore</code> 引用。</p>
+<p>由 <code>AuthAutoConfiguration</code> 注册为 <code>@Bean</code>，作为内置 <code>&quot;session&quot;</code> 驱动自动收集到 <code>AuthManager</code>。<code>SessionStore</code> 为全局配置，<code>SessionGuardDriver</code> 直接注入全局 <code>SessionStore</code> Bean；第三方实现（如 <code>RedisSessionStore</code>）注册为全局 <code>SessionStore</code> Bean 后即被采用。</p>
 
 <p>---</p>
 
@@ -10011,7 +10007,7 @@ public void clear()
 
 <li>从 <code>guards</code> 注册表查找守卫配置（driver + providerName）</li>
 <li>从 <code>providers</code> 注册表查找对应的 UserProvider</li>
-<li>若 driver 为 <code>&quot;session&quot;</code>（不区分大小写），通过内置 <code>SessionGuardDriver</code> 创建 <code>SessionGuard</code>（按 guard 配置的 <code>sessionStore</code> 选择 SessionStore）</li>
+<li>若 driver 为 <code>&quot;session&quot;</code>（不区分大小写），通过内置 <code>SessionGuardDriver</code> 创建 <code>SessionGuard</code>（直接注入全局 SessionStore Bean）</li>
 <li>否则从 <code>guardDrivers</code> 列表查找匹配 <code>driver()</code> 的守卫驱动（如 <code>&quot;jwt&quot;</code>），调用驱动的 <code>create()</code> 创建</li>
 <li>均未命中则抛出 <code>IllegalStateException</code></li>
 
@@ -10269,18 +10265,18 @@ public class AuthAutoConfiguration implements SmartInitializingSingleton {
         return new AuthLifecycleFilter(authManager);
     }
 
-    /** 内置 Cookie 会话存储（基于 Servlet Session） */
+    /** 内置 Cookie 会话存储（基于 Servlet Session），作为全局 SessionStore 的默认实现 */
     @Bean
-    @ConditionalOnMissingBean(CookieSessionStore.class)
+    @ConditionalOnMissingBean(SessionStore.class)
     public CookieSessionStore cookieSessionStore() {
         return new CookieSessionStore();
     }
 
-    /** 内置 session 驱动（工厂模式），按 guard 配置的 sessionStore 选择 SessionStore */
+    /** 内置 session 驱动（工厂模式），直接注入全局 SessionStore Bean */
     @Bean
     @ConditionalOnMissingBean(SessionGuardDriver.class)
-    public SessionGuardDriver sessionGuardDriver(Map&lt;String, SessionStore&gt; sessionStores) {
-        return new SessionGuardDriver(sessionStores);
+    public SessionGuardDriver sessionGuardDriver(SessionStore sessionStore) {
+        return new SessionGuardDriver(sessionStore);
     }
 
     @Override
@@ -10313,10 +10309,10 @@ public class AuthProperties {
     /** 默认守卫名（默认 &quot;web&quot;） */
     private final String defaultGuard = &quot;web&quot;;
 
-    /** 守卫配置：name -> {driver, provider, sessionStore} */
+    /** 守卫配置：name -> {driver, provider} */
     private Map&lt;String, GuardConfig&gt; guards = new LinkedHashMap&lt;&gt;();
 
-    // GuardConfig 内含：driver（驱动名，如 session/jwt）、provider（提供者名）、sessionStore（会话存储名，可选）
+    // GuardConfig 内含：driver（驱动名，如 session/jwt）、provider（提供者名）
 
     // getter/setter ...
 }
@@ -10327,7 +10323,6 @@ public class AuthProperties {
 <tr><th>属性</th><th>类型</th><th>默认值</th><th>说明</th></tr>
 <tr><td>`driver`</td><td>String</td><td>-</td><td>守卫驱动名（如 `session`、`jwt`），对应 `AuthGuardDriver.driver()`</td></tr>
 <tr><td>`provider`</td><td>String</td><td>-</td><td>绑定的 UserProvider 名称</td></tr>
-<tr><td>`sessionStore`</td><td>String</td><td>`null`</td><td>会话存储名（仅 `session` 驱动生效，如 `redis`；为空时使用内置 `CookieSessionStore`）</td></tr>
 </table>
 
 <p>&gt; JWT 相关配置已移至独立 jwt 模块的 <code>JwtProperties</code>（前缀 <code>jaravel.jwt</code>）。</p>
@@ -10342,12 +10337,11 @@ jaravel:
     # 默认守卫名，未指定守卫时 Auth.check() / Auth.user() 等便捷方法作用于此守卫
     # 内置支持 &quot;session&quot; 驱动；引入 jwt 模块后还支持 &quot;jwt&quot; 驱动
     default-guard: web
-    # 守卫配置：driver 为驱动名，provider 为提供者名，sessionStore 为会话存储名（仅 session 驱动）
+    # 守卫配置：driver 为驱动名，provider 为提供者名
     guards:
       web:
         driver: session          # 内置 session 驱动
         provider: users
-        sessionStore: redis      # 可选，使用 Redis 会话存储；省略则用内置 CookieSessionStore
       api:
         driver: jwt              # 由 jwt 模块提供 JwtGuardDriver
         provider: users
@@ -10358,7 +10352,6 @@ jaravel:
 <tr><td>`jaravel.auth.default-guard`</td><td>String</td><td>`web`</td><td>默认守卫名称</td></tr>
 <tr><td>`jaravel.auth.guards.<name>.driver`</td><td>String</td><td>-</td><td>守卫驱动名（如 `session`、`jwt`）</td></tr>
 <tr><td>`jaravel.auth.guards.<name>.provider`</td><td>String</td><td>-</td><td>绑定的 UserProvider 名称</td></tr>
-<tr><td>`jaravel.auth.guards.<name>.sessionStore`</td><td>String</td><td>`null`</td><td>会话存储名（仅 `session` 驱动，如 `redis`）</td></tr>
 </table>
 
 <h6 id="auth-完整多守卫配置示例">完整多守卫配置示例</h6>
@@ -10827,8 +10820,8 @@ router.get(&quot;/api/profile&quot;, handler).middleware(new Authenticate(&quot;
 <tr><th>Bean</th><th>Return</th><th>Description</th></tr>
 <tr><td>`authManager`</td><td>`AuthManager`</td><td>创建 AuthManager（@Bean, @ConditionalOnMissingBean）</td></tr>
 <tr><td>`authLifecycleFilter`</td><td>`AuthLifecycleFilter`</td><td>创建认证生命周期过滤器（@Bean, @ConditionalOnMissingBean）</td></tr>
-<tr><td>`cookieSessionStore`</td><td>`CookieSessionStore`</td><td>创建内置 Cookie 会话存储（@Bean, @ConditionalOnMissingBean）</td></tr>
-<tr><td>`sessionGuardDriver`</td><td>`SessionGuardDriver`</td><td>创建内置 session 驱动（工厂模式）（@Bean, @ConditionalOnMissingBean）</td></tr>
+<tr><td>`cookieSessionStore`</td><td>`CookieSessionStore`</td><td>创建内置 Cookie 会话存储，作为全局 SessionStore 默认实现（@Bean, @ConditionalOnMissingBean(SessionStore.class)）</td></tr>
+<tr><td>`sessionGuardDriver`</td><td>`SessionGuardDriver`</td><td>创建内置 session 驱动（工厂模式），注入全局 SessionStore（@Bean, @ConditionalOnMissingBean）</td></tr>
 <tr><td>`afterSingletonsInstantiated`</td><td>`void`</td><td>所有单例就绪后自动收集 AuthGuardDriver Bean 注册到 AuthManager</td></tr>
 </table>
 
@@ -10845,10 +10838,9 @@ router.get(&quot;/api/profile&quot;, handler).middleware(new Authenticate(&quot;
 <table>
 <tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr>
 <tr><td>`defaultGuard`</td><td>`String`</td><td>`"web"`</td><td>默认守卫名</td></tr>
-<tr><td>`guards`</td><td>`Map<String, GuardConfig>`</td><td>`{}`</td><td>守卫配置：name -> {driver, provider, sessionStore}</td></tr>
+<tr><td>`guards`</td><td>`Map<String, GuardConfig>`</td><td>`{}`</td><td>守卫配置：name -> {driver, provider}</td></tr>
 <tr><td>`guards.<name>.driver`</td><td>`String`</td><td>-</td><td>守卫驱动名（如 session、jwt）</td></tr>
 <tr><td>`guards.<name>.provider`</td><td>`String`</td><td>-</td><td>绑定的 UserProvider 名称</td></tr>
-<tr><td>`guards.<name>.sessionStore`</td><td>`String`</td><td>`null`</td><td>会话存储名（仅 session 驱动，如 redis）</td></tr>
 </table>
 
 <h6 id="auth-usage-example">Usage Example</h6>
@@ -12699,7 +12691,7 @@ jaravel:
 
 <h6 id="session-redis-redissessionstore">RedisSessionStore</h6>
 
-<p>Redis Session 存储，实现 auth 模块的 <code>SessionStore</code> 契约，对齐 Laravel 的 <code>RedisSessionHandler</code>。登录态写入 Redis Session，用户信息按需通过 <code>UserProvider</code> 取出并缓存于当前线程。配合内置 <code>session</code> 驱动（<code>SessionGuardDriver</code>）使用——guard 配置 <code>driver=session</code> 且 <code>sessionStore=redis</code> 时，<code>SessionGuard</code> 通过本存储读写登录态。</p>
+<p>Redis Session 存储，实现 auth 模块的 <code>SessionStore</code> 契约，对齐 Laravel 的 <code>RedisSessionHandler</code>。登录态写入 Redis Session，用户信息按需通过 <code>UserProvider</code> 取出并缓存于当前线程。配合内置 <code>session</code> 驱动（<code>SessionGuardDriver</code>）使用——<code>RedisSessionStore</code> 注册为全局 <code>SessionStore</code> Bean（<code>@ConditionalOnMissingBean(SessionStore.class)</code>）后，<code>SessionGuard</code> 直接通过本存储读写登录态。</p>
 
 <p>Session ID 流转：</p>
 <li>请求到达时，从 Cookie 中读取 Session ID（Cookie 名由 <code>RedisSessionStore.getCookieName()</code> 指定）</li>
@@ -12748,7 +12740,7 @@ public class SessionRedisProperties {
     private String prefix = &quot;laravel_session&quot;;    // Session 键前缀
     private long lifetime = 30;                    // Session 生命周期（分钟）
     private String cookie = &quot;manage_session&quot;;     // Cookie 名称
-    private boolean autoRegister = true;          // 是否自动注册 RedisSessionStore 为 Spring Bean（供 session 驱动引用）
+    private boolean autoRegister = true;          // 是否自动注册 RedisSessionStore 为全局 SessionStore Bean
 }
 </code></pre>
 <h4>使用示例</h4>
@@ -12762,14 +12754,13 @@ jaravel:
       prefix: laravel_session      # Session 键前缀
       lifetime: 30                 # Session 生命周期（分钟）
       cookie: manage_session       # Cookie 名称
-      auto-register: true          # 是否自动注册 RedisSessionStore 为 Spring Bean
+      auto-register: true          # 是否自动注册 RedisSessionStore 为全局 SessionStore Bean
 
   auth:
     guards:
       web:
         driver: session            # 使用内置 session 驱动
         provider: users
-        sessionStore: redis        # 指定使用 Redis 会话存储（RedisSessionStore）
 </code></pre>
 
 <p>配合 redis-config 模块配置连接：</p>
@@ -12786,7 +12777,7 @@ jaravel:
 
 <h5 id="session-redis-使用示例">使用示例</h5>
 
-<p>注册后，业务方在 auth 配置中将 guard driver 设为 <code>session</code> 并指定 <code>sessionStore=redis</code> 即可启用 Redis Session：</p>
+<p>引入 session-redis 模块后，<code>RedisSessionStore</code> 自动注册为全局 <code>SessionStore</code> Bean（<code>@ConditionalOnMissingBean(SessionStore.class)</code>）。业务方在 auth 配置中将 guard driver 设为 <code>session</code> 即可启用 Redis Session：</p>
 
 <pre><code>
 // 业务代码无需感知 Redis，通过 Auth facade 操作
@@ -12804,13 +12795,13 @@ Auth.guard(&quot;web&quot;).logout();             // 登出，销毁 Redis Sessi
 <p><code>SessionRedisAutoConfiguration</code> 通过 <code>@AutoConfiguration</code> 注册，在 <code>RedisAutoConfiguration</code> 与 <code>AuthAutoConfiguration</code> 之后装配。当 <code>RedisManager</code> 与 <code>AuthManager</code> 均存在，且 <code>jaravel.session.redis.auto-register</code> 为 true（默认）时生效。</p>
 
 <p>创建的 bean：</p>
-<li><code>RedisSessionStore</code> — Redis Session 存储（实现 <code>SessionStore</code> 契约，<code>@ConditionalOnMissingBean</code>，便于业务方覆盖）。注册为 Spring Bean 后，<code>SessionGuardDriver</code>（内置 <code>session</code> 驱动）会按 guard 配置的 <code>sessionStore=redis</code> 自动选用它创建 <code>SessionGuard</code>。</li>
+<li><code>RedisSessionStore</code> — Redis Session 存储（实现 <code>SessionStore</code> 契约，<code>@ConditionalOnMissingBean(SessionStore.class)</code>，便于业务方覆盖）。注册为全局 <code>SessionStore</code> Bean 后，<code>SessionGuardDriver</code>（内置 <code>session</code> 驱动）直接注入它创建 <code>SessionGuard</code>。</li>
 <h4>类和方法</h4>
 <p>&gt; Module: <code>session-redis</code> | Package: <code>com.weacsoft.jaravel.vendor.session.redis</code> | Version: 0.1.2</p>
 
 <h5 id="session-redis-overview">Overview</h5>
 
-<p>session-redis 模块提供了基于 Redis 的会话存储实现。<code>RedisSessionStore</code> 实现 auth 模块的 <code>SessionStore</code> 契约，将会话数据以 JSON 序列化存储到 Redis，支持 TTL 过期和多实例共享。配合 auth 模块内置的 <code>session</code> 驱动（<code>SessionGuardDriver</code>）使用——guard 配置 <code>driver=session</code> 且 <code>sessionStore=redis</code> 时，<code>SessionGuard</code> 通过 <code>RedisSessionStore</code> 读写登录态。该模块在 Spring Boot 自动装配时将 <code>RedisSessionStore</code> 注册为 Spring Bean，供 session 驱动引用，适用于多机部署场景。</p>
+<p>session-redis 模块提供了基于 Redis 的会话存储实现。<code>RedisSessionStore</code> 实现 auth 模块的 <code>SessionStore</code> 契约，将会话数据以 JSON 序列化存储到 Redis，支持 TTL 过期和多实例共享。配合 auth 模块内置的 <code>session</code> 驱动（<code>SessionGuardDriver</code>）使用——<code>RedisSessionStore</code> 注册为全局 <code>SessionStore</code> Bean（<code>@ConditionalOnMissingBean(SessionStore.class)</code>）后，<code>SessionGuard</code> 通过 <code>RedisSessionStore</code> 读写登录态。该模块在 Spring Boot 自动装配时将 <code>RedisSessionStore</code> 注册为全局 <code>SessionStore</code> Bean，供 session 驱动直接注入，适用于多机部署场景。</p>
 
 <h5 id="session-redis-classes--interfaces">Classes & Interfaces</h5>
 
@@ -12818,7 +12809,7 @@ Auth.guard(&quot;web&quot;).logout();             // 登出，销毁 Redis Sessi
 <li><strong>Type</strong>: class</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.session.redis</code></li>
 <li><strong>Implements</strong>: <code>com.weacsoft.jaravel.vendor.auth.contract.SessionStore</code></li>
-<li><strong>Description</strong>: Redis 会话存储实现（auth 模块 SessionStore 契约）。会话数据通过 Jackson <code>ObjectMapper</code> 序列化为 JSON 存储到 Redis，键格式为 <code>{prefix}:{sessionId}</code>。支持 TTL 过期，<code>allSessions()</code> 使用 SCAN 遍历键空间。注册为 Spring Bean 后供 <code>SessionGuardDriver</code> 按 <code>sessionStore=redis</code> 选用。</li>
+<li><strong>Description</strong>: Redis 会话存储实现（auth 模块 SessionStore 契约）。会话数据通过 Jackson <code>ObjectMapper</code> 序列化为 JSON 存储到 Redis，键格式为 <code>{prefix}:{sessionId}</code>。支持 TTL 过期，<code>allSessions()</code> 使用 SCAN 遍历键空间。注册为全局 <code>SessionStore</code> Bean（<code>@ConditionalOnMissingBean(SessionStore.class)</code>），供 <code>SessionGuardDriver</code> 直接注入使用。</li>
 
 <h6 id="session-redis-methods">Methods</h6>
 
@@ -12860,7 +12851,7 @@ store.destroy(&quot;sess-abc123&quot;);
 <tr><td>`setPrefix`</td><td>`String prefix`</td><td>`void`</td><td>设置会话键前缀</td></tr>
 <tr><td>`getTtl`</td><td>-</td><td>`long`</td><td>获取会话 TTL（秒），默认 3600</td></tr>
 <tr><td>`setTtl`</td><td>`long ttl`</td><td>`void`</td><td>设置会话 TTL</td></tr>
-<tr><td>`isAutoRegister`</td><td>-</td><td>`boolean`</td><td>是否自动注册 RedisSessionStore 为 Spring Bean（供 session 驱动引用），默认 true</td></tr>
+<tr><td>`isAutoRegister`</td><td>-</td><td>`boolean`</td><td>是否自动注册 RedisSessionStore 为全局 SessionStore Bean，默认 true</td></tr>
 <tr><td>`setAutoRegister`</td><td>`boolean autoRegister`</td><td>`void`</td><td>设置是否自动注册</td></tr>
 </table>
 
@@ -12880,13 +12871,13 @@ jaravel:
 <li><strong>Type</strong>: class</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.session.redis</code></li>
 <li><strong>Annotations</strong>: <code>@AutoConfiguration</code>, <code>@AutoConfigureAfter({SessionAutoConfiguration, RedisAutoConfiguration})</code>, <code>@ConditionalOnClass({RedisSessionStore, SessionManager, RedisManager})</code>, <code>@ConditionalOnBean({RedisManager, SessionManager})</code>, <code>@ConditionalOnProperty(prefix = &quot;jaravel.session.redis&quot;, name = &quot;auto-register&quot;, havingValue = &quot;true&quot;, matchIfMissing = true)</code></li>
-<li><strong>Description</strong>: Redis 会话自动装配。当 <code>RedisManager</code> 和 <code>AuthManager</code> 均存在时，创建 <code>RedisSessionStore</code> Bean（实现 auth 模块 <code>SessionStore</code> 契约），供内置 <code>session</code> 驱动（<code>SessionGuardDriver</code>）按 <code>sessionStore=redis</code> 引用。</li>
+<li><strong>Description</strong>: Redis 会话自动装配。当 <code>RedisManager</code> 和 <code>AuthManager</code> 均存在时，创建 <code>RedisSessionStore</code> Bean（实现 auth 模块 <code>SessionStore</code> 契约），注册为全局 <code>SessionStore</code> Bean（<code>@ConditionalOnMissingBean(SessionStore.class)</code>），供内置 <code>session</code> 驱动（<code>SessionGuardDriver</code>）直接注入使用。守卫注册使用 3 参数 <code>registerGuard(&quot;web&quot;, &quot;session&quot;, &quot;users&quot;)</code>。</li>
 
 <h6 id="session-redis-methods">Methods</h6>
 
 <table>
 <tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
-<tr><td>`redisSessionStore`</td><td>`RedisManager redisManager, SessionRedisProperties properties`</td><td>`RedisSessionStore`</td><td>创建 Redis 会话存储 Bean（实现 SessionStore 契约，`@Bean`, `@ConditionalOnMissingBean`）</td></tr>
+<tr><td>`redisSessionStore`</td><td>`RedisManager redisManager, SessionRedisProperties properties`</td><td>`RedisSessionStore`</td><td>创建 Redis 会话存储 Bean，注册为全局 SessionStore（实现 SessionStore 契约，`@Bean`, `@ConditionalOnMissingBean(SessionStore.class)`）</td></tr>
 </table>
 
 <h6 id="session-redis-usage-example">Usage Example</h6>
