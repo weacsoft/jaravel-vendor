@@ -10,27 +10,51 @@ import java.util.function.Supplier;
  * 提供服务定位器（Service Locator）能力，替代 Facade 静态代理模式：
  * <ul>
  *   <li>{@link #make(Class)} — 从 Spring 容器按类型解析 Bean（等价于 {@code Facade.resolve}）</li>
- *   <li>{@link #make(String)} — 按名称解析自定义注册的服务</li>
+ *   <li>{@link #make(String)} — 按名称解析服务（自动注册别名 / bind / singleton / register）</li>
  *   <li>{@link #bind(String, Supplier)} — 注册工厂（每次 make 创建新实例，对齐 Laravel {@code App::bind}）</li>
  *   <li>{@link #singleton(String, Supplier)} — 注册单例工厂（首次 make 后缓存，对齐 Laravel {@code App::singleton}）</li>
  *   <li>{@link #register(String, Object)} — 直接注册现成实例</li>
+ *   <li>{@link #registerDefaultBinding(String, Class)} — 注册别名到 Spring Bean 类型的映射（自动注册）</li>
  * </ul>
  *
- * <h3>继承扩展</h3>
- * 应用配置类继承本类后，可添加 typed 访问器方法，避免 Facade：
+ * <h3>自动注册（对齐 Laravel aliases 数组）</h3>
+ * Laravel 在 {@code config/app.php} 的 {@code aliases} 数组中集中声明常用服务别名。
+ * 本类通过 {@link #registerDefaultBinding(String, Class)} 实现相同机制：
+ * 应用配置类在 static 块中集中注册，{@code make("auth")} 即可解析为对应的 Spring Bean。
+ * <pre>
+ * static {
+ *     registerDefaultBinding("auth", AuthManager.class);
+ *     registerDefaultBinding("cache", CacheManager.class);
+ * }
+ * </pre>
+ *
+ * <h3>继承扩展 + 免强转</h3>
+ * 应用配置类继承本类后，添加 {@code public static AppConfig app()} 方法返回自身类型，
+ * 即可实现 {@code AppConfig.app().auth()} 免强转调用：
  * <pre>
  * &#64;Configuration
  * public class AppConfig extends Application {
+ *     public static AppConfig app() {
+ *         return SpringContext.bean(AppConfig.class);
+ *     }
  *     public AuthManager auth() { return make(AuthManager.class); }
- *     public CacheManager cache() { return make(CacheManager.class); }
  * }
  * </pre>
- * 使用方通过 {@code App.app().auth()} 获取服务实例，无需再写 {@code Auth.check()} 风格的静态门面。
  *
  * <h3>CGLIB 兼容性</h3>
  * {@code @Configuration} 类会被 Spring CGLIB 代理子类化。本类的服务注册表使用
  * {@code static} 字段，确保代理对象与原始实例共享同一份注册表，不会因 CGLIB 代理
  * 导致字段未初始化的问题。
+ *
+ * <h3>与 Spring 容器的关系</h3>
+ * {@code singleton} / {@code register} / {@code bind} 注册的服务仅存在于本类的 static Map 中，
+ * <b>不会</b>进入 Spring 的 BeanFactory。这意味着：
+ * <ul>
+ *   <li>{@code @Autowired} 无法注入这些服务</li>
+ *   <li>它们只能通过 {@code make(name)} 获取</li>
+ *   <li>适用于非 Spring Bean 的自定义服务</li>
+ * </ul>
+ * 如果需要 Spring 管理，应使用 {@code @Bean} 方法注册。
  */
 public class Application {
 
@@ -39,6 +63,32 @@ public class Application {
 
     /** 工厂注册表：name -> Supplier（transient，每次 make 调用） */
     private static final Map<String, Supplier<Object>> factories = new ConcurrentHashMap<>();
+
+    /** 自动注册别名表：name -> Class（对齐 Laravel aliases 数组，make(name) 时从 Spring 解析） */
+    private static final Map<String, Class<?>> defaultBindings = new ConcurrentHashMap<>();
+
+    // ==================== 自动注册（对齐 Laravel aliases 数组） ====================
+
+    /**
+     * 注册服务别名到 Spring Bean 类型的映射（对齐 Laravel {@code config/app.php} 的 aliases 数组）。
+     * <p>
+     * 注册后 {@link #make(String)} 会按名称查找此映射，找到后从 Spring 容器按类型解析 Bean。
+     * <p>
+     * 通常在应用配置类的 static 块中集中调用，实现「常用服务自动注册」：
+     * <pre>
+     * static {
+     *     registerDefaultBinding("auth", AuthManager.class);
+     *     registerDefaultBinding("cache", CacheManager.class);
+     *     registerDefaultBinding("config", ConfigRepository.class);
+     * }
+     * </pre>
+     *
+     * @param name 服务别名（如 {@code "auth"}、{@code "cache"}）
+     * @param type Spring Bean 类型
+     */
+    public static void registerDefaultBinding(String name, Class<?> type) {
+        defaultBindings.put(name, type);
+    }
 
     // ==================== Spring Bean 解析 ====================
 
@@ -65,15 +115,16 @@ public class Application {
         return SpringContext.bean(name, type);
     }
 
-    // ==================== 自定义服务注册与解析 ====================
+    // ==================== 按名称解析服务 ====================
 
     /**
-     * 按名称解析自定义服务。
+     * 按名称解析服务。
      * <p>
      * 查找顺序：
      * <ol>
      *   <li>单例缓存（{@link #register} 或 {@link #singleton} 注册的实例）</li>
      *   <li>工厂注册（{@link #bind} 注册的 Supplier，每次调用创建新实例）</li>
+     *   <li>自动注册别名（{@link #registerDefaultBinding} 注册的 name -> Class 映射，从 Spring 解析）</li>
      * </ol>
      *
      * @param name 服务名称
@@ -81,21 +132,32 @@ public class Application {
      */
     @SuppressWarnings("unchecked")
     public <T> T make(String name) {
+        // 1. 单例缓存
         Object instance = singletons.get(name);
         if (instance != null) {
             return (T) instance;
         }
+        // 2. 工厂注册
         Supplier<Object> factory = factories.get(name);
         if (factory != null) {
             return (T) factory.get();
         }
+        // 3. 自动注册别名（name -> Class，从 Spring 解析）
+        Class<?> type = defaultBindings.get(name);
+        if (type != null) {
+            return (T) SpringContext.bean(type);
+        }
         return null;
     }
+
+    // ==================== 自定义服务注册 ====================
 
     /**
      * 注册单例工厂（对齐 Laravel {@code App::singleton}）。
      * <p>
      * 首次 {@link #make(String)} 时调用工厂创建实例并缓存，后续直接返回缓存实例。
+     * <p>
+     * <b>注意</b>：注册的服务仅存在于本类的 static Map 中，不会进入 Spring 容器。
      *
      * @param name    服务名称
      * @param factory 实例工厂
@@ -115,6 +177,8 @@ public class Application {
      * 注册工厂（对齐 Laravel {@code App::bind}）。
      * <p>
      * 每次 {@link #make(String)} 都调用工厂创建新实例，不缓存。
+     * <p>
+     * <b>注意</b>：注册的服务仅存在于本类的 static Map 中，不会进入 Spring 容器。
      *
      * @param name    服务名称
      * @param factory 实例工厂
@@ -125,6 +189,8 @@ public class Application {
 
     /**
      * 直接注册现成实例（对齐 Laravel {@code App::instance}）。
+     * <p>
+     * <b>注意</b>：注册的服务仅存在于本类的 static Map 中，不会进入 Spring 容器。
      *
      * @param name     服务名称
      * @param instance 服务实例
@@ -140,7 +206,7 @@ public class Application {
      * @return 已注册返回 {@code true}
      */
     public boolean bound(String name) {
-        return singletons.containsKey(name) || factories.containsKey(name);
+        return singletons.containsKey(name) || factories.containsKey(name) || defaultBindings.containsKey(name);
     }
 
     /**
@@ -151,5 +217,6 @@ public class Application {
     public void forget(String name) {
         singletons.remove(name);
         factories.remove(name);
+        defaultBindings.remove(name);
     }
 }
