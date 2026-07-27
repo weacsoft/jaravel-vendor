@@ -55,11 +55,6 @@ class AuthManagerTest {
         private final Map<String, Object> data = new HashMap<>();
 
         @Override
-        public boolean support(String store) {
-            return "cookie".equalsIgnoreCase(store) || "memory".equalsIgnoreCase(store);
-        }
-
-        @Override
         public Object get(String key) { return data.get(key); }
 
         @Override

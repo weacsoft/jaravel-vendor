@@ -16,29 +16,34 @@ import org.springframework.context.annotation.Bean;
  * Redis Session 自动装配。
  * <p>
  * 当 {@link RedisManager} 和 {@link AuthManager} 均存在时，
- * 创建 {@link RedisSessionStore} 并注册为 {@link SessionStore} Bean。
+ * 创建 {@link RedisSessionStore} 并注册为全局 {@link SessionStore} Bean。
  * <p>
- * <b>工厂模式</b>：{@link RedisSessionStore} 实现 {@link SessionStore} 接口，
- * {@code SessionGuardDriver} 会自动收集所有 {@code SessionStore} Bean，
- * 在创建 SessionGuard 时通过 {@code support("redis")} 匹配。
+ * <b>Session 存储是全局配置，不与 Guard 绑定</b>。{@link RedisSessionStore} 注册为
+ * 唯一的 {@link SessionStore} Bean 后，所有 {@code session} 驱动的守卫
+ * 都将使用 Redis 存储。如果应用同时引入了 auth 模块的 {@code CookieSessionStore}
+ * （默认实现），本配置通过 {@code @ConditionalOnMissingBean(SessionStore.class)}
+ * 确保只有第一个注册的存储生效。
  * <p>
- * 注册后，业务方在 auth 配置中将 guard 的 {@code session-store} 设为 {@code redis} 即可启用：
+ * 注册后，业务方在 {@code config/AuthConfig.java} 中注册 session 守卫即可自动使用 Redis 存储：
+ * <pre>
+ * authManager.registerGuard("web", "session", "users");
+ * </pre>
+ * <p>
+ * 如需自定义 Redis Session 参数（连接名、前缀、过期时间、Cookie 名），
+ * 通过 {@code jaravel.session.redis.*} 配置：
  * <pre>
  * jaravel:
- *   auth:
- *     guards:
- *       web:
- *         driver: session
- *         provider: users
- *         session-store: redis
+ *   session:
+ *     redis:
+ *       auto-register: true
+ *       connection: default
+ *       prefix: session
+ *       lifetime: 30
+ *       cookie: manage_session
  * </pre>
  * <p>
- * 或编程式注册：
- * <pre>
- * authManager.registerGuard("web", "session", "users", "redis");
- * </pre>
- * <p>
- * 这样，web 守卫将使用 Redis 存储 Session，实现多机 Session 同步。
+ * 如需使用其他 Session 存储（如 file），在应用的 {@code config/SessionConfig.java}
+ * 中注册自定义 {@code SessionStore} Bean 即可覆盖此实现。
  */
 @AutoConfiguration
 @AutoConfigureAfter({com.weacsoft.jaravel.vendor.redis.RedisAutoConfiguration.class,
@@ -52,11 +57,17 @@ public class SessionRedisAutoConfiguration {
     /**
      * Redis Session 存储 bean，实现 {@link SessionStore} 接口。
      * <p>
-     * 注册为 {@link SessionStore} 类型，使 {@code SessionGuardDriver} 能自动发现。
-     * 以 {@code @ConditionalOnMissingBean} 暴露，便于业务方覆盖。
+     * 注册为全局唯一的 {@link SessionStore} 类型 Bean。
+     * 当 auth 模块的默认 {@code CookieSessionStore} 尚未注册时（通过
+     * {@code @ConditionalOnMissingBean(SessionStore.class)} 互斥），本 Bean 生效。
+     * <p>
+     * 由于 {@code @AutoConfigureAfter(AuthAutoConfiguration.class)}，
+     * auth 模块的 {@code cookieSessionStore()} 会先尝试注册（也带 {@code @ConditionalOnMissingBean}），
+     * 两者中只有一个会生效，取决于加载顺序。为避免歧义，建议业务方在
+     * {@code config/SessionConfig.java} 中显式注册所需的 {@code SessionStore} Bean。
      */
     @Bean
-    @ConditionalOnMissingBean(RedisSessionStore.class)
+    @ConditionalOnMissingBean(SessionStore.class)
     public SessionStore redisSessionStore(RedisManager redisManager,
                                           SessionRedisProperties properties) {
         return new RedisSessionStore(

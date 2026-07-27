@@ -24,9 +24,11 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * <h3>认证架构</h3>
  * <ul>
  *   <li><b>认证驱动</b>（数据来源）：{@code session}（登录态存储）| {@code jwt}（无状态 token）</li>
- *   <li><b>Session 存储</b>：{@code cookie}（默认，Servlet HttpSession）| {@code redis} | {@code file} | ...</li>
+ *   <li><b>Session 存储</b>：全局配置，不与 Guard 绑定。由应用的 {@code config/SessionConfig.java}
+ *       决定具体实现（默认 {@code cookie}，即 Servlet HttpSession；可切换为 {@code redis} 等）</li>
  * </ul>
- * session 驱动内部再通过 {@link com.weacsoft.jaravel.vendor.auth.contract.SessionStore} 的 support 方法匹配存储后端。
+ * session 驱动通过 {@link com.weacsoft.jaravel.vendor.auth.contract.SessionStore} 接口抽象存储后端，
+ * 具体使用哪个实现由全局 {@code SessionStore} Bean 决定，而非在注册守卫时指定。
  *
  * <h3>线程安全说明</h3>
  * <ul>
@@ -74,19 +76,6 @@ public class AuthManager {
     /** 注册守卫（应用启动阶段调用），使用默认配置 */
     public void registerGuard(String name, String driver, String providerName) {
         guards.put(name, new GuardConfig(driver, providerName, Map.of()));
-    }
-
-    /**
-     * 注册守卫（应用启动阶段调用），可指定 session 存储后端。
-     *
-     * @param name         守卫名称
-     * @param driver       驱动名称（session / jwt）
-     * @param providerName 提供者名称
-     * @param sessionStore session 存储名称（cookie / redis），仅 session 驱动使用
-     */
-    public void registerGuard(String name, String driver, String providerName, String sessionStore) {
-        guards.put(name, new GuardConfig(driver, providerName,
-                sessionStore != null ? Map.of("sessionStore", sessionStore) : Map.of()));
     }
 
     /**

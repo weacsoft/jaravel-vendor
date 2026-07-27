@@ -4,7 +4,6 @@ import com.weacsoft.jaravel.vendor.auth.contract.AuthGuard;
 import com.weacsoft.jaravel.vendor.auth.contract.AuthGuardDriver;
 import com.weacsoft.jaravel.vendor.auth.contract.SessionStore;
 import com.weacsoft.jaravel.vendor.auth.contract.UserProvider;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -13,37 +12,40 @@ import java.util.Map;
  * 采用工厂模式：通过 {@link #support(String)} 声明支持的驱动名称，
  * 通过 {@link #create} 创建 {@link SessionGuard} 实例。
  * <p>
- * Session 存储后端通过 {@link SessionStore} 接口抽象，支持 cookie（默认）、redis、file 等。
- * 配置中通过 {@code sessionStore} 参数指定存储后端名称，默认为 {@code cookie}。
+ * <b>Session 存储是全局配置，不与 Guard 绑定</b>。本驱动直接注入唯一的 {@link SessionStore} Bean，
+ * 该 Bean 由应用的 {@code config/SessionConfig.java} 决定具体实现。
+ * 如果应用未注册任何 {@code SessionStore} Bean，auth 模块默认提供
+ * {@link com.weacsoft.jaravel.vendor.auth.session.CookieSessionStore}（Servlet HttpSession）。
  * <p>
  * 本驱动由 auth 模块的 {@code AuthAutoConfiguration} 注册为 Bean，
  * 再自动收集并注册到 {@link com.weacsoft.jaravel.vendor.auth.AuthManager}。
  *
  * <h3>配置示例</h3>
  * <pre>
- * // 编程式注册
- * authManager.registerGuard("web", "session", "users");                    // 默认 cookie 存储
- * authManager.registerGuard("web", "session", "users", "redis");           // 使用 redis 存储
+ * // 编程式注册守卫（不涉及 session 存储，存储由 SessionConfig 全局决定）
+ * authManager.registerGuard("web", "session", "users");
+ * authManager.registerGuard("api", "jwt", "users");
+ * </pre>
  *
- * // 配置式注册
- * jaravel:
- *   auth:
- *     guards:
- *       web:
- *         driver: session
- *         provider: users
- *         session-store: redis     # 不指定则默认 cookie
+ * <h3>切换 Session 存储</h3>
+ * 在应用的 {@code config/SessionConfig.java} 中注册 {@code SessionStore} Bean 即可覆盖默认实现：
+ * <pre>
+ * &#64;Configuration
+ * public class SessionConfig {
+ *     &#64;Bean
+ *     public SessionStore sessionStore(RedisManager redisManager) {
+ *         return new RedisSessionStore(redisManager, "default", "session", 30, "manage_session");
+ *     }
+ * }
  * </pre>
  */
 public class SessionGuardDriver implements AuthGuardDriver {
 
-    private static final String DEFAULT_STORE = "cookie";
+    /** 全局唯一的 Session 存储（由 Spring 注入，由 SessionConfig 决定具体实现） */
+    private final SessionStore sessionStore;
 
-    /** 所有已注册的 Session 存储（由 AuthAutoConfiguration 注入） */
-    private final List<SessionStore> sessionStores;
-
-    public SessionGuardDriver(List<SessionStore> sessionStores) {
-        this.sessionStores = sessionStores;
+    public SessionGuardDriver(SessionStore sessionStore) {
+        this.sessionStore = sessionStore;
     }
 
     @Override
@@ -53,42 +55,6 @@ public class SessionGuardDriver implements AuthGuardDriver {
 
     @Override
     public AuthGuard create(String name, UserProvider provider, Map<String, Object> config) {
-        String storeName = DEFAULT_STORE;
-        if (config != null) {
-            Object store = config.get("sessionStore");
-            if (store instanceof String s && !s.isEmpty()) {
-                storeName = s;
-            }
-        }
-
-        SessionStore sessionStore = resolveStore(storeName);
         return new SessionGuard(name, provider, sessionStore);
-    }
-
-    /**
-     * 按名称查找匹配的 SessionStore。
-     * <p>
-     * 遍历所有已注册的 SessionStore，调用 {@link SessionStore#support(String)} 匹配。
-     * 未找到时回退到默认的 cookie 存储（如果存在），否则抛出异常。
-     *
-     * @param storeName 存储名称（如 cookie / redis）
-     * @return 匹配的 SessionStore
-     * @throws IllegalStateException 没有匹配的存储时
-     */
-    private SessionStore resolveStore(String storeName) {
-        // 先精确匹配
-        for (SessionStore store : sessionStores) {
-            if (store.support(storeName)) {
-                return store;
-            }
-        }
-        // 回退到默认 cookie
-        for (SessionStore store : sessionStores) {
-            if (store.support(DEFAULT_STORE)) {
-                return store;
-            }
-        }
-        throw new IllegalStateException(
-                "未找到匹配的 Session 存储: " + storeName + "，请引入对应插件（如 session-redis 模块）");
     }
 }

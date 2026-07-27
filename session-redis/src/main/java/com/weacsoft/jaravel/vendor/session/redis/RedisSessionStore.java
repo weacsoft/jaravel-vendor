@@ -55,11 +55,6 @@ public class RedisSessionStore implements SessionStore {
         this.cookieName = cookieName;
     }
 
-    @Override
-    public boolean support(String store) {
-        return "redis".equalsIgnoreCase(store);
-    }
-
     private RedisCommands<String, String> commands() {
         return redisManager.sync(connectionName);
     }

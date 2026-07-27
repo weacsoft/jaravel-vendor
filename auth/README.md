@@ -46,7 +46,7 @@ Auth 模块是 Jaravel 框架的认证核心，对齐 Laravel 的 `Illuminate\Au
 - **多守卫（Multi-Guard）**：支持在同一应用中配置多个认证守卫（如 `web` 使用 Session、`api` 使用 JWT），按名称解析。
 - **多提供者（Multi-Provider）**：支持注册多个 `UserProvider`，不同守卫可绑定不同提供者。
 - **工厂模式驱动**：通过 `AuthGuardDriver` 的 `support()` 方法匹配驱动（对齐 database-all 多数据库支持），第三方模块只需注册为 Spring Bean 即可自动收集。
-- **Session 存储分离**：Session 驱动内部通过 `SessionStore` 的 `support()` 方法匹配存储后端（cookie / redis / ...），默认使用 cookie（Servlet HttpSession）。
+- **Session 存储分离**：Session 存储后端是**全局配置**（由 `config/SessionConfig.java` 决定），不绑定到具体守卫。`SessionGuardDriver` 直接注入全局 `SessionStore` Bean，默认使用 cookie（Servlet HttpSession）。
 - **请求级隔离**：基于 `ThreadLocal` 实现每请求独立的认证上下文，杜绝线程池复用导致的串态问题。
 - **密码校验解耦**：`Authenticatable` 与 `UserProvider` 均不包含密码相关方法，密码校验完全由应用层负责。
 
@@ -59,7 +59,7 @@ Auth 模块是 Jaravel 框架的认证核心，对齐 Laravel 的 `Illuminate\Au
 | `Illuminate\Contracts\Auth\Guard` | `AuthGuard` |
 | `Illuminate\Contracts\Auth\UserProvider` | `UserProvider` |
 | `Illuminate\Contracts\Auth\AuthGuard` (factory) | `AuthGuardDriver`（工厂模式：`support()` 匹配） |
-| Session 存储后端配置 | `SessionStore`（工厂模式：`support()` 匹配） |
+| Session 存储后端配置 | `SessionStore`（全局配置，由 `config/SessionConfig.java` 决定） |
 | `SessionGuard` | `SessionGuard` |
 | `Auth` 门面 | `Auth` 门面 |
 | `auth` 中间件 | `Authenticate` 中间件 |
@@ -111,7 +111,7 @@ com.weacsoft.jaravel.vendor.auth
 │   ├── AuthGuard            # 认证守卫契约
 │   ├── UserProvider         # 用户提供者契约（仅取出用户，无密码校验）
 │   ├── AuthGuardDriver      # 守卫驱动契约（工厂模式：support() 匹配 + create() 创建）
-│   └── SessionStore         # Session 存储契约（工厂模式：support() 匹配存储后端）
+│   └── SessionStore         # Session 存储契约（全局配置，由 config/SessionConfig.java 决定）
 ├── facade
 │   └── Auth                 # Auth 门面（静态 API）
 ├── guard
@@ -324,7 +324,7 @@ public interface AuthGuardDriver {
      *
      * @param name     守卫名称
      * @param provider 用户提供者
-     * @param config  额外配置（如 sessionStore 名称）
+     * @param config  额外配置
      * @return 守卫实例
      */
     AuthGuard create(String name, UserProvider provider, Map<String, Object> config);
@@ -336,28 +336,20 @@ public interface AuthGuardDriver {
 | 方法 | 说明 |
 |---|---|
 | `support(String)` | 声明此驱动支持的名称（如 `"session"`、`"jwt"`），`AuthManager` 遍历所有驱动找到第一个匹配的 |
-| `create(String, UserProvider, Map)` | 创建守卫实例，config 可携带额外配置（如 session 存储名称） |
+| `create(String, UserProvider, Map)` | 创建守卫实例，config 可携带额外配置 |
 
 **内置实现**：
-- `SessionGuardDriver`：`support("session")` → 创建 `SessionGuard`（注入所有 `SessionStore` Bean，按 config 中的 `sessionStore` 匹配存储后端）
+- `SessionGuardDriver`：`support("session")` → 创建 `SessionGuard`（注入全局 `SessionStore` Bean）
 - `JwtGuardDriver`（jwt 模块）：`support("jwt")` → 创建 `JwtGuard`
 
 ---
 
 ### SessionStore
 
-Session 存储契约，工厂模式接口。Session 驱动内部通过此接口匹配存储后端，对齐认证驱动与存储后端分离的架构。
+Session 存储契约。Session 存储后端是全局配置（由 `config/SessionConfig.java` 决定），`SessionGuardDriver` 直接注入全局 `SessionStore` Bean。
 
 ```java
 public interface SessionStore {
-
-    /**
-     * 是否支持指定的存储后端（工厂模式匹配）。
-     *
-     * @param store 存储名称（如 "cookie"、"redis"）
-     * @return 匹配返回 true
-     */
-    boolean support(String store);
 
     /** 从 session 读取值 */
     Object get(String key);
@@ -377,15 +369,14 @@ public interface SessionStore {
 
 | 方法 | 说明 |
 |---|---|
-| `support(String)` | 声明此存储支持的名称（如 `"cookie"`、`"redis"`），`SessionGuardDriver` 遍历所有存储找到匹配的 |
 | `get(String)` | 从当前 session 读取值（需通过 `AuthContext` 获取当前请求） |
 | `put(String, Object)` | 写入当前 session |
 | `remove(String)` | 移除 session 中的指定 key |
 | `destroy()` | 销毁当前 session |
 
 **内置实现**：
-- `CookieSessionStore`（auth 模块）：`support("cookie")` → 使用 Servlet HttpSession
-- `RedisSessionStore`（session-redis 模块）：`support("redis")` → 使用 Redis Hash 存储
+- `CookieSessionStore`（auth 模块）：使用 Servlet HttpSession，默认实现
+- `RedisSessionStore`（session-redis 模块）：使用 Redis Hash 存储
 
 ---
 
@@ -419,17 +410,8 @@ public interface SessionStore {
 /** 注册用户提供者 */
 public void registerProvider(String name, UserProvider provider)
 
-/** 注册守卫（使用默认配置） */
+/** 注册守卫 */
 public void registerGuard(String name, String driver, String providerName)
-
-/**
- * 注册守卫（可指定 session 存储后端）。
- * @param name         守卫名称
- * @param driver       驱动名称（session / jwt）
- * @param providerName 提供者名称
- * @param sessionStore session 存储名称（cookie / redis），仅 session 驱动使用
- */
-public void registerGuard(String name, String driver, String providerName, String sessionStore)
 
 /**
  * 注册守卫驱动（工厂模式）。
@@ -445,8 +427,8 @@ public void registerGuardDriver(AuthGuardDriver driver)
 // 注册用户提供者
 authManager.registerProvider("users", new EloquentUserProvider(userModel, "number"));
 
-// 注册 session 守卫（cookie 存储，默认）
-authManager.registerGuard("web", "session", "users", "cookie");
+// 注册 session 守卫（Session 存储后端由 config/SessionConfig.java 全局决定）
+authManager.registerGuard("web", "session", "users");
 
 // 注册 jwt 守卫（jwt 驱动由 jwt 模块自动注册为 Bean）
 authManager.registerGuard("api", "jwt", "users");
@@ -548,16 +530,15 @@ public final class AuthContext {
 
 ### SessionGuardDriver
 
-Session 守卫驱动，实现 `AuthGuardDriver` 接口。`support("session")` 匹配成功后，根据 config 中的 `sessionStore` 名称从已注入的 `SessionStore` Bean 列表中匹配存储后端，创建 `SessionGuard`。
+Session 守卫驱动，实现 `AuthGuardDriver` 接口。`support("session")` 匹配成功后，直接使用注入的全局 `SessionStore` Bean 创建 `SessionGuard`。Session 存储后端由 `config/SessionConfig.java` 全局决定，不再绑定到具体守卫。
 
 ```java
 public class SessionGuardDriver implements AuthGuardDriver {
 
-    private static final String DEFAULT_STORE = "cookie";
-    private final List<SessionStore> sessionStores;
+    private final SessionStore sessionStore;
 
-    public SessionGuardDriver(List<SessionStore> sessionStores) {
-        this.sessionStores = sessionStores;
+    public SessionGuardDriver(SessionStore sessionStore) {
+        this.sessionStore = sessionStore;
     }
 
     @Override
@@ -567,11 +548,6 @@ public class SessionGuardDriver implements AuthGuardDriver {
 
     @Override
     public AuthGuard create(String name, UserProvider provider, Map<String, Object> config) {
-        String storeName = DEFAULT_STORE;
-        if (config != null && config.containsKey("sessionStore")) {
-            storeName = config.get("sessionStore").toString();
-        }
-        SessionStore sessionStore = resolveStore(storeName);
         return new SessionGuard(name, provider, sessionStore);
     }
 }
@@ -647,11 +623,6 @@ Cookie Session 存储，默认实现。使用 Servlet HttpSession 持久化登�
 public class CookieSessionStore implements SessionStore {
 
     @Override
-    public boolean support(String store) {
-        return "cookie".equalsIgnoreCase(store);
-    }
-
-    @Override
     public Object get(String key) {
         HttpSession session = session(false);
         return session != null ? session.getAttribute(key) : null;
@@ -683,9 +654,9 @@ public class CookieSessionStore implements SessionStore {
 }
 ```
 
-由 `AuthAutoConfiguration` 自动注册为 Spring Bean（`@ConditionalOnMissingBean(CookieSessionStore.class)`），业务方可通过覆盖此 Bean 使用自定义存储。
+由 `AuthAutoConfiguration` 自动注册为 Spring Bean（`@ConditionalOnMissingBean(SessionStore.class)`），业务方可通过覆盖此 Bean 使用自定义存储。
 
-**扩展 Redis 存储**：引入 `session-redis` 模块后，`RedisSessionStore` 自动注册为 Bean（`support("redis")`），在 `registerGuard` 时指定 `"redis"` 即可使用。
+**扩展 Redis 存储**：引入 `session-redis` 模块后，`RedisSessionStore` 自动注册为 Bean。在 `config/SessionConfig.java` 中将其声明为全局 `SessionStore` 即可让所有 session 守卫使用 Redis 存储。
 
 ---
 
@@ -880,13 +851,13 @@ public class AuthAutoConfiguration implements SmartInitializingSingleton {
 
     /** 默认 Cookie Session 存储 */
     @Bean
-    @ConditionalOnMissingBean(CookieSessionStore.class)
+    @ConditionalOnMissingBean(SessionStore.class)
     public SessionStore cookieSessionStore() { ... }
 
     /** Session 守卫驱动 */
     @Bean
     @ConditionalOnMissingBean
-    public SessionGuardDriver sessionGuardDriver(List<SessionStore> sessionStores) { ... }
+    public SessionGuardDriver sessionGuardDriver(SessionStore sessionStore) { ... }
 
     /** 所有单例就绪后，自动将所有 AuthGuardDriver Bean 注册到 AuthManager */
     @Override
@@ -924,12 +895,12 @@ public class AuthProperties {
     public static class GuardConfig {
         private String driver;        // session / jwt
         private String provider;      // 提供者名称
-        private String sessionStore;  // cookie / redis，仅 session 驱动使用，默认 cookie
     }
 }
 ```
 
 > JWT 相关配置已移至独立 jwt 模块的 `JwtProperties`（前缀 `jaravel.jwt`）。
+> Session 存储后端配置已移至 `config/SessionConfig.java`，作为全局配置。
 
 ---
 
@@ -945,7 +916,6 @@ jaravel:
       web:
         driver: session
         provider: users
-        session-store: cookie      # 可选，默认 cookie（cookie / redis）
       api:
         driver: jwt
         provider: users
@@ -959,7 +929,8 @@ jaravel:
 | `jaravel.auth.default-guard` | String | `web` | 默认守卫名称 |
 | `jaravel.auth.guards.<name>.driver` | String | - | 驱动名称（session / jwt） |
 | `jaravel.auth.guards.<name>.provider` | String | - | 提供者名称 |
-| `jaravel.auth.guards.<name>.session-store` | String | `cookie` | Session 存储后端，仅 session 驱动使用 |
+
+> Session 存储后端不再在守卫配置中指定，改为由 `config/SessionConfig.java` 全局决定。
 
 ### 完整多守卫配置示例
 
@@ -971,7 +942,10 @@ jaravel:
     default-guard: api   # 默认使用 api（JWT）守卫
 ```
 
+守卫注册在 `config/AuthConfig.java` 中完成，Session 存储后端在 `config/SessionConfig.java` 中全局配置：
+
 ```java
+// config/AuthConfig.java —— 守卫与提供者注册
 @Configuration
 public class AuthConfig {
 
@@ -985,11 +959,29 @@ public class AuthConfig {
         return args -> {
             // 注册提供者
             authManager.registerProvider("users", userProvider);
-            // 注册 session 守卫（cookie 存储，默认）
-            authManager.registerGuard("web", "session", "users", "cookie");
+            // 注册 session 守卫（Session 存储后端由 config/SessionConfig.java 全局决定）
+            authManager.registerGuard("web", "session", "users");
             // 注册 jwt 守卫（jwt 驱动由 jwt 模块自动注册为 Bean）
             authManager.registerGuard("api", "jwt", "users");
         };
+    }
+}
+```
+
+```java
+// config/SessionConfig.java —— Session 存储后端全局配置
+@Configuration
+public class SessionConfig {
+
+    /**
+     * 全局 SessionStore Bean。SessionGuardDriver 会直接注入此 Bean。
+     * 默认使用 CookieSessionStore（Servlet HttpSession）。
+     * 若需切换为 Redis，引入 session-redis 模块后在此返回 RedisSessionStore 即可。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public SessionStore sessionStore() {
+        return new CookieSessionStore();
     }
 }
 ```
@@ -1032,7 +1024,7 @@ public class AuthConfig {
     public ApplicationRunner authRegistrar(AuthManager authManager, UserProvider userProvider) {
         return args -> {
             authManager.registerProvider("users", userProvider);
-            authManager.registerGuard("web", "session", "users", "cookie");
+            authManager.registerGuard("web", "session", "users");
         };
     }
 }

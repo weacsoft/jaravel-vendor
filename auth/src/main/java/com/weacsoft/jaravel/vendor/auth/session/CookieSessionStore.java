@@ -22,11 +22,6 @@ import jakarta.servlet.http.HttpSession;
  */
 public class CookieSessionStore implements SessionStore {
 
-    @Override
-    public boolean support(String store) {
-        return "cookie".equalsIgnoreCase(store);
-    }
-
     /** 获取当前请求的 HttpSession（不自动创建） */
     private HttpSession session(boolean create) {
         Request req = AuthContext.get();

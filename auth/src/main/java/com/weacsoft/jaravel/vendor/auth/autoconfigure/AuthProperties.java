@@ -15,7 +15,6 @@ import java.util.Map;
  *       web:
  *         driver: session
  *         provider: users
- *         session-store: cookie      # 可选，默认 cookie（cookie / redis）
  *       api:
  *         driver: jwt
  *         provider: users
@@ -27,7 +26,7 @@ import java.util.Map;
  * 认证架构分两层：
  * <ul>
  *   <li><b>认证驱动</b>（driver）：session | jwt | ...（通过 {@link com.weacsoft.jaravel.vendor.auth.contract.AuthGuardDriver} 的 support 方法匹配）</li>
- *   <li><b>Session 存储</b>（session-store）：cookie | redis | ...（仅 session 驱动使用，通过 {@link com.weacsoft.jaravel.vendor.auth.contract.SessionStore} 的 support 方法匹配）</li>
+ *   <li><b>Session 存储</b>：全局配置，不与 Guard 绑定。由应用的 {@code config/SessionConfig.java} 决定具体实现（默认 cookie）</li>
  * </ul>
  * <p>
  * JWT 相关配置在独立 jwt 模块的 {@code JwtProperties}（前缀 {@code jaravel.jwt}）。
@@ -63,8 +62,6 @@ public class AuthProperties {
         private String driver;
         /** 提供者名称 */
         private String provider;
-        /** Session 存储后端：cookie / redis，仅 session 驱动使用，默认 cookie */
-        private String sessionStore;
 
         public String getDriver() {
             return driver;
@@ -80,14 +77,6 @@ public class AuthProperties {
 
         public void setProvider(String provider) {
             this.provider = provider;
-        }
-
-        public String getSessionStore() {
-            return sessionStore;
-        }
-
-        public void setSessionStore(String sessionStore) {
-            this.sessionStore = sessionStore;
         }
     }
 }

@@ -23,6 +23,10 @@ import java.util.List;
  * <b>工厂模式</b>：所有 {@link AuthGuardDriver} 实现（如 SessionGuardDriver、JwtGuardDriver）注册为 Spring Bean 后，
  * 本配置类在所有单例就绪后自动将它们注册到 {@link AuthManager}，无需各模块手动调用注册方法。
  * <p>
+ * <b>Session 存储是全局配置</b>：{@link SessionStore} 作为全局唯一的 Bean 注入到 {@link SessionGuardDriver}。
+ * 如果应用未注册任何 {@code SessionStore} Bean，本配置类默认提供 {@link CookieSessionStore}（Servlet HttpSession）。
+ * 应用可在 {@code config/SessionConfig.java} 中注册自定义 {@code SessionStore} Bean 来覆盖默认实现（如 Redis）。
+ * <p>
  * <b>配置式守卫注册</b>：支持通过 {@code jaravel.auth.guards} 配置注册守卫，
  * 也支持通过 {@code AuthServiceProvider} 编程式注册。两者可共存。
  * <p>
@@ -51,8 +55,7 @@ public class AuthAutoConfiguration implements SmartInitializingSingleton {
         // 配置式守卫注册
         if (properties.getGuards() != null) {
             properties.getGuards().forEach((name, cfg) -> {
-                manager.registerGuard(name, cfg.getDriver(), cfg.getProvider(),
-                        cfg.getSessionStore());
+                manager.registerGuard(name, cfg.getDriver(), cfg.getProvider());
             });
         }
 
@@ -68,11 +71,11 @@ public class AuthAutoConfiguration implements SmartInitializingSingleton {
     /**
      * 默认 Cookie Session 存储（使用 Servlet HttpSession）。
      * <p>
-     * 注册为 {@link SessionStore} 类型，使 {@link SessionGuardDriver} 能自动发现。
-     * 业务方可通过覆盖此 Bean 使用自定义存储。
+     * 当应用未注册任何 {@link SessionStore} Bean 时，提供默认实现。
+     * 业务方可通过在 {@code config/SessionConfig.java} 中注册 {@code SessionStore} Bean 覆盖此默认实现。
      */
     @Bean
-    @ConditionalOnMissingBean(CookieSessionStore.class)
+    @ConditionalOnMissingBean(SessionStore.class)
     public SessionStore cookieSessionStore() {
         return new CookieSessionStore();
     }
@@ -81,12 +84,12 @@ public class AuthAutoConfiguration implements SmartInitializingSingleton {
      * Session 守卫驱动（工厂模式）。
      * <p>
      * 实现 {@link AuthGuardDriver}，支持 "session" 驱动。
-     * 注入所有 {@link SessionStore} Bean，在创建 SessionGuard 时按配置的 store 名称匹配。
+     * 注入全局唯一的 {@link SessionStore} Bean，由 {@code SessionConfig} 决定具体实现。
      */
     @Bean
     @ConditionalOnMissingBean
-    public SessionGuardDriver sessionGuardDriver(List<SessionStore> sessionStores) {
-        return new SessionGuardDriver(sessionStores);
+    public SessionGuardDriver sessionGuardDriver(SessionStore sessionStore) {
+        return new SessionGuardDriver(sessionStore);
     }
 
     /**
