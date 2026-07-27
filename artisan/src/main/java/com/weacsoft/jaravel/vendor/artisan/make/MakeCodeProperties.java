@@ -32,7 +32,7 @@ import java.nio.file.Paths;
 public class MakeCodeProperties {
 
     /** 迁移文件所在包名后缀（singular，对齐用户现有约定） */
-    private static final String MIGRATION_PACKAGE_SUFFIX = ".database.migration";
+    private static final String MIGRATION_PACKAGE_SUFFIX = ".database.migrations";
 
     /** 基包名（生成类的根包） */
     private String basePackage = "com.weacsoft.jaravel";

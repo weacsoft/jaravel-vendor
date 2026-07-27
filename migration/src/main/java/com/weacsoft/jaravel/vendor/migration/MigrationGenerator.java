@@ -21,7 +21,7 @@ import java.util.Locale;
  * 用法示例：
  * <pre>
  * MigrationGenerator.generate("src/main/java", "com.weacsoft.jaravel.database.migration", "create products table");
- * // 生成文件：src/main/java/com/weacsoft/jaravel/database/migration/Migration_2024_06_20_CreateProductsTable.java
+ * // 生成文件：src/main/java/com/weacsoft/jaravel/database/migrations/Migration_2024_06_20_CreateProductsTable.java
  * </pre>
  * 生成的类继承自 {@link Migration} 接口，包含空的 {@code up()} 与 {@code down()} 方法，由开发者自行填充。
  */
