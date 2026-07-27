@@ -36,10 +36,10 @@ public class EloquentUserProvider<T extends Authenticatable, K> implements UserP
 
 
     /**
-     * @param model           Eloquent Model（Spring 单例）
+     * @param model Eloquent Model（Spring 单例）
      */
     public EloquentUserProvider(Model<?, T, K> model) {
-         this(model,model.getPrimaryKeyColumnName());
+        this(model, null);
     }
 
     /**
@@ -48,7 +48,15 @@ public class EloquentUserProvider<T extends Authenticatable, K> implements UserP
      */
     public EloquentUserProvider(Model<?, T, K> model, String credentialField) {
         this.model = model;
-        this.credentialField = credentialField;
+        if (credentialField != null) {
+            this.credentialField = credentialField;
+        } else {
+            if (model instanceof Authenticatable) {
+                this.credentialField = ((Authenticatable) model).getAuthIdentifierName();
+            } else {
+                this.credentialField = model.getPrimaryKeyColumnName();
+            }
+        }
     }
 
     @Override

@@ -87,6 +87,7 @@ authManager.login(user, "api");
 | Method | Parameters | Return | Description |
 |--------|-----------|--------|-------------|
 | `getAuthIdentifier` | 无 | `Object` | 获取主键值 |
+| `getAuthIdentifierName` | 无 | `String` | 获取主键字段名（default "id"） |
 | `getRememberTokenName` | 无 | `String` | 记住我令牌字段名（default "remember_token"） |
 | `getRememberToken` | 无 | `String` | 记住我令牌（default null） |
 | `setRememberToken` | `String value` | `void` | 设置记住我令牌（default 空实现） |
