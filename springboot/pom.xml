@@ -18,6 +18,10 @@
         </dependency>
         <dependency>
             <groupId>io.github.lijialong1313</groupId>
+            <artifactId>json</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
             <artifactId>auth</artifactId>
             <optional>true</optional>
         </dependency>
