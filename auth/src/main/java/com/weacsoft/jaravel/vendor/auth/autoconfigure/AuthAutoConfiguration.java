@@ -46,6 +46,17 @@ public class AuthAutoConfiguration implements SmartInitializingSingleton {
     @Autowired
     private List<AuthGuardDriver> guardDrivers;
 
+    /**
+     * 容器中的 AuthManager Bean。
+     * <p>
+     * 不能直接调用 {@link #authManager()} 方法获取实例：因为 {@code @AutoConfiguration}
+     * 等价于 {@code @Configuration(proxyBeanMethods = false)}，不会生成 CGLIB 代理，
+     * 直接调用 {@code @Bean} 方法会 new 出一个脱离容器管理的临时对象，导致注册的守卫驱动丢失。
+     * 必须通过依赖注入获取容器中实际管理的单例 Bean。
+     */
+    @Autowired
+    private AuthManager authManager;
+
     @Bean
     @ConditionalOnMissingBean
     public AuthManager authManager() {
@@ -100,9 +111,10 @@ public class AuthAutoConfiguration implements SmartInitializingSingleton {
      */
     @Override
     public void afterSingletonsInstantiated() {
-        AuthManager manager = authManager();
+        // 使用容器中注入的 AuthManager 单例，而非直接调用 authManager() 方法
+        // （@AutoConfiguration 的 proxyBeanMethods=false 不会拦截方法调用）
         for (AuthGuardDriver driver : guardDrivers) {
-            manager.registerGuardDriver(driver);
+            authManager.registerGuardDriver(driver);
         }
     }
 }
