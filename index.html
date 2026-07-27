@@ -327,7 +327,7 @@ public class App {
 <h3>core — 核心容器</h3>
 <p class="module-desc">Spring 上下文、配置仓库、Arr/Str/Validator 工具类</p>
 <h4>简介</h4>
-<p>&gt; Jaravel-Vendor 的核心基础模块，提供门面（Facade）、配置仓库（Config）、服务提供者（ServiceProvider）、校验器（Validator）以及 <code>Str</code> / <code>Arr</code> 字符串与数组工具。所有 vendor 包的基础依赖，包名统一为 <code>com.weacsoft.jaravel.vendor.core</code>。</p>
+<p>&gt; Jaravel-Vendor 的核心基础模块，提供应用容器（Application）、门面（Facade）、配置仓库（Config）、服务提供者（ServiceProvider）、校验器（Validator）以及 <code>Str</code> / <code>Arr</code> 字符串与数组工具。所有 vendor 包的基础依赖，包名统一为 <code>com.weacsoft.jaravel.vendor.core</code>。</p>
 
 <p>---</p>
 
@@ -337,14 +337,15 @@ public class App {
 <li><a href="#core-1-模块概述">1. 模块概述</a></li>
 <li><a href="#core-2-依赖信息">2. 依赖信息</a></li>
 <li><a href="#core-3-类总览">3. 类总览</a></li>
-<li><a href="#core-4-facade-——-门面基类">4. Facade —— 门面基类</a></li>
-<li><a href="#core-5-springcontext-——-spring-上下文持有器">5. SpringContext —— Spring 上下文持有器</a></li>
-<li><a href="#core-6-配置体系（config--configrepository--configdefinition--configdefinitionregistrar）">6. 配置体系（Config / ConfigRepository / ConfigDefinition / ConfigDefinitionRegistrar）</a></li>
-<li><a href="#core-7-服务提供者（serviceprovider--providerregistry）">7. 服务提供者（ServiceProvider / ProviderRegistry）</a></li>
-<li><a href="#core-8-工具类（str--arr）">8. 工具类（Str / Arr）</a></li>
-<li><a href="#core-9-校验体系（formrequest--validator--rule--rules）">9. 校验体系（FormRequest / Validator / Rule / Rules）</a></li>
-<li><a href="#core-10-异常类（validationexception--unauthorizedexception）">10. 异常类（ValidationException / UnauthorizedException）</a></li>
-<li><a href="#core-11-线程安全说明">11. 线程安全说明</a></li>
+<li><a href="#core-4-application--app-——-应用容器（替代-facade）">4. Application / App —— 应用容器（替代 Facade）</a></li>
+<li><a href="#core-5-facade-——-门面基类">5. Facade —— 门面基类</a></li>
+<li><a href="#core-6-springcontext-——-spring-上下文持有器">6. SpringContext —— Spring 上下文持有器</a></li>
+<li><a href="#core-7-配置体系（config--configrepository--configdefinition--configdefinitionregistrar）">7. 配置体系（Config / ConfigRepository / ConfigDefinition / ConfigDefinitionRegistrar）</a></li>
+<li><a href="#core-8-服务提供者（serviceprovider--providerregistry）">8. 服务提供者（ServiceProvider / ProviderRegistry）</a></li>
+<li><a href="#core-9-工具类（str--arr）">9. 工具类（Str / Arr）</a></li>
+<li><a href="#core-10-校验体系（formrequest--validator--rule--rules）">10. 校验体系（FormRequest / Validator / Rule / Rules）</a></li>
+<li><a href="#core-11-异常类（validationexception--unauthorizedexception）">11. 异常类（ValidationException / UnauthorizedException）</a></li>
+<li><a href="#core-12-线程安全说明">12. 线程安全说明</a></li>
 </ul>
 
 <p>---</p>
@@ -355,6 +356,7 @@ public class App {
 
 <table>
 <tr><th>Laravel 特性</th><th>core 对应实现</th><th>说明</th></tr>
+<tr><td>`app()` 应用容器</td><td>`Application` + `App`</td><td>继承式服务定位器，替代 Facade 静态代理</td></tr>
 <tr><td>Facade 门面</td><td>`Facade` + `SpringContext`</td><td>静态代理，背后从 Spring 容器解析真实 Bean</td></tr>
 <tr><td>`config()` 配置仓库</td><td>`Config` / `ConfigRepository`</td><td>三层配置来源，支持点号取值</td></tr>
 <tr><td>`config/*.php` 代码级配置</td><td>`ConfigDefinition` / `ConfigDefinitionRegistrar`</td><td>以 Java 接口形式定义配置数组</td></tr>
@@ -397,6 +399,8 @@ public class App {
 
 <pre><code>
 com.weacsoft.jaravel.vendor.core
+├── Application                   // 应用容器基类（服务定位器，替代 Facade）
+├── App                           // 静态入口：App.app() 获取 Application 实例
 ├── Facade                         // 门面基类（静态代理工具）
 ├── SpringContext                  // ApplicationContext 持有器
 ├── config
@@ -421,7 +425,111 @@ com.weacsoft.jaravel.vendor.core
 
 <p>---</p>
 
-<h5 id="core-4-facade-——-门面基类">4. Facade —— 门面基类</h5>
+
+<h5 id="core-4-application--app-——-应用容器（替代-facade）">4. Application / App —— 应用容器（替代 Facade）</h5>
+
+<p><code>com.weacsoft.jaravel.vendor.core.Application</code></p>
+
+<p><code>Application</code> 和 <code>App</code> 提供继承式服务定位器，对齐 Laravel 的 <code>app()</code> / <code>Application</code> / <code>Container</code>。推荐使用此方式替代 Facade 静态代理，更面向对象、可测试、可扩展。</p>
+
+<h6 id="core-41-application-——-应用容器基类">4.1 Application —— 应用容器基类</h6>
+
+<p>应用配置类继承本类后，既保持 <code>@Configuration</code> 功能，又获得服务定位器能力。</p>
+
+<table>
+<tr><th>方法签名</th><th>说明</th></tr>
+<tr><td><code>&lt;T&gt; T make(Class&lt;T&gt; type)</code></td><td>从 Spring 容器按类型解析 Bean（等价于 <code>SpringContext.bean(type)</code>）</td></tr>
+<tr><td><code>&lt;T&gt; T make(String name, Class&lt;T&gt; type)</code></td><td>从 Spring 容器按名称 + 类型解析 Bean</td></tr>
+<tr><td><code>&lt;T&gt; T make(String name)</code></td><td>按名称解析自定义注册的服务，未注册返回 <code>null</code></td></tr>
+<tr><td><code>void singleton(String name, Supplier&lt;Object&gt; factory)</code></td><td>注册单例工厂，首次 <code>make(name)</code> 时创建并缓存（对齐 <code>App::singleton</code>）</td></tr>
+<tr><td><code>void bind(String name, Supplier&lt;Object&gt; factory)</code></td><td>注册工厂，每次 <code>make(name)</code> 创建新实例（对齐 <code>App::bind</code>）</td></tr>
+<tr><td><code>void register(String name, Object instance)</code></td><td>直接注册现成实例（对齐 <code>App::instance</code>）</td></tr>
+<tr><td><code>static void registerDefaultBinding(String name, Class&lt;?&gt; type)</code></td><td>注册别名到 Spring Bean 类型的映射（对齐 Laravel aliases 数组）</td></tr>
+<tr><td><code>boolean bound(String name)</code></td><td>检查指定名称的服务是否已注册</td></tr>
+<tr><td><code>void forget(String name)</code></td><td>注销指定名称的服务</td></tr>
+<tr><td><code>boolean publishToSpring(String name)</code></td><td>发布单个服务到 Spring 容器（如已存在则替换），别名不会被发布</td></tr>
+<tr><td><code>int publishAllToSpring()</code></td><td>批量发布所有自定义服务到 Spring 容器，返回发布数量</td></tr>
+</table>
+
+<h6 id="core-42-发布到-spring-容器">4.2 发布到 Spring 容器</h6>
+
+<p>默认情况下，<code>singleton</code> / <code>bind</code> / <code>register</code> 注册的服务仅存在于 Application 的 static Map 中，<strong>不会</strong>进入 Spring 的 BeanFactory。这意味着 <code>@Autowired</code> 无法注入这些服务，它们只能通过 <code>make(name)</code> 获取。</p>
+
+<p>当需要让 Spring 管理（如 <code>@Autowired</code> 注入）时，可手动发布：</p>
+
+<pre><code>// 发布单个服务到 Spring
+AppConfig.app().publishToSpring("myService");
+
+// 批量发布所有自定义服务到 Spring
+int count = AppConfig.app().publishAllToSpring();
+</code></pre>
+
+<p><strong>注意</strong>：<code>registerDefaultBinding</code> 注册的别名（如 <code>"auth" -&gt; AuthManager.class</code>）不会被发布，因为它们指向的 Bean 已经存在于 Spring 容器中。只有通过 <code>singleton</code> / <code>bind</code> / <code>register</code> 注册的自定义服务才会被发布。</p>
+
+<h6 id="core-43-app-——-静态入口">4.3 App —— 静态入口</h6>
+
+<p><code>com.weacsoft.jaravel.vendor.core.App</code></p>
+
+<p><code>final</code> 工具类，提供 <code>app()</code> 静态方法获取 <code>Application</code> 实例。</p>
+
+<table>
+<tr><th>方法签名</th><th>说明</th></tr>
+<tr><td><code>static Application app()</code></td><td>获取 Spring 容器中唯一的 <code>Application</code> Bean</td></tr>
+</table>
+
+<h6 id="core-44-使用示例">4.4 使用示例</h6>
+
+<p><strong>基本用法</strong>：</p>
+
+<pre><code>import static com.weacsoft.jaravel.vendor.core.App.app;
+
+// 通过 make(Class) 获取 Spring Bean
+AuthManager auth = app().make(AuthManager.class);
+CacheManager cache = app().make(CacheManager.class);
+
+// 自定义服务注册
+app().singleton("myService", () -&gt; new MyService(dependency));
+MyService svc = app().make("myService");
+</code></pre>
+
+<p><strong>typed 访问器</strong>（继承扩展，免强转）：</p>
+
+<pre><code>@Configuration
+public class AppConfig extends Application {
+    public static AppConfig app() {
+        return SpringContext.bean(AppConfig.class);
+    }
+    public AuthManager auth()       { return make(AuthManager.class); }
+    public CacheManager cache()     { return make(CacheManager.class); }
+    public ConfigRepository config() { return make(ConfigRepository.class); }
+}
+
+// 使用：AppConfig.app().auth().check();
+</code></pre>
+
+<p><strong>自动注册</strong>（对齐 Laravel aliases 数组）：</p>
+
+<pre><code>static {
+    registerDefaultBinding("auth", AuthManager.class);
+    registerDefaultBinding("cache", CacheManager.class);
+    registerDefaultBinding("config", ConfigRepository.class);
+}
+// make("auth") 即可解析为 AuthManager
+</code></pre>
+
+<table>
+<tr><th>维度</th><th><code>App.app()</code> (Application)</th><th>Facade (Auth/Cache/Config...)</th></tr>
+<tr><td>调用方式</td><td>实例方法 <code>app().make(Type)</code></td><td>静态方法 <code>Auth.check()</code></td></tr>
+<tr><td>可扩展性</td><td>继承添加 typed 方法</td><td>需新建 Facade 类</td></tr>
+<tr><td>自定义注册</td><td><code>bind()</code> / <code>singleton()</code> / <code>register()</code></td><td>不支持</td></tr>
+<tr><td>发布到 Spring</td><td><code>publishToSpring()</code> / <code>publishAllToSpring()</code></td><td>不支持</td></tr>
+<tr><td>可测试性</td><td>可 mock 实例</td><td>静态方法难以 mock</td></tr>
+<tr><td>推荐度</td><td><strong>推荐</strong></td><td>传统方式，保持兼容</td></tr>
+</table>
+
+<p>---</p>
+
+<h5 id="core-5-facade-——-门面基类">5. Facade —— 门面基类</h5>
 
 <p><code>com.weacsoft.jaravel.vendor.core.Facade</code></p>
 
@@ -466,7 +574,7 @@ if (Auth.check()) {
 
 <p>---</p>
 
-<h5 id="core-5-springcontext-——-spring-上下文持有器">5. SpringContext —— Spring 上下文持有器</h5>
+<h5 id="core-6-springcontext-——-spring-上下文持有器">6. SpringContext —— Spring 上下文持有器</h5>
 
 <p><code>com.weacsoft.jaravel.vendor.core.SpringContext</code></p>
 
@@ -498,13 +606,20 @@ if (SpringContext.contains(&quot;myService&quot;)) {
 }
 </code></pre>
 
+<p><strong>运行时注册 Bean</strong>：</p>
+<pre><code>// 运行时注册单例到 Spring
+SpringContext.registerSingleton("myService", new MyService());
+
+// 替换已存在的 Bean
+SpringContext.registerSingleton("authManager", newCustomAuthManager());
+</code></pre>
 <p>&gt; 注意：<code>SpringContext</code> 必须在 ApplicationContext 初始化后才能使用。在单元测试等未启动 Spring 的场景下调用 <code>get()</code> 会抛出 <code>IllegalStateException</code>。</p>
 
 <p>---</p>
 
-<h5 id="core-6-配置体系（config--configrepository--configdefinition--configdefinitionregistrar）">6. 配置体系（Config / ConfigRepository / ConfigDefinition / ConfigDefinitionRegistrar）</h5>
+<h5 id="core-7-配置体系（config--configrepository--configdefinition--configdefinitionregistrar）">7. 配置体系（Config / ConfigRepository / ConfigDefinition / ConfigDefinitionRegistrar）</h5>
 
-<h6 id="core-61-config-——-配置门面">6.1 Config —— 配置门面</h6>
+<h6 id="core-71-config-——-配置门面">7.1 Config —— 配置门面</h6>
 
 <p><code>com.weacsoft.jaravel.vendor.core.config.Config</code></p>
 
@@ -531,7 +646,7 @@ Config.set(&quot;app.debug&quot;, true);   // 运行时覆盖
 if (Config.has(&quot;app.timezone&quot;)) { /* ... */ }
 </code></pre>
 
-<h6 id="core-62-configrepository-——-配置仓库">6.2 ConfigRepository —— 配置仓库</h6>
+<h6 id="core-72-configrepository-——-配置仓库">7.2 ConfigRepository —— 配置仓库</h6>
 
 <p><code>com.weacsoft.jaravel.vendor.core.config.ConfigRepository</code></p>
 
@@ -564,7 +679,7 @@ if (Config.has(&quot;app.timezone&quot;)) { /* ... */ }
 4. 返回 defaultValue
 </code></pre>
 
-<h6 id="core-63-configdefinition-——-代码级配置定义接口">6.3 ConfigDefinition —— 代码级配置定义接口</h6>
+<h6 id="core-73-configdefinition-——-代码级配置定义接口">7.3 ConfigDefinition —— 代码级配置定义接口</h6>
 
 <p><code>com.weacsoft.jaravel.vendor.core.config.ConfigDefinition</code></p>
 
@@ -617,7 +732,7 @@ public class Database implements ConfigDefinition {
 // Config.get(&quot;database.connections.sqlite.driver&quot;) -&gt; &quot;sqlite&quot;
 </code></pre>
 
-<h6 id="core-64-configdefinitionregistrar-——-代码级配置自动注册器">6.4 ConfigDefinitionRegistrar —— 代码级配置自动注册器</h6>
+<h6 id="core-74-configdefinitionregistrar-——-代码级配置自动注册器">7.4 ConfigDefinitionRegistrar —— 代码级配置自动注册器</h6>
 
 <p><code>com.weacsoft.jaravel.vendor.core.config.ConfigDefinitionRegistrar</code></p>
 
@@ -628,9 +743,9 @@ public class Database implements ConfigDefinition {
 
 <p>---</p>
 
-<h5 id="core-7-服务提供者（serviceprovider--providerregistry）">7. 服务提供者（ServiceProvider / ProviderRegistry）</h5>
+<h5 id="core-8-服务提供者（serviceprovider--providerregistry）">8. 服务提供者（ServiceProvider / ProviderRegistry）</h5>
 
-<h6 id="core-71-serviceprovider-——-服务提供者基类">7.1 ServiceProvider —— 服务提供者基类</h6>
+<h6 id="core-81-serviceprovider-——-服务提供者基类">8.1 ServiceProvider —— 服务提供者基类</h6>
 
 <p><code>com.weacsoft.jaravel.vendor.core.provider.ServiceProvider</code></p>
 
@@ -657,7 +772,7 @@ public class AppServiceProvider extends ServiceProvider {
 }
 </code></pre>
 
-<h6 id="core-72-providerregistry-——-服务提供者注册器">7.2 ProviderRegistry —— 服务提供者注册器</h6>
+<h6 id="core-82-providerregistry-——-服务提供者注册器">8.2 ProviderRegistry —— 服务提供者注册器</h6>
 
 <p><code>com.weacsoft.jaravel.vendor.core.provider.ProviderRegistry</code></p>
 
@@ -688,9 +803,9 @@ public class AppServiceProvider extends ServiceProvider {
 
 <p>---</p>
 
-<h5 id="core-8-工具类（str--arr）">8. 工具类（Str / Arr）</h5>
+<h5 id="core-9-工具类（str--arr）">9. 工具类（Str / Arr）</h5>
 
-<h6 id="core-81-str-——-字符串工具">8.1 Str —— 字符串工具</h6>
+<h6 id="core-91-str-——-字符串工具">9.1 Str —— 字符串工具</h6>
 
 <p><code>com.weacsoft.jaravel.vendor.core.support.Str</code></p>
 
@@ -725,7 +840,7 @@ Str.random(16);                                 // 如 &quot;aB3xK9mN2pQr7sT4&qu
 Str.uuid();                                     // 如 &quot;550e8400e29b41d4a716446655440000&quot;
 </code></pre>
 
-<h6 id="core-82-arr-——-数组集合工具">8.2 Arr —— 数组/集合工具</h6>
+<h6 id="core-92-arr-——-数组集合工具">9.2 Arr —— 数组/集合工具</h6>
 
 <p><code>com.weacsoft.jaravel.vendor.core.support.Arr</code></p>
 
@@ -764,9 +879,9 @@ Map&lt;String, Object&gt; rest = Arr.except(data, &quot;user&quot;);      // 排
 
 <p>---</p>
 
-<h5 id="core-9-校验体系（formrequest--validator--rule--rules）">9. 校验体系（FormRequest / Validator / Rule / Rules）</h5>
+<h5 id="core-10-校验体系（formrequest--validator--rule--rules）">10. 校验体系（FormRequest / Validator / Rule / Rules）</h5>
 
-<h6 id="core-91-rule-——-校验规则契约">9.1 Rule —— 校验规则契约</h6>
+<h6 id="core-101-rule-——-校验规则契约">10.1 Rule —— 校验规则契约</h6>
 
 <p><code>com.weacsoft.jaravel.vendor.core.validation.Rule</code></p>
 
@@ -786,7 +901,7 @@ Rule evenRule = (field, value, params, data) -&gt;
 // message() 使用默认值
 </code></pre>
 
-<h6 id="core-92-rules-——-内置规则集合">9.2 Rules —— 内置规则集合</h6>
+<h6 id="core-102-rules-——-内置规则集合">10.2 Rules —— 内置规则集合</h6>
 
 <p><code>com.weacsoft.jaravel.vendor.core.validation.Rules</code></p>
 
@@ -832,7 +947,7 @@ Rule r2 = Rules.get(&quot;min&quot;, new String[]{&quot;2&quot;});
 Rule r3 = Rules.in(&quot;active&quot;, &quot;inactive&quot;);
 </code></pre>
 
-<h6 id="core-93-validator-——-校验器">9.3 Validator —— 校验器</h6>
+<h6 id="core-103-validator-——-校验器">10.3 Validator —— 校验器</h6>
 
 <p><code>com.weacsoft.jaravel.vendor.core.validation.Validator</code></p>
 
@@ -882,7 +997,7 @@ Map&lt;String, String&gt; messages = Map.of(
 Validator v = Validator.make(data, rules, messages);
 </code></pre>
 
-<h6 id="core-94-formrequest-——-laravel-风格-form-request-基类">9.4 FormRequest —— Laravel 风格 Form Request 基类</h6>
+<h6 id="core-104-formrequest-——-laravel-风格-form-request-基类">10.4 FormRequest —— Laravel 风格 Form Request 基类</h6>
 
 <p><code>com.weacsoft.jaravel.vendor.core.validation.FormRequest</code></p>
 
@@ -935,7 +1050,7 @@ try {
 
 <p>---</p>
 
-<h5 id="core-10-异常类（validationexception--unauthorizedexception）">10. 异常类（ValidationException / UnauthorizedException）</h5>
+<h5 id="core-11-异常类（validationexception--unauthorizedexception）">11. 异常类（ValidationException / UnauthorizedException）</h5>
 
 <h6 id="core-validationexception">ValidationException</h6>
 
@@ -962,7 +1077,7 @@ try {
 
 <p>---</p>
 
-<h5 id="core-11-线程安全说明">11. 线程安全说明</h5>
+<h5 id="core-12-线程安全说明">12. 线程安全说明</h5>
 
 <table>
 <tr><th>类</th><th>线程安全性</th><th>说明</th></tr>
