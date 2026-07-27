@@ -10366,11 +10366,26 @@ public class AuthLifecycleFilter extends OncePerRequestFilter {
 @EnableConfigurationProperties(AuthProperties.class)
 public class AuthAutoConfiguration implements SmartInitializingSingleton {
 
+    @Autowired
+    private AuthProperties properties;
+
+    @Autowired
+    private List&lt;AuthGuardDriver&gt; guardDrivers;
+
+    @Autowired
+    private AuthManager authManager;  // 注入容器单例，不可直接调用 authManager()
+
     @Bean
     @ConditionalOnMissingBean
-    public AuthManager authManager(AuthProperties properties) {
+    public AuthManager authManager() {
         AuthManager manager = new AuthManager();
         manager.setDefaultGuard(properties.getDefaultGuard());
+        // 配置式守卫注册
+        if (properties.getGuards() != null) {
+            properties.getGuards().forEach((name, cfg) -&gt; {
+                manager.registerGuard(name, cfg.getDriver(), cfg.getProvider());
+            });
+        }
         return manager;
     }
 
@@ -10389,16 +10404,16 @@ public class AuthAutoConfiguration implements SmartInitializingSingleton {
 
     /** 内置 session 驱动（工厂模式），直接注入全局 SessionStore Bean */
     @Bean
-    @ConditionalOnMissingBean(SessionGuardDriver.class)
+    @ConditionalOnMissingBean
     public SessionGuardDriver sessionGuardDriver(SessionStore sessionStore) {
         return new SessionGuardDriver(sessionStore);
     }
 
     @Override
     public void afterSingletonsInstantiated() {
-        // 所有单例 Bean 就绪后，自动收集容器中的 AuthGuardDriver Bean
-        // （含内置 SessionGuardDriver 与第三方 JwtGuardDriver 等）注册到 AuthManager
-        for (AuthGuardDriver driver : applicationContext.getBeansOfType(AuthGuardDriver.class).values()) {
+        // 使用容器中注入的 AuthManager 单例，而非直接调用 authManager() 方法
+        // （@AutoConfiguration 的 proxyBeanMethods=false 不会拦截方法调用）
+        for (AuthGuardDriver driver : guardDrivers) {
             authManager.registerGuardDriver(driver);
         }
     }
@@ -10409,7 +10424,7 @@ public class AuthAutoConfiguration implements SmartInitializingSingleton {
 <li>Servlet Web 应用环境</li>
 <li>classpath 存在 <code>AuthManager</code> 类</li>
 
-<p><strong>说明</strong>：JWT 等扩展驱动只需将实现 <code>AuthGuardDriver</code> 接口的类（如 <code>JwtGuardDriver</code>）注册为 Spring Bean，<code>AuthAutoConfiguration</code> 会通过 <code>SmartInitializingSingleton</code> 自动收集并注册到 <code>AuthManager</code>，无需手动调用 <code>registerGuardDriver()</code>。auth 模块本身不包含 JWT 实现。认证中间件 <code>Authenticate</code> 为普通 <code>Middleware</code> 实现，可直接传入 <code>Router.middleware()</code> 使用，无需别名注册。</p>
+<p><strong>说明</strong>：所有 <code>AuthGuardDriver</code> 实现（如 <code>SessionGuardDriver</code>、<code>JwtGuardDriver</code>）注册为 Spring Bean 后，本配置类在所有单例就绪后自动将它们注册到 <code>AuthManager</code>，无需各模块手动调用注册方法。<code>SessionStore</code> 作为全局唯一 Bean 注入到 <code>SessionGuardDriver</code>，应用可在 <code>config/SessionConfig.java</code> 中注册自定义 <code>SessionStore</code> Bean 覆盖默认实现（如 Redis）。认证中间件 <code>Authenticate</code> 为普通 <code>Middleware</code> 实现，可直接传入 <code>Router.middleware()</code> 使用，无需别名注册。</p>
 
 <p>---</p>
 
@@ -10933,11 +10948,17 @@ router.get(&quot;/api/profile&quot;, handler).middleware(new Authenticate(&quot;
 
 <table>
 <tr><th>Bean</th><th>Return</th><th>Description</th></tr>
-<tr><td>`authManager`</td><td>`AuthManager`</td><td>创建 AuthManager（@Bean, @ConditionalOnMissingBean）</td></tr>
+<tr><td>`authManager`</td><td>`AuthManager`</td><td>创建 AuthManager，注册配置式守卫（@Bean, @ConditionalOnMissingBean）</td></tr>
 <tr><td>`authLifecycleFilter`</td><td>`AuthLifecycleFilter`</td><td>创建认证生命周期过滤器（@Bean, @ConditionalOnMissingBean）</td></tr>
 <tr><td>`cookieSessionStore`</td><td>`CookieSessionStore`</td><td>创建内置 Cookie 会话存储，作为全局 SessionStore 默认实现（@Bean, @ConditionalOnMissingBean(SessionStore.class)）</td></tr>
 <tr><td>`sessionGuardDriver`</td><td>`SessionGuardDriver`</td><td>创建内置 session 驱动（工厂模式），注入全局 SessionStore（@Bean, @ConditionalOnMissingBean）</td></tr>
-<tr><td>`afterSingletonsInstantiated`</td><td>`void`</td><td>所有单例就绪后自动收集 AuthGuardDriver Bean 注册到 AuthManager</td></tr>
+</table>
+
+<h6 id="auth-lifecycle-callback">Lifecycle Callback</h6>
+
+<table>
+<tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
+<tr><td>`afterSingletonsInstantiated`</td><td>无</td><td>`void`</td><td>所有单例就绪后自动收集 AuthGuardDriver Bean 注册到 AuthManager（由框架调用）</td></tr>
 </table>
 
 <p>---</p>
