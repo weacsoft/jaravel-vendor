@@ -39,12 +39,12 @@ import java.util.Map;
  *   <li><b>守卫</b>（guard）：定义认证方式（session/jwt），绑定一个 provider</li>
  * </ul>
  * <p>
- * 除了配置式注册，也支持编程式 {@code @Bean} 注册：
+ * 除了配置式注册，也支持注解声明式注册：
  * <ul>
- *   <li>{@code @Bean("users")} 声明 {@link com.weacsoft.jaravel.vendor.auth.contract.UserProvider}（bean name 即 provider name）</li>
- *   <li>{@code @Bean("web")} 声明 {@link com.weacsoft.jaravel.vendor.auth.contract.GuardDefinition}（bean name 即 guard name）</li>
+ *   <li>{@code @RegisterProvider("users")} 声明 {@link com.weacsoft.jaravel.vendor.auth.contract.UserProvider}（注解 value 即 provider name）</li>
+ *   <li>{@code @RegisterGuard("web")} 声明 {@link com.weacsoft.jaravel.vendor.auth.contract.GuardDefinition}（注解 value 即 guard name）</li>
  * </ul>
- * 编程式优先于配置式（同名时覆盖）。
+ * 注解声明优先于配置式（同名时覆盖）。
  * <p>
  * JWT 相关配置在独立 jwt 模块的 {@code JwtProperties}（前缀 {@code jaravel.jwt}）。
  */

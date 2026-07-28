@@ -184,7 +184,7 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
 <a href="#cat-cache" class="sub" title="ArrayStore 内存缓存，CacheManager 多 store 切换，remember/increment">cache — 缓存系统</a>
 <a href="#cat-event" class="sub" title="EventDispatcher 事件分发，同步/异步执行，ShouldQueue 队列事件">event — 事件系统</a>
 <a href="#cat-redis-config" class="sub" title="多 Redis 连接管理，集群/哨兵模式">redis-config — Redis 配置</a>
-<a href="#cat-redis-cache" class="sub" title="基于 Redis 的缓存实现，JSON 序列化，TTL 管理">redis-cache — Redis 缓存</a>
+<a href="#cat-redis-cache" class="sub" title="Redis 缓存驱动工厂，按需创建驱动，JSON 序列化，TTL 管理">redis-cache — Redis 缓存</a>
 <a href="#cli" class="group">CLI 工具</a>
 <a href="#cat-artisan" class="sub" title="Laravel artisan 风格 CLI，make:xxx 代码生成（controller/model/migration 等 8 种），make:all 一键生成">artisan — Artisan 命令行</a>
 <a href="#cat-schedule" class="sub" title="Cron 表达式调度，分布式锁，链式调用（everyMinute/hourly/dailyAt）">schedule — 定时任务</a>
@@ -9882,7 +9882,7 @@ Auth.login(user);
 
 <h6 id="auth-authguarddriver">AuthGuardDriver</h6>
 
-<p>守卫驱动契约，采用工厂模式注册新的 Guard 驱动。每个驱动实现自报其驱动名（<code>driver()</code>），并由 <code>AuthAutoConfiguration</code> 通过 <code>SmartInitializingSingleton</code> 自动收集容器中所有 <code>AuthGuardDriver</code> Bean 注册到 <code>AuthManager</code>。</p>
+<p>守卫驱动契约，采用工厂模式注册新的 Guard 驱动。每个驱动实现自报其驱动名（<code>driver()</code>），并由 <code>AuthRegistrar</code> 自动收集容器中所有 <code>AuthGuardDriver</code> Bean 注册到 <code>AuthManager</code>。</p>
 
 <p>第三方模块（如 <code>jwt</code> 模块）只需将驱动实现（如 <code>JwtGuardDriver</code>）注册为 Spring Bean，即可被自动收集并扩展 AuthManager 支持的 guard driver，无需修改 auth 模块本身，也无需手动调用注册方法。</p>
 
@@ -9977,18 +9977,18 @@ public record GuardDefinition(String driver, String provider) {
 }
 </code></pre>
 
-<p><strong>声明式注册示例</strong>（Bean 名称即守卫名称）：</p>
+<p><strong>注解声明式注册示例</strong>（推荐，注解 value 即守卫名称，不注册为 Spring Bean，避免 bean name 冲突）：</p>
 
 <pre><code>
 @Configuration
 public class AuthConfig {
 
-    @Bean(&quot;web&quot;)
+    @RegisterGuard(&quot;web&quot;)
     public GuardDefinition webGuard() {
         return GuardDefinition.of(&quot;session&quot;, &quot;users&quot;);
     }
 
-    @Bean(&quot;api&quot;)
+    @RegisterGuard(value = &quot;api&quot;, defaultGuard = true)
     public GuardDefinition apiGuard() {
         return GuardDefinition.of(&quot;jwt&quot;, &quot;users&quot;);
     }
@@ -10163,8 +10163,8 @@ public boolean hasGuards()
 <p>示例：</p>
 
 <pre><code>
-// 方式一（推荐）：声明式 @Bean，由 AuthAutoConfiguration 自动收集
-//   @Bean(&quot;users&quot;) UserProvider usersProvider(...) 与 @Bean(&quot;web&quot;) GuardDefinition webGuard()
+// 方式一（推荐）：注解声明式，由 AuthRegistrar 扫描注解并注册
+//   @RegisterProvider(&quot;users&quot;) UserProvider usersProvider(...) 与 @RegisterGuard(&quot;web&quot;) GuardDefinition webGuard()
 //   详见下文「注册提供者与守卫」示例
 
 // 方式二：编程式注册（启动阶段调用）
@@ -10479,14 +10479,14 @@ public class AuthLifecycleFilter extends OncePerRequestFilter {
 
 <h6 id="auth-authautoconfiguration">AuthAutoConfiguration</h6>
 
-<p>Spring Boot 自动装配类，注册 <code>AuthManager</code>、<code>AuthLifecycleFilter</code>、内置 <code>CookieSessionStore</code> 与 <code>SessionGuardDriver</code>。实现 <code>SmartInitializingSingleton</code>，在 <code>afterSingletonsInstantiated()</code> 中按固定顺序自动收集并注册：提供者驱动（<code>List&lt;UserProviderDriver&gt;</code>）、配置式提供者、编程式提供者（<code>Map&lt;String, UserProvider&gt;</code>）、配置式守卫、编程式守卫（<code>Map&lt;String, GuardDefinition&gt;</code>）、守卫驱动（<code>List&lt;AuthGuardDriver&gt;</code>）。编程式 <code>@Bean</code> 优先于配置式（同名时覆盖）。</p>
+<p>Spring Boot 自动装配类，注册 <code>AuthManager</code>、<code>AuthLifecycleFilter</code>、内置 <code>CookieSessionStore</code> 与 <code>SessionGuardDriver</code>，并注册 <code>AuthRegistrar</code>。<code>AuthRegistrar</code> 在所有单例 Bean 就绪后按固定顺序自动收集并注册：提供者驱动（<code>List&lt;UserProviderDriver&gt;</code>）、配置式提供者、注解声明式提供者（<code>@RegisterProvider</code>）、配置式守卫、注解声明式守卫（<code>@RegisterGuard</code>，含 <code>defaultGuard</code> 标记）、守卫驱动（<code>List&lt;AuthGuardDriver&gt;</code>）。注解声明优先于配置式（同名时覆盖）。</p>
 
 <pre><code>
 @AutoConfiguration
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @ConditionalOnClass(AuthManager.class)
 @EnableConfigurationProperties(AuthProperties.class)
-public class AuthAutoConfiguration implements SmartInitializingSingleton {
+public class AuthAutoConfiguration {
 
     @Autowired
     private AuthProperties properties;
@@ -10495,7 +10495,7 @@ public class AuthAutoConfiguration implements SmartInitializingSingleton {
     private List&lt;AuthGuardDriver&gt; guardDrivers;
 
     @Autowired
-    private AuthManager authManager;  // 注入容器单例，不可直接调用 authManager()
+    private List&lt;UserProviderDriver&gt; providerDrivers;
 
     @Bean
     @ConditionalOnMissingBean
@@ -10531,26 +10531,11 @@ public class AuthAutoConfiguration implements SmartInitializingSingleton {
         return new SessionGuardDriver(sessionStore);
     }
 
-    @Override
-    public void afterSingletonsInstantiated() {
-        // 所有单例 Bean 就绪后，按固定顺序自动收集并注册。
-        // 约定：编程式 @Bean 优先于配置式，同名时编程式覆盖配置式。
-
-        // 1. 提供者驱动（List&lt;UserProviderDriver&gt;）
-        for (UserProviderDriver d : applicationContext.getBeansOfType(UserProviderDriver.class).values()) {
-            authManager.registerProviderDriver(d);
-        }
-        // 2. 配置式提供者（由 AuthProperties 配置经提供者驱动创建）
-        // 3. 编程式提供者（Map&lt;String, UserProvider&gt;，Bean 名称即提供者名）
-        applicationContext.getBeansOfType(UserProvider.class).forEach(authManager::registerProvider);
-        // 4. 配置式守卫（AuthProperties.guards）
-        // 5. 编程式守卫（Map&lt;String, GuardDefinition&gt;，Bean 名称即守卫名）
-        applicationContext.getBeansOfType(GuardDefinition.class)
-                .forEach((name, gd) -&gt; authManager.registerGuard(name, gd.driver(), gd.provider(), Map.of()));
-        // 6. 守卫驱动（List&lt;AuthGuardDriver&gt;，含内置 SessionGuardDriver 与第三方 JwtGuardDriver 等）
-        for (AuthGuardDriver d : applicationContext.getBeansOfType(AuthGuardDriver.class).values()) {
-            authManager.registerGuardDriver(d);
-        }
+    @Bean
+    public AuthRegistrar authRegistrar(AuthManager authManager) {
+        // 扫描 @RegisterProvider / @RegisterGuard 注解方法并注册到 AuthManager，
+        // 注解声明的提供者 / 守卫不注册为 Spring Bean，避免 bean name 冲突。
+        return new AuthRegistrar(properties, guardDrivers, providerDrivers, authManager);
     }
 }
 </code></pre>
@@ -10559,17 +10544,17 @@ public class AuthAutoConfiguration implements SmartInitializingSingleton {
 <li>Servlet Web 应用环境</li>
 <li>classpath 存在 <code>AuthManager</code> 类</li>
 
-<p><strong>说明</strong>：JWT 等扩展驱动只需将实现 <code>AuthGuardDriver</code> / <code>UserProviderDriver</code> 接口的类（如 <code>JwtGuardDriver</code>）注册为 Spring Bean，<code>AuthAutoConfiguration</code> 会通过 <code>SmartInitializingSingleton</code> 自动收集并注册到 <code>AuthManager</code>，无需手动调用 <code>registerGuardDriver()</code> / <code>registerProviderDriver()</code>。auth 模块本身不包含 JWT 实现。认证中间件 <code>Authenticate</code> 为普通 <code>Middleware</code> 实现，可直接传入 <code>Router.middleware()</code> 使用，无需别名注册。</p>
+<p><strong>说明</strong>：JWT 等扩展驱动只需将实现 <code>AuthGuardDriver</code> / <code>UserProviderDriver</code> 接口的类（如 <code>JwtGuardDriver</code>）注册为 Spring Bean，<code>AuthAutoConfiguration</code> 会由 <code>AuthRegistrar</code> 自动收集并注册到 <code>AuthManager</code>，无需手动调用 <code>registerGuardDriver()</code> / <code>registerProviderDriver()</code>。auth 模块本身不包含 JWT 实现。认证中间件 <code>Authenticate</code> 为普通 <code>Middleware</code> 实现，可直接传入 <code>Router.middleware()</code> 使用，无需别名注册。</p>
 
-<p><strong>自动收集与注册顺序</strong>（在 <code>afterSingletonsInstantiated()</code> 中执行）：</p>
+<p><strong>自动收集与注册顺序</strong>（由 <code>AuthRegistrar</code> 在初始化时执行）：</p>
 <li>1. 提供者驱动：<code>List&lt;UserProviderDriver&gt;</code></li>
 <li>2. 配置式提供者：由 <code>AuthProperties</code> 配置经提供者驱动创建</li>
-<li>3. 编程式提供者：<code>Map&lt;String, UserProvider&gt;</code>（Bean 名称即提供者名）</li>
+<li>3. 注解声明式提供者（<code>@RegisterProvider</code>）：<code>AuthRegistrar</code> 扫描 <code>@RegisterProvider</code> 注解方法（注解 value 即提供者名）</li>
 <li>4. 配置式守卫：<code>AuthProperties.guards</code></li>
-<li>5. 编程式守卫：<code>Map&lt;String, GuardDefinition&gt;</code>（Bean 名称即守卫名）</li>
+<li>5. 注解声明式守卫（<code>@RegisterGuard</code>）：<code>AuthRegistrar</code> 扫描 <code>@RegisterGuard</code> 注解方法（注解 value 即守卫名）</li>
 <li>6. 守卫驱动：<code>List&lt;AuthGuardDriver&gt;</code></li>
 
-<p>&gt; 编程式 <code>@Bean</code> 优先于配置式：同名时编程式覆盖配置式（提供者 / 守卫均适用）。</p>
+<p>&gt; 注解声明优先于配置式：同名时注解声明覆盖配置式（提供者 / 守卫均适用）。可通过 <code>@RegisterGuard(defaultGuard = true)</code> 标记默认守卫。</p>
 
 <p>---</p>
 
@@ -10631,7 +10616,7 @@ jaravel:
 
 <h6 id="auth-完整多守卫配置示例">完整多守卫配置示例</h6>
 
-<p>守卫与提供者采用纯 <code>@Bean</code> 声明式注册，由 <code>AuthAutoConfiguration</code> 自动收集（Bean 名称即提供者 / 守卫名称）：</p>
+<p>守卫与提供者采用注解声明式注册（推荐），由 <code>AuthRegistrar</code> 扫描注解并注册（注解 value 即提供者 / 守卫名称，不注册为 Spring Bean，避免 bean name 冲突）：</p>
 
 <pre><code>
 jaravel:
@@ -10643,17 +10628,17 @@ jaravel:
 @Configuration
 public class AuthConfig {
 
-    @Bean(&quot;users&quot;)
+    @RegisterProvider(&quot;users&quot;)
     public UserProvider usersProvider(UserModel userModel) {
         return new EloquentUserProvider&lt;&gt;(userModel, &quot;number&quot;);
     }
 
-    @Bean(&quot;web&quot;)
+    @RegisterGuard(&quot;web&quot;)
     public GuardDefinition webGuard() {
         return GuardDefinition.of(&quot;session&quot;, &quot;users&quot;);
     }
 
-    @Bean(&quot;api&quot;)
+    @RegisterGuard(value = &quot;api&quot;, defaultGuard = true)
     public GuardDefinition apiGuard() {
         return GuardDefinition.of(&quot;jwt&quot;, &quot;users&quot;);
     }
@@ -10685,32 +10670,32 @@ public class User implements Authenticatable {
 
 <h6 id="auth-2-注册提供者与守卫">2. 注册提供者与守卫</h6>
 
-<p>采用纯 <code>@Bean</code> 声明式注册：<code>UserProvider</code> 与 <code>GuardDefinition</code> 直接声明为 Bean（Bean 名称即提供者 / 守卫名称），由 <code>AuthAutoConfiguration</code> 自动收集，无需 <code>ApplicationRunner</code> 或手动调用 <code>registerProvider()</code> / <code>registerGuard()</code>。</p>
+<p>采用注解声明式注册（推荐）：<code>UserProvider</code> 与 <code>GuardDefinition</code> 通过 <code>@RegisterProvider</code> / <code>@RegisterGuard</code> 注解声明（注解 value 即提供者 / 守卫名称），由 <code>AuthRegistrar</code> 扫描并注册，不注册为 Spring Bean，避免 bean name 冲突。可通过 <code>defaultGuard = true</code> 标记默认守卫。</p>
 
 <pre><code>
 @Configuration
 public class AuthConfig {
-    @Bean(&quot;users&quot;)
+    @RegisterProvider(&quot;users&quot;)
     public UserProvider usersProvider(User userModel) {
         return new EloquentUserProvider&lt;&gt;(userModel, &quot;number&quot;);
     }
 
-    @Bean(&quot;admins&quot;)
+    @RegisterProvider(&quot;admins&quot;)
     public UserProvider adminsProvider(Admin adminModel) {
         return new EloquentUserProvider&lt;&gt;(adminModel, &quot;username&quot;);
     }
 
-    @Bean(&quot;web&quot;)
+    @RegisterGuard(&quot;web&quot;)
     public GuardDefinition webGuard() {
         return GuardDefinition.of(&quot;session&quot;, &quot;users&quot;);
     }
 
-    @Bean(&quot;api&quot;)
+    @RegisterGuard(value = &quot;api&quot;, defaultGuard = true)
     public GuardDefinition apiGuard() {
         return GuardDefinition.of(&quot;jwt&quot;, &quot;users&quot;);
     }
 
-    @Bean(&quot;admin&quot;)
+    @RegisterGuard(&quot;admin&quot;)
     public GuardDefinition adminGuard() {
         return GuardDefinition.of(&quot;jwt&quot;, &quot;admins&quot;);
     }
@@ -10787,7 +10772,7 @@ public Response logout() {
 
 <p><code>guards</code> / <code>providers</code> 使用 <code>ConcurrentHashMap</code>，<code>guardDrivers</code> 使用 <code>CopyOnWriteArrayList</code>，均支持并发读写。</p>
 
-<li><strong>注册阶段</strong>：应用启动时由 <code>AuthAutoConfiguration</code> 通过 <code>SmartInitializingSingleton</code> 自动收集 <code>AuthGuardDriver</code> Bean，并调用 <code>registerProvider</code> / <code>registerGuard</code> / <code>registerGuardDriver</code>。</li>
+<li><strong>注册阶段</strong>：应用启动时由 <code>AuthRegistrar</code> 自动收集 <code>AuthGuardDriver</code> Bean，并调用 <code>registerProvider</code> / <code>registerGuard</code> / <code>registerGuardDriver</code>。</li>
 <li><strong>运行阶段</strong>：请求线程调用 <code>guard(name)</code>。</li>
 <li>两者可安全并发。注册表本身是进程级共享的不可变配置（启动后不再修改），<code>ConcurrentHashMap</code> 与 <code>CopyOnWriteArrayList</code> 保证可见性与原子性。</li>
 
@@ -10961,7 +10946,7 @@ public class DatabaseUserProvider implements UserProvider {
 <h6 id="auth-authguarddriver">AuthGuardDriver</h6>
 <li><strong>Type</strong>: interface</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.auth.contract</code></li>
-<li><strong>Description</strong>: 守卫驱动契约，采用工厂模式注册新的 Guard 驱动。第三方模块将实现此接口的类（如 JwtGuardDriver）注册为 Spring Bean，由 AuthAutoConfiguration 通过 SmartInitializingSingleton 自动收集并注册到 AuthManager，即可扩展支持的 guard driver。</li>
+<li><strong>Description</strong>: 守卫驱动契约，采用工厂模式注册新的 Guard 驱动。第三方模块将实现此接口的类（如 JwtGuardDriver）注册为 Spring Bean，由 AuthRegistrar 自动收集并注册到 AuthManager，即可扩展支持的 guard driver。</li>
 
 <h6 id="auth-methods">Methods</h6>
 
@@ -11105,9 +11090,8 @@ router.get(&quot;/api/profile&quot;, handler).middleware(new Authenticate(&quot;
 <h6 id="auth-authautoconfiguration">AuthAutoConfiguration</h6>
 <li><strong>Type</strong>: class</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.auth.autoconfigure</code></li>
-<li><strong>Description</strong>: 认证自动装配，注册 AuthManager、AuthLifecycleFilter、CookieSessionStore 和 SessionGuardDriver，并通过 SmartInitializingSingleton 自动收集容器中所有 AuthGuardDriver Bean 注册到 AuthManager。</li>
+<li><strong>Description</strong>: 认证自动装配，注册 AuthManager、AuthLifecycleFilter、CookieSessionStore 和 SessionGuardDriver，并由 AuthRegistrar 自动收集容器中所有 AuthGuardDriver Bean 注册到 AuthManager。</li>
 <li><strong>Annotations</strong>: <code>@AutoConfiguration</code>, <code>@ConditionalOnWebApplication(SERVLET)</code>, <code>@ConditionalOnClass(AuthManager.class)</code>, <code>@EnableConfigurationProperties(AuthProperties.class)</code></li>
-<li><strong>Implements</strong>: <code>SmartInitializingSingleton</code></li>
 
 <h6 id="auth-bean-methods">Bean Methods</h6>
 
@@ -11123,7 +11107,7 @@ router.get(&quot;/api/profile&quot;, handler).middleware(new Authenticate(&quot;
 
 <table>
 <tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
-<tr><td>`afterSingletonsInstantiated`</td><td>无</td><td>`void`</td><td>所有单例就绪后自动收集 AuthGuardDriver Bean 注册到 AuthManager（由框架调用）</td></tr>
+<tr><td>`authRegistrar`</td><td>`AuthManager authManager`</td><td>`AuthRegistrar`</td><td>创建 AuthRegistrar，负责在所有单例就绪后统一注册认证配置（驱动、配置式 / 注解声明式 provider / guard）</td></tr>
 </table>
 
 <p>---</p>
@@ -11195,7 +11179,7 @@ jaravel:
 
 <h6 id="jwt-与-auth-模块的关系">与 auth 模块的关系</h6>
 
-<p>JWT 模块<strong>依赖</strong> auth 模块，但<strong>不修改</strong> auth 模块代码。它通过实现 <code>AuthGuardDriver</code> 接口（<code>JwtGuardDriver</code>）注册为 Spring Bean，由 auth 模块的 <code>AuthAutoConfiguration</code> 通过 <code>SmartInitializingSingleton</code> 自动收集注册 <code>&quot;jwt&quot;</code> 驱动：</p>
+<p>JWT 模块<strong>依赖</strong> auth 模块，但<strong>不修改</strong> auth 模块代码。它通过实现 <code>AuthGuardDriver</code> 接口（<code>JwtGuardDriver</code>）注册为 Spring Bean，由 auth 模块的 <code>AuthRegistrar</code> 自动收集注册 <code>&quot;jwt&quot;</code> 驱动：</p>
 
 <pre><code>
 auth 模块（核心）
@@ -11914,7 +11898,7 @@ public class JwtProperties {
 
 <h5 id="jwt-jwtautoconfiguration">JwtAutoConfiguration</h5>
 
-<p>JWT 自动装配类，注册 <code>JwtConfig</code>、<code>JwtService</code>、<code>JwtTokenResponseFilter</code> Bean，并注册 <code>JwtGuardDriver</code> Bean（实现 <code>AuthGuardDriver</code>）。jwt 驱动不再由本类手动注册，而是由 auth 模块的 <code>AuthAutoConfiguration</code> 通过 <code>SmartInitializingSingleton</code> 自动收集容器中的 <code>AuthGuardDriver</code> Bean 注册到 <code>AuthManager</code>。</p>
+<p>JWT 自动装配类，注册 <code>JwtConfig</code>、<code>JwtService</code>、<code>JwtTokenResponseFilter</code> Bean，并注册 <code>JwtGuardDriver</code> Bean（实现 <code>AuthGuardDriver</code>）。jwt 驱动不再由本类手动注册，而是由 auth 模块的 <code>AuthRegistrar</code> 自动收集容器中的 <code>AuthGuardDriver</code> Bean 注册到 <code>AuthManager</code>。</p>
 
 <pre><code>
 @AutoConfiguration
@@ -11944,7 +11928,7 @@ public class JwtAutoConfiguration {
 }
 </code></pre>
 
-<p><strong>说明</strong>：本类不再实现 <code>SmartInitializingSingleton</code>，也不再调用 <code>authManager.registerGuardDriver()</code>。jwt 驱动的注册完全由 auth 模块的 <code>AuthAutoConfiguration.afterSingletonsInstantiated()</code> 自动完成——它会收集容器中所有 <code>AuthGuardDriver</code> Bean（含本类注册的 <code>JwtGuardDriver</code> 与 auth 模块内置的 <code>SessionGuardDriver</code>）。</p>
+<p><strong>说明</strong>：本类不再实现 <code>SmartInitializingSingleton</code>，也不再调用 <code>authManager.registerGuardDriver()</code>。jwt 驱动的注册完全由 auth 模块的 <code>AuthRegistrar</code> 自动完成——它会收集容器中所有 <code>AuthGuardDriver</code> Bean（含本类注册的 <code>JwtGuardDriver</code> 与 auth 模块内置的 <code>SessionGuardDriver</code>）。</p>
 
 <h6 id="jwt-装配条件">装配条件</h6>
 
@@ -11979,7 +11963,7 @@ return new JwtService(jwtConfig, blacklistStore);
 
 <h6 id="jwt-3-注册-jwtguarddriver-bean">3. 注册 JwtGuardDriver Bean</h6>
 
-<p><code>jwtGuardDriver()</code> Bean 方法注入 <code>JwtService</code> 与 <code>JwtConfig</code>，返回实现 <code>AuthGuardDriver</code> 接口的 <code>JwtGuardDriver</code> 实例。该 Bean 由 auth 模块的 <code>AuthAutoConfiguration</code> 通过 <code>SmartInitializingSingleton</code> 自动收集并注册到 <code>AuthManager</code>，无需本类手动调用注册方法。</p>
+<p><code>jwtGuardDriver()</code> Bean 方法注入 <code>JwtService</code> 与 <code>JwtConfig</code>，返回实现 <code>AuthGuardDriver</code> 接口的 <code>JwtGuardDriver</code> 实例。该 Bean 由 auth 模块的 <code>AuthRegistrar</code> 自动收集并注册到 <code>AuthManager</code>，无需本类手动调用注册方法。</p>
 
 <p><code>JwtGuardDriver.driver()</code> 返回 <code>&quot;jwt&quot;</code>，其 <code>create()</code> 方法使用带 <code>JwtConfig</code> 的完整构造器创建 <code>JwtGuard</code>，控制是否启用自动续期并支持宽限期逻辑。</p>
 
@@ -12716,7 +12700,7 @@ String newToken = guard.refresh(refreshToken);
 <h6 id="jwt-jwtguarddriver">JwtGuardDriver</h6>
 <li><strong>Type</strong>: class</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.jwt</code></li>
-<li><strong>Description</strong>: JWT 守卫驱动，实现 auth 模块的 <code>AuthGuardDriver</code> 接口（工厂模式）。<code>driver()</code> 返回 <code>&quot;jwt&quot;</code>，<code>create()</code> 使用带 <code>JwtConfig</code> 的完整构造器创建 <code>JwtGuard</code>。由 <code>JwtAutoConfiguration</code> 注册为 Spring Bean，再由 auth 模块的 <code>AuthAutoConfiguration</code> 通过 <code>SmartInitializingSingleton</code> 自动收集并注册到 <code>AuthManager</code>。</li>
+<li><strong>Description</strong>: JWT 守卫驱动，实现 auth 模块的 <code>AuthGuardDriver</code> 接口（工厂模式）。<code>driver()</code> 返回 <code>&quot;jwt&quot;</code>，<code>create()</code> 使用带 <code>JwtConfig</code> 的完整构造器创建 <code>JwtGuard</code>。由 <code>JwtAutoConfiguration</code> 注册为 Spring Bean，再由 auth 模块的 <code>AuthRegistrar</code> 自动收集并注册到 <code>AuthManager</code>。</li>
 <li><strong>Implements</strong>: <code>com.weacsoft.jaravel.vendor.auth.contract.AuthGuardDriver</code></li>
 
 <h6 id="jwt-methods">Methods</h6>
@@ -13381,7 +13365,7 @@ Cache.store(&quot;file&quot;).put(&quot;report&quot;, reportData, 3600);
 
 <p>&gt; <strong>注意</strong>：本类<strong>不使用 <code>@Component</code></strong> 注解，而是由 <code>CacheAutoConfiguration</code> 以 <code>@Bean @ConditionalOnMissingBean</code> 方式注册。这是为了避免组件扫描创建空实例（构造时需注入各 store）。</p>
 
-<p><strong>Store 自动收集</strong>：<code>CacheStore</code> 实例可直接声明为 <code>@Bean</code>（Bean 名称即 store 名称），由 <code>CacheAutoConfiguration</code> 通过 <code>Map&lt;String, CacheStore&gt;</code> 自动收集并注册到 <code>CacheManager</code>，无需手动调用 <code>addStore()</code>。命令式 <code>addStore()</code> 仍保留供编程式注册使用。</p>
+<p><strong>三种 Store 注册方式</strong>：<code>CacheAutoConfiguration</code> 支持三种 Store 注册方式：1. <strong>配置式</strong>（推荐）— <code>jaravel.cache.stores</code> 配置按需创建（工厂模式，用到才构建）；2. <strong>注解声明式</strong> — <code>CacheStore</code> 实例通过 <code>@RegisterCacheStore</code> 注解声明（注解 value 即 store 名称，不注册为 Spring Bean，避免 bean name 冲突），由自动装配扫描注解收集并覆盖同名配置 store；3. <strong>编程式</strong> — 手动调用 <code>addStore()</code>。注解声明优先于配置式（同名时覆盖）。</p>
 
 <h6 id="cache-方法文档">方法文档</h6>
 
@@ -13410,16 +13394,23 @@ CacheStore store = cacheManager.store();
 // 按名称获取 store
 CacheStore fileStore = cacheManager.store(&quot;file&quot;);
 
-// 注册自定义 store（推荐：声明式 @Bean，Bean 名即 store 名，由自动装配通过
-// Map&lt;String, CacheStore&gt; 自动收集，无需手动 addStore）
-@Bean(&quot;redis&quot;)
-public CacheStore redisStore(RedisCacheDriver redisDriver, CacheProperties properties) {
-    return new DefaultCacheStore(redisDriver, properties.getPrefix());
+// 方式1（推荐）：配置式 — 在 application.yml 中配置 stores，工厂模式按需创建
+// jaravel:
+//   cache:
+//     stores:
+//       file:
+//         driver: file
+//         dir: /tmp/jaravel-cache
+
+// 方式2：注解声明式 — @RegisterCacheStore 返回 CacheStore，注解 value 即 store name，覆盖同名配置 store
+@RegisterCacheStore(&quot;myStore&quot;)
+public CacheStore myStore(CacheProperties properties) {
+    return new DefaultCacheStore(new ArrayCacheDriver(), properties.getPrefix());
 }
 
-// 命令式注册（仍支持，用于编程式场景）
-// cacheManager.addStore(&quot;redis&quot;, new DefaultCacheStore(redisDriver, &quot;jaravel&quot;));
-// cacheManager.setDefaultStore(&quot;redis&quot;);
+// 方式3：编程式 — 手动注册（优先于配置式）
+// cacheManager.addStore(&quot;myStore&quot;, new DefaultCacheStore(myDriver, &quot;jaravel&quot;));
+// cacheManager.setDefaultStore(&quot;myStore&quot;);
 </code></pre>
 
 <h6 id="cache-cachemanager-按需创建">按需创建 Store</h6>
@@ -13776,7 +13767,7 @@ driver.removeAll();        // 清空整张表
 
 <p><code>com.weacsoft.jaravel.vendor.cache.CacheAutoConfiguration</code></p>
 
-<p>Spring Boot 自动装配类，对齐 Laravel 缓存服务提供者。采用<strong>工厂模式 + 手动装配</strong>：注册驱动工厂（而非直接创建驱动/Store Bean），由 CacheManager 根据 stores 配置按需创建 Store。同时支持 Bean 声明式覆盖。</p>
+<p>Spring Boot 自动装配类，对齐 Laravel 缓存服务提供者。采用<strong>工厂模式 + 手动装配</strong>：注册驱动工厂（而非直接创建驱动/Store Bean），由 CacheManager 根据 stores 配置按需创建 Store。同时注册 <code>CacheStoreRegistrar</code> 扫描 <code>@RegisterCacheStore</code> 注解方法。</p>
 
 <h6>注册的 Bean</h6>
 <table>
@@ -13784,15 +13775,15 @@ driver.removeAll();        // 清空整张表
 <tr><td><code>arrayCacheDriverFactory</code></td><td><code>ArrayCacheDriverFactory</code></td><td>内存缓存驱动工厂（始终注册）</td></tr>
 <tr><td><code>fileCacheDriverFactory</code></td><td><code>FileCacheDriverFactory</code></td><td>文件缓存驱动工厂（始终注册）</td></tr>
 <tr><td><code>databaseCacheDriverFactory</code></td><td><code>DatabaseCacheDriverFactory</code></td><td>数据库缓存驱动工厂；仅当 classpath 存在 JdbcTemplate 且容器中存在 DataSource bean 时装配</td></tr>
-<tr><td><code>cacheManager</code></td><td><code>CacheManager</code></td><td>缓存管理器，收集所有驱动工厂并根据 stores 配置按需创建 Store，同时收集用户声明的 CacheStore Bean</td></tr>
+<tr><td><code>cacheManager</code></td><td><code>CacheManager</code></td><td>缓存管理器，收集所有驱动工厂并根据 stores 配置按需创建 Store</td></tr>
+<tr><td><code>cacheStoreRegistrar</code></td><td><code>CacheStoreRegistrar</code></td><td>扫描 <code>@RegisterCacheStore</code> 注解方法并注册到 CacheManager（含 <code>defaultStore</code> 标记）</td></tr>
 </table>
 
 <h6>装配逻辑</h6>
 <pre><code>
 @Bean
 public CacheManager cacheManager(CacheProperties properties,
-                                 List&lt;CacheDriverFactory&gt; factories,
-                                 ObjectProvider&lt;Map&lt;String, CacheStore&gt;&gt; storeBeansProvider) {
+                                 List&lt;CacheDriverFactory&gt; factories) {
     CacheManager manager = new CacheManager();
     // 1. 注册所有驱动工厂（内置 + 第三方）
     for (CacheDriverFactory factory : factories) {
@@ -13800,12 +13791,13 @@ public CacheManager cacheManager(CacheProperties properties,
     }
     // 2. 根据配置按需创建 Store
     manager.initFromConfig(properties);
-    // 3. 收集用户声明的 CacheStore Bean，覆盖同名配置 Store
-    Map&lt;String, CacheStore&gt; storeBeans = storeBeansProvider.getIfAvailable(Map::of);
-    for (Map.Entry&lt;String, CacheStore&gt; entry : storeBeans.entrySet()) {
-        manager.addStore(entry.getKey(), entry.getValue());
-    }
+    // 3. @RegisterCacheStore 注解声明的 Store 由 CacheStoreRegistrar 在所有 Bean 初始化后注册
     return manager;
+}
+
+@Bean
+public CacheStoreRegistrar cacheStoreRegistrar() {
+    return new CacheStoreRegistrar();
 }
 </code></pre>
 
@@ -13815,8 +13807,8 @@ public CacheManager cacheManager(CacheProperties properties,
 <table>
 <tr><th>方式</th><th>用法</th><th>说明</th></tr>
 <tr><td>配置式</td><td><code>application.yml</code> 的 <code>stores</code></td><td>工厂模式按需创建，用到才构建</td></tr>
-<tr><td>Bean 声明式</td><td><code>@Bean(&quot;name&quot;)</code> 返回 <code>CacheStore</code></td><td>bean name 即 store name，覆盖同名配置 store</td></tr>
-<tr><td>Bean 声明式默认</td><td><code>@Bean</code> 返回 <code>DefaultCacheStore</code>，方法名匹配 <code>default-store</code></td><td>成为默认 store</td></tr>
+<tr><td>注解声明式</td><td><code>@RegisterCacheStore(&quot;name&quot;)</code> 返回 <code>CacheStore</code></td><td>注解 value 即 store name，覆盖同名配置 store</td></tr>
+<tr><td>注解声明式默认</td><td><code>@RegisterCacheStore(defaultStore = true)</code> 返回 <code>CacheStore</code></td><td>成为默认 store</td></tr>
 </table>
 
 <h6>第三方模块扩展</h6>
@@ -15661,20 +15653,47 @@ if (lockProvider.tryLock(lockKey, 300)) {  // 5 分钟 TTL
 </section>
 <section id="cat-redis-cache">
 <h3>redis-cache — Redis 缓存</h3>
-<p class="module-desc">基于 Redis 的缓存实现，JSON 序列化，TTL 管理</p>
+<p class="module-desc">Redis 缓存驱动工厂，按需创建驱动，JSON 序列化，TTL 管理</p>
 <h4>简介</h4>
-<p>Redis 缓存驱动，对齐 Laravel <code>Illuminate\Cache\RedisStore</code>。实现 <code>CacheDriver</code> 接口，底层通过 <code>redis-config</code> 模块的 <code>RedisManager</code> 获取指定命名连接的 Redis 命令接口，所有缓存键值以 JSON 序列化存储，TTL 通过 Redis <code>SETEX</code>/<code>EXPIRE</code> 实现。</p>
+<p>Jaravel-Vendor 的 Redis 缓存驱动模块，对齐 Laravel <code>Illuminate\Cache\RedisStore</code>。提供 <code>RedisCacheDriverFactory</code> 驱动工厂（实现 <code>CacheDriverFactory</code>，按需创建），由 <code>CacheManager</code> 在配置了 <code>redis</code> store 时按需创建 <code>RedisCacheDriver</code> 实例。底层通过 <code>redis-config</code> 模块的 <code>RedisManager</code> 获取指定命名连接的 Redis 命令接口，所有缓存键值以 JSON 序列化存储，TTL 通过 Redis <code>SETEX</code>/<code>EXPIRE</code> 实现。采用<strong>工厂模式 + 配置驱动按需创建</strong>（对齐 cache 模块的设计），<code>RedisCacheDriverFactory</code> 注册为 Spring Bean，<code>CacheManager</code> 在配置了 <code>redis</code> store 时才调用 <code>factory.create(config)</code> 创建驱动实例，不会预创建。</p>
+
+<h5 id="redis-cache-架构分层">架构分层</h5>
+
+<pre><code>
+CacheManager（cache 模块，按配置按需创建 store）
+  └── CacheDriverFactory（驱动工厂，support + create）
+        └── RedisCacheDriverFactory   → RedisCacheDriver（Redis 缓存驱动）
+                                          └── RedisManager（redis-config 模块，命名连接管理）
+</code></pre>
 
 <h5 id="redis-cache-依赖">依赖</h5>
 
-<li><code>core</code> — 基础设施</li>
-<li><code>cache</code> — 提供 <code>CacheDriver</code> 接口与 <code>CacheManager</code></li>
+<li><code>cache</code> — 提供 <code>CacheDriver</code> 接口、<code>CacheDriverFactory</code> 工厂契约与 <code>CacheManager</code></li>
 <li><code>redis-config</code> — 提供 <code>RedisManager</code> 命名连接管理</li>
 <li><code>spring-boot-autoconfigure</code> — 自动装配</li>
 <li><code>jackson-databind</code> — 缓存值 JSON 序列化</li>
-<li><code>slf4j-api</code> — 日志</li>
+<li><code>slf4j-api</code> — 日志门面</li>
 
 <h5 id="redis-cache-核心接口">核心接口</h5>
+
+<h6 id="redis-cache-rediscachedriverfactory">RedisCacheDriverFactory</h6>
+
+<p>Redis 驱动工厂，实现 <code>CacheDriverFactory</code> 接口，支持 <code>&quot;redis&quot;</code> 驱动名。由 <code>RedisCacheAutoConfiguration</code> 在 <code>RedisManager</code> 存在时注册为 Bean，<code>CacheManager</code> 通过 <code>CacheDriverFactory</code> 自动收集并按需创建 redis store。</p>
+
+<pre><code>
+public class RedisCacheDriverFactory implements CacheDriverFactory {
+    public RedisCacheDriverFactory(RedisManager redisManager);                    // 默认连接名 cache
+    public RedisCacheDriverFactory(RedisManager redisManager, String defaultConnection);
+
+    // CacheDriverFactory 接口实现
+    public boolean support(String driver);          // &quot;redis&quot; 返回 true
+    public CacheDriver create(Map&lt;String, Object&gt; config);  // 创建 RedisCacheDriver，从 config 读取 connection
+}
+</code></pre>
+
+<p>连接名解析：<code>create(config)</code> 创建驱动时，连接名按以下优先级确定：</p>
+<li>store 配置中的 <code>connection</code>（<code>jaravel.cache.stores.redis.connection</code>）</li>
+<li>工厂构造时传入的默认连接名（通常来自 <code>jaravel.cache.redis.connection</code>，默认 <code>cache</code>）</li>
 
 <h6 id="redis-cache-rediscachedriver">RedisCacheDriver</h6>
 
@@ -15710,7 +15729,7 @@ public class RedisCacheDriver implements CacheDriver {
 @ConfigurationProperties(prefix = &quot;jaravel.cache.redis&quot;)
 public class RedisCacheProperties {
     private String connection = &quot;cache&quot;;     // Redis 连接名，对应 jaravel.redis.connections
-    private boolean autoRegister = true;     // 是否自动注册到 CacheManager
+    private boolean autoRegister = true;     // 是否自动注册工厂到 CacheManager
 }
 </code></pre>
 <h4>使用示例</h4>
@@ -15721,7 +15740,11 @@ jaravel:
   cache:
     redis:
       connection: cache          # Redis 连接名，对应 jaravel.redis.connections 中的配置
-      auto-register: true        # 是否自动注册到 CacheManager（默认 true）
+      auto-register: true        # 是否自动注册工厂到 CacheManager（默认 true）
+    stores:
+      redis:
+        driver: redis
+        connection: cache        # 可覆盖顶层 jaravel.cache.redis.connection 配置
 </code></pre>
 
 <p>配合 redis-config 模块配置连接：</p>
@@ -15736,9 +15759,11 @@ jaravel:
         database: 1
 </code></pre>
 
+<p>&gt; <code>jaravel.cache.stores.redis.connection</code> 优先于 <code>jaravel.cache.redis.connection</code>。若 stores 中未配置 connection，则回退到 <code>jaravel.cache.redis.connection</code>（默认 <code>cache</code>）。</p>
+
 <h5 id="redis-cache-使用示例">使用示例</h5>
 
-<p>注册后，业务方可通过 <code>Cache::store(&quot;redis&quot;)</code> 使用 Redis 缓存，或将 <code>jaravel.cache.default-store</code> 设为 <code>redis</code> 使其成为默认 store。</p>
+<p>注册后，业务方可通过 <code>Cache.store(&quot;redis&quot;)</code> 使用 Redis 缓存，或将 <code>jaravel.cache.default-store</code> 设为 <code>redis</code> 使其成为默认 store。</p>
 
 <pre><code>
 // 使用 redis store
@@ -15751,21 +15776,70 @@ Cache.put(&quot;user:123&quot;, user, 3600);
 Object cached = Cache.get(&quot;user:123&quot;);
 </code></pre>
 
+<h5 id="redis-cache-多-redis-连接">多 Redis 连接</h5>
+
+<p>可为不同 store 配置不同连接：</p>
+<pre><code>
+jaravel:
+  cache:
+    stores:
+      redis:               # 默认 redis store，使用 cache 连接
+        driver: redis
+        connection: cache
+      redis-session:       # 会话专用 redis store，使用 session 连接
+        driver: redis
+        connection: session
+</code></pre>
+
+<pre><code>
+Cache.store(&quot;redis&quot;).put(&quot;key&quot;, value, 60);
+Cache.store(&quot;redis-session&quot;).put(&quot;session:123&quot;, sessionData, 1800);
+</code></pre>
+
 <h5 id="redis-cache-自动装配">自动装配</h5>
 
-<p><code>RedisCacheAutoConfiguration</code> 通过 <code>@AutoConfiguration</code> 注册，在 <code>CacheAutoConfiguration</code> 与 <code>RedisAutoConfiguration</code> 之后装配。当 <code>RedisManager</code> 与 <code>CacheManager</code> 均存在，且 <code>jaravel.cache.redis.auto-register</code> 为 true（默认）时生效。</p>
+<p><code>RedisCacheAutoConfiguration</code> 通过 <code>@AutoConfiguration</code> 注册，在 <code>RedisAutoConfiguration</code> 之后装配。当 <code>RedisManager</code> 存在，且 <code>jaravel.cache.redis.auto-register</code> 为 true（默认）时生效。不再直接创建 <code>RedisCacheDriver</code> 或通过 <code>RedisCacheRegistrar</code> 注册 store，而是注册工厂，由 <code>CacheManager</code> 根据配置按需创建（对齐 cache 模块的工厂模式）。</p>
 
 <p>创建的 bean：</p>
-<li><code>RedisCacheDriver</code> — Redis 缓存驱动（<code>@ConditionalOnMissingBean</code>，便于业务方覆盖），使用 <code>cache</code> 命名连接</li>
-<li><code>RedisCacheRegistrar</code> — 注册器，通过 <code>CacheManager.addStore(&quot;redis&quot;, ...)</code> 将 Redis 缓存驱动动态注册为 <code>redis</code> store，使用全局缓存前缀</li>
+<li><code>RedisCacheDriverFactory</code> — Redis 缓存驱动工厂（<code>@ConditionalOnMissingBean</code>，便于业务方覆盖），使用 <code>cache</code> 命名连接。注册为 <code>CacheDriverFactory</code>，由 <code>CacheManager</code> 在创建 <code>redis</code> store 时按需调用 <code>factory.create(config)</code> 创建驱动实例</li>
 <h4>类和方法</h4>
 <p>&gt; Module: <code>redis-cache</code> | Package: <code>com.weacsoft.jaravel.vendor.redis.cache</code> | Version: 0.1.2</p>
 
 <h5 id="redis-cache-overview">Overview</h5>
 
-<p>redis-cache 模块提供了基于 Redis 的缓存驱动实现（<code>RedisCacheDriver</code>），对齐 Laravel 的 <code>RedisStore</code>。它通过 <code>RedisManager</code> 获取指定命名连接的 Redis 命令接口，所有缓存键值均以 JSON 序列化存储，TTL 通过 Redis <code>SETEX</code>/<code>EXPIRE</code> 实现。由于所有实例共享同一 Redis，天然实现多机缓存同步。该模块在 Spring Boot 自动装配时将 <code>redis</code> store 注册到 <code>CacheManager</code>，业务方可通过 <code>Cache::store(&quot;redis&quot;)</code> 使用。</p>
+<p>redis-cache 模块提供了基于 Redis 的缓存驱动工厂（<code>RedisCacheDriverFactory</code>）和驱动实现（<code>RedisCacheDriver</code>），对齐 Laravel 的 <code>RedisStore</code>。<code>RedisCacheDriverFactory</code> 实现 <code>CacheDriverFactory</code> 接口，注册为 Spring Bean 后由 <code>CacheManager</code> 自动收集，在配置了 <code>redis</code> store 时按需创建 <code>RedisCacheDriver</code> 实例。驱动通过 <code>RedisManager</code> 获取指定命名连接的 Redis 命令接口，所有缓存键值均以 JSON 序列化存储，TTL 通过 Redis <code>SETEX</code>/<code>EXPIRE</code> 实现。由于所有实例共享同一 Redis，天然实现多机缓存同步。</p>
 
 <h5 id="redis-cache-classes--interfaces">Classes & Interfaces</h5>
+
+<h6 id="redis-cache-rediscachedriverfactory">RedisCacheDriverFactory</h6>
+<li><strong>Type</strong>: class</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.redis.cache</code></li>
+<li><strong>Implements</strong>: <code>com.weacsoft.jaravel.vendor.cache.CacheDriverFactory</code></li>
+<li><strong>Description</strong>: Redis 驱动工厂，支持 <code>&quot;redis&quot;</code> 驱动名。从 store 配置中读取 <code>connection</code>（Redis 连接名），若 store 配置未指定则回退到构造时传入的默认连接名（通常来自 <code>jaravel.cache.redis.connection</code>）。由 <code>RedisCacheAutoConfiguration</code> 在 <code>RedisManager</code> 存在时注册为 Bean，<code>CacheManager</code> 通过 <code>CacheDriverFactory</code> 自动收集并按需创建 redis store。</li>
+
+<h6 id="redis-cache-methods">Methods</h6>
+
+<table>
+<tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
+<tr><td>`RedisCacheDriverFactory`</td><td>`RedisManager redisManager`</td><td>-</td><td>构造工厂，默认连接名为 `cache`</td></tr>
+<tr><td>`RedisCacheDriverFactory`</td><td>`RedisManager redisManager, String defaultConnection`</td><td>-</td><td>构造工厂，指定默认连接名（store 配置未指定 connection 时回退到此值）</td></tr>
+<tr><td>`support`</td><td>`String driver`</td><td>`boolean`</td><td>判断是否支持该驱动名，`&quot;redis&quot;` 返回 true</td></tr>
+<tr><td>`create`</td><td>`Map<String, Object> config`</td><td>`CacheDriver`</td><td>创建 `RedisCacheDriver` 实例；从 config 读取 `connection`，未指定则回退到默认连接名</td></tr>
+</table>
+
+<h6 id="redis-cache-usage-example">Usage Example</h6>
+<pre><code>
+// 工厂由 RedisCacheAutoConfiguration 自动注册为 Bean
+// CacheManager 在配置了 redis store 时按需调用 factory.create(config)
+// 业务方无需手动创建工厂，只需配置 stores:
+
+// jaravel:
+//   cache:
+//     stores:
+//       redis:
+//         driver: redis
+//         connection: cache
+</code></pre>
 
 <h6 id="redis-cache-rediscachedriver">RedisCacheDriver</h6>
 <li><strong>Type</strong>: class</li>
@@ -15797,8 +15871,8 @@ boolean exists = driver.exists(&quot;user:1&quot;);
 driver.remove(&quot;user:1&quot;);
 
 // 通过 CacheManager 使用（自动装配后）
-Cache::store(&quot;redis&quot;).put(&quot;key&quot;, value, 60);
-Object val = Cache::store(&quot;redis&quot;).get(&quot;key&quot;);
+Cache.store(&quot;redis&quot;).put(&quot;key&quot;, value, 60);
+Object val = Cache.store(&quot;redis&quot;).get(&quot;key&quot;);
 </code></pre>
 
 <h6 id="redis-cache-rediscacheproperties">RedisCacheProperties</h6>
@@ -15813,7 +15887,7 @@ Object val = Cache::store(&quot;redis&quot;).get(&quot;key&quot;);
 <tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
 <tr><td>`getConnection`</td><td>-</td><td>`String`</td><td>获取 Redis 连接名，默认 `cache`</td></tr>
 <tr><td>`setConnection`</td><td>`String connection`</td><td>`void`</td><td>设置 Redis 连接名</td></tr>
-<tr><td>`isAutoRegister`</td><td>-</td><td>`boolean`</td><td>是否自动注册到 CacheManager，默认 true</td></tr>
+<tr><td>`isAutoRegister`</td><td>-</td><td>`boolean`</td><td>是否自动注册工厂到 CacheManager，默认 true</td></tr>
 <tr><td>`setAutoRegister`</td><td>`boolean autoRegister`</td><td>`void`</td><td>设置是否自动注册</td></tr>
 </table>
 
@@ -15830,35 +15904,23 @@ jaravel:
 <h6 id="redis-cache-rediscacheautoconfiguration">RedisCacheAutoConfiguration</h6>
 <li><strong>Type</strong>: class</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.redis.cache</code></li>
-<li><strong>Annotations</strong>: <code>@AutoConfiguration</code>, <code>@AutoConfigureAfter({CacheAutoConfiguration, RedisAutoConfiguration})</code>, <code>@ConditionalOnClass({RedisCacheDriver, CacheManager, RedisManager})</code>, <code>@ConditionalOnBean({RedisManager, CacheManager})</code>, <code>@ConditionalOnProperty(prefix = &quot;jaravel.cache.redis&quot;, name = &quot;auto-register&quot;, havingValue = &quot;true&quot;, matchIfMissing = true)</code></li>
-<li><strong>Description</strong>: Redis 缓存自动装配。当 <code>RedisManager</code> 和 <code>CacheManager</code> 均存在时，创建 <code>RedisCacheDriver</code> 并注册为 <code>redis</code> store 到 <code>CacheManager</code>。</li>
+<li><strong>Annotations</strong>: <code>@AutoConfiguration</code>, <code>@AutoConfigureAfter(RedisAutoConfiguration.class)</code>, <code>@ConditionalOnClass({RedisCacheDriver, CacheDriverFactory, RedisManager})</code>, <code>@ConditionalOnBean(RedisManager.class)</code>, <code>@ConditionalOnProperty(prefix = &quot;jaravel.cache.redis&quot;, name = &quot;auto-register&quot;, havingValue = &quot;true&quot;, matchIfMissing = true)</code></li>
+<li><strong>Description</strong>: Redis 缓存自动装配。当 <code>RedisManager</code> 存在时，创建 <code>RedisCacheDriverFactory</code> 并注册为 Spring Bean。<code>CacheAutoConfiguration</code> 会自动收集所有 <code>CacheDriverFactory</code> Bean 并注册到 <code>CacheManager</code>，由 <code>CacheManager</code> 在配置了 <code>redis</code> store 时按需创建驱动。不再直接创建 <code>RedisCacheDriver</code> 或通过注册器注册 store。</li>
 
 <h6 id="redis-cache-methods">Methods</h6>
 
 <table>
 <tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
-<tr><td>`redisCacheDriver`</td><td>`RedisManager redisManager, RedisCacheProperties properties`</td><td>`RedisCacheDriver`</td><td>创建 Redis 缓存驱动 Bean（`@Bean`, `@ConditionalOnMissingBean`）</td></tr>
-<tr><td>`redisCacheRegistrar`</td><td>`CacheManager cacheManager, RedisCacheDriver redisCacheDriver, CacheProperties cacheProperties`</td><td>`RedisCacheRegistrar`</td><td>将 Redis 缓存驱动注册到 CacheManager（`@Bean`）</td></tr>
+<tr><td>`redisCacheDriverFactory`</td><td>`RedisManager redisManager, RedisCacheProperties properties`</td><td>`RedisCacheDriverFactory`</td><td>创建 Redis 缓存驱动工厂 Bean（`@Bean`, `@ConditionalOnMissingBean`），使用 `cache` 命名连接</td></tr>
 </table>
 
 <h6 id="redis-cache-usage-example">Usage Example</h6>
 <pre><code>
-// 自动装配后，业务方通过 Cache facade 使用 Redis 缓存
+// 自动装配后，CacheManager 在配置了 redis store 时按需创建驱动
+// 业务方通过 Cache facade 使用 Redis 缓存
 // 或将 jaravel.cache.default-store 设为 redis 使其成为默认 store
-Cache::store(&quot;redis&quot;).put(&quot;key&quot;, value, 3600);
+Cache.store(&quot;redis&quot;).put(&quot;key&quot;, value, 3600);
 </code></pre>
-
-<h6 id="redis-cache-rediscacheautoconfigurationrediscacheregistrar">RedisCacheAutoConfiguration.RedisCacheRegistrar</h6>
-<li><strong>Type</strong>: class (static inner)</li>
-<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.redis.cache</code></li>
-<li><strong>Description</strong>: 注册器，将 Redis store 添加到 CacheManager。构造时调用 <code>cacheManager.addStore(&quot;redis&quot;, new DefaultCacheStore(driver, prefix))</code>。</li>
-
-<h6 id="redis-cache-methods">Methods</h6>
-
-<table>
-<tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
-<tr><td>`RedisCacheRegistrar`</td><td>`CacheManager cacheManager, RedisCacheDriver driver, String prefix`</td><td>-</td><td>构造时将 Redis store 注册到 CacheManager</td></tr>
-</table>
 </section>
 <h2 id="cli">CLI 工具</h2>
 <p class="module-desc">Artisan 命令行、代码生成、定时任务。</p>
