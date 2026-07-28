@@ -13194,7 +13194,7 @@ Object userId = Session::store(&quot;redis&quot;).get(&quot;user_id&quot;);
 <h3>cache — 缓存系统</h3>
 <p class="module-desc">ArrayStore 内存缓存，CacheManager 多 store 切换，remember/increment</p>
 <h4>简介</h4>
-<p>&gt; Jaravel-Vendor 的缓存模块，提供 Laravel 风格的 <code>Cache</code> 门面、<code>CacheStore</code> 仓库抽象、<code>ArrayCacheDriver</code>（内存）、<code>FileCacheDriver</code>（文件）、<code>DatabaseCacheDriver</code>（数据库）三种驱动，以及 <code>CacheManager</code> 多仓库管理。redis 驱动位于独立的 <code>redis-cache</code> 模块。包名统一为 <code>com.weacsoft.jaravel.vendor.cache</code>。</p>
+<p>&gt; Jaravel-Vendor 的缓存模块，提供 Laravel 风格的 <code>Cache</code> 门面、<code>CacheStore</code> 仓库抽象、<code>CacheDriverFactory</code> 驱动工厂（按需创建），内置 <code>ArrayCacheDriver</code>（内存）、<code>FileCacheDriver</code>（文件）、<code>DatabaseCacheDriver</code>（数据库）三种驱动，以及 <code>CacheManager</code> 多仓库管理。redis 驱动位于独立的 <code>redis-cache</code> 模块。采用<strong>工厂模式 + 配置驱动按需创建</strong>（对齐 Laravel <code>CacheManager</code>），只有配置在 <code>stores</code> 中的 Store 才会被创建，驱动实例在创建 Store 时才实例化。包名统一为 <code>com.weacsoft.jaravel.vendor.cache</code>。</p>
 
 <p>---</p>
 
@@ -13206,6 +13206,7 @@ Object userId = Session::store(&quot;redis&quot;).get(&quot;user_id&quot;);
 <li><a href="#cache-3-类总览">3. 类总览</a></li>
 <li><a href="#cache-4-cache-——-缓存门面">4. Cache —— 缓存门面</a></li>
 <li><a href="#cache-5-cachemanager-——-缓存管理器">5. CacheManager —— 缓存管理器</a></li>
+<li><a href="#cache-cachedriverfactory-——-驱动工厂契约">CacheDriverFactory —— 驱动工厂契约</a></li>
 <li><a href="#cache-6-cachestore-——-高级缓存操作契约">6. CacheStore —— 高级缓存操作契约</a></li>
 <li><a href="#cache-7-defaultcachestore-——-默认缓存仓库实现">7. DefaultCacheStore —— 默认缓存仓库实现</a></li>
 <li><a href="#cache-8-cachedriver-——-缓存驱动契约">8. CacheDriver —— 缓存驱动契约</a></li>
@@ -13226,25 +13227,28 @@ Object userId = Session::store(&quot;redis&quot;).get(&quot;user_id&quot;);
 <table>
 <tr><th>Laravel 特性</th><th>cache 对应实现</th><th>说明</th></tr>
 <tr><td>`Cache::` 门面</td><td>`Cache`</td><td>静态代理 `CacheManager`，委托给默认 store</td></tr>
-<tr><td>`Illuminate\Cache\CacheManager`</td><td>`CacheManager`</td><td>多命名 store 管理，按名称解析</td></tr>
+<tr><td>`Illuminate\Cache\CacheManager`</td><td>`CacheManager`</td><td>多命名 store 管理，按配置按需创建</td></tr>
 <tr><td>`Illuminate\Cache\Repository`</td><td>`CacheStore` / `DefaultCacheStore`</td><td>高级缓存操作（put/get/has/forget/remember 等）</td></tr>
 <tr><td>`Illuminate\Contracts\Cache\Store`</td><td>`CacheDriver`</td><td>底层 CRUD 契约（与存储介质交互）</td></tr>
+<tr><td>驱动工厂（按需创建）</td><td>`CacheDriverFactory`</td><td>`support(driver)` + `create(config)`，对齐 Auth 模块工厂模式</td></tr>
 <tr><td>`"array"` 驱动</td><td>`ArrayCacheDriver`</td><td>基于 `ConcurrentHashMap` 的内存缓存</td></tr>
 <tr><td>`"file"` 驱动</td><td>`FileCacheDriver`</td><td>基于文件系统的缓存（Jackson 序列化）</td></tr>
-<tr><td>`"database"` 驱动</td><td>`DatabaseCacheDriver`</td><td>基于关系型数据库的缓存（JdbcTemplate + 自动建表）</td></tr>
-<tr><td>`config/cache.php`</td><td>`CacheProperties`</td><td>`jaravel.cache.*` 配置</td></tr>
+<tr><td>`"database"` 驱动</td><td>`DatabaseCacheDriver`</td><td>基于关系型数据库的缓存（JdbcTemplate，不自动建表，用 `cache:table` 命令建表）</td></tr>
+<tr><td>`config/cache.php`</td><td>`CacheProperties`</td><td>`jaravel.cache.*` 配置，含 stores 数组</td></tr>
 </table>
 
 <h6 id="cache-架构分层">架构分层</h6>
 
 <pre><code>
 Cache（门面，静态 API）
-  └── CacheManager（多 store 管理）
+  └── CacheManager（多 store 管理，按配置按需创建）
+        ├── CacheDriverFactory（驱动工厂，support + create）
+        │     ├── ArrayCacheDriverFactory   → ArrayCacheDriver（内存）
+        │     ├── FileCacheDriverFactory    → FileCacheDriver（文件）
+        │     ├── DatabaseCacheDriverFactory → DatabaseCacheDriver（数据库）
+        │     └── RedisCacheDriverFactory   → RedisCacheDriver（redis-cache 模块）
         └── CacheStore / DefaultCacheStore（高级语义：remember/increment/add...）
               └── CacheDriver（底层 CRUD：put/get/exists/remove...）
-                    ├── ArrayCacheDriver（内存）
-                    ├── FileCacheDriver（文件）
-                    └── DatabaseCacheDriver（数据库）
 </code></pre>
 
 <p>TTL 单位统一为<strong>秒</strong>（对齐 Laravel），<code>ttl &lt;= 0</code> 表示永不过期。</p>
@@ -13285,15 +13289,20 @@ Cache（门面，静态 API）
 <pre><code>
 com.weacsoft.jaravel.vendor.cache
 ├── Cache                        // 缓存门面（静态 API，对齐 Cache::）
-├── CacheManager                 // 缓存管理器（多 store 管理，非 @Component）
+├── CacheManager                 // 缓存管理器（多 store 管理，按配置按需创建 store）
+├── CacheDriverFactory           // 驱动工厂契约（support + create，按需创建驱动）
 ├── CacheStore                   // 高级缓存操作契约（接口）
 ├── DefaultCacheStore            // 默认缓存仓库实现（带前缀，委托 CacheDriver）
 ├── CacheDriver                  // 缓存驱动契约（底层 CRUD 接口）
-├── ArrayCacheDriver             // 内存缓存驱动（ConcurrentHashMap + TTL）
-├── FileCacheDriver              // 文件缓存驱动（Jackson JSON 序列化）
-├── DatabaseCacheDriver          // 数据库缓存驱动（JdbcTemplate + 自动建表）
-├── CacheProperties              // 配置属性（jaravel.cache.*）
-└── CacheAutoConfiguration       // 自动装配（@Bean 注册驱动与管理器）
+├── driver/
+│   ├── ArrayCacheDriver         // 内存缓存驱动（ConcurrentHashMap + TTL）
+│   ├── ArrayCacheDriverFactory  // array 驱动工厂
+│   ├── FileCacheDriver          // 文件缓存驱动（Jackson JSON 序列化）
+│   ├── FileCacheDriverFactory   // file 驱动工厂
+│   ├── DatabaseCacheDriver      // 数据库缓存驱动（JdbcTemplate，不自动建表）
+│   └── DatabaseCacheDriverFactory // database 驱动工厂（需 DataSource）
+├── CacheProperties              // 配置属性（jaravel.cache.*，含 stores 配置）
+└── CacheAutoConfiguration       // 自动装配（注册驱动工厂 + 手动装配 CacheManager）
 </code></pre>
 
 <p>---</p>
@@ -13368,7 +13377,7 @@ Cache.store(&quot;file&quot;).put(&quot;report&quot;, reportData, 3600);
 
 <p><code>com.weacsoft.jaravel.vendor.cache.CacheManager</code></p>
 
-<p>对齐 Laravel <code>Illuminate\Cache\CacheManager</code>。维护多个命名 <code>CacheStore</code>，按名称解析 store 并提供默认 store。</p>
+<p>对齐 Laravel <code>Illuminate\Cache\CacheManager</code>。维护多个命名 <code>CacheStore</code>，按名称解析 store 并提供默认 store。采用<strong>工厂模式 + 配置驱动按需创建</strong>：启动时根据 CacheProperties.stores 配置创建 Store，只有配置在 stores 中的 Store 才会被创建，驱动实例在创建 Store 时才实例化。</p>
 
 <p>&gt; <strong>注意</strong>：本类<strong>不使用 <code>@Component</code></strong> 注解，而是由 <code>CacheAutoConfiguration</code> 以 <code>@Bean @ConditionalOnMissingBean</code> 方式注册。这是为了避免组件扫描创建空实例（构造时需注入各 store）。</p>
 
@@ -13380,7 +13389,10 @@ Cache.store(&quot;file&quot;).put(&quot;report&quot;, reportData, 3600);
 <tr><th>方法签名</th><th>说明</th></tr>
 <tr><td>`CacheStore store()`</td><td>返回默认 store</td></tr>
 <tr><td>`CacheStore store(String name)`</td><td>按名称返回指定 store，未注册则抛 `IllegalStateException`</td></tr>
-<tr><td>`void addStore(String name, CacheStore store)`</td><td>注册一个命名 store（命令式；推荐改用 @Bean + `Map&lt;String, CacheStore&gt;` 自动收集）</td></tr>
+<tr><td>`void addStore(String name, CacheStore store)`</td><td>手动注册一个命名 store（优先于配置式）</td></tr>
+<tr><td>`void registerDriverFactory(CacheDriverFactory factory)`</td><td>注册驱动工厂</td></tr>
+<tr><td>`void initFromConfig(CacheProperties properties)`</td><td>根据配置按需创建 Store</td></tr>
+<tr><td>`static CacheStore createDefaultStore()`</td><td>创建默认内存缓存 store（fallback 用）</td></tr>
 <tr><td>`void setDefaultStore(String name)`</td><td>设置默认 store 名称</td></tr>
 <tr><td>`String getDefaultStore()`</td><td>获取默认 store 名称</td></tr>
 </table>
@@ -13408,6 +13420,15 @@ public CacheStore redisStore(RedisCacheDriver redisDriver, CacheProperties prope
 // 命令式注册（仍支持，用于编程式场景）
 // cacheManager.addStore(&quot;redis&quot;, new DefaultCacheStore(redisDriver, &quot;jaravel&quot;));
 // cacheManager.setDefaultStore(&quot;redis&quot;);
+</code></pre>
+
+<h6 id="cache-cachemanager-按需创建">按需创建 Store</h6>
+<pre><code>
+// CacheManager 启动时根据 stores 配置创建 Store：
+// 1. stores 为空 → 只创建 default-store（driver 名 = store 名）
+// 2. stores 非空 → 为每个配置项创建对应的 Store
+// 3. 确保 default-store 一定存在
+manager.initFromConfig(properties);
 </code></pre>
 
 <p>---</p>
@@ -13672,9 +13693,9 @@ driver2.removeAll();         // 清空所有 .cache 文件
 
 <h5 id="cache-11-databasecachedriver-——-数据库缓存驱动">11. DatabaseCacheDriver —— 数据库缓存驱动</h5>
 
-<p><code>com.weacsoft.jaravel.vendor.cache.DatabaseCacheDriver</code></p>
+<p><code>com.weacsoft.jaravel.vendor.cache.driver.DatabaseCacheDriver</code></p>
 
-<p>对齐 Laravel <code>&quot;database&quot;</code> 缓存驱动。基于 Spring <code>JdbcTemplate</code> 将缓存条目持久化到 <code>jaravel_cache</code> 表，缓存值以 JSON 字符串存储。构造时自动建表（若不存在），自动适配 MySQL / PostgreSQL / SQLite / H2 / SQL Server 方言（建表与 upsert 语义）。适合需要跨进程共享、又不想引入 Redis 的场景。</p>
+<p>对齐 Laravel <code>&quot;database&quot;</code> 缓存驱动。基于 Spring <code>JdbcTemplate</code> 将缓存条目持久化到 <code>jaravel_cache</code> 表，缓存值以 JSON 字符串存储。<strong>不自动建表</strong>：需通过 <code>artisan cache:table</code> 命令或手动调用 <code>createTable()</code> 创建表。自动适配 MySQL / PostgreSQL / SQLite / H2 / SQL Server 方言（建表与 upsert 语义）。适合需要跨进程共享、又不想引入 Redis 的场景。</p>
 
 <h6 id="cache-构造器">构造器</h6>
 
@@ -13755,67 +13776,59 @@ driver.removeAll();        // 清空整张表
 
 <p><code>com.weacsoft.jaravel.vendor.cache.CacheAutoConfiguration</code></p>
 
-<p>Spring Boot 自动装配类，对齐 Laravel 缓存服务提供者。注册以下 Bean：</p>
+<p>Spring Boot 自动装配类，对齐 Laravel 缓存服务提供者。采用<strong>工厂模式 + 手动装配</strong>：注册驱动工厂（而非直接创建驱动/Store Bean），由 CacheManager 根据 stores 配置按需创建 Store。同时支持 Bean 声明式覆盖。</p>
 
+<h6>注册的 Bean</h6>
 <table>
 <tr><th>Bean</th><th>类型</th><th>说明</th></tr>
-<tr><td>`arrayCacheDriver`</td><td>`ArrayCacheDriver`</td><td>内存缓存驱动</td></tr>
-<tr><td>`fileCacheDriver`</td><td>`FileCacheDriver`</td><td>文件缓存驱动，目录取自 `CacheProperties.getFileDir()`</td></tr>
-<tr><td>`databaseCacheDriver`</td><td>`DatabaseCacheDriver`</td><td>数据库缓存驱动，表名取自 `CacheProperties.getDatabaseTable()`；仅当 classpath 存在 `JdbcTemplate` 且容器中存在 `DataSource` bean 时装配</td></tr>
-<tr><td>`databaseCacheStore`</td><td>`DefaultCacheStore`</td><td>database store，创建时注册到 `CacheManager`（仅当 `DatabaseCacheDriver` 存在时）</td></tr>
-<tr><td>`cacheManager`</td><td>`CacheManager`</td><td>缓存管理器，注册 `array` / `file` 两个 store 并设置默认 store；`database` store 在 `DatabaseCacheDriver` 存在时由内部配置类追加注册</td></tr>
+<tr><td><code>arrayCacheDriverFactory</code></td><td><code>ArrayCacheDriverFactory</code></td><td>内存缓存驱动工厂（始终注册）</td></tr>
+<tr><td><code>fileCacheDriverFactory</code></td><td><code>FileCacheDriverFactory</code></td><td>文件缓存驱动工厂（始终注册）</td></tr>
+<tr><td><code>databaseCacheDriverFactory</code></td><td><code>DatabaseCacheDriverFactory</code></td><td>数据库缓存驱动工厂；仅当 classpath 存在 JdbcTemplate 且容器中存在 DataSource bean 时装配</td></tr>
+<tr><td><code>cacheManager</code></td><td><code>CacheManager</code></td><td>缓存管理器，收集所有驱动工厂并根据 stores 配置按需创建 Store，同时收集用户声明的 CacheStore Bean</td></tr>
 </table>
 
-<h6 id="cache-装配逻辑">装配逻辑</h6>
-
+<h6>装配逻辑</h6>
 <pre><code>
 @Bean
 public CacheManager cacheManager(CacheProperties properties,
-                                 ArrayCacheDriver arrayCacheDriver,
-                                 FileCacheDriver fileCacheDriver) {
+                                 List&lt;CacheDriverFactory&gt; factories,
+                                 ObjectProvider&lt;Map&lt;String, CacheStore&gt;&gt; storeBeansProvider) {
     CacheManager manager = new CacheManager();
-    manager.addStore(&quot;array&quot;, new DefaultCacheStore(arrayCacheDriver, properties.getPrefix()));
-    manager.addStore(&quot;file&quot;, new DefaultCacheStore(fileCacheDriver, properties.getPrefix()));
-    manager.setDefaultStore(properties.getDefaultStore());
+    // 1. 注册所有驱动工厂（内置 + 第三方）
+    for (CacheDriverFactory factory : factories) {
+        manager.registerDriverFactory(factory);
+    }
+    // 2. 根据配置按需创建 Store
+    manager.initFromConfig(properties);
+    // 3. 收集用户声明的 CacheStore Bean，覆盖同名配置 Store
+    Map&lt;String, CacheStore&gt; storeBeans = storeBeansProvider.getIfAvailable(Map::of);
+    for (Map.Entry&lt;String, CacheStore&gt; entry : storeBeans.entrySet()) {
+        manager.addStore(entry.getKey(), entry.getValue());
+    }
     return manager;
 }
 </code></pre>
 
-<p><code>DatabaseCacheDriver</code> 依赖可选的 <code>spring-jdbc</code>，因此独立到内部 <code>DatabaseCacheConfiguration</code> 装配（<code>@ConditionalOnClass({DataSource.class, JdbcTemplate.class})</code> + <code>@ConditionalOnBean(DataSource.class)</code>），避免未引入 <code>spring-jdbc</code> 的应用加载该类时抛出 <code>NoClassDefFoundError</code>。当 <code>DatabaseCacheDriver</code> bean 存在时，<code>database</code> store 会被注册到 <code>CacheManager</code>：</p>
+<p><code>DatabaseCacheDriverFactory</code> 依赖可选的 <code>spring-jdbc</code>，因此独立到内部 <code>DatabaseCacheConfiguration</code> 装配（<code>@ConditionalOnClass({DataSource.class, JdbcTemplate.class})</code> + <code>@ConditionalOnBean(DataSource.class)</code>），避免未引入 <code>spring-jdbc</code> 的应用加载该类时抛出 <code>NoClassDefFoundError</code>。</p>
 
+<h6>三种 Store 注册方式</h6>
+<table>
+<tr><th>方式</th><th>用法</th><th>说明</th></tr>
+<tr><td>配置式</td><td><code>application.yml</code> 的 <code>stores</code></td><td>工厂模式按需创建，用到才构建</td></tr>
+<tr><td>Bean 声明式</td><td><code>@Bean(&quot;name&quot;)</code> 返回 <code>CacheStore</code></td><td>bean name 即 store name，覆盖同名配置 store</td></tr>
+<tr><td>Bean 声明式默认</td><td><code>@Bean</code> 返回 <code>DefaultCacheStore</code>，方法名匹配 <code>default-store</code></td><td>成为默认 store</td></tr>
+</table>
+
+<h6>第三方模块扩展</h6>
+<p>第三方模块（如 redis-cache）只需将 <code>CacheDriverFactory</code> 实现注册为 Spring Bean，<code>CacheAutoConfiguration</code> 会自动收集并注册到 <code>CacheManager</code>：</p>
 <pre><code>
-// 内部 DatabaseCacheConfiguration
+// redis-cache 模块的 RedisCacheAutoConfiguration
 @Bean
-public DatabaseCacheDriver databaseCacheDriver(DataSource dataSource, CacheProperties properties) {
-    return new DatabaseCacheDriver(dataSource, properties.getDatabaseTable());
-}
-
-@Bean
-public DefaultCacheStore databaseCacheStore(CacheManager cacheManager,
-                                            DatabaseCacheDriver databaseCacheDriver,
-                                            CacheProperties properties) {
-    DefaultCacheStore store = new DefaultCacheStore(databaseCacheDriver, properties.getPrefix());
-    cacheManager.addStore(&quot;database&quot;, store);
-    return store;
+public RedisCacheDriverFactory redisCacheDriverFactory(RedisManager redisManager) {
+    return new RedisCacheDriverFactory(redisManager);
 }
 </code></pre>
-
-<p>所有 Bean 均带 <code>@ConditionalOnMissingBean</code>，便于业务方覆盖。例如可自定义 <code>CacheManager</code> 注册 Redis store：</p>
-
-<pre><code>
-@Bean
-public CacheManager cacheManager(CacheProperties properties,
-                                 ArrayCacheDriver arrayCacheDriver,
-                                 FileCacheDriver fileCacheDriver,
-                                 RedisCacheDriver redisDriver) {
-    CacheManager manager = new CacheManager();
-    manager.addStore(&quot;array&quot;, new DefaultCacheStore(arrayCacheDriver, properties.getPrefix()));
-    manager.addStore(&quot;file&quot;, new DefaultCacheStore(fileCacheDriver, properties.getPrefix()));
-    manager.addStore(&quot;redis&quot;, new DefaultCacheStore(redisDriver, properties.getPrefix()));
-    manager.setDefaultStore(&quot;redis&quot;);
-    return manager;
-}
-</code></pre>
+<p>CacheManager 在创建 redis store 时遍历所有工厂，找到 support(&quot;redis&quot;) 返回 true 的工厂并调用 create(config) 创建驱动实例。</p>
 
 <p>---</p>
 
@@ -13826,9 +13839,22 @@ public CacheManager cacheManager(CacheProperties properties,
 <pre><code>
 jaravel:
   cache:
-    default-store: array          # 默认 store 名称：array / file / database
+    default-store: array          # 默认 store 名称：array / file / database / redis
     prefix: jaravel               # 缓存键前缀
-    file-dir: /tmp/jaravel        # file 驱动目录，空则使用系统临时目录
+    stores:                       # 按需配置 store（对齐 Laravel stores 数组）
+      array:
+        driver: array
+      file:
+        driver: file
+        dir: /tmp/jaravel-cache   # file 驱动目录（可选，覆盖顶层 file-dir）
+      database:
+        driver: database
+        table: jaravel_cache      # database 驱动表名（可选，覆盖顶层 database-table）
+      redis:                      # 需引入 redis-cache 模块
+        driver: redis
+        connection: cache         # Redis 连接名（可选，默认 cache）
+    # 顶层快捷配置（向后兼容，stores 中未指定时回退到此）
+    file-dir: &quot;&quot;                  # file 驱动目录，空串使用系统临时目录
     database-table: jaravel_cache # database 驱动表名
 </code></pre>
 
@@ -13837,8 +13863,15 @@ jaravel:
 <tr><td>`jaravel.cache.default-store`</td><td>`String`</td><td>`array`</td><td>默认 store 名称</td></tr>
 <tr><td>`jaravel.cache.prefix`</td><td>`String`</td><td>`jaravel`</td><td>缓存键前缀（实际键为 `prefix:key`）</td></tr>
 <tr><td>`jaravel.cache.file-dir`</td><td>`String`</td><td>`""`（空串）</td><td>file 驱动目录，空串表示使用 `${java.io.tmpdir}/jaravel-cache`</td></tr>
-<tr><td>`jaravel.cache.database-table`</td><td>`String`</td><td>`jaravel_cache`</td><td>database 驱动表名，构造时自动建表</td></tr>
+<tr><td>`jaravel.cache.database-table`</td><td>`String`</td><td>`jaravel_cache`</td><td>database 驱动表名，需通过 `cache:table` 命令建表</td></tr>
+<tr><td>`jaravel.cache.stores`</td><td>`Map&lt;String, StoreConfig&gt;`</td><td>`{}`（空）</td><td>store 配置映射，key 为 store 名称</td></tr>
+<tr><td>`jaravel.cache.stores.&lt;name&gt;.driver`</td><td>`String`</td><td>—</td><td>驱动名称：array / file / database / redis / 自定义</td></tr>
+<tr><td>`jaravel.cache.stores.&lt;name&gt;.dir`</td><td>`String`</td><td>—</td><td>file 驱动目录（覆盖顶层 file-dir）</td></tr>
+<tr><td>`jaravel.cache.stores.&lt;name&gt;.table`</td><td>`String`</td><td>—</td><td>database 驱动表名（覆盖顶层 database-table）</td></tr>
+<tr><td>`jaravel.cache.stores.&lt;name&gt;.connection`</td><td>`String`</td><td>—</td><td>redis 连接名</td></tr>
 </table>
+
+<p>&gt; <strong>stores 为空时</strong>：只创建 default-store 对应的默认 Store（driver 名与 store 名相同）。即默认行为是只创建一个 array Store。</p>
 
 <h6 id="cache-使用-database-驱动示例">使用 database 驱动示例</h6>
 
@@ -13881,7 +13914,7 @@ Object value = Cache.store(&quot;database&quot;).get(&quot;user:1&quot;);
 <h6 id="cache-cachemanager">CacheManager</h6>
 <li><strong>Type</strong>: class</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.cache</code></li>
-<li><strong>Description</strong>: 缓存管理器，对齐 Laravel <code>Illuminate\Cache\CacheManager</code>。维护多个命名 CacheStore（如 array、file、redis 等），按名称解析 store 并提供默认 store。线程安全。</li>
+<li><strong>Description</strong>: 缓存管理器，对齐 Laravel <code>Illuminate\Cache\CacheManager</code>。维护多个命名 CacheStore（如 array、file、redis 等），按名称解析 store 并提供默认 store。采用工厂模式 + 配置驱动按需创建：启动时根据 CacheProperties.stores 配置创建 Store，只有配置在 stores 中的 Store 才会被创建，驱动实例在创建 Store 时才实例化。线程安全。</li>
 
 <h6 id="cache-methods">Methods</h6>
 
@@ -13890,7 +13923,10 @@ Object value = Cache.store(&quot;database&quot;).get(&quot;user:1&quot;);
 <tr><td>`CacheManager`</td><td>无</td><td>构造方法</td><td>创建缓存管理器（默认 store 为 "array"）</td></tr>
 <tr><td>`store`</td><td>无</td><td>`CacheStore`</td><td>返回默认 store</td></tr>
 <tr><td>`store`</td><td>`String name`</td><td>`CacheStore`</td><td>按名称返回指定 store，未注册则抛异常</td></tr>
-<tr><td>`addStore`</td><td>`String name, CacheStore store`</td><td>`void`</td><td>注册一个命名 store（命令式；推荐改用 @Bean + Map&lt;String, CacheStore&gt; 自动收集）</td></tr>
+<tr><td>`addStore`</td><td>`String name, CacheStore store`</td><td>`void`</td><td>手动注册一个命名 store（优先于配置式）</td></tr>
+<tr><td>`registerDriverFactory`</td><td>`CacheDriverFactory factory`</td><td>`void`</td><td>注册驱动工厂</td></tr>
+<tr><td>`initFromConfig`</td><td>`CacheProperties properties`</td><td>`void`</td><td>根据配置按需创建 Store</td></tr>
+<tr><td>`createDefaultStore`</td><td>无（静态）</td><td>`CacheStore`</td><td>创建默认内存缓存 store（fallback 用）</td></tr>
 <tr><td>`setDefaultStore`</td><td>`String name`</td><td>`void`</td><td>设置默认 store 名称</td></tr>
 <tr><td>`getDefaultStore`</td><td>无</td><td>`String`</td><td>获取默认 store 名称</td></tr>
 </table>
@@ -13906,9 +13942,9 @@ cacheManager.store().put(&quot;key&quot;, &quot;value&quot;, 60);
 // 使用指定 store
 cacheManager.store(&quot;file&quot;).put(&quot;key&quot;, &quot;value&quot;, 3600);
 
-// 注册自定义 store（推荐：声明式 @Bean，Bean 名即 store 名，由 Map&lt;String, CacheStore&gt; 自动收集）
-// @Bean(&quot;redis&quot;) public CacheStore redisStore(...) { return new DefaultCacheStore(...); }
-// 命令式注册（仍支持）：cacheManager.addStore(&quot;redis&quot;, redisStore);
+// Store 由 CacheManager.initFromConfig() 根据 stores 配置按需创建
+// 也可手动注册（优先于配置式）：cacheManager.addStore(&quot;redis&quot;, redisStore);
+// 或声明式 @Bean：@Bean(&quot;redis&quot;) public CacheStore redisStore(...) { ... }
 cacheManager.setDefaultStore(&quot;redis&quot;);
 </code></pre>
 
@@ -13987,10 +14023,36 @@ User u = store.get(&quot;user:1&quot;, User.class);
 
 <p>---</p>
 
+<h6 id="cache-cachedriverfactory">CacheDriverFactory</h6>
+<li><strong>Type</strong>: interface</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.cache</code></li>
+<li><strong>Description</strong>: 驱动工厂契约，对齐工厂模式。按需创建驱动实例，由 CacheManager 在创建 Store 时调用。<code>support(driver)</code> 判断是否支持指定驱动名，<code>create(config)</code> 创建驱动实例。</li>
+
+<h6 id="cache-methods">Methods</h6>
+
+<table>
+<tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
+<tr><td>`support`</td><td>`String driver`</td><td>`boolean`</td><td>判断是否支持指定驱动名（如 "array"、"file"、"database"、"redis"）</td></tr>
+<tr><td>`create`</td><td>`Map<String, Object> config`</td><td>`CacheDriver`</td><td>根据配置创建驱动实例（含 dir/table/connection 等）</td></tr>
+</table>
+
+<h6 id="cache-usage-example">Usage Example</h6>
+<pre><code>
+// 内置工厂：ArrayCacheDriverFactory、FileCacheDriverFactory、DatabaseCacheDriverFactory
+// 第三方模块注册工厂（如 redis-cache）：
+@Bean
+public RedisCacheDriverFactory redisCacheDriverFactory(RedisManager redisManager) {
+    return new RedisCacheDriverFactory(redisManager);
+}
+// CacheManager 创建 store 时遍历所有工厂，找到 support("redis") 返回 true 的工厂并调用 create(config)
+</code></pre>
+
+<p>---</p>
+
 <h6 id="cache-arraycachedriver">ArrayCacheDriver</h6>
 <li><strong>Type</strong>: class</li>
-<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.cache</code></li>
-<li><strong>Description</strong>: 基于内存 ConcurrentHashMap 的缓存驱动，对齐 Laravel &quot;array&quot; 缓存驱动。线程安全，进程内有效，重启即失。读取时惰性清理过期条目。</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.cache.driver</code></li>
+<li><strong>Description</strong>: 基于内存 ConcurrentHashMap 的缓存驱动，对齐 Laravel &quot;array&quot; 缓存驱动。线程安全，进程内有效，重启即失。读取时惰性清理过期条目。由 ArrayCacheDriverFactory 按需创建。</li>
 <li><strong>Implements</strong>: <code>CacheDriver</code></li>
 
 <h6 id="cache-methods">Methods</h6>
@@ -14010,8 +14072,8 @@ User u = store.get(&quot;user:1&quot;, User.class);
 
 <h6 id="cache-filecachedriver">FileCacheDriver</h6>
 <li><strong>Type</strong>: class</li>
-<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.cache</code></li>
-<li><strong>Description</strong>: 基于文件系统的缓存驱动，对齐 Laravel &quot;file&quot; 缓存驱动。每个 key 对应目录下一个文件，使用 Jackson 序列化为 JSON。缓存键通过 UTF-8 十六进制编码作为文件名，保证可逆且文件系统安全。</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.cache.driver</code></li>
+<li><strong>Description</strong>: 基于文件系统的缓存驱动，对齐 Laravel &quot;file&quot; 缓存驱动。每个 key 对应目录下一个文件，使用 Jackson 序列化为 JSON。缓存键通过 UTF-8 十六进制编码作为文件名，保证可逆且文件系统安全。由 FileCacheDriverFactory 按需创建。</li>
 <li><strong>Implements</strong>: <code>CacheDriver</code></li>
 
 <h6 id="cache-methods">Methods</h6>
@@ -14043,16 +14105,18 @@ Object value = driver.get(&quot;user:1&quot;);
 
 <h6 id="cache-databasecachedriver">DatabaseCacheDriver</h6>
 <li><strong>Type</strong>: class</li>
-<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.cache</code></li>
-<li><strong>Description</strong>: 基于关系型数据库的缓存驱动，对齐 Laravel &quot;database&quot; 缓存驱动。使用 Spring <code>JdbcTemplate</code> 将缓存条目持久化到 <code>jaravel_cache</code> 表，缓存值以 JSON 字符串存储。构造时自动建表（若不存在），自动适配 MySQL / PostgreSQL / SQLite / H2 / SQL Server 方言（建表与 upsert 语义）。读取 / 存在性判断时命中已过期记录会异步删除。</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.cache.driver</code></li>
+<li><strong>Description</strong>: 基于关系型数据库的缓存驱动，对齐 Laravel &quot;database&quot; 缓存驱动。使用 Spring <code>JdbcTemplate</code> 将缓存条目持久化到 <code>jaravel_cache</code> 表，缓存值以 JSON 字符串存储。<b>不会自动建表</b>：需通过 <code>artisan cache:table</code> 命令或手动调用 <code>createTable()</code> 创建表。自动适配 MySQL / PostgreSQL / SQLite / H2 / SQL Server 方言（建表与 upsert 语义）。读取 / 存在性判断时命中已过期记录会异步删除。</li>
 <li><strong>Implements</strong>: <code>CacheDriver</code></li>
 
 <h6 id="cache-methods">Methods</h6>
 
 <table>
 <tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
-<tr><td>`DatabaseCacheDriver`</td><td>`DataSource dataSource`</td><td>构造方法</td><td>使用默认表名 `jaravel_cache`，构造时自动建表</td></tr>
-<tr><td>`DatabaseCacheDriver`</td><td>`DataSource dataSource, String table`</td><td>构造方法</td><td>指定表名，`null`/空串回退默认表名；构造时自动建表</td></tr>
+<tr><td>`DatabaseCacheDriver`</td><td>`DataSource dataSource`</td><td>构造方法</td><td>使用默认表名 `jaravel_cache`，不自动建表</td></tr>
+<tr><td>`DatabaseCacheDriver`</td><td>`DataSource dataSource, String table`</td><td>构造方法</td><td>指定表名，`null`/空串回退默认表名；不自动建表</td></tr>
+<tr><td>`getTable`</td><td>无</td><td>`String`</td><td>获取缓存表名</td></tr>
+<tr><td>`createTable`</td><td>无</td><td>`boolean`</td><td>创建缓存表（若不存在），由 artisan cache:table 命令调用</td></tr>
 <tr><td>`put`</td><td>`String key, Object value, long ttlSeconds`</td><td>`boolean`</td><td>序列化为 JSON，upsert 写入并设置过期时间</td></tr>
 <tr><td>`get`</td><td>`String key`</td><td>`Object`</td><td>查询记录，若已过期则异步删除并返回 `null`</td></tr>
 <tr><td>`exists`</td><td>`String key`</td><td>`boolean`</td><td>查询记录是否存在，若已过期则异步删除并返回 `false`</td></tr>
@@ -14075,8 +14139,10 @@ CREATE TABLE jaravel_cache (
 
 <h6 id="cache-usage-example">Usage Example</h6>
 <pre><code>
-// 通常由自动装配创建（需容器中存在 DataSource bean，且 classpath 存在 spring-jdbc）
+// 通常由 DatabaseCacheDriverFactory 创建（需容器中存在 DataSource bean，且 classpath 存在 spring-jdbc）
+// 工厂在 CacheManager.initFromConfig() 创建 database store 时按需实例化
 DatabaseCacheDriver driver = new DatabaseCacheDriver(dataSource, &quot;jaravel_cache&quot;);
+driver.createTable();                // 需手动建表或通过 artisan cache:table
 driver.put(&quot;user:1&quot;, user, 3600);   // 1 小时后过期
 Object value = driver.get(&quot;user:1&quot;);
 </code></pre>
@@ -14137,27 +14203,26 @@ Cache.store(&quot;file&quot;).put(&quot;key&quot;, &quot;value&quot;, 3600);
 
 <h6 id="cache-cacheautoconfiguration">CacheAutoConfiguration</h6>
 <li><strong>Type</strong>: class</li>
-<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.cache</code></li>
-<li><strong>Description</strong>: 缓存自动装配，注册 ArrayCacheDriver、FileCacheDriver 驱动 Bean 和 CacheManager（注册 array/file 两个 store）；database 驱动由内部 <code>DatabaseCacheConfiguration</code> 在 <code>DataSource</code> bean 存在时装配。</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.cache.autoconfigure</code></li>
+<li><strong>Description</strong>: 缓存自动装配，采用工厂模式 + 手动装配。注册 ArrayCacheDriverFactory、FileCacheDriverFactory 驱动工厂 Bean 和 CacheManager（收集所有工厂并根据 stores 配置按需创建 Store）；database 驱动工厂由内部 <code>DatabaseCacheConfiguration</code> 在 <code>DataSource</code> bean 存在时装配。同时支持 Bean 声明式覆盖。</li>
 <li><strong>Annotations</strong>: <code>@AutoConfiguration</code>, <code>@ConditionalOnClass(CacheManager.class)</code>, <code>@AutoConfigureAfter(DataSourceAutoConfiguration)</code>, <code>@EnableConfigurationProperties(CacheProperties.class)</code></li>
 
 <h6 id="cache-bean-methods">Bean Methods</h6>
 
 <table>
 <tr><th>Bean</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
-<tr><td>`arrayCacheDriver`</td><td>无</td><td>`ArrayCacheDriver`</td><td>内存缓存驱动（@Bean, @ConditionalOnMissingBean）</td></tr>
-<tr><td>`fileCacheDriver`</td><td>`CacheProperties properties`</td><td>`FileCacheDriver`</td><td>文件缓存驱动（@Bean, @ConditionalOnMissingBean）</td></tr>
-<tr><td>`databaseCacheDriver`</td><td>`DataSource, CacheProperties`</td><td>`DatabaseCacheDriver`</td><td>数据库缓存驱动（内部配置类，@ConditionalOnClass({DataSource, JdbcTemplate}), @ConditionalOnBean(DataSource), @ConditionalOnMissingBean）</td></tr>
-<tr><td>`databaseCacheStore`</td><td>`CacheManager, DatabaseCacheDriver, CacheProperties`</td><td>`DefaultCacheStore`</td><td>database store，创建时注册到 CacheManager（仅当 DatabaseCacheDriver 存在时）</td></tr>
-<tr><td>`cacheManager`</td><td>`CacheProperties, ArrayCacheDriver, FileCacheDriver`</td><td>`CacheManager`</td><td>缓存管理器，注册 array/file store（@Bean, @ConditionalOnMissingBean）；database store 由 databaseCacheStore 追加注册</td></tr>
+<tr><td>`arrayCacheDriverFactory`</td><td>无</td><td>`ArrayCacheDriverFactory`</td><td>内存缓存驱动工厂（@Bean, @ConditionalOnMissingBean）</td></tr>
+<tr><td>`fileCacheDriverFactory`</td><td>无</td><td>`FileCacheDriverFactory`</td><td>文件缓存驱动工厂（@Bean, @ConditionalOnMissingBean）</td></tr>
+<tr><td>`databaseCacheDriverFactory`</td><td>`DataSource`</td><td>`DatabaseCacheDriverFactory`</td><td>数据库缓存驱动工厂（内部配置类 DatabaseCacheConfiguration，@ConditionalOnClass({DataSource, JdbcTemplate}), @ConditionalOnBean(DataSource), @ConditionalOnMissingBean）</td></tr>
+<tr><td>`cacheManager`</td><td>`CacheProperties, List<CacheDriverFactory>, ObjectProvider<Map<String, CacheStore>>`</td><td>`CacheManager`</td><td>缓存管理器，注册所有驱动工厂 + 根据 stores 配置按需创建 Store + 收集用户声明的 CacheStore Bean（@Bean, @ConditionalOnMissingBean）</td></tr>
 </table>
 
 <p>---</p>
 
 <h6 id="cache-cacheproperties">CacheProperties</h6>
 <li><strong>Type</strong>: class</li>
-<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.cache</code></li>
-<li><strong>Description</strong>: 缓存配置属性，前缀 <code>jaravel.cache</code>，对齐 Laravel <code>config/cache.php</code>。</li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.cache.autoconfigure</code></li>
+<li><strong>Description</strong>: 缓存配置属性，前缀 <code>jaravel.cache</code>，对齐 Laravel <code>config/cache.php</code>。含 stores 数组配置，支持按需创建 Store。</li>
 <li><strong>Annotations</strong>: <code>@ConfigurationProperties(prefix = &quot;jaravel.cache&quot;)</code></li>
 
 <h6 id="cache-properties">Properties</h6>
@@ -14166,8 +14231,9 @@ Cache.store(&quot;file&quot;).put(&quot;key&quot;, &quot;value&quot;, 3600);
 <tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr>
 <tr><td>`defaultStore`</td><td>`String`</td><td>`"array"`</td><td>默认 store 名称</td></tr>
 <tr><td>`prefix`</td><td>`String`</td><td>`"jaravel"`</td><td>缓存键前缀</td></tr>
-<tr><td>`fileDir`</td><td>`String`</td><td>`""`</td><td>file 驱动目录，空则使用系统临时目录</td></tr>
-<tr><td>`databaseTable`</td><td>`String`</td><td>`"jaravel_cache"`</td><td>database 驱动表名，构造时自动建表</td></tr>
+<tr><td>`stores`</td><td>`Map<String, StoreConfig>`</td><td>`{}`（空）</td><td>store 配置映射，key 为 store 名称，按需创建 Store</td></tr>
+<tr><td>`fileDir`</td><td>`String`</td><td>`""`</td><td>file 驱动目录（顶层快捷配置），空则使用系统临时目录</td></tr>
+<tr><td>`databaseTable`</td><td>`String`</td><td>`"jaravel_cache"`</td><td>database 驱动表名（顶层快捷配置），不会自动建表，需通过 artisan cache:table 命令创建</td></tr>
 </table>
 
 <h6 id="cache-usage-example">Usage Example</h6>
@@ -14175,10 +14241,17 @@ Cache.store(&quot;file&quot;).put(&quot;key&quot;, &quot;value&quot;, 3600);
 # application.yml
 jaravel:
   cache:
-    default-store: database
-    prefix: myapp
-    file-dir: /var/cache/myapp
-    database-table: app_cache
+    default-store: array
+    prefix: jaravel
+    stores:
+      array:
+        driver: array
+      file:
+        driver: file
+        dir: /tmp/jaravel-cache
+      database:
+        driver: database
+        table: app_cache
 </code></pre>
 </section>
 <section id="cat-event">
