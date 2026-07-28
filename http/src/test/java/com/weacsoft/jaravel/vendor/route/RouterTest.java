@@ -383,4 +383,102 @@ class RouterTest {
             throw new RuntimeException(e);
         }
     }
+
+    // ========== 分组中间件测试（Group.MIDDLEWARE） ==========
+
+    @Test
+    void testGroupWithSingleMiddlewareAlias() {
+        Middleware authMw = (request, next, params) -> ResponseBuilder.ok();
+        MiddlewareAliasRegistry.getGlobal().register("auth", authMw);
+
+        Router router = new Router();
+        router.group(Map.of(
+                Route.Group.PREFIX, "api",
+                Route.Group.MIDDLEWARE, "auth"
+        ), r -> {
+            r.get("/users", NOOP);
+            r.get("/posts", NOOP);
+        });
+
+        List<Route> routes = router.getAllRoutes();
+        assertEquals(2, routes.size());
+        for (Route route : routes) {
+            List<Middleware> mws = route.getMiddlewares();
+            assertEquals(1, mws.size(), "每个分组内路由应有 1 个分组中间件");
+            assertNotNull(mws.get(0), "别名中间件应被解析");
+        }
+    }
+
+    @Test
+    void testGroupWithMultipleMiddlewareAliases() {
+        Middleware authMw = (request, next, params) -> ResponseBuilder.ok();
+        Middleware logMw = (request, next, params) -> ResponseBuilder.ok();
+        MiddlewareAliasRegistry.getGlobal().register("auth", authMw);
+        MiddlewareAliasRegistry.getGlobal().register("log", logMw);
+
+        Router router = new Router();
+        router.group(Map.of(
+                Route.Group.PREFIX, "admin",
+                Route.Group.MIDDLEWARE, new String[]{"auth:admin", "log"}
+        ), r -> {
+            r.get("/home", NOOP);
+        });
+
+        List<Route> routes = router.getAllRoutes();
+        assertEquals(1, routes.size());
+        List<Middleware> mws = routes.get(0).getMiddlewares();
+        assertEquals(2, mws.size(), "应有 2 个分组中间件");
+        assertNotNull(mws.get(0), "auth:admin 应被解析");
+        assertNotNull(mws.get(1), "log 应被解析");
+    }
+
+    @Test
+    void testGroupMiddlewareInheritedByNestedGroups() {
+        Middleware authMw = (request, next, params) -> ResponseBuilder.ok();
+        Middleware logMw = (request, next, params) -> ResponseBuilder.ok();
+        MiddlewareAliasRegistry.getGlobal().register("auth", authMw);
+        MiddlewareAliasRegistry.getGlobal().register("log", logMw);
+
+        Router router = new Router();
+        router.group(Map.of(
+                Route.Group.PREFIX, "api",
+                Route.Group.MIDDLEWARE, "auth:api"
+        ), api -> {
+            api.group(Map.of(
+                    Route.Group.PREFIX, "v1",
+                    Route.Group.MIDDLEWARE, "log"
+            ), v1 -> {
+                v1.get("/users", NOOP);
+            });
+        });
+
+        List<Route> routes = router.getAllRoutes();
+        assertEquals(1, routes.size());
+        List<Middleware> mws = routes.get(0).getMiddlewares();
+        // 外层 auth + 内层 log = 2 个中间件
+        assertEquals(2, mws.size(), "嵌套分组的中间件应合并");
+    }
+
+    @Test
+    void testGroupMiddlewareWithPrefixCombined() {
+        Middleware authMw = (request, next, params) -> ResponseBuilder.ok();
+        MiddlewareAliasRegistry.getGlobal().register("auth", authMw);
+
+        Router router = new Router();
+        router.group(Map.of(
+                Route.Group.PREFIX, "admin",
+                Route.Group.NAMESPACE, "Admin",
+                Route.Group.MIDDLEWARE, "auth:admin"
+        ), r -> {
+            r.get("/dashboard", NOOP).name("dashboard");
+        });
+
+        List<Route> routes = router.getAllRoutes();
+        assertEquals(1, routes.size());
+        Route route = routes.get(0);
+        assertEquals("/admin/dashboard", route.getFullUri());
+        assertEquals("Admin", route.getFullNamespace());
+        List<Middleware> mws = route.getMiddlewares();
+        assertEquals(1, mws.size(), "应有 1 个分组中间件");
+    }
 }

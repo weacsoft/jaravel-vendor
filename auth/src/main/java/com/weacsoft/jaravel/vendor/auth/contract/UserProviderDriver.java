@@ -50,17 +50,18 @@ import java.util.Map;
  *         credential-field: username
  * </pre>
  *
- * <h3>编程式注册（{@code @Bean} 手动声明）</h3>
- * 若需要完全控制提供者的创建过程（如自定义构造参数），可直接在 Config 类中用 {@code @Bean} 声明：
+ * <h3>注解声明式注册（推荐）</h3>
+ * 若需要完全控制提供者的创建过程（如自定义构造参数），可直接在 Config 类中用
+ * {@link com.weacsoft.jaravel.vendor.auth.RegisterProvider @RegisterProvider} 注解声明：
  * <pre>
- * &#64;Bean("users")
+ * &#64;RegisterProvider("users")
  * public UserProvider usersProvider(User userModel) {
  *     return new EloquentUserProvider&lt;&gt;(userModel, "number");
  * }
  * </pre>
- * {@code @Bean("users")} 的 bean name 即 provider name，{@code AuthAutoConfiguration} 通过
- * {@code Map<String, UserProvider>} 自动收集并注册到 {@link com.weacsoft.jaravel.vendor.auth.AuthManager}。
- * 编程式注册优先于配置式注册（同名时覆盖）。
+ * {@code @RegisterProvider("users")} 的 value 即 provider name，{@link com.weacsoft.jaravel.vendor.auth.autoconfigure.AuthRegistrar}
+ * 扫描注解方法并注册到 {@link com.weacsoft.jaravel.vendor.auth.AuthManager}。
+ * 注解声明优先于配置式注册（同名时覆盖），且不会注册为 Spring Bean，避免 bean name 冲突。
  */
 public interface UserProviderDriver {
 

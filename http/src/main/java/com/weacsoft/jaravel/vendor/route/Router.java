@@ -367,21 +367,76 @@ public class Router {
         return groupRouter;
     }
 
-    public Router group(Map<Route.Group, String> params, Consumer<Router> router) {
+    /**
+     * 创建路由分组，支持 prefix / namespace / name / middleware 参数。
+     * <p>
+     * 对齐 Laravel {@code Route::group(['prefix' => 'admin', 'middleware' => ['auth:admin']], ...)}。
+     * <p>
+     * {@link Route.Group#MIDDLEWARE} 的值支持以下类型：
+     * <ul>
+     *   <li>{@code String} — 单个别名（如 {@code "auth:api"}）</li>
+     *   <li>{@code String[]} — 多个别名（如 {@code new String[]{"auth:admin", "permission:admin"}}）</li>
+     *   <li>{@code List<String>} — 别名列表</li>
+     * </ul>
+     *
+     * <h3>示例</h3>
+     * <pre>
+     * router.group(Map.of(
+     *     Route.Group.PREFIX, "admin",
+     *     Route.Group.MIDDLEWARE, new String[]{"auth:admin", "permission:admin"}
+     * ), admin -> {
+     *     admin.get("/home", "HomeController::index");
+     * });
+     * </pre>
+     *
+     * @param params 分组参数（prefix / namespace / name / middleware）
+     * @param router 回调（接收子 Router）
+     * @return 子 Router
+     */
+    public Router group(Map<Route.Group, ?> params, Consumer<Router> router) {
         Router groupRouter = new Router();
         groupRouter.setParentRouter(this);
         params.forEach((key, value) -> {
             if (key.equals(Route.Group.NAMESPACE)) {
-                groupRouter.setNamespace(value);
+                groupRouter.setNamespace((String) value);
             } else if (key.equals(Route.Group.PREFIX)) {
-                groupRouter.setPrefix(value);
+                groupRouter.setPrefix((String) value);
             } else if (key.equals(Route.Group.NAME)) {
-                groupRouter.setName(value);
+                groupRouter.setName((String) value);
+            } else if (key.equals(Route.Group.MIDDLEWARE)) {
+                applyGroupMiddleware(groupRouter, value);
             }
         });
         router.accept(groupRouter);
         routers.add(groupRouter);
         return groupRouter;
+    }
+
+    /**
+     * 将中间件参数应用到分组 Router。
+     */
+    @SuppressWarnings("unchecked")
+    private void applyGroupMiddleware(Router groupRouter, Object value) {
+        if (value instanceof String) {
+            groupRouter.middleware((String) value);
+        } else if (value instanceof String[]) {
+            groupRouter.middleware((String[]) value);
+        } else if (value instanceof List) {
+            List<String> list = (List<String>) value;
+            groupRouter.middleware(list.toArray(new String[0]));
+        }
+    }
+
+    /**
+     * 添加子路由器（供静态门面 {@link Route#group(Map, Runnable)} 使用）。
+     * <p>
+     * 通常不需要手动调用，路由组通过 {@link #group(Map, Consumer)} 自动添加。
+     *
+     * @param router 子路由器
+     */
+    public void addGroupRouter(Router router) {
+        router.setParentRouter(this);
+        routers.add(router);
     }
 
     public List<Route> getAllRoutes() {

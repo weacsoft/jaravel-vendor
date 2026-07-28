@@ -172,6 +172,7 @@ public class Route {
     public enum Group {
         NAMESPACE,
         PREFIX,
-        NAME
+        NAME,
+        MIDDLEWARE
     }
 }

@@ -25,11 +25,13 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * 找到第一个匹配的驱动并调用 {@code create}。第三方模块只需将驱动实现注册为 Spring Bean，
  * {@code AuthAutoConfiguration} 会自动收集并注册到 AuthManager。
  *
- * <h3>三种注册方式（可共存，编程式优先）</h3>
+ * <h3>三种注册方式（可共存，注解声明优先）</h3>
  * <ol>
- *   <li><b>编程式 @Bean</b>：在 Config 类中 {@code @Bean("users")} 声明 UserProvider，
- *       {@code @Bean("web")} 声明 {@link com.weacsoft.jaravel.vendor.auth.contract.GuardDefinition}。
- *       AuthAutoConfiguration 通过 {@code Map<String, ?>} 自动收集</li>
+ *   <li><b>注解声明式</b>（推荐）：在 Config 类中用
+ *       {@link com.weacsoft.jaravel.vendor.auth.RegisterProvider @RegisterProvider} 声明 UserProvider，
+ *       {@link com.weacsoft.jaravel.vendor.auth.RegisterGuard @RegisterGuard} 声明
+ *       {@link com.weacsoft.jaravel.vendor.auth.contract.GuardDefinition}。
+ *       {@link com.weacsoft.jaravel.vendor.auth.autoconfigure.AuthRegistrar} 扫描注解并注册</li>
  *   <li><b>配置式</b>：通过 {@code jaravel.auth.providers} 和 {@code jaravel.auth.guards} 配置，
  *       由工厂驱动按配置自动创建</li>
  *   <li><b>手动调用</b>：直接调用 {@link #registerProvider} / {@link #registerGuard}（向后兼容）</li>

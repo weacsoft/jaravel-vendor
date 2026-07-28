@@ -2,14 +2,11 @@ package com.weacsoft.jaravel.vendor.auth.autoconfigure;
 
 import com.weacsoft.jaravel.vendor.auth.AuthManager;
 import com.weacsoft.jaravel.vendor.auth.contract.AuthGuardDriver;
-import com.weacsoft.jaravel.vendor.auth.contract.GuardDefinition;
 import com.weacsoft.jaravel.vendor.auth.contract.SessionStore;
-import com.weacsoft.jaravel.vendor.auth.contract.UserProvider;
 import com.weacsoft.jaravel.vendor.auth.contract.UserProviderDriver;
 import com.weacsoft.jaravel.vendor.auth.filter.AuthLifecycleFilter;
 import com.weacsoft.jaravel.vendor.auth.guard.SessionGuardDriver;
 import com.weacsoft.jaravel.vendor.auth.session.CookieSessionStore;
-import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -19,10 +16,9 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 
 import java.util.List;
-import java.util.Map;
 
 /**
- * 认证自动装配：注册 AuthManager、生命周期过滤器、内置 Session 存储和守卫驱动，并自动收集所有驱动 Bean。
+ * 认证自动装配：注册 AuthManager、生命周期过滤器、内置 Session 存储和守卫驱动。
  * <p>
  * <b>双层工厂模式</b>：
  * <ul>
@@ -31,15 +27,29 @@ import java.util.Map;
  * </ul>
  * 两者均由 Spring 自动收集，第三方模块只需实现接口并注册为 Bean。
  *
- * <h3>三种注册方式（可共存，编程式优先）</h3>
+ * <h3>三种注册方式（可共存，注解声明优先）</h3>
  * <ol>
- *   <li><b>编程式 @Bean</b>：{@code @Bean("users")} 声明 UserProvider，
- *       {@code @Bean("web")} 声明 GuardDefinition。通过 {@code Map<String, ?>} 自动收集</li>
+ *   <li><b>注解声明式</b>（推荐）：在 Config 类中用
+ *       {@link com.weacsoft.jaravel.vendor.auth.RegisterGuard @RegisterGuard} 和
+ *       {@link com.weacsoft.jaravel.vendor.auth.RegisterProvider @RegisterProvider}
+ *       注解方法。不注册为 Spring Bean，避免 bean name 冲突。
+ *       可通过 {@code defaultGuard = true} 标记默认守卫</li>
  *   <li><b>配置式</b>：{@code jaravel.auth.providers} 和 {@code jaravel.auth.guards} 配置，
  *       由工厂驱动按配置创建</li>
  *   <li><b>手动调用</b>：直接调用 {@link AuthManager#registerProvider} / {@link AuthManager#registerGuard}</li>
  * </ol>
- * 编程式 @Bean 优先于配置式（同名时覆盖）。
+ * 注解声明优先于配置式（同名时覆盖）。
+ *
+ * <h3>注册流程</h3>
+ * 所有注册逻辑由 {@link AuthRegistrar} 在所有单例 Bean 初始化完成后统一执行：
+ * <ol>
+ *   <li>注册提供者驱动（{@link UserProviderDriver}）</li>
+ *   <li>注册配置式提供者（通过工厂驱动创建）</li>
+ *   <li>扫描 {@code @RegisterProvider} 注解方法，注册注解声明式提供者</li>
+ *   <li>注册配置式守卫</li>
+ *   <li>扫描 {@code @RegisterGuard} 注解方法，注册注解声明式守卫（含默认守卫标记）</li>
+ *   <li>注册守卫驱动（{@link AuthGuardDriver}）</li>
+ * </ol>
  *
  * <h3>Session 存储是全局配置</h3>
  * {@link SessionStore} 作为全局唯一的 Bean 注入到 {@link SessionGuardDriver}。
@@ -49,7 +59,7 @@ import java.util.Map;
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @ConditionalOnClass(AuthManager.class)
 @EnableConfigurationProperties(AuthProperties.class)
-public class AuthAutoConfiguration implements SmartInitializingSingleton {
+public class AuthAutoConfiguration {
 
     @Autowired
     private AuthProperties properties;
@@ -61,25 +71,6 @@ public class AuthAutoConfiguration implements SmartInitializingSingleton {
     /** 所有已注册的提供者驱动（Spring 自动注入，含 database 模块的 EloquentUserProviderDriver 等） */
     @Autowired
     private List<UserProviderDriver> providerDrivers;
-
-    /** 编程式注册的 UserProvider（bean name 即 provider name） */
-    @Autowired(required = false)
-    private Map<String, UserProvider> userProviders;
-
-    /** 编程式注册的 GuardDefinition（bean name 即 guard name） */
-    @Autowired(required = false)
-    private Map<String, GuardDefinition> guardDefinitions;
-
-    /**
-     * 容器中的 AuthManager Bean。
-     * <p>
-     * 不能直接调用 {@link #authManager()} 方法获取实例：因为 {@code @AutoConfiguration}
-     * 等价于 {@code @Configuration(proxyBeanMethods = false)}，不会生成 CGLIB 代理，
-     * 直接调用 {@code @Bean} 方法会 new 出一个脱离容器管理的临时对象，导致注册的守卫驱动丢失。
-     * 必须通过依赖注入获取容器中实际管理的单例 Bean。
-     */
-    @Autowired
-    private AuthManager authManager;
 
     @Bean
     @ConditionalOnMissingBean
@@ -120,54 +111,16 @@ public class AuthAutoConfiguration implements SmartInitializingSingleton {
     }
 
     /**
-     * 所有单例 Bean 就绪后，完成认证配置的自动注册。
-     * <p>
-     * 注册顺序（编程式优先于配置式）：
-     * <ol>
-     *   <li>注册提供者驱动（{@link UserProviderDriver}）</li>
-     *   <li>注册配置式提供者（通过工厂驱动创建）</li>
-     *   <li>注册编程式提供者（{@code @Bean} 声明，覆盖同名配置式）</li>
-     *   <li>注册配置式守卫</li>
-     *   <li>注册编程式守卫（{@code @Bean} 声明，覆盖同名配置式）</li>
-     *   <li>注册守卫驱动（{@link AuthGuardDriver}）</li>
-     * </ol>
+     * 注册 {@link AuthRegistrar}，负责在所有单例 Bean 初始化完成后统一执行认证配置注册：
+     * <ul>
+     *   <li>提供者驱动 / 守卫驱动注册</li>
+     *   <li>配置式 provider / guard 注册</li>
+     *   <li>{@code @RegisterProvider} / {@code @RegisterGuard} 注解扫描注册（含默认守卫标记）</li>
+     * </ul>
      */
-    @Override
-    public void afterSingletonsInstantiated() {
-        // 1. 注册提供者驱动
-        for (UserProviderDriver driver : providerDrivers) {
-            authManager.registerProviderDriver(driver);
-        }
-
-        // 2. 配置式提供者注册（通过工厂驱动创建）
-        if (properties.getProviders() != null) {
-            properties.getProviders().forEach((name, cfg) -> {
-                authManager.registerProvider(name, cfg.getDriver(), cfg.toConfigMap());
-            });
-        }
-
-        // 3. 编程式提供者注册（@Bean 声明，覆盖同名配置式）
-        if (userProviders != null) {
-            userProviders.forEach(authManager::registerProvider);
-        }
-
-        // 4. 配置式守卫注册
-        if (properties.getGuards() != null) {
-            properties.getGuards().forEach((name, cfg) -> {
-                authManager.registerGuard(name, cfg.getDriver(), cfg.getProvider());
-            });
-        }
-
-        // 5. 编程式守卫注册（@Bean 声明，覆盖同名配置式）
-        if (guardDefinitions != null) {
-            guardDefinitions.forEach((name, def) -> {
-                authManager.registerGuard(name, def.driver(), def.provider(), def.config());
-            });
-        }
-
-        // 6. 守卫驱动注册（使用容器中注入的 AuthManager 单例）
-        for (AuthGuardDriver driver : guardDrivers) {
-            authManager.registerGuardDriver(driver);
-        }
+    @Bean
+    @ConditionalOnMissingBean(AuthRegistrar.class)
+    public AuthRegistrar authRegistrar(AuthManager authManager) {
+        return new AuthRegistrar(properties, guardDrivers, providerDrivers, authManager);
     }
 }
