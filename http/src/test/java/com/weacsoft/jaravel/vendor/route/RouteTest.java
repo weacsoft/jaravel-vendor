@@ -1,7 +1,6 @@
 package com.weacsoft.jaravel.vendor.route;
 
 import com.weacsoft.jaravel.vendor.http.controller.Controllers;
-import com.weacsoft.jaravel.vendor.http.controller.response.Response;
 import com.weacsoft.jaravel.vendor.http.controller.response.ResponseBuilder;
 import com.weacsoft.jaravel.vendor.http.middleware.Middleware;
 import com.weacsoft.jaravel.vendor.http.middleware.MiddlewareAliasRegistry;
@@ -15,8 +14,9 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * {@link Route} URI 生成、fullUri 合并、命名空间与中间件测试。
- * 包含直接中间件和别名中间件两种模式。
+ * {@link Route} 静态路由门面测试。
+ * <p>
+ * 覆盖静态路由注册、无参闭包分组、流式构建器、嵌套分组中间件、ThreadLocal 上下文管理。
  */
 class RouteTest {
 
@@ -25,264 +25,217 @@ class RouteTest {
     @BeforeEach
     void setUp() {
         MiddlewareAliasRegistry.getGlobal().clear();
+        Router rootRouter = new Router();
+        Route.setRootRouter(rootRouter);
     }
 
     @AfterEach
     void tearDown() {
         MiddlewareAliasRegistry.getGlobal().clear();
+        Route.clearContext();
     }
 
     @Test
-    void testBasicRouteProperties() {
-        Router router = new Router();
-        Route route = router.get("/users/{id}", NOOP);
+    void testStaticGetRegistration() {
+        Route.get("/users", "UserController::list");
 
-        assertEquals("GET", route.getMethod());
-        assertEquals("/users/{id}", route.getUri());
-        assertEquals("/users/{id}", route.getFullUri(), "无前缀时 fullUri 应等于 uri");
-        assertNotNull(route.getAction());
+        Router root = Route.currentRouter();
+        List<RouteDefinition> routes = root.getAllRoutes();
+        assertEquals(1, routes.size());
+        assertEquals("GET", routes.get(0).getMethod());
+        assertEquals("/users", routes.get(0).getUri());
     }
 
     @Test
-    void testFullUriWithRouterPrefix() {
-        Router router = new Router();
-        router.setPrefix("api");
-        Route route = router.get("/users", NOOP);
+    void testStaticMultipleHttpMethods() {
+        Route.get("/users", "UserController::list");
+        Route.post("/users", "UserController::create");
+        Route.put("/users/1", "UserController::update");
+        Route.delete("/users/1", "UserController::delete");
+        Route.patch("/users/1", "UserController::patch");
 
-        assertEquals("/api/users", route.getFullUri());
+        Router root = Route.currentRouter();
+        List<RouteDefinition> routes = root.getAllRoutes();
+        assertEquals(5, routes.size());
     }
 
     @Test
-    void testFullUriWithGroupPrefix() {
-        Router router = new Router();
-        router.group(Map.of(Route.Group.PREFIX, "api/v1"), r -> {
-            r.get("/users", NOOP);
-            r.get("/posts/{id}", NOOP);
+    void testStaticGroupWithRunnable() {
+        Route.group(Map.of(Route.Group.PREFIX, "api"), () -> {
+            Route.get("/users", "UserController::list");
+            Route.post("/users", "UserController::create");
         });
 
-        List<Route> routes = router.getAllRoutes();
+        Router root = Route.currentRouter();
+        List<RouteDefinition> routes = root.getAllRoutes();
+        assertEquals(2, routes.size());
+        for (RouteDefinition route : routes) {
+            assertTrue(route.getFullUri().startsWith("/api/"),
+                    "分组前缀应合并, 实际: " + route.getFullUri());
+        }
+    }
+
+    @Test
+    void testStaticNestedGroupsWithRunnable() {
+        Route.group(Map.of(Route.Group.PREFIX, "api"), () -> {
+            Route.group(Map.of(Route.Group.PREFIX, "v1"), () -> {
+                Route.get("/users", "UserController::list");
+            });
+        });
+
+        Router root = Route.currentRouter();
+        List<RouteDefinition> routes = root.getAllRoutes();
+        assertEquals(1, routes.size());
         assertEquals("/api/v1/users", routes.get(0).getFullUri());
-        assertEquals("/api/v1/posts/{id}", routes.get(1).getFullUri());
     }
 
     @Test
-    void testRouteNameAndFullName() {
-        Router router = new Router();
-        Route route = router.get("/users", NOOP).name("users.index");
-
-        assertEquals("users.index", route.getName());
-        assertEquals(".users.index", route.getFullName(), "fullName 由 normalizeName 处理，带前导点");
-    }
-
-    @Test
-    void testFullNameWithGroupNamePrefix() {
-        Router router = new Router();
-        router.group(Map.of(Route.Group.NAME, "admin"), r ->
-                r.get("/users", NOOP).name("users.list"));
-
-        Route route = router.getAllRoutes().get(0);
-        assertEquals(".admin.users.list", route.getFullName());
-    }
-
-    @Test
-    void testRouteMiddleware() {
-        Middleware m1 = (request, next, params) -> ResponseBuilder.ok();
-        Middleware m2 = (request, next, params) -> ResponseBuilder.ok();
-
-        Router router = new Router();
-        Route route = router.get("/secret", NOOP).middleware(m1, m2);
-
-        List<Middleware> middlewares = route.getMiddlewares();
-        assertEquals(2, middlewares.size());
-        assertSame(m1, middlewares.get(0));
-        assertSame(m2, middlewares.get(1));
-    }
-
-    @Test
-    void testFullNamespaceWithGroup() {
-        Router router = new Router();
-        router.group(Map.of(Route.Group.NAMESPACE, "app.http.controller"), r ->
-                r.get("/demo", NOOP));
-
-        Route route = router.getAllRoutes().get(0);
-        assertEquals("app.http.controller", route.getFullNamespace());
-    }
-
-    @Test
-    void testFullUriNormalization() {
-        Router router = new Router();
-        Route route = router.get("users//info", NOOP);
-        assertEquals("/users/info", route.getFullUri());
-    }
-
-    // ========== 别名中间件测试 ==========
-
-    @Test
-    void testRouteMiddlewareByAlias() {
+    void testStaticGroupWithMiddleware() {
         Middleware authMw = (request, next, params) -> ResponseBuilder.ok();
         MiddlewareAliasRegistry.getGlobal().register("auth", authMw);
 
-        Router router = new Router();
-        Route route = router.get("/secret", NOOP).middleware("auth");
-
-        List<Middleware> middlewares = route.getMiddlewares();
-        assertEquals(1, middlewares.size());
-        assertNotNull(middlewares.get(0), "别名应解析为非 null 的 Middleware 包装闭包");
-    }
-
-    @Test
-    void testRouteMiddlewareByAliasWithParameter() {
-        Middleware logMw = (request, next, params) -> ResponseBuilder.ok();
-        MiddlewareAliasRegistry.getGlobal().register("log", logMw);
-
-        Router router = new Router();
-        Route route = router.get("/api", NOOP).middleware("log:api");
-
-        List<Middleware> middlewares = route.getMiddlewares();
-        assertEquals(1, middlewares.size());
-        assertNotNull(middlewares.get(0));
-    }
-
-    @Test
-    void testRouteMiddlewareMultipleAliasesInOrder() {
-        Middleware authMw = (request, next, params) -> ResponseBuilder.ok();
-        Middleware logMw = (request, next, params) -> ResponseBuilder.ok();
-        Middleware corsMw = (request, next, params) -> ResponseBuilder.ok();
-        MiddlewareAliasRegistry.getGlobal().register("auth", authMw);
-        MiddlewareAliasRegistry.getGlobal().register("log", logMw);
-        MiddlewareAliasRegistry.getGlobal().register("cors", corsMw);
-
-        Router router = new Router();
-        Route route = router.get("/api", NOOP).middleware("auth:api", "log", "cors");
-
-        List<Middleware> middlewares = route.getMiddlewares();
-        assertEquals(3, middlewares.size());
-        assertNotNull(middlewares.get(0), "第一个应是 auth");
-        assertNotNull(middlewares.get(1), "第二个应是 log");
-        assertNotNull(middlewares.get(2), "第三个应是 cors");
-    }
-
-    @Test
-    void testRouteMiddlewareMixedDirectAndAlias() {
-        Middleware directMw = (request, next, params) -> ResponseBuilder.ok();
-        Middleware aliasMw = (request, next, params) -> ResponseBuilder.ok();
-        MiddlewareAliasRegistry.getGlobal().register("auth", aliasMw);
-
-        Router router = new Router();
-        Route route = router.get("/mixed", NOOP)
-                .middleware(directMw)
-                .middleware("auth")
-                .middleware(directMw);
-
-        List<Middleware> middlewares = route.getMiddlewares();
-        assertEquals(3, middlewares.size());
-        assertSame(directMw, middlewares.get(0), "第一个应是直接中间件（同实例）");
-        assertNotNull(middlewares.get(1), "第二个应是别名解析的中间件包装闭包");
-        assertSame(directMw, middlewares.get(2), "第三个应是直接中间件（同实例）");
-    }
-
-    @Test
-    void testRouteMiddlewareAliasWithMultipleParameters() {
-        final String[] capturedParams = {null};
-        MiddlewareAliasRegistry.getGlobal().register("auth", (request, next, params) -> {
-            capturedParams[0] = String.join(",", params);
-            return ResponseBuilder.ok();
+        Route.group(Map.of(
+                Route.Group.PREFIX, "admin",
+                Route.Group.MIDDLEWARE, new String[]{"auth:admin"}
+        ), () -> {
+            Route.get("/home", "HomeController::index");
+            Route.get("/logout", "LoginController::logout");
         });
 
-        Router router = new Router();
-        router.get("/api", NOOP).middleware("auth:api,admin");
-
-        // 触发别名解析并执行中间件
-        List<Middleware> middlewares = router.getAllRoutes().get(0).getMiddlewares();
-        assertEquals(1, middlewares.size());
-        middlewares.get(0).handle(null, req -> ResponseBuilder.ok());
-        assertEquals("api,admin", capturedParams[0], "应正确解析多参数");
+        Router root = Route.currentRouter();
+        List<RouteDefinition> routes = root.getAllRoutes();
+        assertEquals(2, routes.size());
+        for (RouteDefinition route : routes) {
+            List<Middleware> mws = route.getMiddlewares();
+            assertEquals(1, mws.size(), "每个路由应有分组中间件");
+        }
     }
 
-    // ========== 类对象中间件测试 ==========
+    @Test
+    void testFluentBuilderMiddlewarePrefixGroup() {
+        Middleware authMw = (request, next, params) -> ResponseBuilder.ok();
+        MiddlewareAliasRegistry.getGlobal().register("auth", authMw);
+
+        Route.middleware("auth:admin").prefix("admin").group(() -> {
+            Route.get("/home", "HomeController::index");
+            Route.get("/logout", "LoginController::logout");
+        });
+
+        Router root = Route.currentRouter();
+        List<RouteDefinition> routes = root.getAllRoutes();
+        assertEquals(2, routes.size());
+        for (RouteDefinition route : routes) {
+            assertTrue(route.getFullUri().startsWith("/admin/"));
+            List<Middleware> mws = route.getMiddlewares();
+            assertEquals(1, mws.size(), "流式构建器的中间件应生效");
+        }
+    }
 
     @Test
-    void testRouteMiddlewareByClass() {
+    void testFluentBuilderNamespaceAndName() {
+        Route.namespace("Admin").prefix("admin").name("adm").group(() -> {
+            Route.get("/dashboard", "HomeController::index");
+        });
+
+        Router root = Route.currentRouter();
+        List<RouteDefinition> routes = root.getAllRoutes();
+        assertEquals(1, routes.size());
+        RouteDefinition route = routes.get(0);
+        assertEquals("/admin/dashboard", route.getFullUri());
+        assertEquals("Admin", route.getFullNamespace());
+    }
+
+    @Test
+    void testFluentBuilderChainingAllAttributes() {
+        Middleware authMw = (request, next, params) -> ResponseBuilder.ok();
         Middleware logMw = (request, next, params) -> ResponseBuilder.ok();
-        MiddlewareAliasRegistry.getGlobal().register(logMw);
+        MiddlewareAliasRegistry.getGlobal().register("auth", authMw);
+        MiddlewareAliasRegistry.getGlobal().register("log", logMw);
 
-        Router router = new Router();
-        Route route = router.get("/log", NOOP).middleware(logMw.getClass());
+        Route.middleware("auth:api", "log")
+                .prefix("api")
+                .namespace("Api")
+                .group(() -> {
+                    Route.get("/data", "DataController::list");
+                });
 
-        List<Middleware> middlewares = route.getMiddlewares();
-        assertEquals(1, middlewares.size());
-        assertNotNull(middlewares.get(0), "按类对象应解析为非 null 的 Middleware");
+        Router root = Route.currentRouter();
+        List<RouteDefinition> routes = root.getAllRoutes();
+        assertEquals(1, routes.size());
+        RouteDefinition route = routes.get(0);
+        assertEquals("/api/data", route.getFullUri());
+        assertEquals("Api", route.getFullNamespace());
+        List<Middleware> mws = route.getMiddlewares();
+        assertEquals(2, mws.size(), "应有 auth + log 两个中间件");
     }
 
     @Test
-    void testRouteMiddlewareByClassWithParams() {
-        final String[] capturedParams = {null};
-        Middleware authMw = (request, next, params) -> {
-            capturedParams[0] = String.join(",", params);
-            return ResponseBuilder.ok();
-        };
-        MiddlewareAliasRegistry.getGlobal().register(authMw);
-
-        Router router = new Router();
-        router.get("/api", NOOP).middleware(authMw.getClass(), "api", "admin");
-
-        List<Middleware> middlewares = router.getAllRoutes().get(0).getMiddlewares();
-        assertEquals(1, middlewares.size());
-        middlewares.get(0).handle(null, req -> ResponseBuilder.ok());
-        assertEquals("api,admin", capturedParams[0], "类对象+参数应正确传递");
-    }
-
-    @Test
-    void testRouteMiddlewareByClassName() {
+    void testStaticGroupMiddlewareInheritedByNestedGroup() {
+        Middleware authMw = (request, next, params) -> ResponseBuilder.ok();
         Middleware logMw = (request, next, params) -> ResponseBuilder.ok();
-        MiddlewareAliasRegistry.getGlobal().register(logMw);
+        MiddlewareAliasRegistry.getGlobal().register("auth", authMw);
+        MiddlewareAliasRegistry.getGlobal().register("log", logMw);
 
-        Router router = new Router();
-        String className = logMw.getClass().getSimpleName();
-        Route route = router.get("/log", NOOP).middleware(className);
+        Route.group(Map.of(
+                Route.Group.PREFIX, "api",
+                Route.Group.MIDDLEWARE, "auth:api"
+        ), () -> {
+            Route.group(Map.of(
+                    Route.Group.PREFIX, "v1",
+                    Route.Group.MIDDLEWARE, "log"
+            ), () -> {
+                Route.get("/users", "UserController::list");
+            });
+        });
 
-        List<Middleware> middlewares = route.getMiddlewares();
-        assertEquals(1, middlewares.size());
-        assertNotNull(middlewares.get(0), "按类名应解析为非 null 的 Middleware");
+        Router root = Route.currentRouter();
+        List<RouteDefinition> routes = root.getAllRoutes();
+        assertEquals(1, routes.size());
+        assertEquals("/api/v1/users", routes.get(0).getFullUri());
+        List<Middleware> mws = routes.get(0).getMiddlewares();
+        assertEquals(2, mws.size(), "外层 auth + 内层 log = 2 个中间件");
     }
 
     @Test
-    void testRouteMiddlewareByClassNameWithParams() {
-        final String[] capturedParams = {null};
-        Middleware authMw = (request, next, params) -> {
-            capturedParams[0] = String.join(",", params);
-            return ResponseBuilder.ok();
-        };
-        MiddlewareAliasRegistry.getGlobal().register(authMw);
+    void testContextRestoredAfterGroup() {
+        // group 前后，currentRouter 应为同一个根 Router
+        Router before = Route.currentRouter();
+        Route.group(Map.of(Route.Group.PREFIX, "api"), () -> {
+            Route.get("/test", "TestController::test");
+        });
+        Router after = Route.currentRouter();
 
-        Router router = new Router();
-        String className = authMw.getClass().getSimpleName();
-        router.get("/api", NOOP).middleware(className + ":api,admin");
-
-        List<Middleware> middlewares = router.getAllRoutes().get(0).getMiddlewares();
-        assertEquals(1, middlewares.size());
-        middlewares.get(0).handle(null, req -> ResponseBuilder.ok());
-        assertEquals("api,admin", capturedParams[0], "类名表达式应正确解析参数");
+        assertSame(before, after, "group 执行后 ThreadLocal 上下文应恢复");
     }
 
     @Test
-    void testRouteMiddlewareMixedDirectAliasAndClass() {
-        Middleware directMw = (request, next, params) -> ResponseBuilder.ok();
-        Middleware aliasMw = (request, next, params) -> ResponseBuilder.ok();
-        Middleware classMw = (request, next, params) -> ResponseBuilder.ok();
-        MiddlewareAliasRegistry.getGlobal().register("auth", aliasMw);
-        MiddlewareAliasRegistry.getGlobal().register(classMw);
+    void testRouteNameChainableAfterStaticGet() {
+        Route.get("/users", "UserController::list").name("users.index");
 
-        Router router = new Router();
-        Route route = router.get("/mixed", NOOP)
-                .middleware(directMw)
-                .middleware("auth")
-                .middleware(classMw.getClass());
+        Router root = Route.currentRouter();
+        List<RouteDefinition> routes = root.getAllRoutes();
+        assertEquals(1, routes.size());
+        assertEquals(".users.index", routes.get(0).getFullName());
+    }
 
-        List<Middleware> middlewares = route.getMiddlewares();
-        assertEquals(3, middlewares.size());
-        assertSame(directMw, middlewares.get(0), "第一个应是直接中间件");
-        assertNotNull(middlewares.get(1), "第二个应是别名解析的闭包");
-        assertNotNull(middlewares.get(2), "第三个应是类对象解析的闭包");
+    @Test
+    void testFluentBuilderWithMethodReference() {
+        Middleware authMw = (request, next, params) -> ResponseBuilder.ok();
+        MiddlewareAliasRegistry.getGlobal().register("auth", authMw);
+
+        // 模拟 Laravel ->group(base_path('routes/api.php')) 的方法引用形式
+        Route.middleware("auth").prefix("api").group(this::registerApiRoutes);
+
+        Router root = Route.currentRouter();
+        List<RouteDefinition> routes = root.getAllRoutes();
+        assertEquals(2, routes.size());
+    }
+
+    /**
+     * 模拟独立的路由注册方法（对齐 Laravel routes/api.php 文件）。
+     */
+    private void registerApiRoutes() {
+        Route.get("/users", "UserController::list");
+        Route.get("/posts", "PostController::list");
     }
 }

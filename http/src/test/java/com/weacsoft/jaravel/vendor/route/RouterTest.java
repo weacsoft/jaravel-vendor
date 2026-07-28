@@ -44,7 +44,7 @@ class RouterTest {
         router.delete("/users/1", NOOP);
         router.patch("/users/1", NOOP);
 
-        List<Route> routes = router.getAllRoutes();
+        List<RouteDefinition> routes = router.getAllRoutes();
         assertEquals(5, routes.size());
 
         // 验证每个路由的方法与 URI
@@ -58,7 +58,7 @@ class RouterTest {
     @Test
     void testGetRouteReturnsRouteInstance() {
         Router router = new Router();
-        Route route = router.get("/items", NOOP);
+        RouteDefinition route = router.get("/items", NOOP);
 
         assertNotNull(route);
         assertEquals("GET", route.getMethod());
@@ -74,16 +74,16 @@ class RouterTest {
             r.post("/orders", NOOP);
         });
 
-        List<Route> routes = router.getAllRoutes();
+        List<RouteDefinition> routes = router.getAllRoutes();
         assertEquals(2, routes.size());
 
         // 分组前缀应合并到 fullUri
-        Route usersRoute = routes.stream()
+        RouteDefinition usersRoute = routes.stream()
                 .filter(r -> r.getUri().equals("/users"))
                 .findFirst().orElseThrow();
         assertEquals("/api/users", usersRoute.getFullUri());
 
-        Route ordersRoute = routes.stream()
+        RouteDefinition ordersRoute = routes.stream()
                 .filter(r -> r.getUri().equals("/orders"))
                 .findFirst().orElseThrow();
         assertEquals("/api/orders", ordersRoute.getFullUri());
@@ -98,9 +98,9 @@ class RouterTest {
                     v1.get("/posts", NOOP);
                 }));
 
-        List<Route> routes = router.getAllRoutes();
+        List<RouteDefinition> routes = router.getAllRoutes();
         assertEquals(2, routes.size());
-        for (Route route : routes) {
+        for (RouteDefinition route : routes) {
             assertTrue(route.getFullUri().startsWith("/api/v1/"),
                     "嵌套分组前缀应合并, 实际: " + route.getFullUri());
         }
@@ -114,9 +114,9 @@ class RouterTest {
                 Route.Group.NAME, "adm"
         ), r -> r.get("/dashboard", NOOP).name("dashboard"));
 
-        List<Route> routes = router.getAllRoutes();
+        List<RouteDefinition> routes = router.getAllRoutes();
         assertEquals(1, routes.size());
-        Route route = routes.get(0);
+        RouteDefinition route = routes.get(0);
 
         // 命名空间应合并
         assertEquals("admin", route.getFullNamespace());
@@ -150,7 +150,7 @@ class RouterTest {
             r.get("/data", NOOP);
         });
 
-        List<Route> routes = router.getAllRoutes();
+        List<RouteDefinition> routes = router.getAllRoutes();
         assertEquals(1, routes.size());
         List<Middleware> routeMiddlewares = routes.get(0).getMiddlewares();
         // 父级中间件 + 子级中间件
@@ -162,7 +162,7 @@ class RouterTest {
         Router router = new Router();
         router.all("/anything", NOOP);
 
-        List<Route> routes = router.getAllRoutes();
+        List<RouteDefinition> routes = router.getAllRoutes();
         assertEquals(5, routes.size(), "all 应注册 GET/POST/PUT/DELETE/PATCH 五种方法");
     }
 
@@ -175,7 +175,7 @@ class RouterTest {
             r.get("/b", NOOP);
         });
 
-        List<Route> routes = router.getAllRoutes();
+        List<RouteDefinition> routes = router.getAllRoutes();
         assertEquals(3, routes.size(), "应收集根路由与分组路由");
     }
 
@@ -241,7 +241,7 @@ class RouterTest {
             r.get("/data", NOOP);
         });
 
-        List<Route> routes = router.getAllRoutes();
+        List<RouteDefinition> routes = router.getAllRoutes();
         assertEquals(1, routes.size());
         List<Middleware> routeMiddlewares = routes.get(0).getMiddlewares();
         // 父级别名中间件 + 子级别名中间件
@@ -374,9 +374,9 @@ class RouterTest {
     }
 
     /** 通过反射获取 route 的 router 字段（无 public getter） */
-    private Router getRouter(Route route) {
+    private Router getRouter(RouteDefinition route) {
         try {
-            var field = Route.class.getDeclaredField("router");
+            var field = RouteDefinition.class.getDeclaredField("router");
             field.setAccessible(true);
             return (Router) field.get(route);
         } catch (Exception e) {
@@ -400,9 +400,9 @@ class RouterTest {
             r.get("/posts", NOOP);
         });
 
-        List<Route> routes = router.getAllRoutes();
+        List<RouteDefinition> routes = router.getAllRoutes();
         assertEquals(2, routes.size());
-        for (Route route : routes) {
+        for (RouteDefinition route : routes) {
             List<Middleware> mws = route.getMiddlewares();
             assertEquals(1, mws.size(), "每个分组内路由应有 1 个分组中间件");
             assertNotNull(mws.get(0), "别名中间件应被解析");
@@ -424,7 +424,7 @@ class RouterTest {
             r.get("/home", NOOP);
         });
 
-        List<Route> routes = router.getAllRoutes();
+        List<RouteDefinition> routes = router.getAllRoutes();
         assertEquals(1, routes.size());
         List<Middleware> mws = routes.get(0).getMiddlewares();
         assertEquals(2, mws.size(), "应有 2 个分组中间件");
@@ -452,7 +452,7 @@ class RouterTest {
             });
         });
 
-        List<Route> routes = router.getAllRoutes();
+        List<RouteDefinition> routes = router.getAllRoutes();
         assertEquals(1, routes.size());
         List<Middleware> mws = routes.get(0).getMiddlewares();
         // 外层 auth + 内层 log = 2 个中间件
@@ -473,9 +473,9 @@ class RouterTest {
             r.get("/dashboard", NOOP).name("dashboard");
         });
 
-        List<Route> routes = router.getAllRoutes();
+        List<RouteDefinition> routes = router.getAllRoutes();
         assertEquals(1, routes.size());
-        Route route = routes.get(0);
+        RouteDefinition route = routes.get(0);
         assertEquals("/admin/dashboard", route.getFullUri());
         assertEquals("Admin", route.getFullNamespace());
         List<Middleware> mws = route.getMiddlewares();

@@ -8,7 +8,7 @@ import com.weacsoft.jaravel.vendor.http.HttpProperties;
 import com.weacsoft.jaravel.vendor.http.controller.response.Response;
 import com.weacsoft.jaravel.vendor.http.middleware.Middleware;
 import com.weacsoft.jaravel.vendor.http.middleware.MiddlewareAliasRegistry;
-import com.weacsoft.jaravel.vendor.route.Route;
+import com.weacsoft.jaravel.vendor.route.RouteDefinition;
 import com.weacsoft.jaravel.vendor.route.Router;
 import com.weacsoft.jaravel.vendor.springboot.annotation.MiddlewareAlias;
 import org.springframework.beans.factory.config.BeanDefinition;
@@ -146,7 +146,7 @@ public class SpringBootRouteAutoConfiguration {
         // 设置回退解析器：当控制器未在注册表中找到时，从 Spring 容器按需解析
         setupControllerFallbackResolver(applicationContext);
 
-        List<Route> routes = router.getAllRoutes();
+        List<RouteDefinition> routes = router.getAllRoutes();
         RouterFunctions.Builder builder = RouterFunctions.route();
         routes.forEach(route -> {
             builder.route(createRoutePredicate(route), createRouteFunction(route, routeAuthHandler));
@@ -416,12 +416,12 @@ public class SpringBootRouteAutoConfiguration {
         });
     }
 
-    private RequestPredicate createRoutePredicate(Route route) {
+    private RequestPredicate createRoutePredicate(RouteDefinition route) {
         return RequestPredicates.method(HttpMethod.valueOf(route.getMethod()))
                 .and(RequestPredicates.path(route.generateFullUri()));
     }
 
-    private HandlerFunction<ServerResponse> createRouteFunction(Route route, RouteAuthHandler routeAuthHandler) {
+    private HandlerFunction<ServerResponse> createRouteFunction(RouteDefinition route, RouteAuthHandler routeAuthHandler) {
         return springRequest -> {
             try {
                 Request customRequest = RequestFactory.buildFromServerRequest(springRequest);
