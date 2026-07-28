@@ -1,174 +1,441 @@
 package com.weacsoft.jaravel.vendor.route;
 
-import com.weacsoft.jaravel.vendor.http.controller.Controllers;
-import com.weacsoft.jaravel.vendor.http.middleware.ClassMiddlewareSpec;
-import com.weacsoft.jaravel.vendor.http.middleware.Middleware;
-import com.weacsoft.jaravel.vendor.http.middleware.MiddlewareAliasRegistry;
-import lombok.Getter;
-import lombok.Setter;
-
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.Map;
 
-import static com.weacsoft.jaravel.vendor.route.RouteService.*;
+/**
+ * 静态路由门面，对齐 Laravel {@code Route::get()} / {@code Route::group()} 静态调用风格。
+ * <p>
+ * 使用 ThreadLocal 自动追踪当前 {@link Router} 上下文，实现：
+ * <ul>
+ *   <li>静态方法注册路由（{@code Route.get()}、{@code Route.post()} 等），无需传递 Router 实例</li>
+ *   <li>无参闭包创建路由组（{@code Route.group(params, () -> { ... })}），自动计算层级</li>
+ *   <li>流式分组构建器（{@code Route.middleware("auth").prefix("api").group(() -> { ... })}）</li>
+ * </ul>
+ *
+ * <h3>初始化</h3>
+ * 在 RouteServiceProvider 中调用 {@link #setRootRouter(Router)} 设置根 Router：
+ * <pre>
+ * Router baseRouter = new Router();
+ * Route.setRootRouter(baseRouter);
+ * // 之后即可使用 Route.get()、Route.group() 等静态方法
+ * </pre>
+ *
+ * <h3>用法一：Map 参数式分组（对齐 Laravel Route::group(['prefix' => 'admin'], ...))</h3>
+ * <pre>
+ * Route.group(Map.of(
+ *     Route.Group.PREFIX, "admin",
+ *     Route.Group.NAMESPACE, "Admin"
+ * ), () -> {
+ *     Route.get("login", "LoginController::loginIndex").name("admin.login.index");
+ *     Route.post("login", "LoginController::login").name("admin.login");
+ *
+ *     Route.group(Map.of(
+ *         Route.Group.MIDDLEWARE, new String[]{"auth:admin", "permission:admin"}
+ *     ), () -> {
+ *         Route.get("home", "HomeController::index").name("admin.home");
+ *         Route.get("logout", "LoginController::logout").name("admin.logout");
+ *     });
+ * });
+ * </pre>
+ *
+ * <h3>用法二：流式构建器（对齐 Laravel Route::middleware('api')->prefix('api')->group(...))</h3>
+ * <pre>
+ * // 闭包形式
+ * Route.middleware("auth:admin", "permission:admin").prefix("admin").group(() -> {
+ *     Route.get("/home", "HomeController::index").name("admin.home");
+ *     Route.get("/logout", "LoginController::logout").name("admin.logout");
+ * });
+ *
+ * // 方法引用形式（对齐 Laravel ->group(base_path('routes/api.php'))）
+ * Route.middleware("api").prefix("api").namespace("com.example.controller").group(Api::register);
+ * </pre>
+ *
+ * <h3>用法三：静态 import（最简洁）</h3>
+ * <pre>
+ * import static com.weacsoft.jaravel.vendor.route.Route.*;
+ *
+ * group(Map.of(Route.Group.PREFIX, "api"), () -> {
+ *     get("/users", "UserController::list").name("users.index");
+ *     post("/users", "UserController::create").name("users.create");
+ * });
+ * </pre>
+ *
+ * <h3>与 Router API 的关系</h3>
+ * {@code Route} 是 {@link Router} 的静态门面封装，两者可以混用：
+ * <ul>
+ *   <li>{@code router.get(uri, action)} — 实例 API，需要传递 Router 实例</li>
+ *   <li>{@code Route.get(uri, action)} — 静态 API，通过 ThreadLocal 自动定位当前 Router</li>
+ * </ul>
+ * 静态门面在路由组闭包内自动切换上下文，嵌套分组时无需手动传递 Router。
+ *
+ * @see RouteDefinition
+ * @see Router
+ * @see Route.Group
+ */
+public final class Route {
 
-public class Route {
+    private Route() {
+    }
+
     /**
-     * 中间件规格列表，元素类型为：
-     * <ul>
-     *   <li>{@link Middleware} — 直接中间件实例</li>
-     *   <li>{@link String} — 别名/类名表达式（如 "auth:api"、"LogMiddleware:debug"）</li>
-     *   <li>{@link Class} — 类对象引用（无参数，如 AuthMiddleware.class）</li>
-     *   <li>{@link ClassMiddlewareSpec} — 类对象 + 参数（如 AuthMiddleware.class + ["api"]）</li>
-     * </ul>
-     * 保持插入顺序，支持混合使用。
-     */
-    private final List<Object> middlewareSpecs = new CopyOnWriteArrayList<>();
-    @Setter
-    @Getter
-    private String name = "";
-    @Setter
-    @Getter
-    private String namespace = "";
-    @Setter
-    @Getter
-    private String prefix = "";
-    @Getter
-    private String method;
-    @Getter
-    @Setter
-    private Controllers.Runner action;
-    @Setter
-    private Router router;
-    @Getter
-    private String uri;
-
-    public Route(String method, String uri, Controllers.Runner action) {
-        setMethod(method);
-        setUri(uri);
-        setAction(action);
-    }
-
-    public void setMethod(String method) {
-        this.method = method;
-    }
-
-    public void setUri(String uri) {
-        this.uri = uri;
-    }
-
-    /**
-     * 添加路由级中间件（直接传入中间件实例）。
-     *
-     * @param middleware 中间件实例
-     * @return this（链式调用）
-     */
-    public Route middleware(Middleware... middleware) {
-        middlewareSpecs.addAll(Arrays.asList(middleware));
-        return this;
-    }
-
-    /**
-     * 添加路由级中间件（通过别名表达式引用，对齐 Laravel {@code Route::middleware('auth:api')}）。
+     * ThreadLocal 路由器上下文栈，用于静态门面方法追踪当前 Router。
      * <p>
-     * 别名表达式语法：
-     * <ul>
-     *   <li>{@code "auth"} — 别名 "auth"，无参数</li>
-     *   <li>{@code "auth:api"} — 别名 "auth"，参数 ["api"]</li>
-     *   <li>{@code "auth:api,admin"} — 别名 "auth"，参数 ["api", "admin"]</li>
-     * </ul>
-     * 别名需提前通过 {@link MiddlewareAliasRegistry} 注册。
-     *
-     * @param aliases 别名表达式
-     * @return this（链式调用）
-     * @see MiddlewareAliasRegistry
+     * 栈底为根 Router（通过 {@link #setRootRouter} 设置），每次 {@link #group} 压入子 Router，
+     * 回调结束后弹出，实现自动层级计算。
      */
-    public Route middleware(String... aliases) {
-        middlewareSpecs.addAll(Arrays.asList(aliases));
-        return this;
-    }
+    private static final ThreadLocal<Deque<Router>> ROUTER_STACK = ThreadLocal.withInitial(ArrayDeque::new);
 
     /**
-     * 添加路由级中间件（通过类对象引用，支持可选参数）。
+     * 初始化静态门面，设置根 Router。
      * <p>
-     * 适用于标注了 {@code @MiddlewareAlias} 但未填别名的中间件，或需要类型安全引用的场景。
-     * 中间件类必须已通过 {@link MiddlewareAliasRegistry} 注册（有注解的会自动注册）。
-     * <p>
-     * 使用示例：
+     * 在 RouteServiceProvider 中调用：
      * <pre>
-     * // 无参数
-     * router.get("/log", action).middleware(LogMiddleware.class);
-     * // 带参数
-     * router.get("/api", action).middleware(AuthMiddleware.class, "api", "admin");
+     * Router baseRouter = new Router();
+     * Route.setRootRouter(baseRouter);
      * </pre>
      *
-     * @param clazz  中间件类（必须实现 {@link Middleware}）
-     * @param params 中间件参数（可选）
-     * @return this（链式调用）
-     * @see MiddlewareAliasRegistry#resolve(Class, String...)
+     * @param router 根路由器
      */
-    public Route middleware(Class<?> clazz, String... params) {
-        middlewareSpecs.add(new ClassMiddlewareSpec(clazz, params));
-        return this;
+    public static void setRootRouter(Router router) {
+        ROUTER_STACK.get().clear();
+        ROUTER_STACK.get().push(router);
     }
 
-    public Route name(String name) {
-        setName(name);
-        return this;
+    /**
+     * 清理 ThreadLocal，防止线程池复用时上下文泄漏。
+     */
+    public static void clearContext() {
+        ROUTER_STACK.remove();
     }
 
-    public Route prefix(String prefix) {
-        this.prefix = prefix;
-        return this;
-    }
-
-    public String generateFullUri() {
-        return normalizeUri(router.generateFullUri() + "/" + prefix + "/" + uri);
-    }
-
-    public String getFullUri() {
-        return generateFullUri();
-    }
-
-    public String generateFullNamespace() {
-        return normalizeNamesapce(router.generateFullNamespace() + "." + namespace);
-    }
-
-    protected String generateFullName() {
-        return normalizeName(router.generateFullName() + "." + name);
-    }
-
-    public String getFullName() {
-        return generateFullName();
-    }
-
-    public String getFullNamespace() {
-        return generateFullNamespace();
-    }
-
-    public List<Middleware> getMiddlewares() {
-        List<Middleware> middlewares = new ArrayList<>();
-        // 先加父路由器中间件（含别名/类解析）
-        middlewares.addAll(router.getAllMiddlewares());
-        // 再加本路由中间件（解析别名表达式 / 类对象 / 类+参数）
-        MiddlewareAliasRegistry registry = MiddlewareAliasRegistry.getGlobal();
-        for (Object spec : middlewareSpecs) {
-            if (spec instanceof Middleware) {
-                middlewares.add((Middleware) spec);
-            } else if (spec instanceof String) {
-                middlewares.add(registry.resolve((String) spec));
-            } else if (spec instanceof ClassMiddlewareSpec) {
-                ClassMiddlewareSpec cms = (ClassMiddlewareSpec) spec;
-                middlewares.add(registry.resolve(cms.getClazz(), cms.getParams()));
-            } else if (spec instanceof Class<?>) {
-                middlewares.add(registry.resolve((Class<?>) spec));
-            }
+    /**
+     * 获取当前上下文的 Router（栈顶）。
+     *
+     * @return 当前 Router
+     * @throws IllegalStateException 如果未调用 {@link #setRootRouter} 初始化
+     */
+    public static Router currentRouter() {
+        Deque<Router> stack = ROUTER_STACK.get();
+        if (stack.isEmpty()) {
+            throw new IllegalStateException(
+                    "Route 静态门面未初始化，请先调用 Route.setRootRouter(router)");
         }
-        return middlewares;
+        return stack.peek();
     }
 
+    private static void pushRouter(Router router) {
+        ROUTER_STACK.get().push(router);
+    }
+
+    private static void popRouter() {
+        ROUTER_STACK.get().pop();
+    }
+
+    // ===== 静态路由注册方法（委托给 currentRouter()） =====
+
+    /**
+     * 静态注册 GET 路由（对齐 Laravel {@code Route::get('/users', 'UserController@index')}）。
+     *
+     * @param uri              URI
+     * @param controllerAction 控制器引用（如 {@code "UserController::list"}）
+     * @return 路由实例，可链式调用 {@code .name()} / {@code .middleware()}
+     */
+    public static RouteDefinition get(String uri, String controllerAction) {
+        return currentRouter().get(uri, controllerAction);
+    }
+
+    /**
+     * 静态注册 POST 路由。
+     *
+     * @param uri              URI
+     * @param controllerAction 控制器引用
+     * @return 路由实例
+     */
+    public static RouteDefinition post(String uri, String controllerAction) {
+        return currentRouter().post(uri, controllerAction);
+    }
+
+    /**
+     * 静态注册 PUT 路由。
+     *
+     * @param uri              URI
+     * @param controllerAction 控制器引用
+     * @return 路由实例
+     */
+    public static RouteDefinition put(String uri, String controllerAction) {
+        return currentRouter().put(uri, controllerAction);
+    }
+
+    /**
+     * 静态注册 DELETE 路由。
+     *
+     * @param uri              URI
+     * @param controllerAction 控制器引用
+     * @return 路由实例
+     */
+    public static RouteDefinition delete(String uri, String controllerAction) {
+        return currentRouter().delete(uri, controllerAction);
+    }
+
+    /**
+     * 静态注册 PATCH 路由。
+     *
+     * @param uri              URI
+     * @param controllerAction 控制器引用
+     * @return 路由实例
+     */
+    public static RouteDefinition patch(String uri, String controllerAction) {
+        return currentRouter().patch(uri, controllerAction);
+    }
+
+    /**
+     * 静态注册多方法路由（GET/POST/PUT/DELETE/PATCH）。
+     *
+     * @param uri              URI
+     * @param controllerAction 控制器引用
+     * @return 路由组实例
+     */
+    public static Router all(String uri, String controllerAction) {
+        return currentRouter().all(uri, controllerAction);
+    }
+
+    // ===== 静态 group 方法（Runnable 回调，无需传 Router 参数） =====
+
+    /**
+     * 静态创建路由组（对齐 Laravel {@code Route::group(['prefix' => 'admin'], function () { ... })}）。
+     * <p>
+     * 使用 ThreadLocal 自动追踪 Router 层级，回调内可直接使用 {@code Route.get()} 等静态方法，
+     * 无需接收 Router 参数。
+     * <p>
+     * 支持 {@link Route.Group#MIDDLEWARE} 参数，值可以是：
+     * <ul>
+     *   <li>{@code String} — 单个别名（如 {@code "auth:api"}）</li>
+     *   <li>{@code String[]} — 多个别名（如 {@code new String[]{"auth:admin", "permission:admin"}}）</li>
+     *   <li>{@code List<String>} — 别名列表</li>
+     * </ul>
+     *
+     * <h3>示例</h3>
+     * <pre>
+     * Route.group(Map.of(
+     *     Route.Group.PREFIX, "admin",
+     *     Route.Group.NAMESPACE, "Admin"
+     * ), () -> {
+     *     Route.get("login", "LoginController::loginIndex").name("admin.login.index");
+     *
+     *     Route.group(Map.of(
+     *         Route.Group.MIDDLEWARE, new String[]{"auth:admin", "permission:admin"}
+     *     ), () -> {
+     *         Route.get("home", "HomeController::index").name("admin.home");
+     *     });
+     * });
+     * </pre>
+     *
+     * @param params   分组参数（prefix / namespace / name / middleware）
+     * @param callback 无参回调（内部使用 Route.get() 等静态方法注册路由）
+     */
+    public static void group(Map<Route.Group, ?> params, Runnable callback) {
+        Router parent = currentRouter();
+        Router groupRouter = new Router();
+        groupRouter.setParentRouter(parent);
+
+        params.forEach((key, value) -> {
+            if (key.equals(Route.Group.NAMESPACE)) {
+                groupRouter.setNamespace((String) value);
+            } else if (key.equals(Route.Group.PREFIX)) {
+                groupRouter.setPrefix((String) value);
+            } else if (key.equals(Route.Group.NAME)) {
+                groupRouter.setName((String) value);
+            } else if (key.equals(Route.Group.MIDDLEWARE)) {
+                applyGroupMiddleware(groupRouter, value);
+            }
+        });
+
+        pushRouter(groupRouter);
+        try {
+            callback.run();
+        } finally {
+            popRouter();
+        }
+
+        parent.addGroupRouter(groupRouter);
+    }
+
+    /**
+     * 将中间件参数应用到分组 Router。
+     * <p>
+     * 支持的值类型：
+     * <ul>
+     *   <li>{@code String} — 单个别名表达式</li>
+     *   <li>{@code String[]} — 多个别名表达式</li>
+     *   <li>{@code List<String>} — 别名列表</li>
+     * </ul>
+     */
+    @SuppressWarnings("unchecked")
+    private static void applyGroupMiddleware(Router groupRouter, Object value) {
+        if (value instanceof String) {
+            groupRouter.middleware((String) value);
+        } else if (value instanceof String[]) {
+            groupRouter.middleware((String[]) value);
+        } else if (value instanceof List) {
+            List<String> list = (List<String>) value;
+            groupRouter.middleware(list.toArray(new String[0]));
+        }
+    }
+
+    // ===== 流式 GroupBuilder（对齐 Laravel Route::middleware('api')->prefix('api')->group(...)） =====
+
+    /**
+     * 创建流式分组构建器，设置中间件别名。
+     * <p>
+     * 对齐 Laravel：
+     * <pre>
+     * Route::middleware('api')->prefix('api')->group(function () { ... });
+     * </pre>
+     * Java 等价：
+     * <pre>
+     * Route.middleware("api").prefix("api").group(() -> {
+     *     Route.get("/users", "UserController::list");
+     * });
+     * </pre>
+     *
+     * @param aliases 中间件别名表达式
+     * @return 分组构建器
+     */
+    public static GroupBuilder middleware(String... aliases) {
+        return new GroupBuilder().middleware(aliases);
+    }
+
+    /**
+     * 创建流式分组构建器，设置前缀。
+     *
+     * @param prefix URI 前缀
+     * @return 分组构建器
+     */
+    public static GroupBuilder prefix(String prefix) {
+        return new GroupBuilder().prefix(prefix);
+    }
+
+    /**
+     * 创建流式分组构建器，设置命名空间。
+     *
+     * @param namespace 命名空间
+     * @return 分组构建器
+     */
+    public static GroupBuilder namespace(String namespace) {
+        return new GroupBuilder().namespace(namespace);
+    }
+
+    /**
+     * 创建流式分组构建器，设置名称前缀。
+     *
+     * @param name 名称前缀
+     * @return 分组构建器
+     */
+    public static GroupBuilder name(String name) {
+        return new GroupBuilder().name(name);
+    }
+
+    /**
+     * 流式分组构建器，对齐 Laravel {@code Route::middleware('api')->prefix('api')->group(...)}。
+     * <p>
+     * 累积 prefix / namespace / name / middleware 属性，调用 {@link #group(Runnable)} 时创建子路由组。
+     * <p>
+     * <h3>示例</h3>
+     * <pre>
+     * // 方法引用形式（对齐 Laravel ->group(base_path('routes/api.php'))）
+     * Route.middleware("api").prefix("api").namespace("com.example.controller").group(Api::register);
+     *
+     * // 闭包形式
+     * Route.middleware("auth:admin", "permission:admin").prefix("admin").group(() -> {
+     *     Route.get("/home", "HomeController::index").name("admin.home");
+     *     Route.get("/logout", "LoginController::logout").name("admin.logout");
+     * });
+     * </pre>
+     */
+    public static class GroupBuilder {
+        private String prefix = "";
+        private String namespace = "";
+        private String name = "";
+        private final List<String> middlewareAliases = new ArrayList<>();
+
+        /**
+         * 设置 URI 前缀。
+         *
+         * @param prefix URI 前缀
+         * @return this
+         */
+        public GroupBuilder prefix(String prefix) {
+            this.prefix = prefix;
+            return this;
+        }
+
+        /**
+         * 设置命名空间。
+         *
+         * @param namespace 命名空间
+         * @return this
+         */
+        public GroupBuilder namespace(String namespace) {
+            this.namespace = namespace;
+            return this;
+        }
+
+        /**
+         * 设置名称前缀。
+         *
+         * @param name 名称前缀
+         * @return this
+         */
+        public GroupBuilder name(String name) {
+            this.name = name;
+            return this;
+        }
+
+        /**
+         * 添加中间件别名。
+         *
+         * @param aliases 中间件别名表达式（如 {@code "auth:api"}）
+         * @return this
+         */
+        public GroupBuilder middleware(String... aliases) {
+            this.middlewareAliases.addAll(Arrays.asList(aliases));
+            return this;
+        }
+
+        /**
+         * 创建路由组并执行回调。
+         * <p>
+         * 将累积的属性转换为 {@link Route.Group} 参数 Map，委托给 {@link Route#group(Map, Runnable)}。
+         *
+         * @param callback 无参回调（内部使用 Route.get() 等静态方法注册路由）
+         */
+        public void group(Runnable callback) {
+            Map<Route.Group, Object> params = new HashMap<>();
+            if (!prefix.isEmpty()) {
+                params.put(Route.Group.PREFIX, prefix);
+            }
+            if (!namespace.isEmpty()) {
+                params.put(Route.Group.NAMESPACE, namespace);
+            }
+            if (!name.isEmpty()) {
+                params.put(Route.Group.NAME, name);
+            }
+            if (!middlewareAliases.isEmpty()) {
+                params.put(Route.Group.MIDDLEWARE, middlewareAliases.toArray(new String[0]));
+            }
+            Route.group(params, callback);
+        }
+    }
+
+    /**
+     * 路由分组属性键枚举（对齐 Laravel Route::group 参数键）。
+     */
     public enum Group {
         NAMESPACE,
         PREFIX,

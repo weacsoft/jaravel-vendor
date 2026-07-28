@@ -19,7 +19,7 @@ import java.util.function.Consumer;
 import static com.weacsoft.jaravel.vendor.route.RouteService.*;
 
 public class Router {
-    private final List<Route> routes = new CopyOnWriteArrayList<>();
+    private final List<RouteDefinition> routes = new CopyOnWriteArrayList<>();
     private final List<Router> routers = new CopyOnWriteArrayList<>();
     /**
      * 中间件规格列表，元素类型为：
@@ -102,23 +102,23 @@ public class Router {
         return this;
     }
 
-    public Route get(String uri, Controllers.Runner action) {
+    public RouteDefinition get(String uri, Controllers.Runner action) {
         return addRoute("GET", uri, action);
     }
 
-    public Route post(String uri, Controllers.Runner action) {
+    public RouteDefinition post(String uri, Controllers.Runner action) {
         return addRoute("POST", uri, action);
     }
 
-    public Route put(String uri, Controllers.Runner action) {
+    public RouteDefinition put(String uri, Controllers.Runner action) {
         return addRoute("PUT", uri, action);
     }
 
-    public Route delete(String uri, Controllers.Runner action) {
+    public RouteDefinition delete(String uri, Controllers.Runner action) {
         return addRoute("DELETE", uri, action);
     }
 
-    public Route patch(String uri, Controllers.Runner action) {
+    public RouteDefinition patch(String uri, Controllers.Runner action) {
         return addRoute("PATCH", uri, action);
     }
 
@@ -139,7 +139,7 @@ public class Router {
      * @return 路由实例
      * @see ControllerActionResolver#resolve(String)
      */
-    public Route get(String uri, String controllerAction) {
+    public RouteDefinition get(String uri, String controllerAction) {
         return addRoute("GET", uri, lazyResolve(controllerAction));
     }
 
@@ -151,7 +151,7 @@ public class Router {
      * @return 路由实例
      * @see ControllerActionResolver#resolve(String)
      */
-    public Route post(String uri, String controllerAction) {
+    public RouteDefinition post(String uri, String controllerAction) {
         return addRoute("POST", uri, lazyResolve(controllerAction));
     }
 
@@ -163,7 +163,7 @@ public class Router {
      * @return 路由实例
      * @see ControllerActionResolver#resolve(String)
      */
-    public Route put(String uri, String controllerAction) {
+    public RouteDefinition put(String uri, String controllerAction) {
         return addRoute("PUT", uri, lazyResolve(controllerAction));
     }
 
@@ -175,7 +175,7 @@ public class Router {
      * @return 路由实例
      * @see ControllerActionResolver#resolve(String)
      */
-    public Route delete(String uri, String controllerAction) {
+    public RouteDefinition delete(String uri, String controllerAction) {
         return addRoute("DELETE", uri, lazyResolve(controllerAction));
     }
 
@@ -187,7 +187,7 @@ public class Router {
      * @return 路由实例
      * @see ControllerActionResolver#resolve(String)
      */
-    public Route patch(String uri, String controllerAction) {
+    public RouteDefinition patch(String uri, String controllerAction) {
         return addRoute("PATCH", uri, lazyResolve(controllerAction));
     }
 
@@ -215,7 +215,7 @@ public class Router {
      * @return 路由实例
      * @see ControllerActionResolver#resolve(Class, String)
      */
-    public Route get(String uri, Class<?> controllerClass, String methodName) {
+    public RouteDefinition get(String uri, Class<?> controllerClass, String methodName) {
         return addRoute("GET", uri, lazyResolve(controllerClass, methodName));
     }
 
@@ -228,7 +228,7 @@ public class Router {
      * @return 路由实例
      * @see ControllerActionResolver#resolve(Class, String)
      */
-    public Route post(String uri, Class<?> controllerClass, String methodName) {
+    public RouteDefinition post(String uri, Class<?> controllerClass, String methodName) {
         return addRoute("POST", uri, lazyResolve(controllerClass, methodName));
     }
 
@@ -241,7 +241,7 @@ public class Router {
      * @return 路由实例
      * @see ControllerActionResolver#resolve(Class, String)
      */
-    public Route put(String uri, Class<?> controllerClass, String methodName) {
+    public RouteDefinition put(String uri, Class<?> controllerClass, String methodName) {
         return addRoute("PUT", uri, lazyResolve(controllerClass, methodName));
     }
 
@@ -254,7 +254,7 @@ public class Router {
      * @return 路由实例
      * @see ControllerActionResolver#resolve(Class, String)
      */
-    public Route delete(String uri, Class<?> controllerClass, String methodName) {
+    public RouteDefinition delete(String uri, Class<?> controllerClass, String methodName) {
         return addRoute("DELETE", uri, lazyResolve(controllerClass, methodName));
     }
 
@@ -267,7 +267,7 @@ public class Router {
      * @return 路由实例
      * @see ControllerActionResolver#resolve(Class, String)
      */
-    public Route patch(String uri, Class<?> controllerClass, String methodName) {
+    public RouteDefinition patch(String uri, Class<?> controllerClass, String methodName) {
         return addRoute("PATCH", uri, lazyResolve(controllerClass, methodName));
     }
 
@@ -319,7 +319,7 @@ public class Router {
      */
     public StaticResourceRoute serveStatic(String urlPrefix, String location, int cacheMaxAge) {
         StaticResourceRoute route = new StaticResourceRoute(urlPrefix, location, cacheMaxAge);
-        Route r = addRoute("GET", urlPrefix + "/{path}", route);
+        RouteDefinition r = addRoute("GET", urlPrefix + "/{path}", route);
         r.name("static:" + urlPrefix);
         return route;
     }
@@ -345,13 +345,13 @@ public class Router {
      */
     public StaticResourceRoute serveStatic(String urlPrefix, java.util.List<String> locations, int cacheMaxAge) {
         StaticResourceRoute route = new StaticResourceRoute(urlPrefix, locations, cacheMaxAge);
-        Route r = addRoute("GET", urlPrefix + "/{path}", route);
+        RouteDefinition r = addRoute("GET", urlPrefix + "/{path}", route);
         r.name("static:" + urlPrefix);
         return route;
     }
 
-    public Route addRoute(String method, String uri, Controllers.Runner action) {
-        Route route = new Route(method, uri, action);
+    public RouteDefinition addRoute(String method, String uri, Controllers.Runner action) {
+        RouteDefinition route = new RouteDefinition(method, uri, action);
         route.setRouter(this);
         routes.add(route);
         return route;
@@ -439,8 +439,8 @@ public class Router {
         routers.add(router);
     }
 
-    public List<Route> getAllRoutes() {
-        List<Route> routes = new ArrayList<>();
+    public List<RouteDefinition> getAllRoutes() {
+        List<RouteDefinition> routes = new ArrayList<>();
         routers.forEach(router -> routes.addAll(router.getAllRoutes()));
         routes.addAll(this.routes);
         return routes;
