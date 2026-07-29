@@ -31,8 +31,13 @@ import java.util.Map;
  * 这导致 {@code model_shadow} 始终出现在 SELECT 查询中，若数据库表无此列则报 SQL 异常。
  * <p>
  * <b>修复方式</b>：在 Spring 容器初始化完成后（所有 Model Bean 已就绪），
- * 遍历所有已注册的 Model，通过 {@link ModelShadowProvider} 获取其 {@link EntityMember}，
+ * 遍历所有已注册的 Model，通过 {@link Model#getContainer()} 获取 gaarason 内部容器的
+ * {@link ModelShadowProvider}，再获取其 {@link EntityMember}，
  * 从 {@code selectColumnList} 和 {@code columnFieldMap} 中移除 {@code model_shadow}。
+ * <p>
+ * <b>注意</b>：{@link ModelShadowProvider} 是 gaarason 内部容器的 bean，
+ * 不是 Spring bean，不能通过 {@code @Autowired} 注入，必须通过
+ * {@code model.getContainer().getBean(ModelShadowProvider.class)} 获取。
  * <p>
  * <b>执行时机</b>：使用 {@link Ordered#HIGHEST_PRECEDENCE} 确保在业务 ApplicationRunner
  * （如数据初始化）之前执行。
@@ -50,22 +55,39 @@ public class ModelShadowPatcher implements ApplicationRunner {
      */
     private static final String SHADOW_COLUMN = "model_shadow";
 
-    private final ModelShadowProvider modelShadowProvider;
     private final Map<String, Model> models;
 
     /**
-     * @param modelShadowProvider gaarason 的 Model 信息提供者
-     * @param models              Spring 容器中所有 Model Bean
+     * @param models Spring 容器中所有 Model Bean
      */
     @SuppressWarnings("rawtypes")
-    public ModelShadowPatcher(ModelShadowProvider modelShadowProvider, Map<String, Model> models) {
-        this.modelShadowProvider = modelShadowProvider;
+    public ModelShadowPatcher(Map<String, Model> models) {
         this.models = models;
     }
 
     @Override
     @SuppressWarnings({"rawtypes", "unchecked"})
     public void run(ApplicationArguments args) {
+        if (models.isEmpty()) {
+            return;
+        }
+        // ModelShadowProvider 是 gaarason 内部容器的 bean，不是 Spring bean，
+        // 通过任意 Model 的 getContainer() 获取
+        ModelShadowProvider modelShadowProvider = null;
+        for (Model<?, ?, ?> model : models.values()) {
+            try {
+                modelShadowProvider = model.getContainer().getBean(ModelShadowProvider.class);
+                break;
+            } catch (Exception e) {
+                log.debug("[model-shadow] Failed to get ModelShadowProvider from {}: {}",
+                        model.getClass().getName(), e.getMessage());
+            }
+        }
+        if (modelShadowProvider == null) {
+            log.warn("[model-shadow] Could not obtain ModelShadowProvider from any Model, skipping patch");
+            return;
+        }
+
         int patched = 0;
         for (Model<?, ?, ?> model : models.values()) {
             try {

@@ -44,21 +44,18 @@ public class DatabaseAutoConfiguration {
      * 注册 ModelShadow 修复器，在 Spring 容器就绪后从所有 Model 的 SELECT 列表中
      * 移除 gaarason 内部的 {@code model_shadow} 列。
      * <p>
-     * 使用 {@code @ConditionalOnClass} 确保仅在 gaarason {@link ModelShadowProvider}
-     * 存在于类路径时生效。
+     * {@link ModelShadowProvider} 是 gaarason 内部容器的 bean（非 Spring bean），
+     * 修复器在运行时通过 {@link Model#getContainer()} 获取，此处不直接注入。
      *
-     * @param modelShadowProvider gaarason 的 Model 信息提供者
-     * @param applicationContext  Spring 上下文（用于收集所有 Model Bean）
+     * @param applicationContext Spring 上下文（用于收集所有 Model Bean）
      * @return 修复器实例
      */
     @Bean
     @ConditionalOnMissingBean
     @ConditionalOnClass(ModelShadowProvider.class)
     @SuppressWarnings("rawtypes")
-    public ModelShadowPatcher modelShadowPatcher(
-            ModelShadowProvider modelShadowProvider,
-            ApplicationContext applicationContext) {
+    public ModelShadowPatcher modelShadowPatcher(ApplicationContext applicationContext) {
         Map<String, Model> models = applicationContext.getBeansOfType(Model.class);
-        return new ModelShadowPatcher(modelShadowProvider, models);
+        return new ModelShadowPatcher(models);
     }
 }
