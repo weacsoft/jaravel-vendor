@@ -99,6 +99,18 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
      * 合并 Model 与 Entity 后，gaarason 会扫描整个类层次字段并默认映射到数据库列。
      * 父类 ModelBase 的 modelShadow 字段未标注 @Column(inDatabase=false)，
      * 此处通过字段隐藏（field hiding）方式覆盖，使 gaarason 反射时取到带排除标注的版本。
+     * <p>
+     * <b>注意</b>：由于 gaarason 的 {@code EntityMember.dealColumnMap()} 和
+     * {@code dealSelectColumnList()} 使用列名（而非字段名）做去重，当子类字段
+     * {@code inDatabase=false} 时会被跳过，导致父类字段（{@code inDatabase=true}）
+     * 仍然被加入 SELECT 列表。此问题由 {@link com.weacsoft.jaravel.vendor.database.autoconfigure.ModelShadowPatcher}
+     * 在 Spring 容器就绪后统一修复（从 selectColumnList 和 columnFieldMap 中移除 model_shadow）。
+     * <p>
+     * 此处的字段隐藏仍有两个作用：
+     * <ol>
+     *   <li>使 {@code javaFieldMap} 取到子类版本（带 {@code @Column} 注解），JSON 序列化正常</li>
+     *   <li>{@code NullFieldConversion} 确保即使数据库中存在 model_shadow 列，反序列化也返回 null</li>
+     * </ol>
      */
     @Column(inDatabase = false, conversion = NullFieldConversion.class)
     @JsonIgnore

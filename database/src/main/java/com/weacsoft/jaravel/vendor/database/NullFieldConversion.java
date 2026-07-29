@@ -13,11 +13,18 @@ import java.sql.ResultSet;
  * 父类字段仍会被 {@code EntityMember.primitiveFieldDeal()} 扫描并加入 {@code columnFieldMap}
  * 与 {@code selectColumnList}，使得 {@code model_shadow} 列被 SELECT。
  * <p>
- * 同时，{@code javaFieldMap} 使用子类的字段（带 @Column 注解），反序列化时默认使用
- * {@code FieldConversion.Auto}（对复杂类型解析为 {@code JsonConversion}），尝试将
- * 数据库值反序列化为 {@code ModelShadowProvider} 实例，因无默认构造器而失败。
+ * <b>SELECT 列表问题</b>已由 {@link com.weacsoft.jaravel.vendor.database.autoconfigure.ModelShadowPatcher}
+ * 在 Spring 容器就绪后统一修复（从 selectColumnList 和 columnFieldMap 中移除 model_shadow）。
  * <p>
- * 本转换器在 {@code serialize}、{@code deserialize}、{@code acquisition} 三个环节均返回 null，
+ * 本转换器仍需保留，用于处理以下场景：
+ * <ul>
+ *   <li>{@code javaFieldMap} 使用子类的字段（带 @Column 注解），反序列化时默认使用
+ *       {@code FieldConversion.Auto}（对复杂类型解析为 {@code JsonConversion}），尝试将
+ *       数据库值反序列化为 {@code ModelShadowProvider} 实例，因无默认构造器而失败</li>
+ *   <li>若数据库表恰好包含 model_shadow 列（如旧迁移脚本创建），本转换器确保读取安全</li>
+ * </ul>
+ * <p>
+ * 在 {@code serialize}、{@code deserialize}、{@code acquisition} 三个环节均返回 null，
  * 彻底绕过 JsonConversion 对 {@code ModelShadowProvider} 类型的反序列化。
  */
 public class NullFieldConversion implements FieldConversion<Object, Object> {
