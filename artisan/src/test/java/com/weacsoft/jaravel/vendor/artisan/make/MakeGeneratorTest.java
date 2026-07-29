@@ -120,12 +120,7 @@ class MakeGeneratorTest {
         assertTrue(content.contains("@Table(name = \"users\")"), "应包含 @Table");
         assertTrue(content.contains("@Primary"), "应包含 @Primary");
         assertTrue(content.contains("@Column(name = \"id\")"), "应包含 @Column");
-        assertTrue(content.contains("public static User find(Long id)"), "应包含静态 find 方法");
-        assertTrue(content.contains("public static List<User> all()"), "应包含静态 all 方法");
         assertTrue(content.contains("public static User self()"), "应包含静态 self 方法");
-        assertTrue(content.contains("public static User updateOrCreate("), "应包含静态 updateOrCreate 方法");
-        assertTrue(content.contains("public static User firstOrCreate("), "应包含静态 firstOrCreate 方法");
-        assertTrue(content.contains("public static User firstOrNew("), "应包含静态 firstOrNew 方法");
         // 时间戳自动填充注解
         assertTrue(content.contains("TimestampFill.CreatedTimeStringFill.class"),
                 "应包含 created_at 的 TimestampFill 填充器");
@@ -301,15 +296,11 @@ class MakeGeneratorTest {
                 "Model 应导入 @Primary 注解");
         assertTrue(content.contains("import gaarason.database.annotation.Table;"),
                 "Model 应导入 @Table 注解");
-        assertTrue(content.contains("import gaarason.database.query.QueryBuilder;"),
-                "Model 应导入 QueryBuilder");
         assertTrue(content.contains("import lombok.Data;"), "Model 应导入 @Data");
         assertTrue(content.contains("import lombok.EqualsAndHashCode;"),
                 "Model 应导入 @EqualsAndHashCode");
         assertTrue(content.contains("import org.springframework.stereotype.Repository;"),
                 "Model 应导入 @Repository");
-        assertTrue(content.contains("import java.util.List;"), "Model 应导入 List");
-        assertTrue(content.contains("import java.util.Map;"), "Model 应导入 Map");
 
         // 时间戳自动填充注解
         assertTrue(content.contains("@Column(name = \"created_at\", fill = TimestampFill.CreatedTimeStringFill.class)"),

@@ -412,12 +412,10 @@ public class ReverseModelGenerator {
         sb.append("import gaarason.database.annotation.Column;\n");
         sb.append("import gaarason.database.annotation.Primary;\n");
         sb.append("import gaarason.database.annotation.Table;\n");
-        sb.append("import gaarason.database.query.QueryBuilder;\n");
         sb.append("import lombok.Data;\n");
         sb.append("import lombok.EqualsAndHashCode;\n");
         sb.append("import org.springframework.stereotype.Repository;\n");
         sb.append("\n");
-        sb.append("import java.util.List;\n");
         if (needsBigDecimal) {
             sb.append("import java.math.BigDecimal;\n");
         }
@@ -470,16 +468,10 @@ public class ReverseModelGenerator {
             sb.append("    }\n\n");
         }
 
-        // 静态查询方法
-        sb.append("    // ==================== 静态查询方法 ====================\n\n");
-        sb.append("    public static ").append(className).append(" find(Long id) {\n");
-        sb.append("        return BaseModel.find(").append(className).append(".class, id);\n");
-        sb.append("    }\n\n");
-        sb.append("    public static List<").append(className).append("> all() {\n");
-        sb.append("        return BaseModel.all(").append(className).append(".class);\n");
-        sb.append("    }\n\n");
-        sb.append("    public static QueryBuilder<").append(className).append(", Long> query() {\n");
-        sb.append("        return BaseModel.query(").append(className).append(".class);\n");
+        // self() 入口方法
+        sb.append("    /** 获取 Spring 管理的实例，可调用所有 gaarason 方法 */\n");
+        sb.append("    public static ").append(className).append(" self() {\n");
+        sb.append("        return BaseModel.self(").append(className).append(".class);\n");
         sb.append("    }\n");
         sb.append("}\n");
 
@@ -519,12 +511,10 @@ public class ReverseModelGenerator {
         sb.append("import gaarason.database.annotation.Column;\n");
         sb.append("import gaarason.database.annotation.Primary;\n");
         sb.append("import gaarason.database.annotation.Table;\n");
-        sb.append("import gaarason.database.query.QueryBuilder;\n");
         sb.append("import lombok.Data;\n");
         sb.append("import lombok.EqualsAndHashCode;\n");
         sb.append("import org.springframework.stereotype.Repository;\n");
         sb.append("\n");
-        sb.append("import java.util.List;\n");
         if (needsBigDecimal) {
             sb.append("import java.math.BigDecimal;\n");
         }
@@ -577,16 +567,10 @@ public class ReverseModelGenerator {
             sb.append("    }\n\n");
         }
 
-        // 静态查询方法
-        sb.append("    // ==================== 静态查询方法 ====================\n\n");
-        sb.append("    public static ").append(className).append(" find(Long id) {\n");
-        sb.append("        return BaseModel.find(").append(className).append(".class, id);\n");
-        sb.append("    }\n\n");
-        sb.append("    public static List<").append(className).append("> all() {\n");
-        sb.append("        return BaseModel.all(").append(className).append(".class);\n");
-        sb.append("    }\n\n");
-        sb.append("    public static QueryBuilder<").append(className).append(", Long> query() {\n");
-        sb.append("        return BaseModel.query(").append(className).append(".class);\n");
+        // self() 入口方法
+        sb.append("    /** 获取 Spring 管理的实例，可调用所有 gaarason 方法 */\n");
+        sb.append("    public static ").append(className).append(" self() {\n");
+        sb.append("        return BaseModel.self(").append(className).append(".class);\n");
         sb.append("    }\n");
         sb.append("}\n");
 

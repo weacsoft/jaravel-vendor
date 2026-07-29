@@ -46,7 +46,7 @@ public class ModelMetadataPersistence implements MetadataPersistence {
         try {
             // BaseModel.save() 始终执行 INSERT，故先删除已有记录再新增
             // 使用 QueryBuilder.forceDelete() 执行物理删除（plugin_metadata 表无软删除列）
-            PluginMetadataModel.query().where("plugin_id", info.getPluginId()).forceDelete();
+            PluginMetadataModel.self().newQuery().where("plugin_id", info.getPluginId()).forceDelete();
 
             PluginMetadataModel model = new PluginMetadataModel();
             model.setPluginId(info.getPluginId());
@@ -80,7 +80,7 @@ public class ModelMetadataPersistence implements MetadataPersistence {
 
     @Override
     public List<PluginInfo> loadAll() {
-        return PluginMetadataModel.all().stream()
+        return PluginMetadataModel.self().findAll().toObjectList().stream()
             .map(this::toPluginInfo)
             .filter(PluginInfo::isPersisted)
             .collect(Collectors.toList());
@@ -93,7 +93,7 @@ public class ModelMetadataPersistence implements MetadataPersistence {
         }
         try {
             // 使用 QueryBuilder.forceDelete() 执行物理删除
-            PluginMetadataModel.query().where("plugin_id", pluginId).forceDelete();
+            PluginMetadataModel.self().newQuery().where("plugin_id", pluginId).forceDelete();
         } catch (Exception e) {
             log.error("删除插件元数据失败: {}", pluginId, e);
         }
@@ -108,7 +108,7 @@ public class ModelMetadataPersistence implements MetadataPersistence {
      * @return 模型实例，未找到返回 {@code null}
      */
     private PluginMetadataModel findModel(String pluginId) {
-        Record<PluginMetadataModel, Long> record = PluginMetadataModel.query()
+        Record<PluginMetadataModel, Long> record = PluginMetadataModel.self().newQuery()
             .where("plugin_id", pluginId)
             .first();
         return record == null ? null : record.toObject();
