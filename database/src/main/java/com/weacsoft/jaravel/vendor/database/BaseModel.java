@@ -11,6 +11,8 @@ import gaarason.database.contract.eloquent.Record;
 import gaarason.database.eloquent.Model;
 import gaarason.database.provider.ModelShadowProvider;
 import gaarason.database.query.QueryBuilder;
+import gaarason.database.support.EntityMember;
+import gaarason.database.support.ModelMember;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 
@@ -103,8 +105,13 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
      * <b>注意</b>：由于 gaarason 的 {@code EntityMember.dealColumnMap()} 和
      * {@code dealSelectColumnList()} 使用列名（而非字段名）做去重，当子类字段
      * {@code inDatabase=false} 时会被跳过，导致父类字段（{@code inDatabase=true}）
-     * 仍然被加入 SELECT 列表。此问题由 {@link com.weacsoft.jaravel.vendor.database.autoconfigure.ModelShadowPatcher}
-     * 在 Spring 容器就绪后统一修复（从 selectColumnList 和 columnFieldMap 中移除 model_shadow）。
+     * 仍然被加入 SELECT 列表。此问题通过<b>双保险</b>修复：
+     * <ol>
+     *   <li>{@link com.weacsoft.jaravel.vendor.database.autoconfigure.ModelShadowPatcher}
+     *       在 Spring 容器就绪后统一移除（同时修补 ModelMember 和 parseAnyEntityWithCache 两个来源）</li>
+     *   <li>{@link #getModelMember()} 在每次调用时进行幂等修补，
+     *       确保 parseAnyEntityWithCache 新建的 EntityMember 也被处理</li>
+     * </ol>
      * <p>
      * 此处的字段隐藏仍有两个作用：
      * <ol>
@@ -115,6 +122,61 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
     @Column(inDatabase = false, conversion = NullFieldConversion.class)
     @JsonIgnore
     protected transient ModelShadowProvider modelShadow;
+
+    /**
+     * 需要从 ORM 映射中移除的 gaarason 内部列名
+     */
+    private static final String SHADOW_COLUMN = "model_shadow";
+
+    /**
+     * 重写 getModelMember()，在返回前修补 EntityMember，确保 model_shadow 列
+     * 不会出现在 SELECT 查询中。
+     * <p>
+     * <b>为什么需要重写此方法</b>：gaarason 的 {@code SelectBuilder.select(Class)}
+     * 通过 {@code modelShadowProvider.parseAnyEntityWithCache(entityClass)} 获取
+     * {@link EntityMember}，而非通过 {@code modelMember.getEntityMember()}。
+     * 当实体类因 CGLIB 代理等原因未正确注册到 {@code persistence.entityIndexMap} 时，
+     * {@code parseAnyEntityWithCache} 会创建新的未修补的 {@code EntityMember}。
+     * <p>
+     * 本方法在每次调用 {@code getModelMember()} 时（包括 {@code BaseBuilder.initBuilder()}
+     * 和 {@code getEntityClass()} 调用链中），同时修补两个来源的 {@code EntityMember}：
+     * <ol>
+     *   <li>{@code ModelMember} 自带的 {@code EntityMember}</li>
+     *   <li>{@code parseAnyEntityWithCache} 返回的 {@code EntityMember}（select(Class) 实际使用的）</li>
+     * </ol>
+     * 修补是幂等的：仅在 {@code model_shadow} 仍存在于列表中时才执行移除。
+     */
+    @Override
+    protected ModelMember<QueryBuilder<T, K>, T, K> getModelMember() {
+        ModelMember<QueryBuilder<T, K>, T, K> modelMember = super.getModelMember();
+        // 1. 修补 ModelMember 自带的 EntityMember
+        patchShadowColumn(modelMember.getEntityMember());
+        // 2. 修补 parseAnyEntityWithCache 返回的 EntityMember（select(Class) 实际使用的）
+        try {
+            Class<?> entityClass = modelMember.getEntityClass();
+            EntityMember<?, ?> cachedEntityMember = getModelShadow().parseAnyEntityWithCache(entityClass);
+            patchShadowColumn(cachedEntityMember);
+        } catch (Exception e) {
+            // 忽略，步骤 1 已处理
+        }
+        return modelMember;
+    }
+
+    /**
+     * 从 EntityMember 的 selectColumnList 和 columnFieldMap 中移除 model_shadow 列。
+     * 幂等操作：仅在列名仍存在时才执行移除。
+     *
+     * @param entityMember 实体元数据
+     */
+    private static void patchShadowColumn(EntityMember<?, ?> entityMember) {
+        if (entityMember == null) {
+            return;
+        }
+        if (entityMember.getSelectColumnList().contains(SHADOW_COLUMN)) {
+            entityMember.getSelectColumnList().removeIf(SHADOW_COLUMN::equals);
+            entityMember.getColumnFieldMap().remove(SHADOW_COLUMN);
+        }
+    }
 
     @Override
     @JsonIgnore
