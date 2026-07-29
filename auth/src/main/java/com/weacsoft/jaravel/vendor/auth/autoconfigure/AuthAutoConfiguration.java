@@ -64,14 +64,6 @@ public class AuthAutoConfiguration {
     @Autowired
     private AuthProperties properties;
 
-    /** 所有已注册的守卫驱动（Spring 自动注入，含 auth 模块的 SessionGuardDriver、jwt 模块的 JwtGuardDriver 等） */
-    @Autowired
-    private List<AuthGuardDriver> guardDrivers;
-
-    /** 所有已注册的提供者驱动（Spring 自动注入，含 database 模块的 EloquentUserProviderDriver 等） */
-    @Autowired
-    private List<UserProviderDriver> providerDrivers;
-
     @Bean
     @ConditionalOnMissingBean
     public AuthManager authManager() {
@@ -120,7 +112,7 @@ public class AuthAutoConfiguration {
      */
     @Bean
     @ConditionalOnMissingBean(AuthRegistrar.class)
-    public AuthRegistrar authRegistrar(AuthManager authManager) {
+    public AuthRegistrar authRegistrar(@Autowired AuthManager authManager,@Autowired List<AuthGuardDriver> guardDrivers,@Autowired List<UserProviderDriver> providerDrivers) {
         return new AuthRegistrar(properties, guardDrivers, providerDrivers, authManager);
     }
 }

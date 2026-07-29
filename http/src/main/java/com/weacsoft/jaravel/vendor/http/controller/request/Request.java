@@ -194,7 +194,7 @@ public class Request {
     }
 
     public String get(String key, String defaultValue) {
-        String value = get(key, defaultValue.getClass());
+        String value = get(key, String.class);
         if (value == null) {
             if (input.containsKey(key)) {
                 value = input.get(key).toString();
