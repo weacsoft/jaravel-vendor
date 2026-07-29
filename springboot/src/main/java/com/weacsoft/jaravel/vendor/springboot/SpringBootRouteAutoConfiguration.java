@@ -209,6 +209,11 @@ public class SpringBootRouteAutoConfiguration {
                 try {
                     Class<?> clazz = Class.forName(candidate.getBeanClassName());
                     if (Middleware.class.isAssignableFrom(clazz)) {
+                        // 已手动注册的中间件跳过，避免覆盖用户手动 new 的实例
+                        if (registry.isClassRegistered(clazz)) {
+                            log.debug("中间件已手动注册，跳过自动扫描: {}", clazz.getSimpleName());
+                            continue;
+                        }
                         @SuppressWarnings("unchecked")
                         Middleware instance = (Middleware) clazz.getDeclaredConstructor().newInstance();
                         MiddlewareAlias annotation = clazz.getAnnotation(MiddlewareAlias.class);
