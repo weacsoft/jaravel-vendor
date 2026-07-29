@@ -227,7 +227,9 @@ public final class Route {
      * <ul>
      *   <li>{@code String} — 单个别名（如 {@code "auth:api"}）</li>
      *   <li>{@code String[]} — 多个别名（如 {@code new String[]{"auth:admin", "permission:admin"}}）</li>
-     *   <li>{@code List<String>} — 别名列表</li>
+     *   <li>{@code Class<?>} — 单个中间件类（如 {@code VerifyCsrfToken.class}，无需别名）</li>
+     *   <li>{@code Class<?>[]} — 多个中间件类（如 {@code new Class[]{VerifyCsrfToken.class, EncryptCookies.class}}）</li>
+     *   <li>{@code List<?>} — 混合列表，可同时包含 String 别名和 Class 对象</li>
      * </ul>
      *
      * <h3>示例</h3>
@@ -283,7 +285,9 @@ public final class Route {
      * <ul>
      *   <li>{@code String} — 单个别名表达式</li>
      *   <li>{@code String[]} — 多个别名表达式</li>
-     *   <li>{@code List<String>} — 别名列表</li>
+     *   <li>{@code Class<?>} — 单个中间件类（无需别名）</li>
+     *   <li>{@code Class<?>[]} — 多个中间件类</li>
+     *   <li>{@code List<?>} — 混合列表，逐个元素递归处理</li>
      * </ul>
      */
     @SuppressWarnings("unchecked")
@@ -292,9 +296,17 @@ public final class Route {
             groupRouter.middleware((String) value);
         } else if (value instanceof String[]) {
             groupRouter.middleware((String[]) value);
+        } else if (value instanceof Class<?>) {
+            groupRouter.middleware((Class<?>) value);
+        } else if (value instanceof Class<?>[]) {
+            for (Class<?> clazz : (Class<?>[]) value) {
+                groupRouter.middleware(clazz);
+            }
         } else if (value instanceof List) {
-            List<String> list = (List<String>) value;
-            groupRouter.middleware(list.toArray(new String[0]));
+            List<?> list = (List<?>) value;
+            for (Object item : list) {
+                applyGroupMiddleware(groupRouter, item);
+            }
         }
     }
 
@@ -319,6 +331,27 @@ public final class Route {
      */
     public static GroupBuilder middleware(String... aliases) {
         return new GroupBuilder().middleware(aliases);
+    }
+
+    /**
+     * 创建流式分组构建器，通过类对象设置中间件（无需别名）。
+     * <p>
+     * 对齐 Laravel：
+     * <pre>
+     * Route::middleware([\App\Http\Middleware\VerifyCsrfToken::class])->group(...);
+     * </pre>
+     * Java 等价：
+     * <pre>
+     * Route.middleware(VerifyCsrfToken.class, EncryptCookies.class).group(() -> {
+     *     Route.get("/home", "HomeController::index");
+     * });
+     * </pre>
+     *
+     * @param classes 中间件类（必须实现 {@code Middleware} 接口）
+     * @return 分组构建器
+     */
+    public static GroupBuilder middleware(Class<?>... classes) {
+        return new GroupBuilder().middleware(classes);
     }
 
     /**
@@ -372,7 +405,8 @@ public final class Route {
         private String prefix = "";
         private String namespace = "";
         private String name = "";
-        private final List<String> middlewareAliases = new ArrayList<>();
+        /** 中间件列表，元素可以是 String（别名）或 Class<?>（类对象），保持插入顺序 */
+        private final List<Object> middlewares = new ArrayList<>();
 
         /**
          * 设置 URI 前缀。
@@ -414,7 +448,18 @@ public final class Route {
          * @return this
          */
         public GroupBuilder middleware(String... aliases) {
-            this.middlewareAliases.addAll(Arrays.asList(aliases));
+            this.middlewares.addAll(Arrays.asList(aliases));
+            return this;
+        }
+
+        /**
+         * 添加中间件类（无需别名，对齐 Laravel {@code Route::middleware([VerifyCsrfToken::class])}）。
+         *
+         * @param classes 中间件类（必须实现 {@code Middleware} 接口）
+         * @return this
+         */
+        public GroupBuilder middleware(Class<?>... classes) {
+            this.middlewares.addAll(Arrays.asList(classes));
             return this;
         }
 
@@ -436,8 +481,8 @@ public final class Route {
             if (!name.isEmpty()) {
                 params.put(Group.NAME, name);
             }
-            if (!middlewareAliases.isEmpty()) {
-                params.put(Group.MIDDLEWARE, middlewareAliases.toArray(new String[0]));
+            if (!middlewares.isEmpty()) {
+                params.put(Group.MIDDLEWARE, middlewares);
             }
             Route.group(params, callback);
         }
