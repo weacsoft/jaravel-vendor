@@ -154,11 +154,17 @@ public final class MakeGenerator {
                 "import lombok.Data;\n" +
                 "import lombok.EqualsAndHashCode;\n" +
                 "import org.springframework.stereotype.Repository;\n\n" +
-                "import java.util.List;\n\n" +
+                "import java.util.List;\n" +
+                "import java.util.Map;\n\n" +
                 "/**\n" +
                 " * " + className + " 模型，对齐 Laravel Eloquent。\n" +
                 " * <p>\n" +
                 " * 对应数据库表：{@code " + tableName + "}\n" +
+                " * <p>\n" +
+                " * 通过 {@code self()} 可获取 Spring 管理的实例，直接调用所有 gaarason 方法：\n" +
+                " * <pre>\n" +
+                " * " + className + " result = " + className + ".self().updateOrCreate(Map.of(\"name\", \"x\"), Map.of(\"email\", \"x@y.com\"));\n" +
+                " * </pre>\n" +
                 " */\n" +
                 "@Data\n" +
                 "@EqualsAndHashCode(callSuper = false)\n" +
@@ -175,15 +181,34 @@ public final class MakeGenerator {
                 "    // 更新时间：插入和更新时自动填充，格式 yyyy-MM-dd HH:mm:ss（本地时间）\n" +
                 "    @Column(name = \"updated_at\", fill = TimestampFill.UpdatedTimeStringFill.class)\n" +
                 "    private String updatedAt;\n\n" +
-                "    // ==================== 静态查询方法 ====================\n\n" +
+                "    // ==================== 静态方法 ====================\n\n" +
+                "    /** 获取 Spring 管理的实例，可调用所有 gaarason 方法 */\n" +
+                "    public static " + className + " self() {\n" +
+                "        return BaseModel.self(" + className + ".class);\n" +
+                "    }\n\n" +
+                "    /** 按主键查询 */\n" +
                 "    public static " + className + " find(Long id) {\n" +
                 "        return BaseModel.find(" + className + ".class, id);\n" +
                 "    }\n\n" +
+                "    /** 查询全部 */\n" +
                 "    public static List<" + className + "> all() {\n" +
                 "        return BaseModel.all(" + className + ".class);\n" +
                 "    }\n\n" +
+                "    /** 获取查询构造器 */\n" +
                 "    public static QueryBuilder<" + className + ", Long> query() {\n" +
                 "        return BaseModel.query(" + className + ".class);\n" +
+                "    }\n\n" +
+                "    /** 查找匹配条件的记录，存在则更新，不存在则创建 */\n" +
+                "    public static " + className + " updateOrCreate(Map<String, Object> conditions, Map<String, Object> attributes) {\n" +
+                "        return BaseModel.updateOrCreate(" + className + ".class, conditions, attributes);\n" +
+                "    }\n\n" +
+                "    /** 查找匹配条件的记录，不存在则创建 */\n" +
+                "    public static " + className + " firstOrCreate(Map<String, Object> conditions, Map<String, Object> attributes) {\n" +
+                "        return BaseModel.firstOrCreate(" + className + ".class, conditions, attributes);\n" +
+                "    }\n\n" +
+                "    /** 查找匹配条件的记录，不存在则返回新实例（未持久化） */\n" +
+                "    public static " + className + " firstOrNew(Map<String, Object> conditions, Map<String, Object> attributes) {\n" +
+                "        return BaseModel.firstOrNew(" + className + ".class, conditions, attributes);\n" +
                 "    }\n" +
                 "}\n";
     }

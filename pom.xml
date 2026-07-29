@@ -336,6 +336,13 @@
                 <artifactId>jackson-core</artifactId>
                 <version>${jackson-bom.version}</version>
             </dependency>
+            <!-- gaarason/database 的 JsonConversion 依赖 jsr310 的 LocalDateTimeSerializer -->
+            <!-- SB3 由 spring-boot-starter-json 传递提供；SB4 切换至 Jackson 3 不再传递，故需显式声明 -->
+            <dependency>
+                <groupId>com.fasterxml.jackson.datatype</groupId>
+                <artifactId>jackson-datatype-jsr310</artifactId>
+                <version>${jackson-bom.version}</version>
+            </dependency>
 
             <!-- Jackson 3（SB4 运行时使用，json 模块编译期 provided） -->
             <dependency>

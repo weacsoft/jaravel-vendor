@@ -19,6 +19,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Eloquent Model 基类，对齐 Laravel 的 {@code Illuminate\Database\Eloquent\Model}。
@@ -34,7 +35,10 @@ import java.util.List;
  *     &#64;Column private String name;
  *     // getter/setter ...
  *
- *     // 静态查询方法（委托给 BaseModel 工具方法，Java 静态方法不可继承故需手动声明）
+ *     // 通过 self() 获取 Spring 管理的实例，可直接调用所有 gaarason 方法
+ *     public static User self() { return BaseModel.self(User.class); }
+ *
+ *     // 也可保留常用静态快捷方法
  *     public static User find(Long id)                  { return BaseModel.find(User.class, id); }
  *     public static List&lt;User&gt; all()                    { return BaseModel.all(User.class); }
  *     public static QueryBuilder&lt;User, Long&gt; query()    { return BaseModel.query(User.class); }
@@ -48,7 +52,17 @@ import java.util.List;
  * List&lt;User&gt; all = User.all();       // 全部
  * User u = User.query().where("name", "alice").first().toObject(); // 条件查询
  * User clone = user.replicate();     // 复制（不含主键）
+ *
+ * // 通过 self() 访问所有 gaarason 方法（无需为每个方法写静态包装）：
+ * User result = User.self().updateOrCreate(Map.of("name", "alice"), Map.of("email", "alice@example.com"));
+ * User found2 = User.self().findOrCreate(Map.of("name", "bob"), Map.of("email", "bob@example.com"));
+ * User u2 = User.self().newQuery().where("name", "alice").first().toObject();
  * </pre>
+ * <p>
+ * <b>self() 与 getSelf()</b>：gaarason 父类 {@link Model} 已有实例方法 {@code getSelf()}（返回 {@code this}），
+ * 本类覆盖它以返回 Spring 管理的 Bean（含注入的数据源）。由于 Java 不允许静态方法与继承的实例方法同名同参，
+ * 静态访问使用 {@link #self(Class)} 方法。每个业务 Model 声明自己的 {@code public static XxxModel self()}
+ * 即可通过 {@code XxxModel.self()} 静态获取 Spring Bean，进而调用所有 gaarason 实例方法。
  * 数据源通过 {@code @Resource @Lazy} 由 Spring 容器注入（懒加载，避免循环依赖），
  * 支持多个 Model 使用不同数据源。业务 Model 可通过 {@link DataSource @DataSource}
  * 注解指定数据源 Bean 名称，对齐 Laravel Model 的 {@code $connection} 属性；未标注则使用默认数据源。
@@ -107,6 +121,56 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
         }
         // 回退：从容器获取默认数据源
         return SpringContext.bean(GaarasonDataSource.class);
+    }
+
+    // ==================== getSelf / self ====================
+
+    /**
+     * 覆盖 gaarason 父类的实例方法 {@code getSelf()}，返回 Spring 管理的 Bean 而非 {@code this}。
+     * <p>
+     * gaarason 父类 {@link Model#getSelf()} 返回 {@code this}，但在本框架中 {@code new User()} 创建的是
+     * 普通实例（非 Spring Bean，数据源未注入），需要通过 {@link SpringContext#bean(Class)} 获取
+     * Spring 管理的单例来执行数据库操作。本方法确保任何实例上调用 {@code getSelf()} 都返回正确的 Spring Bean。
+     * <p>
+     * 业务 Model 可通过覆盖此方法实现协变返回类型：
+     * <pre>
+     * &#64;Override
+     * public User getSelf() { return (User) super.getSelf(); }
+     * </pre>
+     *
+     * @return Spring 容器中本类的管理实例
+     */
+    @Override
+    @SuppressWarnings("unchecked")
+    public BaseModel<T, K> getSelf() {
+        return SpringContext.bean(this.getClass());
+    }
+
+    /**
+     * 静态获取 Spring 管理的 Model 实例，对齐 Laravel 中通过 {@code Model::query()} 等静态方法
+     * 间接获取查询构造器的模式。
+     * <p>
+     * 由于 Java 不允许静态方法与继承的实例方法同名同参（gaarason 已有实例方法 {@code getSelf()}），
+     * 静态访问使用 {@code self()} 而非 {@code getSelf()}。
+     * <p>
+     * 每个业务 Model 声明自己的静态方法委托给本方法：
+     * <pre>
+     * public static User self() { return BaseModel.self(User.class); }
+     * </pre>
+     * 然后即可通过 {@code User.self()} 静态获取 Spring Bean，调用所有 gaarason 实例方法：
+     * <pre>
+     * // 不需要为每个方法写静态包装，直接调用 gaarason 实例方法：
+     * User result = User.self().updateOrCreate(conditions, attributes);
+     * User found  = User.self().findOrCreate(conditions, attributes);
+     * User u      = User.self().newQuery().where("name", "alice").first().toObject();
+     * List&lt;User&gt; all = User.self().findAll().toObjectList();
+     * </pre>
+     *
+     * @param modelClass 业务 Model 类（需为 Spring Bean）
+     * @return Spring 容器中该类的管理实例
+     */
+    public static <M extends BaseModel<?, ?>> M self(Class<M> modelClass) {
+        return SpringContext.bean(modelClass);
     }
 
     // ==================== 实例方法 ====================
@@ -378,5 +442,97 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
     public static <M extends BaseModel<T, K>, T, K> QueryBuilder<T, K> query(Class<M> modelClass) {
         M bean = SpringContext.bean(modelClass);
         return bean.newQuery();
+    }
+
+    /**
+     * 查找匹配条件的记录，存在则更新，不存在则创建，对齐 Laravel Eloquent 的 {@code Model::updateOrCreate()}。
+     * <p>
+     * gaarason 的 {@code updateOrCreate(T, T)} 接受实体类型参数，本方法通过原始类型调用以支持 Map 入参。
+     * <pre>
+     * User result = BaseModel.updateOrCreate(User.class,
+     *     Map.of("name", "alice"), Map.of("email", "alice@example.com"));
+     * </pre>
+     *
+     * @param modelClass 业务 Model 类（需为 Spring Bean）
+     * @param conditions 查找条件（列名 → 值）
+     * @param attributes 需更新/创建的属性（列名 → 值）
+     * @return 操作后的实体
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public static <M extends BaseModel<T, K>, T, K> T updateOrCreate(Class<M> modelClass,
+                                                                     Map<String, Object> conditions,
+                                                                     Map<String, Object> attributes) {
+        M bean = SpringContext.bean(modelClass);
+        Record record = ((BaseModel) bean).updateOrCreate((Object) conditions, (Object) attributes);
+        return record == null ? null : (T) record.toObject();
+    }
+
+    /**
+     * 查找匹配条件的记录，不存在则创建，对齐 Laravel Eloquent 的 {@code Model::firstOrCreate()}。
+     * <p>
+     * gaarason 对应方法为 {@code findOrCreate}，通过原始类型调用以支持 Map 入参。
+     *
+     * @param modelClass 业务 Model 类（需为 Spring Bean）
+     * @param conditions 查找条件（列名 → 值）
+     * @param attributes 不存在时创建使用的属性（列名 → 值）
+     * @return 找到或新创建的实体
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public static <M extends BaseModel<T, K>, T, K> T firstOrCreate(Class<M> modelClass,
+                                                                    Map<String, Object> conditions,
+                                                                    Map<String, Object> attributes) {
+        M bean = SpringContext.bean(modelClass);
+        Record record = ((BaseModel) bean).findOrCreate((Object) conditions, (Object) attributes);
+        return record == null ? null : (T) record.toObject();
+    }
+
+    /**
+     * 查找匹配条件的记录，不存在则返回新实例（未持久化），对齐 Laravel Eloquent 的 {@code Model::firstOrNew()}。
+     * <p>
+     * gaarason 对应方法为 {@code findOrNew}，通过原始类型调用以支持 Map 入参。
+     *
+     * @param modelClass 业务 Model 类（需为 Spring Bean）
+     * @param conditions 查找条件（列名 → 值）
+     * @param attributes 不存在时新实例的属性（列名 → 值）
+     * @return 找到的实体或新实例（未持久化）
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public static <M extends BaseModel<T, K>, T, K> T firstOrNew(Class<M> modelClass,
+                                                                 Map<String, Object> conditions,
+                                                                 Map<String, Object> attributes) {
+        M bean = SpringContext.bean(modelClass);
+        Record record = ((BaseModel) bean).findOrNew((Object) conditions, (Object) attributes);
+        return record == null ? null : (T) record.toObject();
+    }
+
+    /**
+     * 按主键查询，未找到抛出异常，对齐 Laravel Eloquent 的 {@code Model::findOrFail()}。
+     *
+     * @param modelClass 业务 Model 类（需为 Spring Bean）
+     * @param id         主键值
+     * @return 实体
+     * @throws gaarason.database.exception.EntityNotFoundException 未找到时抛出
+     */
+    public static <M extends BaseModel<T, K>, T, K> T findOrFail(Class<M> modelClass, K id) {
+        M bean = SpringContext.bean(modelClass);
+        Record<T, K> record = bean.findOrFail(id);
+        return record == null ? null : record.toObject();
+    }
+
+    /**
+     * 创建新记录，对齐 Laravel Eloquent 的 {@code Model::create()}。
+     * <p>
+     * gaarason 的 {@code create(T)} 接受实体类型参数，本方法通过原始类型调用以支持 Map 入参。
+     *
+     * @param modelClass 业务 Model 类（需为 Spring Bean）
+     * @param attributes 创建属性（列名 → 值）
+     * @return 创建后的实体
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public static <M extends BaseModel<T, K>, T, K> T create(Class<M> modelClass,
+                                                              Map<String, Object> attributes) {
+        M bean = SpringContext.bean(modelClass);
+        Record record = ((BaseModel) bean).create((Object) attributes);
+        return record == null ? null : (T) record.toObject();
     }
 }

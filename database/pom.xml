@@ -31,6 +31,13 @@
             <artifactId>database-query</artifactId>
         </dependency>
 
+        <!-- gaarason/database 的 JsonConversion 需要 jsr310（LocalDateTimeSerializer） -->
+        <!-- SB3 由 starter-json 传递；SB4 切换至 Jackson 3 不再传递，需显式提供，与 Jackson 2.18.2 对齐 -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+        </dependency>
+
         <!-- Druid 数据源，用于手动创建 GaarasonDataSource -->
         <dependency>
             <groupId>com.alibaba</groupId>
