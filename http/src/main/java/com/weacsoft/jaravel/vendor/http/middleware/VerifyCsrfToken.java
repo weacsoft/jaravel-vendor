@@ -148,12 +148,19 @@ public class VerifyCsrfToken implements Middleware {
     /**
      * 读取当前请求 session 中的 CSRF token，若不存在则生成并写回（与 {@link #handle} 同源）。
      * 供模板 {@code csrf_token()}/{@code csrf_field()} 渲染隐藏域 value 使用。
+     * <p>
+     * <b>失败可见性</b>：若 {@code request} 为 {@code null}（例如在请求生命周期之外渲染模板），
+     * 不会静默返回空串导致隐藏域 {@code value=""}，而是记录 WARN 并返回空串，
+     * 使开发者能立刻发现“CSRF 未处于有效请求上下文”的误用，而非得到不可用的空令牌。
      *
      * @param request 当前请求
-     * @return 非空 token 字符串
+     * @return 非空 token 字符串；request 不可用时返回空串（并打 WARN）
      */
     public static String currentToken(Request request) {
         if (request == null) {
+            org.slf4j.LoggerFactory.getLogger(VerifyCsrfToken.class)
+                    .warn("[csrf] csrf_token() 在请求上下文之外被调用（request 为 null），"
+                            + "无法读取 session，将返回空令牌。请确保在请求处理链中渲染模板。");
             return "";
         }
         return new VerifyCsrfToken().getSessionToken(request);

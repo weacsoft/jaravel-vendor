@@ -246,13 +246,31 @@ public class SpringBootRouteAutoConfiguration {
      * 只要路由组引用 {@code "VerifyCsrfToken"} 别名即可启用校验，模板中即可直接使用
      * {@code {{ csrf_field() }}} / {@code {{ route('name') }}}。
      */
+    /**
+     * 框架级开箱即用注册：将内置 CSRF 校验中间件以别名 {@code "VerifyCsrfToken"} 注册，
+     * 并向模板引擎注册 {@code csrf_token()} / {@code csrf_field()} 与 {@code route()} 辅助函数。
+     * <p>
+     * <b>硬保证（注册即可用）</b>：本方法在注册后立即自检——只要走了注册流程，
+     * 中间件别名与模板辅助函数就必须确实生效；任一注册未落地将抛出
+     * {@link IllegalStateException} 使应用启动失败（而非悄悄留下“空 value / 空路由”的不可用状态），
+     * 从而满足“一旦注册就必须自动可用、开发者零额外代码”的契约。
+     * 仅当应用已自定义同名别名时，框架不覆盖（启动日志可见）。
+     */
     void registerBuiltinMiddlewareAndHelpers(Router router) {
         MiddlewareAliasRegistry registry = MiddlewareAliasRegistry.getGlobal();
 
-        // 1) 内置 CSRF 校验中间件别名（若应用未自定义同名别名则不覆盖）
+        // 1) 内置 CSRF 校验中间件别名（若应用已自定义同名别名则不覆盖，但需确认它确实存在）
         if (!registry.isRegistered("VerifyCsrfToken")) {
             registry.register("VerifyCsrfToken", VerifyCsrfToken.instance());
+            // 自检：注册必须落地，否则启动失败，避免“声称已注册实则不可用”
+            if (!registry.isRegistered("VerifyCsrfToken")) {
+                throw new IllegalStateException(
+                        "[builtin] 内置中间件别名 VerifyCsrfToken 注册失败，CSRF 校验将不可用。"
+                                + "请检查 MiddlewareAliasRegistry 是否被异常清空。");
+            }
             log.info("[builtin] 已注册内置中间件别名 VerifyCsrfToken（开箱即用）");
+        } else {
+            log.info("[builtin] 检测到应用已自定义 VerifyCsrfToken 别名，框架不覆盖（开箱即用）");
         }
 
         // 2) csrf_token() 辅助函数：从当前请求 session 读取/生成 token，与中间件校验同源
@@ -260,7 +278,9 @@ public class SpringBootRouteAutoConfiguration {
             try {
                 Request req = RequestFactory.getCurrentRequest();
                 return VerifyCsrfToken.currentToken(req);
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                // 失败可见：记录 ERROR 而非静默吞掉，避免开发者拿到空 value 却无感知
+                log.error("[builtin] csrf_token() 生成令牌失败", e);
                 return "";
             }
         });
@@ -272,7 +292,15 @@ public class SpringBootRouteAutoConfiguration {
             return resolveRouteUri(router, name, params);
         });
 
-        log.info("[builtin] 已注册模板辅助函数 csrf_token() / csrf_field() / route()（开箱即用）");
+        // 自检：两个模板辅助函数必须确实注册成功
+        if (!BladeFunctions.has("csrf_token")) {
+            throw new IllegalStateException("[builtin] 模板辅助函数 csrf_token() 注册失败，csrf_field() 将不可用。");
+        }
+        if (!BladeFunctions.has("route")) {
+            throw new IllegalStateException("[builtin] 模板辅助函数 route() 注册失败，route() 将不可用。");
+        }
+
+        log.info("[builtin] 已注册模板辅助函数 csrf_token() / csrf_field() / route()（开箱即用，自检通过）");
     }
 
     /**
