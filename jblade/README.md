@@ -570,7 +570,7 @@ jblade 的 `BladeCompiler` 原生支持 Blade 模板表达式语法，将其编�
 | `session(key)` | `session('key')` | 获取 session 值 |
 | `old(key)` | `old('key')` | 获取旧输入值 |
 | `csrf_field()` | `csrf_field()` | CSRF 隐藏表单字段（返回 `<input type="hidden" name="_token" value="...">`），`{{ csrf_field() }}` 原样输出（不转义） |
-| `csrf_token()` | `csrf_token()` | CSRF token 字符串。**由 `BladeFunctions` 注册 `csrf_token` 函数提供**：在 Web 请求中读取 `VerifyCsrfToken` 存入 `HttpSession` 的 token（无则生成并写回），故 value 非空且与校验同源；非 Web 上下文未注册时为空串 |
+| `csrf_token()` | `csrf_token()` | CSRF token 字符串。**由框架开箱即用内置注册**（SpringBoot 自动配置）：在 Web 请求中读取 `VerifyCsrfToken` 存入 `HttpSession` 的 token（无则生成并写回），故 value 非空且与校验同源；非 Web 上下文未注册时为空串 |
 
 #### 对象与数组操作
 
@@ -769,7 +769,7 @@ MemoryClassLoader.getCompiledClasses().put(name, bytes)  -- 存入类加载器
 | 输出拼接 | `{{ 'Hello, ' . $name }}` | 字符串拼接，编译为 Java `+` |
 | 输出空合并 | `{{ $title ?? 'Default' }}` | 空合并运算符，编译为 `nullCoalescing(...)` |
 | 输出辅助函数 | `{{ asset('css/app.css') }}` | 调用 PHP 辅助函数 |
-| 路由辅助函数 | `{{ route('user.profile') }}` / `{{ route('user.profile', ['id' => 1]) }}` | 调用 `route()` 生成路由 URL |
+| 路由辅助函数 | `{{ route('user.profile') }}` / `{{ route('user.profile', ['id' => 1]) }}` | 调用框架开箱即用内置的 `route()` 生成路由 URL |
 | 注释 | `{{-- 注释内容 --}}` | 注释，编译时移除 |
 
 ### 路由指令

@@ -13,19 +13,14 @@ import java.util.List;
  * <p>
  * 对非安全方法（非 GET/HEAD/OPTIONS/TRACE）的请求校验 CSRF 令牌。
  * <p>
- * <b>继承式配置</b>：通过覆盖 {@link #except()} 方法指定排除 URI，而非通过构造器传参。
- * 预定义中间件不标注 {@code @MiddlewareAlias}，由使用者继承后自行标注。
- *
- * <h3>使用示例</h3>
- * <pre>{@code
- * @MiddlewareAlias
- * public class AppVerifyCsrfToken extends VerifyCsrfToken {
- *     @Override
- *     protected String[] except() {
- *         return new String[]{"/api/webhook/*"};
- *     }
- * }
- * }</pre>
+ * <b>开箱即用</b>：框架启动（SpringBoot 自动配置）会自动将其以别名
+ * {@code "VerifyCsrfToken"} 注册到中间件别名表，并在模板引擎注册
+ * {@code csrf_token()}/{@code csrf_field()} 辅助函数，无需应用层自定义子类或额外注册。
+ * 应用只需在路由组中引用该别名即可启用校验（如 {@code Route.group(Map.of(MIDDLEWARE, new
+ * String[]{"VerifyCsrfToken"}), ...)}）。
+ * <p>
+ * <b>扩展（可选）</b>：若需自定义排除 URI，仍可在应用层继承并覆盖 {@link #except()}，
+ * 但绝大多数场景直接使用内置别名即可，无需任何额外代码。
  */
 public class VerifyCsrfToken implements Middleware {
 
@@ -136,5 +131,38 @@ public class VerifyCsrfToken implements Middleware {
         byte[] bytes = new byte[32];
         random.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    // ========== 框架级（开箱即用）便捷方法 ==========
+    // 以下方法供 SpringBoot 自动配置在启动时注册别名与模板辅助函数使用，
+    // 使应用层无需自定义 VerifyCsrfToken 子类即可使用 CSRF 能力。
+
+    /**
+     * 返回 token 在 HttpSession 中存储的 key（{@value #CSRF_SESSION_KEY}）。
+     * 模板辅助函数 {@code csrf_token()} 与中间件校验共用同一 key，保证 token 同源。
+     */
+    public static String csrfSessionKey() {
+        return CSRF_SESSION_KEY;
+    }
+
+    /**
+     * 读取当前请求 session 中的 CSRF token，若不存在则生成并写回（与 {@link #handle} 同源）。
+     * 供模板 {@code csrf_token()}/{@code csrf_field()} 渲染隐藏域 value 使用。
+     *
+     * @param request 当前请求
+     * @return 非空 token 字符串
+     */
+    public static String currentToken(Request request) {
+        if (request == null) {
+            return "";
+        }
+        return new VerifyCsrfToken().getSessionToken(request);
+    }
+
+    /**
+     * 获取一个开箱即用的 {@link VerifyCsrfToken} 实例，用于框架自动注册别名。
+     */
+    public static VerifyCsrfToken instance() {
+        return new VerifyCsrfToken();
     }
 }

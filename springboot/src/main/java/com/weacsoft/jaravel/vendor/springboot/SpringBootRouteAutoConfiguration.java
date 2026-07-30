@@ -8,6 +8,8 @@ import com.weacsoft.jaravel.vendor.http.HttpProperties;
 import com.weacsoft.jaravel.vendor.http.controller.response.Response;
 import com.weacsoft.jaravel.vendor.http.middleware.Middleware;
 import com.weacsoft.jaravel.vendor.http.middleware.MiddlewareAliasRegistry;
+import com.weacsoft.jaravel.vendor.http.middleware.VerifyCsrfToken;
+import com.weacsoft.jaravel.vendor.jblade.BladeFunctions;
 import com.weacsoft.jaravel.vendor.route.RouteDefinition;
 import com.weacsoft.jaravel.vendor.route.Router;
 import com.weacsoft.jaravel.vendor.springboot.annotation.MiddlewareAlias;
@@ -35,6 +37,9 @@ import org.springframework.web.servlet.function.RequestPredicate;
 import org.springframework.web.servlet.function.RequestPredicates;
 import org.springframework.web.servlet.function.RouterFunction;
 import org.springframework.web.servlet.function.RouterFunctions;
+
+import java.util.List;
+import java.util.Map;
 import org.springframework.web.servlet.function.ServerResponse;
 
 import java.util.ArrayList;
@@ -141,6 +146,8 @@ public class SpringBootRouteAutoConfiguration {
             RouteAuthHandler routeAuthHandler, ApplicationContext applicationContext) {
         // 扫描 @MiddlewareAlias 注解的中间件类（classpath 扫描，非 Bean），注册到全局别名注册表
         scanMiddlewareAliases(applicationContext);
+        // 框架级开箱即用注册：CSRF 校验中间件别名 + 模板辅助函数（无需应用层自定义子类或额外注册）
+        registerBuiltinMiddlewareAndHelpers(router);
         // 扫描控制器并注册到 ControllerRegistry（支持 Controllers 接口和 Spring @Controller/@RestController）
         scanControllers(applicationContext);
         // 设置回退解析器：当控制器未在注册表中找到时，从 Spring 容器按需解析
@@ -229,6 +236,85 @@ public class SpringBootRouteAutoConfiguration {
                 }
             }
         }
+    }
+
+    /**
+     * 框架级开箱即用注册：将内置 CSRF 校验中间件以别名 {@code "VerifyCsrfToken"} 注册，
+     * 并向模板引擎注册 {@code csrf_token()} / {@code csrf_field()} 与 {@code route()} 辅助函数。
+     * <p>
+     * 这样应用层无需自定义 {@code VerifyCsrfToken} 子类、也无需在 BladeEngineProvider 中额外注册，
+     * 只要路由组引用 {@code "VerifyCsrfToken"} 别名即可启用校验，模板中即可直接使用
+     * {@code {{ csrf_field() }}} / {@code {{ route('name') }}}。
+     */
+    void registerBuiltinMiddlewareAndHelpers(Router router) {
+        MiddlewareAliasRegistry registry = MiddlewareAliasRegistry.getGlobal();
+
+        // 1) 内置 CSRF 校验中间件别名（若应用未自定义同名别名则不覆盖）
+        if (!registry.isRegistered("VerifyCsrfToken")) {
+            registry.register("VerifyCsrfToken", VerifyCsrfToken.instance());
+            log.info("[builtin] 已注册内置中间件别名 VerifyCsrfToken（开箱即用）");
+        }
+
+        // 2) csrf_token() 辅助函数：从当前请求 session 读取/生成 token，与中间件校验同源
+        BladeFunctions.register("csrf_token", args -> {
+            try {
+                Request req = RequestFactory.getCurrentRequest();
+                return VerifyCsrfToken.currentToken(req);
+            } catch (Exception ignored) {
+                return "";
+            }
+        });
+
+        // 3) route() 辅助函数：按路由别名解析 URL（对齐 Laravel route()）
+        BladeFunctions.register("route", args -> {
+            String name = String.valueOf(args[0]);
+            Object params = args.length > 1 ? args[1] : null;
+            return resolveRouteUri(router, name, params);
+        });
+
+        log.info("[builtin] 已注册模板辅助函数 csrf_token() / csrf_field() / route()（开箱即用）");
+    }
+
+    /**
+     * 按路由别名解析为 URL。优先精确匹配 {@code name}，其次匹配 {@code name.index} 兼容写法。
+     * 未命中时回退为 {@code "/" + name}（点转斜杠），保持与离线渲染一致。
+     * <p>
+     * {@code params} 为 Map 时按参数名替换 {@code {key}} / {@code {key?}}；
+     * 为单值时替换第一个占位符。对齐 Laravel {@code route('name', [...])} 语义。
+     */
+    private static String resolveRouteUri(Router router, String name, Object params) {
+        List<RouteDefinition> routes = router.getAllRoutes();
+        String target = name;
+        if (target.startsWith(".")) {
+            target = target.substring(1);
+        }
+        for (RouteDefinition def : routes) {
+            String candidate = def.getFullName();
+            if (candidate.startsWith(".")) {
+                candidate = candidate.substring(1);
+            }
+            if (candidate.equals(target) || candidate.equals(target + ".index")) {
+                String uri = def.getFullUri();
+                if (uri == null) {
+                    uri = "";
+                }
+                if (!uri.startsWith("/")) {
+                    uri = "/" + uri;
+                }
+                if (params instanceof Map) {
+                    for (Map.Entry<?, ?> e : ((Map<?, ?>) params).entrySet()) {
+                        String key = String.valueOf(e.getKey());
+                        String value = e.getValue() == null ? "" : String.valueOf(e.getValue());
+                        uri = uri.replace("{" + key + "?}", value).replace("{" + key + "}", value);
+                    }
+                } else if (params != null) {
+                    uri = uri.replaceFirst("\\{[^/{}]+\\}", String.valueOf(params));
+                }
+                return uri;
+            }
+        }
+        log.warn("[builtin] route('{}') 未找到对应路由别名, 退化为路径映射", name);
+        return "/" + name.replace('.', '/');
     }
 
     /**
