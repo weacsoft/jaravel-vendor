@@ -4104,7 +4104,7 @@ public class Blade_users_list extends BladeTemplate {
 <tr><td>`protected boolean toBoolean(Object)`</td><td>将值转为布尔（null=false, Number!=0, String 非空）</td></tr>
 <tr><td>`protected void renderComponent(Writer, String, Map, Map)`</td><td>渲染组件</td></tr>
 <tr><td>`protected String route(String name)`</td><td>生成路由 URL，对齐 PHP `route('name')`</td></tr>
-<tr><td>`protected String route(String name, Map<String, Object> params)`</td><td>生成带参数的路由 URL，对齐 PHP `route('name', ['key' => value])`</td></tr>
+<tr><td>`protected String route(String name, Object params)`</td><td>生成带参数的路由 URL，对齐 PHP `route('name', ['key' => value])`（params 可为 Map 或 null）</td></tr>
 <tr><td>`protected String asset(String path)`</td><td>生成静态资源 URL，对齐 PHP `asset('path')`</td></tr>
 <tr><td>`protected String url(String path)`</td><td>生成 URL，对齐 PHP `url('path')`</td></tr>
 <tr><td>`protected Object session(String key)`</td><td>获取 session 值，对齐 PHP `session('key')`</td></tr>
