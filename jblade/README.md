@@ -469,7 +469,7 @@ jblade 的 `BladeCompiler` 原生支持 Blade 模板表达式语法，将其编�
 | 单引号字符串 `'text'` | Java 双引号 `"text"` | `'hello'` → `"hello"` |
 | 静态方法调用 `URL::method()` | 方法调用 | `URL::asset('path')` → `asset("path")` |
 | `Carbon::method()` | carbon 前缀方法 | `Carbon::parse($date)` → `carbonParse($date)` |
-| 辅助函数 `csrf_field()` | 空字符串 | `csrf_field()` → `""` |
+| 辅助函数 `csrf_field()` | 运行时 `csrf_field()`（隐藏 input） | `csrf_field()` → 调用运行时方法，返回 `<input type="hidden">` |
 | 对象方法调用 `$var->method(args)` | `invokeMethod(...)` | `$item->getId()` → `invokeMethod(ctx.getVariable("item"), "getId")` |
 | 对象属性访问 `$var->prop` | `getProperty(...)` | `$item->name` → `getProperty(ctx.getVariable("item"), "name")` |
 | 方法链属性 `method()->prop` | `getProperty(method(), "prop")` | `carbonToday()->year` → `carbonYear(carbonToday())` |
@@ -520,7 +520,7 @@ jblade 的 `BladeCompiler` 原生支持 Blade 模板表达式语法，将其编�
 | `protected void renderComponent(Writer, String, Map, Map)` | 渲染组件 |
 | `protected String route(String name)` | 生成路由 URL，对齐 PHP `route('name')` |
 | `protected String route(String name, Map<String, Object> params)` | 生成带参数的路由 URL，对齐 PHP `route('name', ['key' => value])` |
-| `protected String asset(String path)` | 生成静态资源 URL，对齐 PHP `asset('path')` |
+| `protected String asset(String path)` | 生成静态资源 URL，与 `url()` 完全一致（不附加任何前缀），对齐 PHP `asset('path')` |
 | `protected String url(String path)` | 生成 URL，对齐 PHP `url('path')` |
 | `protected Object session(String key)` | 获取 session 值，对齐 PHP `session('key')` |
 | `protected String old(String key)` | 获取旧输入值，对齐 PHP `old('key')` |
@@ -565,12 +565,12 @@ jblade 的 `BladeCompiler` 原生支持 Blade 模板表达式语法，将其编�
 | --- | --- | --- |
 | `route(name)` | `route('name')` | 生成路由 URL |
 | `route(name, params)` | `route('name', ['key' => value])` | 生成带参数的路由 URL |
-| `asset(path)` | `asset('path')` | 生成静态资源 URL |
+| `asset(path)` | `asset('path')` | 生成静态资源 URL，与 `url()` 行为一致（无前缀） |
 | `url(path)` | `url('path')` | 生成 URL |
 | `session(key)` | `session('key')` | 获取 session 值 |
 | `old(key)` | `old('key')` | 获取旧输入值 |
-| `csrf_field()` | `csrf_field()` | CSRF 表单字段（当前返回空字符串占位） |
-| `csrf_token()` | `csrf_token()` | CSRF token（当前返回空字符串占位） |
+| `csrf_field()` | `csrf_field()` | CSRF 隐藏表单字段（返回 `<input type="hidden" name="_token" value="...">`），`{{ csrf_field() }}` 原样输出 |
+| `csrf_token()` | `csrf_token()` | CSRF token 字符串（由外部 `BladeFunctions` 注册，未注册时为空串） |
 
 #### 对象与数组操作
 
@@ -788,7 +788,7 @@ MemoryClassLoader.getCompiledClasses().put(name, bytes)  -- 存入类加载器
 | 三元 | `$a ? $b : $c` | 编译为 `toBoolean(...) ? ... : ...` |
 | 静态方法 | `URL::asset('path')` | 编译为 `asset(...)` |
 | Carbon 方法 | `Carbon::parse($date)` | 编译为 `carbonParse(...)` |
-| 辅助函数 | `csrf_field()` | 编译为空字符串占位 |
+| 辅助函数 | `csrf_field()` | 编译为运行时 `csrf_field()`，返回隐藏 input（`{{ }}` 中按原样输出） |
 
 ### 控制结构指令
 
@@ -973,36 +973,42 @@ public Object listUsers() {
 
 ---
 
-## 13. 静态资源 URL 生成（@asset）
+## 13. 静态资源 URL 生成（@asset / asset）
 
-`jblade` 提供 `@asset` 指令，用于在 Blade 模板中生成静态资源 URL，对齐 Laravel 的 `asset()` 辅助函数。该指令由 `BladeAssetHelper` 类提供运行时实现，将资源相对路径拼接为带 URL 前缀的完整路径，常用于引用 CSS、JS、图片等静态文件。
+`jblade` 提供 `@asset` 指令与 `asset()` 辅助函数，用于在 Blade 模板中生成静态资源 URL。**其语义与 `url()` 完全一致：仅根据传入路径拼接根路径，不附加任何固定的资源前缀**（既不会自动加 `/static`，也不会自动加 `/assets`）。
 
 ### 功能说明
 
 | 项 | 说明 |
 | --- | --- |
-| 对齐 Laravel | `asset('css/app.css')` 辅助函数 |
+| 对齐 Laravel | `asset('css/app.css')` / `url('css/app.css')` 辅助函数 |
 | 指令语法 | `@asset('css/app.css')` |
-| 运行时实现 | `BladeAssetHelper.url("css/app.css")` |
-| 默认 URL 前缀 | `/static`（可通过 `BladeAssetHelper.setUrlPrefix()` 修改） |
-| 编译产物 | `write(writer, BladeAssetHelper.url("css/app.css"))` |
+| 表达式写法 | `{{ asset('css/app.css') }}` |
+| 运行时实现 | `asset("css/app.css")`（内部直接调用 `url()`） |
+| URL 前缀 | 无（与 `url()` 一致） |
+| 编译产物 | `write(writer, asset("css/app.css"))` / `echo(writer, asset("css/app.css"))` |
 
-模板中写 `@asset('css/app.css')` 时，`BladeCompiler` 在 `processRenderDirectives` 方法的 switch 语句中识别 `asset` case，将其编译为对 `BladeAssetHelper.url("css/app.css")` 的调用，运行时输出形如 `/static/css/app.css` 的 URL。
+模板中写 `@asset('css/app.css')` 或 `{{ asset('css/app.css') }}`，`BladeCompiler` 统一编译为对运行时 `asset()` 方法的调用，输出与 `url('css/app.css')` 完全相同，例如：
+
+- `asset('css/app.css')`      → `/css/app.css`
+- `asset('/js/app.js')`       → `/js/app.js`
+- `asset('images/logo.png')`  → `/images/logo.png`
+- `asset('')`                 → `/`
 
 ### 使用示例
 
-Blade 模板（如 `templates/layout.blade.java`）：
+Blade 模板：
 
 ```blade
 <!DOCTYPE html>
 <html>
 <head>
     <title>@yield('title', 'Default')</title>
-    <link rel="stylesheet" href="@asset('css/app.css')">
+    <link rel="stylesheet" href="{{ asset('css/app.css') }}">
     <script src="@asset('js/app.js')"></script>
 </head>
 <body>
-    <img src="@asset('images/logo.png')" alt="logo">
+    <img src="{{ asset('images/logo.png') }}" alt="logo">
     @yield('content')
 </body>
 </html>
@@ -1010,67 +1016,27 @@ Blade 模板（如 `templates/layout.blade.java`）：
 
 ### 渲染结果示例
 
-假设 URL 前缀为 `/static`，上述模板渲染结果：
-
 ```html
 <!DOCTYPE html>
 <html>
 <head>
     <title>Default</title>
-    <link rel="stylesheet" href="/static/css/app.css">
-    <script src="/static/js/app.js"></script>
+    <link rel="stylesheet" href="/css/app.css">
+    <script src="/js/app.js"></script>
 </head>
 <body>
-    <img src="/static/images/logo.png" alt="logo">
+    <img src="/images/logo.png" alt="logo">
 </body>
 </html>
 ```
 
-### BladeAssetHelper 配置说明
+### 与路由模块静态资源路由对接
 
-`BladeAssetHelper`（`com.weacsoft.jaravel.vendor.jblade.BladeAssetHelper`）是一个静态工具类，通过静态字段持有当前 URL 前缀。应在应用启动时（通常由自动装配完成）调用 `setUrlPrefix()` 配置前缀：
+`@asset` 生成的 URL（如 `/css/app.css`）由 HTTP 模块的 `StaticResourceRoute`（`com.weacsoft.jaravel.vendor.http.staticresource.StaticResourceRoute`）实际响应。**`asset()` 本身不附加任何前缀**，若希望资源 URL 带统一前缀（如 `/static/css/app.css`），请在路径中显式写出前缀，并保证该前缀与 `StaticResourceRoute` 的 `urlPrefix` 一致：
 
-```java
-import com.weacsoft.jaravel.vendor.jblade.BladeAssetHelper;
-
-// 设置 URL 前缀（自动补齐首部 / 并去除尾部 /）
-BladeAssetHelper.setUrlPrefix("/static");
-
-// 生成资源 URL
-String cssUrl = BladeAssetHelper.url("css/app.css");  // "/static/css/app.css"
-String jsUrl  = BladeAssetHelper.url("/js/app.js");   // "/static/js/app.js"（开头的 / 会被去除）
+```blade
+<link rel="stylesheet" href="@asset('static/css/app.css')">  {{-- → /static/css/app.css --}}
 ```
-
-| 方法签名 | 说明 |
-| --- | --- |
-| `static void setUrlPrefix(String prefix)` | 设置 URL 前缀，自动确保以 `/` 开头、不以 `/` 结尾；传入 null 或空字符串时保持原值 |
-| `static String getUrlPrefix()` | 获取当前 URL 前缀（默认 `/static`） |
-| `static String url(String path)` | 将资源相对路径拼接为完整 URL（如 `url("css/app.css")` → `/static/css/app.css`）；path 开头的 `/` 会被自动去除 |
-
-> **默认前缀**：未调用 `setUrlPrefix()` 时，`BladeAssetHelper` 使用默认前缀 `/static`。
-
-### 与路由模块 StaticResourceRoute 的配合使用
-
-`@asset` 指令生成的 URL 需要由 HTTP 模块的 `StaticResourceRoute`（`com.weacsoft.jaravel.vendor.http.staticresource.StaticResourceRoute`）实际响应静态文件。两者通过**相同的 URL 前缀**对接：
-
-1. **路由侧**：通过 `router.serveStatic()` 注册静态资源路由，指定 URL 前缀与资源目录。
-2. **模板侧**：通过 `BladeAssetHelper.setUrlPrefix()` 设置相同的前缀。
-3. **对接**：模板中 `@asset('css/app.css')` 生成 `/static/css/app.css`，请求到达后被 `StaticResourceRoute` 拦截，从资源目录加载 `css/app.css` 文件返回。
-
-```java
-import com.weacsoft.jaravel.vendor.jblade.BladeAssetHelper;
-
-// 1. 路由侧：注册静态资源路由，URL 前缀为 /static
-router.serveStatic("/static", "classpath:/static/", 3600);
-
-// 2. 模板侧：设置相同的 URL 前缀（应与上面 serveStatic 的前缀一致）
-BladeAssetHelper.setUrlPrefix("/static");
-
-// 3. 模板中使用 @asset('css/app.css') → /static/css/app.css
-//    请求 /static/css/app.css 由 StaticResourceRoute 处理，返回 classpath:/static/css/app.css
-```
-
-或通过配置自动注册（HTTP 模块）：
 
 ```yaml
 jaravel:
@@ -1082,7 +1048,7 @@ jaravel:
       cache-max-age: 3600
 ```
 
-> **关键点**：`BladeAssetHelper` 的 URL 前缀必须与 `StaticResourceRoute` 的 `urlPrefix` 保持一致，否则 `@asset` 生成的 URL 将无法被静态资源路由命中。`StaticResourceRoute` 支持多目录回退查找（按顺序匹配第一个命中的文件）。
+> **关键点**：`asset()` 等价于 `url()`，不会自动注入前缀。`/static` 这类前缀应由调用方在路径中显式给出，并通过 `StaticResourceRoute`（或 `router.serveStatic` 的 `urlPrefix`）实际托管对应资源。
 
 ---
 

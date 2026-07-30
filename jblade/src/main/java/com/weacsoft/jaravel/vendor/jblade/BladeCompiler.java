@@ -438,9 +438,17 @@ public class BladeCompiler {
                     break;
                 case N_ECHO:
                     if (!tok.value.isEmpty()) {
+                        // csrf_field() 返回 HTML（隐藏 input），必须原样输出而非 HTML 转义，
+                        // 否则 {{ csrf_field() }} 会把 <input...> 当成文本显示。
+                        boolean rawOut = tok.value.trim().startsWith("csrf_field(");
                         PhpExpressionTranslator.Expr e = translateExpr(tok.value, templateName);
-                        em.code.append("        echo(").append(em.writerVar).append(", ")
-                                .append(e.asObject()).append(");\n");
+                        if (rawOut) {
+                            em.code.append("        echoRaw(").append(em.writerVar).append(", ")
+                                    .append(e.asObject()).append(");\n");
+                        } else {
+                            em.code.append("        echo(").append(em.writerVar).append(", ")
+                                    .append(e.asObject()).append(");\n");
+                        }
                     }
                     break;
                 case N_RAW_ECHO:
@@ -942,12 +950,13 @@ public class BladeCompiler {
                 return;
             }
             case "asset": {
+                // asset 与 url 行为一致：按根路径拼接，不附加任何资源前缀
                 String path = literalArgOrNull(args);
                 if (path != null) {
-                    code.append("        write(").append(em.writerVar).append(", BladeAssetHelper.url(\"")
+                    code.append("        write(").append(em.writerVar).append(", asset(\"")
                             .append(escapeJava(path)).append("\"));\n");
                 } else {
-                    code.append("        write(").append(em.writerVar).append(", BladeAssetHelper.url(String.valueOf(")
+                    code.append("        write(").append(em.writerVar).append(", asset(String.valueOf(")
                             .append(translateExpr(args, templateName).asObject()).append(")));\n");
                 }
                 return;

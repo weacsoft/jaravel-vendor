@@ -133,6 +133,29 @@ class BladeFeatureTest {
     }
 
     /**
+     * 辅助函数回归：asset() 应与 url() 语义一致（不附加任何前缀），
+     * 且 {{ csrf_field() }} 必须原样输出隐藏 input（不可被 HTML 转义为可见文本）。
+     */
+    @Test
+    void testAssetEqualsUrlAndCsrfFieldRaw() throws Exception {
+        BladeEngine engine = new BladeEngine("templates");
+
+        String html = engine.render("testhelpers", Map.of());
+
+        // asset / @asset 必须与 url() 一致，绝不出现 /assets 或 /static 前缀
+        assertTrue(html.contains("ASSET:/css/app.css;"), "asset 应与 url 一致，得到 /css/app.css: " + html);
+        assertTrue(html.contains("ASSET2:/js/app.js;"), "@asset 应与 url 一致，得到 /js/app.js: " + html);
+        assertTrue(html.contains("ASSET3:/img/logo.png;"), "asset 路径以 / 开头时不额外加前缀: " + html);
+        assertFalse(html.contains("/assets/"), "asset 不应附加 /assets 前缀: " + html);
+        assertFalse(html.contains("/static/"), "asset 不应附加 /static 前缀: " + html);
+
+        // {{ csrf_field() }} 必须原样输出 <input...>，不可转义为 &lt;input...&gt;
+        assertTrue(html.contains("CSRF:<input type=\"hidden\" name=\"_token\""),
+                "{{ csrf_field() }} 应原样输出隐藏 input: " + html);
+        assertFalse(html.contains("CSRF:&lt;input"), "{{ csrf_field() }} 不应被 HTML 转义: " + html);
+    }
+
+    /**
      * Wire 场景回归：renderSection 局部渲染需初始化完整继承链，
      * 且多次调用（含整页渲染后）结果一致、不受 isInitialized 状态影响。
      */

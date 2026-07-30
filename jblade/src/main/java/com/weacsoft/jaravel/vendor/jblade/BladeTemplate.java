@@ -169,13 +169,8 @@ public abstract class BladeTemplate {
             Object r = BladeFunctions.call("asset", path);
             return r == null ? "" : r.toString();
         }
-        if (path == null || path.isEmpty()) {
-            return "/assets/";
-        }
-        if (path.startsWith("/")) {
-            return "/assets" + path;
-        }
-        return "/assets/" + path;
+        // asset 与 url 行为一致，仅根据路径拼接根路径（不附加任何资源前缀）
+        return url(path);
     }
 
     /**
