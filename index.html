@@ -2357,7 +2357,7 @@ public class AppTrustProxies extends TrustProxies {
 
 <p>对齐 Laravel <code>VerifyCsrfToken</code>。对非安全方法（非 GET/HEAD/OPTIONS/TRACE）的请求校验 CSRF 令牌。非 Spring Bean，采用继承式配置，无状态、不可变。</p>
 
-<p><strong>应用层接入</strong>：应用需定义 <code>AppVerifyCsrfToken extends VerifyCsrfToken</code> 并标注 <code>@MiddlewareAlias("VerifyCsrfToken")</code>，再在 <code>RouteServiceProvider</code> 的 Web 路由组中注册 <code>new String[]{"VerifyCsrfToken"}</code> 方可生效。token 存放于 <code>HttpSession</code>（key=<code>csrf_token</code>），与模板 <code>csrf_field()</code>/<code>csrf_token()</code> 通过 <code>BladeFunctions</code> 注册的 <code>csrf_token</code> 函数读取的是同一个值，保证表单隐藏域 value 与校验用的 token 一致、且非空。</p>
+<p><strong>应用层接入（开箱即用）</strong>：<code>VerifyCsrfToken</code> 已由框架（SpringBoot 自动配置）以别名 <code>"VerifyCsrfToken"</code> <strong>自动注册</strong>，<strong>无需</strong>应用层自定义子类或 <code>@MiddlewareAlias</code>。应用只需在 <code>RouteServiceProvider</code> 的 Web 路由组中引用该别名即可启用校验。token 存放于 <code>HttpSession</code>（key=<code>csrf_token</code>），与模板 <code>csrf_field()</code>/<code>csrf_token()</code> 经框架注册的 <code>csrf_token</code> 函数读取的是同一个值，保证表单隐藏域 value 与校验用的 token 一致、且非空。模板侧的使用逻辑、启用/未启用的输出差异见 <a href="#jblade-15-内置辅助函数与中间件联动（csrf-与-route）">jblade 15. 内置辅助函数与中间件联动</a>。</p>
 
 <table>
 <tr><th>常量</th><th>值</th><th>说明</th></tr>
@@ -3656,6 +3656,8 @@ router.serveStatic(&quot;/static&quot;, List.of(&quot;file:./public/&quot;, &quo
 <li><a href="#jblade-12-线程安全说明">12. 线程安全说明</a></li>
 <li><a href="#jblade-13-静态资源-url-生成（asset）">13. 静态资源 URL 生成（@asset）</a></li>
 <li><a href="#jblade-14-预编译功能">14. 预编译功能</a></li>
+<li><a href="#jblade-15-内置辅助函数与中间件联动（csrf-与-route）">15. 内置辅助函数与中间件联动（CSRF 与 route）</a></li>
+<li><a href="#jblade-16-自定义扩展注册-blade-函数与指令">16. 自定义扩展：注册 Blade 函数与指令</a></li>
 </ul>
 
 <p>---</p>
@@ -5180,6 +5182,254 @@ java -cp jblade.jar com.weacsoft.jaravel.vendor.jblade.BladePrecompilerMain \
     --output /path/to/templates.zip \
     --mode PACKAGED
 </code></pre>
+
+<h5 id="jblade-15-内置辅助函数与中间件联动（csrf-与-route）">15. 内置辅助函数与中间件联动（CSRF 与 route）</h5>
+
+<p><code>jblade</code> 提供两组与后端运行时强相关、但<strong>由框架自动注册、开发者零配置即可使用</strong>的辅助函数：<code>csrf_field()/csrf_token()/@csrf</code>（依赖 <code>jaravel-http</code> 的 <code>VerifyCsrfToken</code> 中间件）与 <code>route()</code>（依赖 <code>jaravel-http</code> 的 <code>Router</code>）。本节讲清它们的使用逻辑与联动关系。</p>
+
+<h6 id="jblade-151-csrf-防护csrf-fieldcsrf-token-与-csrf">15.1 CSRF 防护：csrf_field() / csrf_token() / @csrf</h6>
+
+<p>CSRF 防护由「<strong>中间件校验</strong>」与「<strong>模板输出令牌</strong>」两部分组成，二者通过 <code>HttpSession</code> 中的同一份令牌（key = <code>csrf_token</code>）对齐。</p>
+
+<h6>三个模板入口</h6>
+
+<table>
+<tr><th>模板写法</th><th>作用</th><th>运行时方法</th><th>输出</th></tr>
+<tr><td>`{{ csrf_field() }}` 或 `@csrf`</td><td>输出完整隐藏域</td><td>`csrf_field()` / `csrf()`</td><td>`&lt;input type="hidden" name="_token" value="令牌"&gt;`（原样输出，不被 HTML 转义）</td></tr>
+<tr><td>`{{ csrf_token() }}`</td><td>仅输出令牌字符串</td><td>`csrf_token()`</td><td>令牌字符串（如 `a1b2c3...`）</td></tr>
+</table>
+
+<h6>启动链路（开箱即用，无需任何注册）</h6>
+
+<ol>
+<li><code>jaravel-springboot</code> 的自动配置在启动时完成两件内置注册：
+<ul>
+<li>向 <code>MiddlewareAliasRegistry</code> 注册别名 <code>"VerifyCsrfToken"</code>（指向 <code>VerifyCsrfToken.instance()</code>）。</li>
+<li>向 <code>BladeFunctions</code> 注册 <code>"csrf_token"</code> 函数：从当前请求 session 读取/生成令牌。</li>
+</ul>
+</li>
+<li>开发者在路由组上挂接该中间件即可（见 <code>RouteServiceProvider</code>）：
+<pre><code>Route.group(Map.of(Route.Group.MIDDLEWARE, new String[]{"VerifyCsrfToken"}), Web::register);</code></pre>
+</li>
+</ol>
+
+<h6>启用 / 不启用的行为差异（关键）</h6>
+
+<p><code>csrf_field()</code> / <code>@csrf</code> 的输出<strong>严格取决于 <code>VerifyCsrfToken</code> 中间件是否应用于当前请求</strong>：</p>
+
+<ul>
+<li><strong>已挂接（启用）</strong>：<code>VerifyCsrfToken.handle</code> 运行时会做两件事——
+<ul>
+<li>给请求打上「已启用」标记（<code>request</code> 属性 <code>__jaravel_csrf_enabled = true</code>）；</li>
+<li>若 session 中尚无令牌，则生成一个写入 <code>HttpSession</code>（key = <code>csrf_token</code>），并通过 <code>Set-Cookie</code> 下发（受 <code>addHttpOnlyCookie</code> 控制）。</li>
+</ul>
+之后模板渲染时，<code>csrf_token()</code> 依据该标记返回非空令牌，<code>csrf_field()</code> 正常输出隐藏域。表单提交时，中间件对 POST/PUT/PATCH/DELETE 校验请求中的 <code>_token</code> 与 session 令牌是否一致。</li>
+<li><strong>未挂接（未启用）</strong>：<code>handle</code> 不会被调用，请求上<strong>没有</strong>「已启用」标记，<code>csrf_token()</code> 返回空串，此时 <code>csrf_field()</code> / <code>@csrf</code> <strong>返回空字符串、不输出任何 <code>&lt;input&gt;</code></strong>——等同该指令不存在。</li>
+</ul>
+
+<p>&gt; <strong>设计意图</strong>：若开发者没有在某组路由上启用 CSRF 中间件，却仍让模板输出隐藏域，既无用又易误导；因此框架选择「未启用即不输出」。</p>
+
+<h6>校验与放行规则（VerifyCsrfToken）</h6>
+
+<table>
+<tr><th>情况</th><th>行为</th></tr>
+<tr><td>请求方法为 GET / HEAD / OPTIONS</td><td>自动放行（安全方法不修改状态）</td></tr>
+<tr><td>请求方法在 <code>except</code> 列表（默认 `api/`、`logout`、`logout/post`）</td><td>自动放行</td></tr>
+<tr><td>其它写操作（POST/PUT/PATCH/DELETE）</td><td>校验 `_token` 与 session 令牌，不一致或缺失则返回 419（默认）</td></tr>
+<tr><td>令牌在 session 中缺失</td><td>视为首次访问，自动放行（中间件已写入令牌，下次请求起校验生效）</td></tr>
+</table>
+
+<p>&gt; 中间件内部细节见 <a href="#http-46-verifycsrftoken">http 模块 4.6 VerifyCsrfToken</a>。</p>
+
+<h6>配置项（application.yml）</h6>
+
+<pre><code>jaravel:
+  http:
+    csrf:
+      enabled: true               # 总开关
+      add-http-only-cookie: false # 是否将令牌写入 HttpOnly Cookie（默认 false，仅存 session）
+      except:                     # 额外免校验 URI 前缀
+        - /api/
+        - /logout</code></pre>
+
+<h6>最小可工作示例</h6>
+
+<p>路由组（Web 已挂 <code>VerifyCsrfToken</code> 的页面模板）：</p>
+
+<pre><code>&lt;form method="POST" action="{{ route('admin.login') }}"&gt;
+    @csrf
+    &lt;input name="email"&gt;
+    &lt;input name="password" type="password"&gt;
+    &lt;button&gt;登录&lt;/button&gt;
+&lt;/form&gt;</code></pre>
+
+<p>渲染输出（<code>VerifyCsrfToken</code> 已启用时）：</p>
+
+<pre><code>&lt;form method="POST" action="/admin/login"&gt;
+    &lt;input type="hidden" name="_token" value="a1b2c3d4..."&gt;
+    &lt;input name="email"&gt;
+    &lt;input name="password" type="password"&gt;
+    &lt;button&gt;登录&lt;/button&gt;
+&lt;/form&gt;</code></pre>
+
+<p>若把该模板用于<strong>未挂接</strong> <code>VerifyCsrfToken</code> 的路由组，<code>@csrf</code> 渲染为空字符串，表单中不会出现隐藏域。</p>
+
+<h6 id="jblade-152-route按路由名生成-url">15.2 route()：按路由名生成 URL</h6>
+
+<p>`route(name)` / `route(name, params)` 对齐 Laravel 的 `route()` 辅助函数，按路由<strong>全名</strong>解析出 URL。</p>
+
+<h6>用法</h6>
+
+<pre><code>&lt;a href="{{ route('admin.login') }}"&gt;登录&lt;/a&gt;
+&lt;img src="{{ route('image.show', Map.of('id', 42)) }}"&gt;</code></pre>
+
+<h6>路由名如何形成</h6>
+
+<p>路由全名 = 分组累积前缀 + 本路由名，点号连接。例如：</p>
+
+<pre><code>Route.prefix("admin").name("admin").group(() -&gt; {
+    Route.get("/login", ...).name("login.index");   // 全名: admin.login.index
+    Route.post("/login", ...).name("login");         // 全名: admin.login
+});</code></pre>
+
+<p>则 <code>route('admin.login')</code> → <code>/admin/login</code>，<code>route('admin.login.index')</code> → <code>/admin/login</code>。</p>
+
+<h6>参数替换规则</h6>
+
+<ul>
+<li>若 <code>params</code> 为 <code>Map</code>：按 <code>{key}</code> 占位符逐一代换，例如 <code>route('image.show', Map.of("id", 42))</code> 对 <code>Route.get("/img/{id}", ...)</code> → <code>/img/42</code>。</li>
+<li>若 <code>params</code> 为单个值（非 Map）：替换路径中<strong>第一个</strong> <code>{...}</code> 占位符。</li>
+<li>未匹配到路由名：回退为 <code>/</code> + 名称中点号替换为斜杠（如 <code>route('admin.login')</code> 回退 <code>/admin/login</code>），保证不抛错。</li>
+<li>未提供第二参时 <code>params = null</code>，路径无占位符则原样输出。</li>
+</ul>
+
+<h6>别名注册（开箱即用）</h6>
+
+<p><code>route()</code> 同样由 <code>jaravel-springboot</code> 自动配置注册到 <code>BladeFunctions</code>（名为 <code>"route"</code>），开发者无需任何注册即可在模板中使用。</p>
+
+<h6 id="jblade-153-开箱即用与零注册保证">15.3 开箱即用与“零注册”保证</h6>
+
+<ul>
+<li><code>csrf_token</code>、<code>csrf_field</code>、<code>@csrf</code>、<code>route</code> 均由框架在启动时<strong>自动注册并自检</strong>：若任一注册未落地，自动配置会抛出 <code>IllegalStateException</code> 使应用启动失败（而不是悄悄留下“空 value / 空路由”的不可用状态）。</li>
+<li>在请求上下文之外调用 <code>csrf_token()</code>（如离线渲染），框架记录 WARN 日志并返回空串，确保不会静默产生一个无用的空令牌。</li>
+<li><strong>开发者侧</strong>：不需要、也不应该在应用层 <code>BladeEngineProvider</code> 或任何 Provider 中重新注册这些内置函数——它们已由框架托管。若你需要自定义函数，见第 16 节。</li>
+</ul>
+
+<h5 id="jblade-16-自定义扩展注册-blade-函数与指令">16. 自定义扩展：注册 Blade 函数与指令</h5>
+
+<p>除内置函数外，你可以向模板引擎注册<strong>自定义 Blade 函数</strong>与<strong>自定义指令</strong>，从而把任意 Java 逻辑暴露给 <code>.blade.java</code> 模板。</p>
+
+<h6 id="jblade-161-注册自定义-blade-函数bladefunctions">16.1 注册自定义 Blade 函数（BladeFunctions）</h6>
+
+<p><code>com.weacsoft.jaravel.vendor.jblade.BladeFunctions</code> 是一个<strong>全局静态注册表</strong>，函数签名统一为 <code>java.util.function.Function&lt;Object[], Object&gt;</code>（参数为模板调用实参数组，返回值为输出对象，框架会自动 <code>echo</code>）。</p>
+
+<h6>API</h6>
+
+<table>
+<tr><th>方法</th><th>说明</th></tr>
+<tr><td>`BladeFunctions.register(String name, Function&lt;Object[],Object&gt; fn)`</td><td>注册/覆盖一个函数。同名会被覆盖（最后注册者生效）</td></tr>
+<tr><td>`BladeFunctions.has(String name)`</td><td>判断函数是否已注册</td></tr>
+<tr><td>`BladeFunctions.callOrDefault(String name, Object def)`</td><td>调用函数；未注册时返回 `def`（内置 `csrf_token()` 即走此兜底逻辑）</td></tr>
+<tr><td>`BladeFunctions.call(String name, Object... args)`</td><td>调用函数（未注册会抛异常）</td></tr>
+<tr><td>`BladeFunctions.clear()`</td><td>清空整个注册表（主要用于测试隔离）</td></tr>
+</table>
+
+<h6>示例：注册一个 gravatar() 函数</h6>
+
+<pre><code>import com.weacsoft.jaravel.vendor.jblade.BladeFunctions;
+import java.util.function.Function;
+
+BladeFunctions.register("gravatar", args -&gt; {
+    String email = String.valueOf(args[0]);
+    String hash = md5(email.trim().toLowerCase());           // 你的哈希实现
+    return "https://www.gravatar.com/avatar/" + hash;
+});</code></pre>
+
+<p>模板中即可使用：</p>
+
+<pre><code>&lt;img src="{{ gravatar($user.email) }}" alt="avatar"&gt;</code></pre>
+
+<p>&gt; 参数通过 <code>args[0]</code>、<code>args[1]</code>… 按位置取；<code>args.length</code> 可判断可选参。返回值会被模板引擎 <code>echo</code> 输出；返回 <code>null</code> 会被当作空串。</p>
+
+<h6 id="jblade-162-注册自定义指令bladedirectives">16.2 注册自定义指令（BladeDirectives）</h6>
+
+<p><code>com.weacsoft.jaravel.vendor.jblade.BladeDirectives</code> 允许注册<strong>编译期指令</strong>（<code>@xxx</code>），把一段 Blade 文本替换为自定义生成的 Java 源码。</p>
+
+<h6>API</h6>
+
+<table>
+<tr><th>方法</th><th>说明</th></tr>
+<tr><td>`BladeDirectives.register(String name, Function&lt;String,String&gt; handler)`</td><td>注册一个指令处理器：`name` 为指令名，`handler` 接收指令体文本（如 `@datetime(...)` 中括号里的 `...`），返回要内联进模板类的 Java 源码字符串</td></tr>
+<tr><td>`BladeDirectives.has(String name)`</td><td>判断指令是否已注册</td></tr>
+<tr><td>`BladeDirectives.get(String name)`</td><td>取出处理器（未注册抛 `IllegalStateException`）</td></tr>
+</table>
+
+<h6>示例：注册一个 @shout('hello') 指令</h6>
+
+<pre><code>import com.weacsoft.jaravel.vendor.jblade.BladeDirectives;
+import java.util.function.Function;
+
+BladeDirectives.register("shout", body -&gt; {
+    // body = "'hello'" -&gt; 生成 Java 源码：调用 String.toUpperCase()
+    return "write(writer, String.valueOf(" + body + ").toUpperCase());";
+});</code></pre>
+
+<pre><code>@shout('hello')   {{-- 编译为 write(writer, "hello".toUpperCase()); -&gt; 输出 HELLO --}}</code></pre>
+
+<p>&gt; 指令处理器返回的是<strong>模板类内的 Java 源码</strong>（<code>write(writer, ...)</code> / <code>echo(writer, ...)</code>），不是最终 HTML。复杂指令可拼出多行代码，也可调用你在 <code>BladeFunctions</code> 中注册的函数。</p>
+
+<h6 id="jblade-163-在-jaravelspring-boot中注册">16.3 在 Jaravel（Spring Boot）中注册</h6>
+
+<p>在 Jaravel 应用里，自定义函数/指令应在<strong>应用启动阶段</strong>注册一次（在任何请求渲染模板之前）。推荐做法是写一个继承 <code>ServiceProvider</code> 的组件，在 <code>boot()</code>（或 <code>register()</code>）中注册——框架的 <code>ProviderRegistry</code> 会在容器刷新时统一调用：</p>
+
+<pre><code>package com.weacsoft.jaravel.app.provider;
+
+import com.weacsoft.jaravel.vendor.core.provider.ServiceProvider;
+import com.weacsoft.jaravel.vendor.jblade.BladeFunctions;
+import com.weacsoft.jaravel.vendor.jblade.BladeDirectives;
+import org.springframework.stereotype.Component;
+
+@Component
+public class BladeExtrasProvider extends ServiceProvider {
+
+    @Override
+    public void boot() {
+        // 自定义 Blade 函数
+        BladeFunctions.register("gravatar", args -&gt;
+                "https://www.gravatar.com/avatar/" + md5(String.valueOf(args[0])));
+
+        // 自定义指令
+        BladeDirectives.register("shout", body -&gt;
+                "write(writer, String.valueOf(" + body + ").toUpperCase());");
+    }
+}</code></pre>
+
+<p>注册时机说明：</p>
+
+<ul>
+<li><code>BladeFunctions</code> / <code>BladeDirectives</code> 是<strong>进程级静态注册表</strong>，只要在首次渲染前注册一次即可全局生效；多次重复注册同名函数会被覆盖。</li>
+<li>框架内置的 <code>csrf_token</code> / <code>route</code> 由 <code>jaravel-springboot</code> 自动配置注册。你的自定义函数使用<strong>不同的名字</strong>即可，二者互不干扰。</li>
+<li>若你确实想<strong>覆盖</strong>某个内置函数（例如自定义 <code>csrf_token</code> 的来源），直接 <code>BladeFunctions.register("csrf_token", ...)</code> 即可覆盖，但这意味着你接手了令牌生成逻辑，<strong>不推荐</strong>——内置实现已与 <code>VerifyCsrfToken</code> 中间件同源联动。</li>
+</ul>
+
+<h6 id="jblade-164-内置函数一览与不要重复注册注意">16.4 内置函数一览与“不要重复注册”注意</h6>
+
+<p>下列函数由框架<strong>自动注册</strong>，开发者<strong>不应</strong>在应用层手动注册（否则属于重复注册，可能覆盖框架行为）：</p>
+
+<table>
+<tr><th>函数名</th><th>来源模块</th><th>说明</th><th>是否依赖中间件/路由启用</th></tr>
+<tr><td>`csrf_field()` / `@csrf`</td><td>jblade（运行时 `csrf_field()`）</td><td>输出 `&lt;input type="hidden" name="_token" value="..."&gt;`</td><td>是（`VerifyCsrfToken` 未启用时输出空串）</td></tr>
+<tr><td>`csrf_token()`</td><td>jblade + springboot 注册源</td><td>返回令牌字符串</td><td>是（未启用时为空串）</td></tr>
+<tr><td>`route(name[, params])`</td><td>jblade + springboot 注册源</td><td>按路由名解析 URL</td><td>否（始终可用，未匹配回退为 `/` + 名称）</td></tr>
+<tr><td>`asset(path)` / `@asset(path)`</td><td>jblade</td><td>静态资源 URL（等价于 `url()`）</td><td>否</td></tr>
+<tr><td>`url(path)`</td><td>jblade</td><td>URL 生成</td><td>否</td></tr>
+<tr><td>`session(key[, def])`</td><td>jblade</td><td>读取 session 变量</td><td>否（无 session 时返回默认值/空）</td></tr>
+<tr><td>`old(name[, def])`</td><td>jblade</td><td>读取上次输入（old flash）</td><td>否</td></tr>
+</table>
+
+<p>只有<strong>框架未提供、你自行扩展</strong>的函数（如 <code>gravatar</code>、<code>shout</code> 等）才需要按 16.1 / 16.2 / 16.3 注册。</p>
+
+<p>&gt; 简言之：<strong>内置的用就行，别再注册一遍；自己的自定义函数，用 <code>BladeFunctions.register</code> / <code>BladeDirectives.register</code> 在 <code>ServiceProvider.boot()</code> 里注册一次。</strong></p>
 
 </section>
 <h2 id="data">数据层</h2>
