@@ -2384,22 +2384,30 @@ public class AppTrustProxies extends TrustProxies {
 <p>token 查找顺序：<code>X-XSRF-TOKEN</code> 请求头 -&gt; <code>_token</code> 表单字段 -&gt; <code>XSRF-TOKEN</code> Cookie。校验失败抛 <code>RuntimeException(&quot;CSRF token validation failed&quot;)</code>。</p>
 
 <pre><code>
-// 继承式配置 + @MiddlewareAlias（别名须与 Web 路由组注册的中间件别名一致）
-// 真实类路径：com.weacsoft.jaravel.app.http.middleware.AppVerifyCsrfToken
-// 父类：com.weacsoft.jaravel.vendor.http.middleware.VerifyCsrfToken
-@MiddlewareAlias("VerifyCsrfToken")
-public class AppVerifyCsrfToken extends VerifyCsrfToken {
-    // 默认 except() 返回空数组；可覆写以排除无需校验的 URI（如 /api/webhook）
-}
+// 开箱即用：VerifyCsrfToken 由框架（SpringBoot 自动配置）自动以别名 "VerifyCsrfToken" 注册，
+// 无需应用层自定义子类或 @MiddlewareAlias。应用只需在 Web 路由组引用该别名即可启用校验。
+// VerifyCsrfToken 父类：com.weacsoft.jaravel.vendor.http.middleware.VerifyCsrfToken
 </code></pre>
 
-<p>应用层 <code>AppVerifyCsrfToken</code> 须在 <code>RouteServiceProvider</code> 的 Web 路由组中注册，方可生效：</p>
+<p>在 <code>RouteServiceProvider</code> 的 Web 路由组中引用内置别名即可启用 CSRF 校验（模板辅助函数 <code>csrf_field()</code> / <code>csrf_token()</code> 同样由框架自动注册，与中间件校验同源）：</p>
 
 <pre><code>
-// RouteServiceProvider.java（Web 路由组挂接 CSRF 校验）
+// RouteServiceProvider.java（Web 路由组挂接内置 CSRF 校验，无需自定义中间件类）
 Route.group(Map.of(
         Route.Group.MIDDLEWARE, new String[]{"VerifyCsrfToken"}
 ), Web::register);
+</code></pre>
+
+<p><strong>扩展（可选）</strong>：如需自定义排除 URI，可在应用层继承 <code>VerifyCsrfToken</code> 并覆盖 <code>except()</code>，再用 <code>@MiddlewareAlias("VerifyCsrfToken")</code> 标注，框架会优先使用应用自定义实例：</p>
+
+<pre><code>
+@MiddlewareAlias("VerifyCsrfToken")
+public class AppVerifyCsrfToken extends VerifyCsrfToken {
+    @Override
+    protected String[] except() {
+        return new String[]{"/api/webhook"};
+    }
+}
 </code></pre>
 
 <p>---</p>
