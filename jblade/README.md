@@ -519,7 +519,7 @@ jblade 的 `BladeCompiler` 原生支持 Blade 模板表达式语法，将其编�
 | `protected boolean toBoolean(Object)` | 将值转为布尔（null=false, Number!=0, String 非空） |
 | `protected void renderComponent(Writer, String, Map, Map)` | 渲染组件 |
 | `protected String route(String name)` | 生成路由 URL，对齐 PHP `route('name')` |
-| `protected String route(String name, Map<String, Object> params)` | 生成带参数的路由 URL，对齐 PHP `route('name', ['key' => value])` |
+| `protected String route(String name, Object params)` | 生成带参数的路由 URL，对齐 PHP `route('name', ['key' => value])`（params 可为 Map 或 null） |
 | `protected String asset(String path)` | 生成静态资源 URL，与 `url()` 完全一致（不附加任何前缀），对齐 PHP `asset('path')` |
 | `protected String url(String path)` | 生成 URL，对齐 PHP `url('path')` |
 | `protected Object session(String key)` | 获取 session 值，对齐 PHP `session('key')` |
@@ -769,7 +769,14 @@ MemoryClassLoader.getCompiledClasses().put(name, bytes)  -- 存入类加载器
 | 输出拼接 | `{{ 'Hello, ' . $name }}` | 字符串拼接，编译为 Java `+` |
 | 输出空合并 | `{{ $title ?? 'Default' }}` | 空合并运算符，编译为 `nullCoalescing(...)` |
 | 输出辅助函数 | `{{ asset('css/app.css') }}` | 调用 PHP 辅助函数 |
+| 路由辅助函数 | `{{ route('user.profile') }}` / `{{ route('user.profile', ['id' => 1]) }}` | 调用 `route()` 生成路由 URL |
 | 注释 | `{{-- 注释内容 --}}` | 注释，编译时移除 |
+
+### 路由指令
+
+| 指令 | 语法 | 说明 |
+| --- | --- | --- |
+| 路由 URL | `@route('user.profile')` / `@route('user.profile', ['id' => 1])` | 等价于 `route()` 函数调用，编译为运行时 `route(name, params)`。`name` 对应 `Route.name(...)` 注册的别名（支持分组 `name(...)` 前缀拼接，如 `Route.prefix("admin").name("admin").group(...)` 内 `name("login")` → `admin.login`） |
 
 ### 表达式语法
 

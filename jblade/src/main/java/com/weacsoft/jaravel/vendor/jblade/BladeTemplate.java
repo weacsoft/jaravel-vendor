@@ -116,20 +116,21 @@ public abstract class BladeTemplate {
     /**
      * 生成带参数的路由 URL，对齐 PHP route('name', ['key' => value])。
      * @param name 路由名称（别名）
-     * @param params 查询参数
+     * @param params 查询参数（可为 Map 或 null）
      * @return 带查询参数的 URL
      */
-    protected String route(String name, Map<String, Object> params) {
+    protected String route(String name, Object params) {
         if (BladeFunctions.has("route")) {
             Object r = BladeFunctions.call("route", name, params);
             return r == null ? "" : r.toString();
         }
-        if (params == null || params.isEmpty()) {
+        Map<String, Object> map = params instanceof Map ? (Map<String, Object>) params : null;
+        if (map == null || map.isEmpty()) {
             return "/" + name;
         }
         StringBuilder sb = new StringBuilder("/").append(name).append("?");
         boolean first = true;
-        for (Map.Entry<String, Object> entry : params.entrySet()) {
+        for (Map.Entry<String, Object> entry : map.entrySet()) {
             if (!first) {
                 sb.append("&");
             }

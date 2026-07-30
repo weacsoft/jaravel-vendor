@@ -940,12 +940,13 @@ public class BladeCompiler {
                 return;
             }
             case "route": {
-                // @route('name') — http 模块路由别名 → URL
+                // @route('name') / @route('name', [...]) — http 模块路由别名 → URL
+                // 编译为 BladeTemplate.route(name, params)，与 {{ route('name') }} 函数调用一致
                 List<String> parts = PhpExpressionTranslator.splitTopLevel(args);
                 String nameCode = translateExpr(parts.get(0), templateName).asObject();
                 String paramsCode = parts.size() >= 2
                         ? translateExpr(parts.get(1), templateName).asObject() : "null";
-                code.append("        write(").append(em.writerVar).append(", routeAny(")
+                code.append("        write(").append(em.writerVar).append(", route(")
                         .append(nameCode).append(", ").append(paramsCode).append("));\n");
                 return;
             }
