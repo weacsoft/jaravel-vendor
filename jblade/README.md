@@ -31,7 +31,7 @@
   - [14.6 JRE-only 运行示例](#146-jre-only-运行示例)
 - [15. 内置辅助函数与中间件联动（CSRF / route）](#15-内置辅助函数与中间件联动csrf--route)
   - [15.1 CSRF 防护：csrf_field() / csrf_token() / @csrf](#151-csrf-防护csrf_field--csrf_token--csrf)
-  - [15.2 route()：按路由名生成 URL](#152-route按路由名生成-url)
+  - [15.2 route() 与 url()：按路由名 / 按路径生成 URL](#152-route-与-url按路由名-按路径生成-url)
   - [15.3 开箱即用与“零注册”保证](#153-开箱即用与零注册保证)
 - [16. 自定义扩展：注册 Blade 函数与指令](#16-自定义扩展注册-blade-函数与指令)
   - [16.1 注册自定义 Blade 函数（BladeFunctions）](#161-注册自定义-blade-函数bladefunctions)
@@ -1241,7 +1241,7 @@ String html = engine.render("welcome", Map.of("name", "Alice"));
 
 ## 15. 内置辅助函数与中间件联动（CSRF / route）
 
-`jblade` 提供两组与后端运行时强相关、但**由框架自动注册、开发者零配置即可使用**的辅助函数：`csrf_field()/csrf_token()/@csrf`（依赖 `jaravel-http` 的 `VerifyCsrfToken` 中间件）与 `route()`（依赖 `jaravel-http` 的 `Router`）。本节讲清它们的使用逻辑与联动关系。
+`jblade` 提供两组与后端运行时强相关、但**由框架自动注册、开发者零配置即可使用**的辅助函数：`csrf_field()/csrf_token()/@csrf`（依赖 `jaravel-http` 的 `VerifyCsrfToken` 中间件）与 `route()` / `url()`（依赖 `jaravel-http` 的 `Router`）。本节讲清它们的使用逻辑与联动关系。
 
 ### 15.1 CSRF 防护：csrf_field() / csrf_token() / @csrf
 
@@ -1326,16 +1326,30 @@ jaravel:
 
 若把该模板用于**未挂接** `VerifyCsrfToken` 的路由组，`@csrf` 渲染为空字符串，表单中不会出现隐藏域。
 
-### 15.2 route()：按路由名生成 URL
+### 15.2 route() 与 url()：按路由名 / 按路径生成 URL
 
-`route(name)` / `route(name, params)` 对齐 Laravel 的 `route()` 辅助函数，按路由**全名**解析出 URL。
+jblade 提供两个与 Laravel 对齐的 URL 辅助函数，语义与 Laravel 的 `route()` / `url()` 完全一致：
 
-#### 用法
+| 辅助函数 | 对齐 Laravel | 语义 |
+| --- | --- | --- |
+| `route(name)` / `route(name, params)` | `route('name')` | 按路由**别名**解析出 URL（路由须存在，否则回退为路径映射） |
+| `url(path)` | `url('/path')` | 按**路径**生成 URL，**不校验路由是否存在** |
+
+#### route()：按路由全名解析 URL（模板）
 
 ```blade
 <a href="{{ route('admin.login') }}">登录</a>
 <img src="{{ route('image.show', Map.of('id', 42)) }}">
 ```
+
+#### url()：按路径生成 URL（模板，不校验存在）
+
+```blade
+<a href="{{ url('/admin/login') }}">登录</a>
+<a href="{{ url('admin/login') }}">登录</a>   <!-- 自动补前导 / -->
+```
+
+`url()` 对已是绝对地址（含 `://`）或已以 `/` 开头的路径原样返回，其余自动补前导 `/`；空值返回 `/`。
 
 #### 路由名如何形成
 
@@ -1350,20 +1364,39 @@ Route.prefix("admin").name("admin").group(() -> {
 
 则 `route('admin.login')` → `/admin/login`，`route('admin.login.index')` → `/admin/login`。
 
-#### 参数替换规则
+#### 参数替换规则（route）
 
 - 若 `params` 为 `Map`：按 `{key}` 占位符逐一代换，例如 `route('image.show', Map.of("id", 42))` 对 `Route.get("/img/{id}", ...)` → `/img/42`。
 - 若 `params` 为单个值（非 Map）：替换路径中**第一个** `{...}` 占位符。
 - 未匹配到路由名：回退为 `/` + 名称中点号替换为斜杠（如 `route('admin.login')` 回退 `/admin/login`），保证不抛错。
 - 未提供第二参时 `params = null`，路径无占位符则原样输出。
 
+#### 在 Java 中生成 URL（AppConfig.app().route()）
+
+两个辅助函数在 Java 侧有完全一致的对应实现，封装在 `com.weacsoft.jaravel.vendor.route.RouteHelper` 门面（方法均为静态，对齐 Laravel 全局辅助函数）。通过 `AppConfig.app().route()` 即可流式调用：
+
+```java
+// route(别名)：按路由名解析 URL，对齐 Laravel route('admin.login')
+String url1 = AppConfig.app().route().route("admin.login");
+String url2 = AppConfig.app().route().route("user.show", Map.of("id", 1));
+
+// url(路径)：单纯生成 URL，不校验是否存在，对齐 Laravel url('/admin/login')
+String url3 = AppConfig.app().route().url("admin/login");   // -> "/admin/login"
+
+// 静态全局调用（任意 Java 处可直接使用，等价于模板 route()/url()）
+String url4 = RouteHelper.route("admin.login");
+String url5 = RouteHelper.url("/admin/login");
+```
+
+**实现说明**：Java 不允许同一类中静态方法与实例方法签名相同，因此 `RouteHelper` 的方法为静态；`AppConfig.app().route()` 返回 `RouteHelper` 单例，`.route(...)` / `.url(...)` 通过「实例引用调用静态方法」（Java 合法）落到同一实现。启动时 `RouteServiceProvider` 会调用 `RouteHelper.setRouter(rootRouter)` 注入根路由器，故按名解析随时可用。
+
 #### 别名注册（开箱即用）
 
-`route()` 同样由 `jaravel-springboot` 自动配置注册到 `BladeFunctions`（名为 `"route"`），开发者无需任何注册即可在模板中使用。
+`route()` 与 `url()` 均由 `jaravel-springboot` 自动配置注册到 `BladeFunctions`（名为 `"route"` 与 `"url"`），开发者无需任何注册即可在模板中使用；二者同样纳入「注册即自检」保证。
 
 ### 15.3 开箱即用与“零注册”保证
 
-- `csrf_token`、`csrf_field`、`@csrf`、`route` 均由框架在启动时**自动注册并自检**：若任一注册未落地，自动配置会抛出 `IllegalStateException` 使应用启动失败（而不是悄悄留下“空 value / 空路由”的不可用状态）。
+- `csrf_token`、`csrf_field`、`@csrf`、`route`、`url` 均由框架在启动时**自动注册并自检**：若任一注册未落地，自动配置会抛出 `IllegalStateException` 使应用启动失败（而不是悄悄留下“空 value / 空路由”的不可用状态）。
 - 在请求上下文之外调用 `csrf_token()`（如离线渲染），框架记录 WARN 日志并返回空串，确保不会静默产生一个无用的空令牌。
 - **开发者侧**：不需要、也不应该在应用层 `BladeEngineProvider` 或任何 Provider 中重新注册这些内置函数——它们已由框架托管。若你需要自定义函数，见第 16 节。
 

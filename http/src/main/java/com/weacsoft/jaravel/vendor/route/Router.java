@@ -16,9 +16,14 @@ import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import static com.weacsoft.jaravel.vendor.route.RouteService.*;
 
 public class Router {
+
+    private static final Logger log = LoggerFactory.getLogger(Router.class);
     private final List<RouteDefinition> routes = new CopyOnWriteArrayList<>();
     private final List<Router> routers = new CopyOnWriteArrayList<>();
     /**
@@ -444,6 +449,68 @@ public class Router {
         routers.forEach(router -> routes.addAll(router.getAllRoutes()));
         routes.addAll(this.routes);
         return routes;
+    }
+
+    /**
+     * 按路由别名解析为 URL（对齐 Laravel {@code route('name')}），供 Java 代码直接调用。
+     * <p>
+     * 等价于模板辅助函数 {@code route()}，但无需模板上下文即可在任意 Java 代码中调用，
+     * 例如 {@code AppConfig.app().route().url("admin.login")}。
+     * <p>
+     * 解析规则：优先精确匹配 {@code name}，其次兼容 {@code name.index} 写法；
+     * 未命中时退化为 {@code "/" + name.replace('.', '/')}（与模板 {@code route()} 行为一致）。
+     *
+     * @param name 路由别名（如 {@code "admin.login"}）
+     * @return 完整 URL 路径（如 {@code "/admin/login"}）
+     */
+    public String url(String name) {
+        return url(name, null);
+    }
+
+    /**
+     * 按路由别名解析为 URL 并替换路径参数（对齐 Laravel {@code route('name', [...])}）。
+     * <p>
+     * {@code params} 为 {@link Map} 时按参数名替换 {@code {key}} / {@code {key?}}；
+     * 为单值时替换第一个占位符。
+     *
+     * @param name   路由别名（如 {@code "admin.user.show"}）
+     * @param params 路径参数（Map 或单值）
+     * @return 完整 URL 路径（已替换参数）
+     */
+    public String url(String name, Object params) {
+        List<RouteDefinition> routes = getAllRoutes();
+        String target = name;
+        if (target.startsWith(".")) {
+            target = target.substring(1);
+        }
+        for (RouteDefinition def : routes) {
+            String candidate = def.getFullName();
+            if (candidate.startsWith(".")) {
+                candidate = candidate.substring(1);
+            }
+            if (candidate.equals(target) || candidate.equals(target + ".index")) {
+                String uri = def.getFullUri();
+                if (uri == null) {
+                    uri = "";
+                }
+                if (!uri.startsWith("/")) {
+                    uri = "/" + uri;
+                }
+                if (params instanceof Map) {
+                    for (Map.Entry<?, ?> e : ((Map<?, ?>) params).entrySet()) {
+                        String key = String.valueOf(e.getKey());
+                        String value = e.getValue() == null ? "" : String.valueOf(e.getValue());
+                        uri = uri.replace("{" + key + "?}", value).replace("{" + key + "}", value);
+                    }
+                } else if (params != null) {
+                    uri = uri.replaceFirst("\\{[^/{}]+\\}", String.valueOf(params));
+                }
+                return uri;
+            }
+        }
+        // 未命中：保留与模板一致的退化行为并告警，便于排查命名错误
+        log.warn("[route] url('{}') 未找到对应路由别名, 退化为路径映射", name);
+        return "/" + name.replace('.', '/');
     }
 
     public List<Middleware> getAllMiddlewares() {

@@ -481,4 +481,59 @@ class RouterTest {
         List<Middleware> mws = route.getMiddlewares();
         assertEquals(1, mws.size(), "应有 1 个分组中间件");
     }
+
+    // ========== 按路由别名解析 URL（对齐 Laravel route()） ==========
+
+    @Test
+    void testUrlResolvesByNameWithGroupPrefixAndName() {
+        Router router = new Router();
+        router.group(Map.of(
+                Route.Group.PREFIX, "admin",
+                Route.Group.NAME, "admin"
+        ), r -> r.get("/login", NOOP).name("login"));
+
+        // 分组 prefix + 路由 name 合并后，按 "admin.login" 应能解析出完整 URL
+        assertEquals("/admin/login", router.url("admin.login"));
+    }
+
+    @Test
+    void testUrlResolvesWithIndexFallback() {
+        Router router = new Router();
+        router.group(Map.of(
+                Route.Group.PREFIX, "admin",
+                Route.Group.NAME, "admin"
+        ), r -> r.get("/login", NOOP).name("login.index"));
+
+        // 查找 "admin.login" 应兼容匹配 "admin.login.index"，且带上分组前缀
+        assertEquals("/admin/login", router.url("admin.login"));
+    }
+
+    @Test
+    void testUrlWithParamsReplacesPlaceholder() {
+        Router router = new Router();
+        router.get("/users/{id}", NOOP).name("user.show");
+        router.get("/posts/{slug?}", NOOP).name("post.show");
+
+        assertEquals("/users/5", router.url("user.show", Map.of("id", 5)));
+        // 可选占位符 {slug?} 也能按名替换
+        assertEquals("/posts/hello", router.url("post.show", Map.of("slug", "hello")));
+    }
+
+    @Test
+    void testUrlWithSingleParamReplacesFirstPlaceholder() {
+        Router router = new Router();
+        router.get("/users/{id}", NOOP).name("user.show");
+
+        // 单值参数替换第一个占位符
+        assertEquals("/users/9", router.url("user.show", 9));
+    }
+
+    @Test
+    void testUrlNotFoundFallsBackToPathMapping() {
+        Router router = new Router();
+        router.get("/known", NOOP).name("known");
+
+        // 未命中别名：退化为点转斜杠路径映射，并打出 warn（对齐模板 route() 行为）
+        assertEquals("/no/such/route", router.url("no.such.route"));
+    }
 }

@@ -11,6 +11,7 @@ import com.weacsoft.jaravel.vendor.http.middleware.MiddlewareAliasRegistry;
 import com.weacsoft.jaravel.vendor.http.middleware.VerifyCsrfToken;
 import com.weacsoft.jaravel.vendor.jblade.BladeFunctions;
 import com.weacsoft.jaravel.vendor.route.RouteDefinition;
+import com.weacsoft.jaravel.vendor.route.RouteHelper;
 import com.weacsoft.jaravel.vendor.route.Router;
 import com.weacsoft.jaravel.vendor.springboot.annotation.MiddlewareAlias;
 import org.springframework.beans.factory.config.BeanDefinition;
@@ -285,64 +286,30 @@ public class SpringBootRouteAutoConfiguration {
             }
         });
 
-        // 3) route() 辅助函数：按路由别名解析 URL（对齐 Laravel route()）
+        // 3) route() 辅助函数：按路由别名解析 URL（对齐 Laravel route('name')）
+        //    委托 RouteHelper.route()，与 Java 侧 AppConfig.app().route().route(...) 共用同一实现
         BladeFunctions.register("route", args -> {
             String name = String.valueOf(args[0]);
             Object params = args.length > 1 ? args[1] : null;
-            return resolveRouteUri(router, name, params);
+            return RouteHelper.route(name, params);
         });
 
-        // 自检：两个模板辅助函数必须确实注册成功
+        // 4) url() 辅助函数：按路径生成 URL，不校验是否存在（对齐 Laravel url('/path')）
+        //    委托 RouteHelper.url()，与 Java 侧 AppConfig.app().route().url(...) 共用同一实现
+        BladeFunctions.register("url", args -> RouteHelper.url(String.valueOf(args[0])));
+
+        // 自检：模板辅助函数必须确实注册成功（硬保证，避免静默不可用）
         if (!BladeFunctions.has("csrf_token")) {
             throw new IllegalStateException("[builtin] 模板辅助函数 csrf_token() 注册失败，csrf_field() 将不可用。");
         }
         if (!BladeFunctions.has("route")) {
             throw new IllegalStateException("[builtin] 模板辅助函数 route() 注册失败，route() 将不可用。");
         }
-
-        log.info("[builtin] 已注册模板辅助函数 csrf_token() / csrf_field() / route()（开箱即用，自检通过）");
-    }
-
-    /**
-     * 按路由别名解析为 URL。优先精确匹配 {@code name}，其次匹配 {@code name.index} 兼容写法。
-     * 未命中时回退为 {@code "/" + name}（点转斜杠），保持与离线渲染一致。
-     * <p>
-     * {@code params} 为 Map 时按参数名替换 {@code {key}} / {@code {key?}}；
-     * 为单值时替换第一个占位符。对齐 Laravel {@code route('name', [...])} 语义。
-     */
-    private static String resolveRouteUri(Router router, String name, Object params) {
-        List<RouteDefinition> routes = router.getAllRoutes();
-        String target = name;
-        if (target.startsWith(".")) {
-            target = target.substring(1);
+        if (!BladeFunctions.has("url")) {
+            throw new IllegalStateException("[builtin] 模板辅助函数 url() 注册失败，url() 将不可用。");
         }
-        for (RouteDefinition def : routes) {
-            String candidate = def.getFullName();
-            if (candidate.startsWith(".")) {
-                candidate = candidate.substring(1);
-            }
-            if (candidate.equals(target) || candidate.equals(target + ".index")) {
-                String uri = def.getFullUri();
-                if (uri == null) {
-                    uri = "";
-                }
-                if (!uri.startsWith("/")) {
-                    uri = "/" + uri;
-                }
-                if (params instanceof Map) {
-                    for (Map.Entry<?, ?> e : ((Map<?, ?>) params).entrySet()) {
-                        String key = String.valueOf(e.getKey());
-                        String value = e.getValue() == null ? "" : String.valueOf(e.getValue());
-                        uri = uri.replace("{" + key + "?}", value).replace("{" + key + "}", value);
-                    }
-                } else if (params != null) {
-                    uri = uri.replaceFirst("\\{[^/{}]+\\}", String.valueOf(params));
-                }
-                return uri;
-            }
-        }
-        log.warn("[builtin] route('{}') 未找到对应路由别名, 退化为路径映射", name);
-        return "/" + name.replace('.', '/');
+
+        log.info("[builtin] 已注册模板辅助函数 csrf_token() / csrf_field() / route() / url()（开箱即用，自检通过）");
     }
 
     /**
