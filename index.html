@@ -2353,9 +2353,11 @@ public class AppTrustProxies extends TrustProxies {
 
 <h6 id="http-46-verifycsrftoken">4.6 VerifyCsrfToken</h6>
 
-<p><code>com.weacsoft.jaravel.vendor.middleware.VerifyCsrfToken</code></p>
+<p><code>com.weacsoft.jaravel.vendor.http.middleware.VerifyCsrfToken</code></p>
 
 <p>对齐 Laravel <code>VerifyCsrfToken</code>。对非安全方法（非 GET/HEAD/OPTIONS/TRACE）的请求校验 CSRF 令牌。非 Spring Bean，采用继承式配置，无状态、不可变。</p>
+
+<p><strong>应用层接入</strong>：应用需定义 <code>AppVerifyCsrfToken extends VerifyCsrfToken</code> 并标注 <code>@MiddlewareAlias("VerifyCsrfToken")</code>，再在 <code>RouteServiceProvider</code> 的 Web 路由组中注册 <code>new String[]{"VerifyCsrfToken"}</code> 方可生效。token 存放于 <code>HttpSession</code>（key=<code>csrf_token</code>），与模板 <code>csrf_field()</code>/<code>csrf_token()</code> 通过 <code>BladeFunctions</code> 注册的 <code>csrf_token</code> 函数读取的是同一个值，保证表单隐藏域 value 与校验用的 token 一致、且非空。</p>
 
 <table>
 <tr><th>常量</th><th>值</th><th>说明</th></tr>
@@ -2382,14 +2384,22 @@ public class AppTrustProxies extends TrustProxies {
 <p>token 查找顺序：<code>X-XSRF-TOKEN</code> 请求头 -&gt; <code>_token</code> 表单字段 -&gt; <code>XSRF-TOKEN</code> Cookie。校验失败抛 <code>RuntimeException(&quot;CSRF token validation failed&quot;)</code>。</p>
 
 <pre><code>
-// 继承式配置 + @MiddlewareAlias（排除 API 路径）
-@MiddlewareAlias("verifyCsrf")
+// 继承式配置 + @MiddlewareAlias（别名须与 Web 路由组注册的中间件别名一致）
+// 真实类路径：com.weacsoft.jaravel.app.http.middleware.AppVerifyCsrfToken
+// 父类：com.weacsoft.jaravel.vendor.http.middleware.VerifyCsrfToken
+@MiddlewareAlias("VerifyCsrfToken")
 public class AppVerifyCsrfToken extends VerifyCsrfToken {
-    @Override
-    protected String[] except() {
-        return new String[]{&quot;/api/webhook&quot;};
-    }
+    // 默认 except() 返回空数组；可覆写以排除无需校验的 URI（如 /api/webhook）
 }
+</code></pre>
+
+<p>应用层 <code>AppVerifyCsrfToken</code> 须在 <code>RouteServiceProvider</code> 的 Web 路由组中注册，方可生效：</p>
+
+<pre><code>
+// RouteServiceProvider.java（Web 路由组挂接 CSRF 校验）
+Route.group(Map.of(
+        Route.Group.MIDDLEWARE, new String[]{"VerifyCsrfToken"}
+), Web::register);
 </code></pre>
 
 <p>---</p>
@@ -3407,9 +3417,9 @@ Controllers.Runner handler = request -&gt; {
 
 <h6 id="http-verifycsrftoken">VerifyCsrfToken</h6>
 <li><strong>Type</strong>: class</li>
-<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.middleware</code></li>
+<li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.http.middleware</code></li>
 <li><strong>Description</strong>: CSRF 令牌校验中间件，对齐 Laravel VerifyCsrfToken。对安全方法（GET/HEAD/OPTIONS/TRACE）和排除 URI 跳过校验，其余请求验证 CSRF 令牌。</li>
-<li><strong>Annotations</strong>: <code>@Component</code></li>
+<li><strong>Annotations</strong>: 无（非 Spring Bean；应用层 <code>AppVerifyCsrfToken extends VerifyCsrfToken</code> 使用 <code>@MiddlewareAlias("VerifyCsrfToken")</code> 继承式配置）</li>
 <li><strong>Implements</strong>: <code>Middleware</code></li>
 
 <h6 id="http-methods">Methods</h6>
@@ -4043,7 +4053,7 @@ public class Blade_users_list extends BladeTemplate {
 <tr><td>单引号字符串 `'text'`</td><td>Java 双引号 `"text"`</td><td>`'hello'` → `"hello"`</td></tr>
 <tr><td>静态方法调用 `URL::method()`</td><td>方法调用</td><td>`URL::asset('path')` → `asset("path")`</td></tr>
 <tr><td>`Carbon::method()`</td><td>carbon 前缀方法</td><td>`Carbon::parse($date)` → `carbonParse($date)`</td></tr>
-<tr><td>辅助函数 `csrf_field()`</td><td>空字符串</td><td>`csrf_field()` → `""`</td></tr>
+<tr><td>辅助函数 `csrf_field()`</td><td>运行时 `csrf_field()`</td><td>`csrf_field()` → `csrf_field()`（返回 `<input type="hidden" name="_token" value="...">`），`{{ }}` 中按原样输出，`value` 由 `BladeFunctions` 注册的 `csrf_token` 函数从 `VerifyCsrfToken` 的 Session token 填充（非空）</td></tr>
 <tr><td>对象方法调用 `$var->method(args)`</td><td>`invokeMethod(...)`</td><td>`$item->getId()` → `invokeMethod(ctx.getVariable("item"), "getId")`</td></tr>
 <tr><td>对象属性访问 `$var->prop`</td><td>`getProperty(...)`</td><td>`$item->name` → `getProperty(ctx.getVariable("item"), "name")`</td></tr>
 <tr><td>方法链属性 `method()->prop`</td><td>`getProperty(method(), "prop")`</td><td>`carbonToday()->year` → `carbonYear(carbonToday())`</td></tr>
@@ -4099,8 +4109,8 @@ public class Blade_users_list extends BladeTemplate {
 <tr><td>`protected String url(String path)`</td><td>生成 URL，对齐 PHP `url('path')`</td></tr>
 <tr><td>`protected Object session(String key)`</td><td>获取 session 值，对齐 PHP `session('key')`</td></tr>
 <tr><td>`protected String old(String key)`</td><td>获取旧输入值，对齐 PHP `old('key')`</td></tr>
-<tr><td>`protected String csrf_field()`</td><td>CSRF 表单字段，对齐 PHP `csrf_field()`</td></tr>
-<tr><td>`protected String csrf_token()`</td><td>CSRF token，对齐 PHP `csrf_token()`</td></tr>
+<tr><td>`protected String csrf_field()`</td><td>CSRF 表单字段，对齐 PHP `csrf_field()`；返回 `&lt;input type=&quot;hidden&quot; name=&quot;_token&quot; value=&quot;...&quot;&gt;`，value 由 `BladeFunctions` 注册的 `csrf_token` 函数从 Session token 填充（非空）</td></tr>
+<tr><td>`protected String csrf_token()`</td><td>CSRF token，对齐 PHP `csrf_token()`；由 `BladeFunctions` 注册 `csrf_token` 函数提供（Web 环境读取 `VerifyCsrfToken` Session token，无则生成）</td></tr>
 <tr><td>`protected Object getProperty(Object obj, String name)`</td><td>反射获取对象属性，对齐 PHP `$var->prop`</td></tr>
 <tr><td>`protected Object getMapValue(Object obj, String key)`</td><td>获取 Map 值，对齐 PHP `$var['key']`</td></tr>
 <tr><td>`protected Object invokeMethod(Object obj, String method, Object... args)`</td><td>反射调用对象方法，对齐 PHP `$var->method(args)`</td></tr>
@@ -4145,8 +4155,8 @@ public class Blade_users_list extends BladeTemplate {
 <tr><td>`url(path)`</td><td>`url('path')`</td><td>生成 URL</td></tr>
 <tr><td>`session(key)`</td><td>`session('key')`</td><td>获取 session 值</td></tr>
 <tr><td>`old(key)`</td><td>`old('key')`</td><td>获取旧输入值</td></tr>
-<tr><td>`csrf_field()`</td><td>`csrf_field()`</td><td>CSRF 隐藏表单字段（返回 `&lt;input type=&quot;hidden&quot; name=&quot;_token&quot; value=&quot;...&quot;&gt;`），`{{ csrf_field() }}` 原样输出</td></tr>
-<tr><td>`csrf_token()`</td><td>`csrf_token()`</td><td>CSRF token 字符串（由外部 `BladeFunctions` 注册，未注册时为空串）</td></tr>
+<tr><td>`csrf_field()`</td><td>`csrf_field()`</td><td>CSRF 隐藏表单字段（返回 `&lt;input type=&quot;hidden&quot; name=&quot;_token&quot; value=&quot;...&quot;&gt;`），`{{ csrf_field() }}` 原样输出（不转义）</td></tr>
+<tr><td>`csrf_token()`</td><td>`csrf_token()`</td><td>CSRF token 字符串。由 `BladeFunctions` 注册 `csrf_token` 函数提供：在 Web 请求中读取 `VerifyCsrfToken` 存入 `HttpSession` 的 token（无则生成并写回），故 value 非空且与校验同源；非 Web 上下文未注册时为空串</td></tr>
 </table>
 
 <h6 id="jblade-对象与数组操作">对象与数组操作</h6>
@@ -4379,7 +4389,7 @@ MemoryClassLoader.getCompiledClasses().put(name, bytes)  -- 存入类加载器
 <tr><td>三元</td><td>`$a ? $b : $c`</td><td>编译为 `toBoolean(...) ? ... : ...`</td></tr>
 <tr><td>静态方法</td><td>`URL::asset('path')`</td><td>编译为 `asset(...)`</td></tr>
 <tr><td>Carbon 方法</td><td>`Carbon::parse($date)`</td><td>编译为 `carbonParse(...)`</td></tr>
-<tr><td>辅助函数</td><td>`csrf_field()`</td><td>编译为空字符串占位</td></tr>
+<tr><td>辅助函数</td><td>`csrf_field()`</td><td>编译为运行时 `csrf_field()`（返回隐藏 input，`{{ }}` 中原样输出）</td></tr>
 </table>
 
 <h6 id="jblade-控制结构指令">控制结构指令</h6>
@@ -4996,7 +5006,7 @@ context.setSection(&quot;header&quot;, &quot;&lt;h1&gt;用户管理&lt;/h1&gt;&q
 <tr><td>`url`</td><td>`String path`</td><td>`String`</td><td>生成 URL</td></tr>
 <tr><td>`session`</td><td>`String key`</td><td>`Object`</td><td>获取 session 值</td></tr>
 <tr><td>`old`</td><td>`String key`</td><td>`String`</td><td>获取旧输入值（占位）</td></tr>
-<tr><td>`csrf_field` / `csrf_token`</td><td>无</td><td>`String`</td><td>CSRF 字段/token（占位）</td></tr>
+<tr><td>`csrf_field` / `csrf_token`</td><td>无</td><td>`String`</td><td>CSRF 字段/token；`csrf_token` 实际由 `BladeFunctions` 注册的函数提供，Web 环境从 `VerifyCsrfToken` Session token 填充非空 value</td></tr>
 <tr><td>`getProperty`</td><td>`Object obj, String name`</td><td>`Object`</td><td>反射获取对象属性</td></tr>
 <tr><td>`getMapValue`</td><td>`Object obj, String key`</td><td>`Object`</td><td>获取 Map 值</td></tr>
 <tr><td>`invokeMethod`</td><td>`Object obj, String method, Object... args`</td><td>`Object`</td><td>反射调用对象方法</td></tr>
