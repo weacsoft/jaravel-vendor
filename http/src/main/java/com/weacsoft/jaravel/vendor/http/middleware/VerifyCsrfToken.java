@@ -29,10 +29,22 @@ public class VerifyCsrfToken implements Middleware {
     protected static final String CSRF_TOKEN_INPUT_NAME = "_token";
     protected static final String CSRF_SESSION_KEY = "csrf_token";
 
+    /**
+     * 请求属性标记：仅当 {@link #handle} 被调用（即中间件已应用于当前路由）时置为 true。
+     * 模板 {@code csrf_field()}/{@code @csrf} 据此判断“中间件是否启用”，
+     * 未启用时输出空字符串（等同指令不存在），不出现隐藏域。
+     */
+    public static final String CSRF_ENABLED_MARKER = "__jaravel_csrf_enabled";
+
     protected static final List<String> SAFE_METHODS = Arrays.asList("GET", "HEAD", "OPTIONS", "TRACE");
 
     @Override
     public Response handle(Request request, NextFunction next, String... params) {
+        // 标记当前请求已启用 CSRF 中间件：仅当此标记存在时，模板 csrf_field()/@csrf 才输出隐藏域。
+        // 若开发者未在路由组引用 "VerifyCsrfToken" 别名，本方法不会被调用，标记缺失，
+        // 模板将返回空字符串（指令等同不存在）。
+        request.getRequest().setAttribute(CSRF_ENABLED_MARKER, Boolean.TRUE);
+
         String method = request.getRequest().getMethod();
 
         if (isSafeMethod(method) || isExcluded(request)) {
@@ -160,10 +172,20 @@ public class VerifyCsrfToken implements Middleware {
         if (request == null) {
             org.slf4j.LoggerFactory.getLogger(VerifyCsrfToken.class)
                     .warn("[csrf] csrf_token() 在请求上下文之外被调用（request 为 null），"
-                            + "无法读取 session，将返回空令牌。请确保在请求处理链中渲染模板。");
+                            + "CSRF 中间件未启用，csrf_field() 将返回空字符串（不输出隐藏域）。");
+            return "";
+        }
+        // 中间件未应用于当前路由（handle 未被调用、标记缺失）：不生成/输出令牌，
+        // 使 csrf_field()/@csrf 返回空字符串，等同该指令不存在。
+        if (!isCsrfEnabled(request)) {
             return "";
         }
         return new VerifyCsrfToken().getSessionToken(request);
+    }
+
+    private static boolean isCsrfEnabled(Request request) {
+        Object flag = request.getRequest().getAttribute(CSRF_ENABLED_MARKER);
+        return Boolean.TRUE.equals(flag);
     }
 
     /**

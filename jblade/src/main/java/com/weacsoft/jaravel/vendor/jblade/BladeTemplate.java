@@ -210,10 +210,17 @@ public abstract class BladeTemplate {
 
     /**
      * CSRF 字段，对齐 PHP csrf_field()。
-     * token 来源：BladeFunctions 注册的 "csrf_token" 函数（由应用注册）。
+     * <p>
+     * token 来源：框架注册（SpringBoot 自动配置）的 "csrf_token" 函数，
+     * 该函数仅在 {@code VerifyCsrfToken} 中间件已应用于当前路由时返回非空令牌；
+     * 未启用中间件时返回空串，此时本方法返回空字符串——等同该指令不存在，不输出任何 input。
      */
     protected String csrf_field() {
-        return "<input type=\"hidden\" name=\"_token\" value=\"" + e(csrf_token()) + "\">";
+        String token = csrf_token();
+        if (token == null || token.isEmpty()) {
+            return "";
+        }
+        return "<input type=\"hidden\" name=\"_token\" value=\"" + e(token) + "\">";
     }
 
     /**
@@ -897,10 +904,15 @@ public abstract class BladeTemplate {
     }
 
     /**
-     * @csrf：输出隐藏域。token 来源于注册的 csrf_token 函数。
+     * @csrf：输出隐藏域。token 来源于注册的 csrf_token 函数；
+     * 未启用 VerifyCsrfToken 中间件（无令牌）时返回空字符串，不输出任何内容。
      */
     protected String csrf() {
-        return "<input type=\"hidden\" name=\"_token\" value=\"" + e(csrf_token()) + "\">";
+        String token = csrf_token();
+        if (token == null || token.isEmpty()) {
+            return "";
+        }
+        return "<input type=\"hidden\" name=\"_token\" value=\"" + e(token) + "\">";
     }
 
     /**

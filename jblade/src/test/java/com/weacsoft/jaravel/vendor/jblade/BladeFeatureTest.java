@@ -134,11 +134,14 @@ class BladeFeatureTest {
 
     /**
      * 辅助函数回归：asset() 应与 url() 语义一致（不附加任何前缀），
-     * 且 {{ csrf_field() }} 必须原样输出隐藏 input（不可被 HTML 转义为可见文本）。
+     * 且 {{ csrf_field() }} 在 VerifyCsrfToken 中间件启用（csrf_token 可用）时必须原样输出隐藏 input。
      */
     @Test
     void testAssetEqualsUrlAndCsrfFieldRaw() throws Exception {
         BladeEngine engine = new BladeEngine("templates");
+
+        // 模拟“已启用 VerifyCsrfToken 中间件”的运行时：注册 csrf_token 返回非空令牌
+        BladeFunctions.register("csrf_token", args -> "TEST_CSRF_TOKEN");
 
         String html = engine.render("testhelpers", Map.of());
 
@@ -149,10 +152,25 @@ class BladeFeatureTest {
         assertFalse(html.contains("/assets/"), "asset 不应附加 /assets 前缀: " + html);
         assertFalse(html.contains("/static/"), "asset 不应附加 /static 前缀: " + html);
 
-        // {{ csrf_field() }} 必须原样输出 <input...>，不可转义为 &lt;input...&gt;
-        assertTrue(html.contains("CSRF:<input type=\"hidden\" name=\"_token\""),
-                "{{ csrf_field() }} 应原样输出隐藏 input: " + html);
+        // {{ csrf_field() }} 在 csrf_token 可用时必须原样输出 <input...>（含令牌，不可转义）
+        assertTrue(html.contains("CSRF:<input type=\"hidden\" name=\"_token\" value=\"TEST_CSRF_TOKEN\">"),
+                "{{ csrf_field() }} 启用时应原样输出隐藏 input（含令牌）: " + html);
         assertFalse(html.contains("CSRF:&lt;input"), "{{ csrf_field() }} 不应被 HTML 转义: " + html);
+    }
+
+    /**
+     * 契约回归：若 VerifyCsrfToken 中间件未启用（csrf_token 无可用的非空令牌），
+     * {{ csrf_field() }} 必须返回空字符串，等同该指令不存在，不输出任何隐藏域。
+     */
+    @Test
+    void testCsrfFieldDisabledReturnsEmpty() throws Exception {
+        BladeEngine engine = new BladeEngine("templates");
+
+        // 未注册 csrf_token（中间件未启用）-> token 为空 -> csrf_field 返回空
+        String html = engine.render("testhelpers", Map.of());
+
+        assertTrue(html.contains("CSRF:;"), "未启用中间件时 csrf_field() 应返回空字符串: " + html);
+        assertFalse(html.contains("<input"), "未启用中间件时 csrf_field() 不应输出隐藏域: " + html);
     }
 
     /**

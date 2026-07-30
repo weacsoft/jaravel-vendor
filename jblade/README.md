@@ -569,8 +569,8 @@ jblade 的 `BladeCompiler` 原生支持 Blade 模板表达式语法，将其编�
 | `url(path)` | `url('path')` | 生成 URL |
 | `session(key)` | `session('key')` | 获取 session 值 |
 | `old(key)` | `old('key')` | 获取旧输入值 |
-| `csrf_field()` | `csrf_field()` | CSRF 隐藏表单字段（返回 `<input type="hidden" name="_token" value="...">`），`{{ csrf_field() }}` 原样输出（不转义） |
-| `csrf_token()` | `csrf_token()` | CSRF token 字符串。**由框架开箱即用内置注册**（SpringBoot 自动配置）：在 Web 请求中读取 `VerifyCsrfToken` 存入 `HttpSession` 的 token（无则生成并写回），故 value 非空且与校验同源；非 Web 上下文未注册时为空串 |
+| `csrf_field()` | `csrf_field()` / `@csrf` | CSRF 隐藏表单字段。**仅当 `VerifyCsrfToken` 中间件已应用于当前路由时**才输出 `<input type="hidden" name="_token" value="...">`；若未启用该中间件，`csrf_field()` 返回空字符串（等同指令不存在，不输出任何隐藏域）。`{{ csrf_field() }}` 原样输出（不转义） |
+| `csrf_token()` | `csrf_token()` | CSRF token 字符串。**由框架开箱即用内置注册**（SpringBoot 自动配置）：仅当 `VerifyCsrfToken` 中间件已应用于当前路由时返回非空令牌（读取 `VerifyCsrfToken` 存入 `HttpSession` 的 token，无则生成并写回，且与校验同源）；未启用中间件时为空串 |
 
 #### 对象与数组操作
 
