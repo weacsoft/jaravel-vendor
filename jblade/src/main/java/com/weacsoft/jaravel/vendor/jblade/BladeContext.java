@@ -1,12 +1,21 @@
 package com.weacsoft.jaravel.vendor.jblade;
 
 import java.io.Writer;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Stack;
 import java.util.function.Consumer;
 
 public class BladeContext {
+
+    /**
+     * @parent 占位符（与 Laravel 的 parentPlaceholder 机制等价）。
+     * 子模板 section 内容中的该占位符会在父模板注册同名 section 时被父内容替换。
+     */
+    public static final String PARENT_PLACEHOLDER = "@__jblade_parent__@";
+
     private final Map<String, Object> variables;
     private final Map<String, String> sections;
     private final Map<String, Consumer<Writer>> sectionRenderers;
@@ -50,6 +59,55 @@ public class BladeContext {
         sections.put(name, content);
     }
 
+    /**
+     * Laravel 语义的 section 扩展：
+     * 若已有同名 section（来自更下层的子模板），则用新内容（父模板内容）
+     * 替换已有内容中的 @parent 占位符；否则直接注册。
+     * 该机制天然支持不限层级的多重继承。
+     */
+    public void extendSection(String name, String content) {
+        String existing = sections.get(name);
+        if (existing != null) {
+            content = existing.replace(PARENT_PLACEHOLDER, content);
+        }
+        sections.put(name, content);
+    }
+
+    /**
+     * 获取 section 内容并清理残留的 @parent 占位符。
+     */
+    public String yieldSection(String name) {
+        String content = sections.get(name);
+        if (content == null) {
+            return null;
+        }
+        return content.replace(PARENT_PLACEHOLDER, "");
+    }
+
+    /* ==================== $loop 支持 ==================== */
+
+    private final Deque<LoopHelper> loopStack = new ArrayDeque<>();
+
+    /**
+     * 进入一层循环。count 未知时传 -1。
+     */
+    public LoopHelper pushLoop(int count) {
+        LoopHelper parent = loopStack.peek();
+        LoopHelper loop = new LoopHelper(count, loopStack.size() + 1, parent);
+        loopStack.push(loop);
+        return loop;
+    }
+
+    public void popLoop() {
+        if (!loopStack.isEmpty()) {
+            loopStack.pop();
+        }
+    }
+
+    public LoopHelper currentLoop() {
+        return loopStack.peek();
+    }
+
     public String getSection(String name) {
         return sections.get(name);
     }
@@ -84,6 +142,7 @@ public class BladeContext {
         currentSlot = null;
         currentSlotContent = new StringBuilder();
         inSlot = false;
+        loopStack.clear();
     }
 
     public void startSection(String name) {
@@ -188,6 +247,13 @@ public class BladeContext {
 
     public String getSlot(String slotName) {
         return componentSlots.get(slotName);
+    }
+
+    /**
+     * 直接设置插槽内容（新版编译器组件渲染使用）。
+     */
+    public void setSlot(String slotName, String content) {
+        componentSlots.put(slotName, content);
     }
 
     public Map<String, String> getComponentSlots() {

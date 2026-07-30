@@ -128,6 +128,23 @@ public class BladeEngine {
     }
 
     /**
+     * 判断模板是否存在（供 @includeIf 等指令使用）。
+     */
+    public boolean templateExists(String templateName) {
+        if (templateName == null || templateName.isEmpty()) {
+            return false;
+        }
+        templateName = templateName.replace("'", "").replace("\"", "");
+        if (templateClassCache.containsKey(templateName)) {
+            return true;
+        }
+        if (precompiledMode) {
+            return precompiledTemplateMapping != null && precompiledTemplateMapping.containsKey(templateName);
+        }
+        return compiler.templateExists(templateName);
+    }
+
+    /**
      * 获取当前缓存 store（可能为 null）
      */
     public CacheStore getCacheStore() {
@@ -262,46 +279,52 @@ public class BladeEngine {
             }
         }
 
-        if (!template.isInitialized()) {
-            synchronized (template) {
-                if (!template.isInitialized()) {
-                    template.init();
-                    template.setInitialized(true);
-                }
-            }
-        }
+        BladeTemplate root = initInheritanceChain(template, templateName, context);
+        return root.render();
+    }
 
-        String parentTemplate = context.getParentTemplate();
-        if (parentTemplate != null && !parentTemplate.isEmpty()) {
-            BladeTemplate parent = loadTemplate(parentTemplate);
+    /**
+     * 初始化模板及其完整继承链（不限层级）。
+     * <p>
+     * 沿继承链自下而上逐层初始化。所有模板共享同一个 BladeContext：
+     * <ul>
+     *   <li>变量对全链可见；</li>
+     *   <li>子模板先注册 section，父模板注册同名 section 时通过
+     *       {@link BladeContext#extendSection} 完成 @parent 占位符替换（Laravel 语义）；</li>
+     *   <li>返回继承链根部模板（最顶层布局），由其执行 render() 输出。</li>
+     * </ul>
+     *
+     * @param template     子模板（已 resetContext 并注入变量）
+     * @param templateName 子模板名（用于循环继承检测）
+     * @param context      共享上下文
+     * @return 继承链根部模板
+     */
+    private BladeTemplate initInheritanceChain(BladeTemplate template, String templateName, BladeContext context)
+            throws IOException, ClassNotFoundException, NoSuchMethodException,
+            InvocationTargetException, InstantiationException, IllegalAccessException {
+        template.init();
+        template.setInitialized(true);
+
+        BladeTemplate current = template;
+        java.util.Set<String> visited = new java.util.LinkedHashSet<>();
+        visited.add(templateName);
+        String parentName = context.getParentTemplate();
+        while (parentName != null && !parentName.isEmpty()) {
+            if (!visited.add(parentName)) {
+                throw new IllegalStateException("模板继承出现循环: " + visited + " -> " + parentName);
+            }
+            BladeTemplate parent = loadTemplate(parentName);
             parent.setEngine(this);
-
-            BladeContext parentContext = parent.getContext();
-            parentContext.reset();
-
-            if (!parent.isInitialized()) {
-                synchronized (parent) {
-                    if (!parent.isInitialized()) {
-                        parent.init();
-                        parent.setInitialized(true);
-                    }
-                }
-            }
-
-            for (Map.Entry<String, Object> entry : context.getVariables().entrySet()) {
-                parentContext.setVariable(entry.getKey(), entry.getValue());
-            }
-            for (Map.Entry<String, String> entry : context.getSections().entrySet()) {
-                parentContext.setSection(entry.getKey(), entry.getValue());
-            }
-            for (Map.Entry<String, java.util.function.Consumer<java.io.Writer>> entry : context.getSectionRenderers().entrySet()) {
-                parentContext.setSectionRenderer(entry.getKey(), entry.getValue());
-            }
-
-            return parent.render();
+            // 清除当前层的 parent 标记，由父模板 init() 决定是否继续向上继承
+            context.setParentTemplate(null);
+            // 父模板共享同一 context（变量 + section 合并）
+            parent.resetContext(context);
+            parent.init();
+            parent.setInitialized(true);
+            current = parent;
+            parentName = context.getParentTemplate();
         }
-
-        return template.render();
+        return current;
     }
 
     public String render(String templateName) throws Exception {
@@ -334,14 +357,10 @@ public class BladeEngine {
             }
         }
 
-        if (!template.isInitialized()) {
-            synchronized (template) {
-                if (!template.isInitialized()) {
-                    template.init();
-                    template.setInitialized(true);
-                }
-            }
-        }
+        // Wire 局部渲染同样需要初始化完整继承链：
+        // 1. resetContext 后 section renderer 已被清空，必须重新 init（不能依赖 isInitialized 守卫）；
+        // 2. section 可能定义在父模板中，或经 @parent 与父模板合并，需与整页渲染语义一致。
+        initInheritanceChain(template, templateName, context);
 
         Consumer<Writer> renderer = context.getSectionRenderer(sectionName);
         if (renderer == null) {
@@ -374,14 +393,7 @@ public class BladeEngine {
             }
         }
 
-        if (!template.isInitialized()) {
-            synchronized (template) {
-                if (!template.isInitialized()) {
-                    template.init();
-                    template.setInitialized(true);
-                }
-            }
-        }
+        initInheritanceChain(template, templateName, context);
 
         Map<String, String> result = new LinkedHashMap<>();
         for (String sectionName : sectionNames) {
@@ -410,14 +422,7 @@ public class BladeEngine {
         template.resetContext();
         BladeContext context = template.getContext();
 
-        if (!template.isInitialized()) {
-            synchronized (template) {
-                if (!template.isInitialized()) {
-                    template.init();
-                    template.setInitialized(true);
-                }
-            }
-        }
+        initInheritanceChain(template, templateName, context);
 
         return new ArrayList<>(context.getSectionRenderers().keySet());
     }
@@ -471,18 +476,13 @@ public class BladeEngine {
             }
         }
 
-        // 4. 获取或创建模板实例
-        BladeTemplate template = templateInstanceCache.get(templateName);
-        if (template == null) {
-            synchronized (this) {
-                template = templateInstanceCache.get(templateName);
-                if (template == null) {
-                    template = (BladeTemplate) templateClass.getDeclaredConstructor().newInstance();
-                    template.setEngine(this);
-                    templateInstanceCache.put(templateName, template);
-                }
-            }
-        }
+        // 4. 每次创建新的模板实例。
+        // 注意：不能复用共享单例实例——BladeTemplate 的 context 是实例字段，
+        // 并发请求（尤其是 Wire 局部更新与整页渲染同时进行）下共享实例会导致
+        // context 互相覆盖，输出错乱。类已缓存，实例创建开销可忽略。
+        BladeTemplate template = (BladeTemplate) templateClass.getDeclaredConstructor().newInstance();
+        template.setEngine(this);
+        templateInstanceCache.put(templateName, template);
 
         return template;
     }

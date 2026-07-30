@@ -12,22 +12,35 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+/**
+ * jblade 模板编译器：将 Blade 模板编译为 Java 类源码，再经内存 javac 编译加载。
+ * <p>
+ * 支持的指令（语义对齐 Laravel Blade）：
+ * <ul>
+ *   <li>布局继承：@extends / @section（块与内联）/ @endsection / @stop / @show /
+ *       @append / @overwrite / @parent / @yield / @hasSection / @sectionMissing —
+ *       支持不限层级的多重继承</li>
+ *   <li>流程控制：@if / @elseif / @else / @endif / @unless / @isset / @empty($x) /
+ *       @switch 之外的 @foreach（含 $loop）/ @forelse / @empty / @for / @while /
+ *       @continue / @break</li>
+ *   <li>子视图：@include / @includeIf / @includeWhen / @component / @slot</li>
+ *   <li>输出：{{ }}（HTML 转义）/ {!! !!}（原样）/ {{-- --}} 注释 / @{{ }} 与 @@ 转义 /
+ *       @verbatim</li>
+ *   <li>杂项：@php（内联与块）/ @csrf / @method / @json / @asset /
+ *       @route（http 模块路由别名 → URL）/ @auth / @guest</li>
+ *   <li>动态扩展：{@link BladeDirectives} 注册的条件指令与输出指令、
+ *       {@link BladeFunctions} 注册的模板函数</li>
+ * </ul>
+ * 未注册的 @xxx（如 CSS 的 @media、@keyframes，JS/邮箱中的 @ 文本）原样输出，
+ * 与 Laravel 行为一致。
+ */
 public class BladeCompiler {
-    //注释
-    private static final Pattern COMMENT_PATTERN = Pattern.compile("\\{\\{--.*?--\\}\\}", Pattern.DOTALL);
-    //输出
-    private static final Pattern ECHO_PATTERN = Pattern.compile("\\{\\{\\s*([^{}]+?)\\s*\\}\\}");
-    //命令 — 指令名必须以字母开头，避免误匹配 URL 中的 @2、@3 等
-    private static final Pattern DIRECTIVE_PATTERN = Pattern.compile("@([a-zA-Z]\\w*)\\s*(?:\\((.*?)\\))?");
-    //参数
-    private static final Pattern VAR_PATTERN = Pattern.compile("\\$(\\w+)");
 
     /** 默认模板文件后缀，使用 .blade.java 让常见 IDE 仍能识别为 Java 相关文件并提供提示 */
     public static final String DEFAULT_SUFFIX = ".blade.java";
 
     private final String templateDir;
     private final MemoryClassLoader classLoader;
-
     private final String suffix;
 
     public BladeCompiler(String templateDir, MemoryClassLoader classLoader) {
@@ -50,59 +63,50 @@ public class BladeCompiler {
 
     /**
      * 解析模板输入流，优先从文件系统 {@code ./resources/} 目录加载，回退到 ClassPath。
-     * <p>
-     * 加载顺序：
-     * <ol>
-     *   <li>文件系统：{@code ./resources/{templatePath}}（如果文件存在）</li>
-     *   <li>ClassPath：{@code classpath:{templatePath}}（JAR 内置资源）</li>
-     * </ol>
-     * 这样可以在不重新打包 JAR 的情况下，通过在运行目录下放置 {@code resources/} 文件夹
-     * 来覆盖或新增模板，实现前端独立更新。
      *
      * @param templatePath 模板相对路径（如 {@code templates/layout.blade.java}）
      * @return 模板内容的输入流
      * @throws IOException 如果两个位置都找不到模板文件
      */
     private InputStream resolveTemplateStream(String templatePath) throws IOException {
-        // 1. 优先从文件系统 ./resources/ 目录加载
         File file = new File("resources" + File.separator + templatePath);
         if (file.isFile()) {
             return new FileInputStream(file);
         }
-        // 2. 回退到 ClassPath（JAR 内置资源）
-        return new ClassPathResource(templatePath).getInputStream();
+        return new ClassPathResource(templatePath.replace(File.separator, "/")).getInputStream();
     }
 
     /**
-     * 编译一个文件的代码
-     * <p>
-     * 资源加载优先级：
-     * <ol>
-     *   <li>文件系统 {@code ./resources/{templateDir}/...} 目录（支持热更新，无需重新打包）</li>
-     *   <li>ClassPath classpath:{templateDir}/... （JAR 内置资源）</li>
-     * </ol>
+     * 判断模板是否存在（文件系统 resources/ 或 ClassPath）。
+     */
+    public boolean templateExists(String templateName) {
+        String templatePath = templateDir + File.separator
+                + templateName.replace(".", File.separator) + suffix;
+        File file = new File("resources" + File.separator + templatePath);
+        if (file.isFile()) {
+            return true;
+        }
+        return new ClassPathResource(templatePath.replace(File.separator, "/")).exists();
+    }
+
+    /**
+     * 编译一个模板文件。
      *
-     * @param templateName 模板文件名
+     * @param templateName 模板名（点分路径，如 "layouts.mdui.main"）
+     * @return 编译后的类全限定名
      */
     public String compile(String templateName) throws IOException {
         String templatePath = templateDir + File.separator + templateName.replace(".", File.separator) + suffix;
-        // 优先从文件系统 ./resources/ 目录加载（支持前端独立更新）
         InputStream resource = resolveTemplateStream(templatePath);
         String content;
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(resource))) {
-            content = reader
-                    .lines()
-                    .collect(Collectors.joining("\n"));
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(resource, java.nio.charset.StandardCharsets.UTF_8))) {
+            content = reader.lines().collect(Collectors.joining("\n"));
         }
         return compileSource(templateName, content);
     }
 
     /**
      * 编译给定的模板内容（不读取文件，直接编译源码）。
-     * <p>
-     * 供 {@link BladePrecompiler} 等工具使用，可从任意来源读取模板内容后调用此方法编译。
-     * 编译后的字节码存入关联的 {@link MemoryClassLoader}，可通过
-     * {@code getClassLoader().getCompiledClasses()} 获取。
      *
      * @param templateName 模板名（用于生成类名，如 "welcome"、"docs.index"）
      * @param content      模板文件内容
@@ -111,36 +115,31 @@ public class BladeCompiler {
      */
     public String compileSource(String templateName, String content) throws IOException {
         String className = generateClassName(templateName);
-        String sourceCode = generateJavaCode(className, content);
+        String sourceCode = generateJavaCode(className, templateName, content);
         if (sourceCode.isEmpty()) {
             throw new IOException("源代码不能为空");
         }
-        // 处理源代码，拼接成标准的类名加包名
         String codeWithoutCommentsAndStrings = removeCommentsAndStrings(sourceCode);
         String packageName = extractPackageName(codeWithoutCommentsAndStrings);
         String fullClassName = packageName.isEmpty() ? className : packageName + "." + className;
-        // 获取系统编译器
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         if (compiler == null) {
             throw new IllegalStateException("无法获取Java编译器，请确保使用JDK而非JRE运行程序");
         }
-        // 创建诊断监听器，捕获编译错误
         DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
-        // 内存编译和加载
         try (MemoryFileManager fileManager = new MemoryFileManager(compiler.getStandardFileManager(diagnostics, null, null))) {
             List<JavaFileObject> compilationUnits = new ArrayList<>();
             compilationUnits.add(new SourceCodeJavaFileObject(fullClassName, sourceCode));
             JavaCompiler.CompilationTask task = compiler.getTask(null, fileManager, diagnostics, null, null, compilationUnits);
             Boolean success = task.call();
-            // 检查编译错误
             if (success == null || !success) {
-                StringBuilder errorMsg = new StringBuilder("编译错误: ");
+                StringBuilder errorMsg = new StringBuilder("模板 [" + templateName + "] 编译错误: ");
                 for (Diagnostic<? extends JavaFileObject> diagnostic : diagnostics.getDiagnostics()) {
-                    errorMsg.append(String.format("\n第%d行: %s", diagnostic.getLineNumber(), diagnostic.getMessage(null)));
+                    errorMsg.append(String.format("%n第%d行: %s", diagnostic.getLineNumber(), diagnostic.getMessage(null)));
                 }
+                errorMsg.append("%n===== 生成的 Java 源码 =====%n").append(sourceCode);
                 throw new RuntimeException(errorMsg.toString());
             }
-            // 从内存文件管理器中获取编译后的类字节码，并加入到搜索器里
             for (String name : fileManager.getGeneratedClassNames()) {
                 classLoader.getCompiledClasses().put(name, fileManager.getGeneratedClass(name));
             }
@@ -150,21 +149,324 @@ public class BladeCompiler {
 
     /**
      * 获取关联的内存类加载器。
-     * <p>
-     * 编译后的模板字节码存于此类加载器中，可通过
-     * {@code getClassLoader().getCompiledClasses()} 获取字节码映射（类名 -> 字节码）。
-     *
-     * @return 内存类加载器
      */
     public MemoryClassLoader getClassLoader() {
         return classLoader;
     }
 
     private String generateClassName(String templateName) {
-        return "Blade_" + templateName.replace(File.separator, "_").replace("/", "_").replace("\\", "_").replace(".", "_").replace("-", "_");
+        return "Blade_" + templateName.replace(File.separator, "_").replace("/", "_")
+                .replace("\\", "_").replace(".", "_").replace("-", "_");
     }
 
-    private String generateJavaCode(String className, String content) {
+    /* =====================================================================
+     * 词法分析：模板 → Token 序列
+     * ===================================================================== */
+
+    private static final int N_TEXT = 0;
+    private static final int N_ECHO = 1;      // {{ }}
+    private static final int N_RAW_ECHO = 2;  // {!! !!}
+    private static final int N_DIRECTIVE = 3; // @xxx(...)
+
+    private static class Tok {
+        final int type;
+        final String value;   // 文本内容 / 表达式 / 指令名
+        final String args;    // 指令参数（无括号为 null）
+        final String raw;     // 指令原始文本（未知指令回退输出用）
+
+        Tok(int type, String value, String args, String raw) {
+            this.type = type;
+            this.value = value;
+            this.args = args;
+            this.raw = raw;
+        }
+    }
+
+    /** 内置指令名集合（编译期识别） */
+    private static final Set<String> KNOWN_DIRECTIVES = new HashSet<>(Arrays.asList(
+            "extends", "section", "endsection", "stop", "show", "append", "overwrite", "parent",
+            "yield", "hasSection", "sectionMissing",
+            "if", "elseif", "else", "endif", "unless", "endunless", "isset", "endisset",
+            "empty", "endempty",
+            "foreach", "endforeach", "forelse", "endforelse", "for", "endfor",
+            "while", "endwhile", "continue", "break",
+            "php", "endphp",
+            "include", "includeIf", "includeWhen", "includeUnless",
+            "csrf", "method", "json", "route", "asset",
+            "component", "endcomponent", "slot", "endslot",
+            "auth", "endauth", "guest", "endguest",
+            "verbatim", "endverbatim"
+    ));
+
+    /**
+     * 判断指令名是否可识别（内置 + 动态注册的条件/输出指令及其 else/end 变体）。
+     */
+    private boolean isKnownDirective(String name) {
+        if (KNOWN_DIRECTIVES.contains(name)) {
+            return true;
+        }
+        if (BladeDirectives.hasCondition(name) || BladeDirectives.hasDirective(name)) {
+            return true;
+        }
+        if (name.startsWith("end") && BladeDirectives.hasCondition(name.substring(3))) {
+            return true;
+        }
+        if (name.startsWith("else") && name.length() > 4 && BladeDirectives.hasCondition(name.substring(4))) {
+            return true;
+        }
+        return false;
+    }
+
+    private List<Tok> tokenize(String content) {
+        List<Tok> toks = new ArrayList<>();
+        StringBuilder text = new StringBuilder();
+        int i = 0;
+        int n = content.length();
+        while (i < n) {
+            // 注释 {{-- --}}
+            if (content.startsWith("{{--", i)) {
+                int end = content.indexOf("--}}", i + 4);
+                i = end < 0 ? n : end + 4;
+                continue;
+            }
+            // @verbatim ... @endverbatim → 原样文本
+            if (content.startsWith("@verbatim", i)) {
+                int end = content.indexOf("@endverbatim", i + 9);
+                String body = end < 0 ? content.substring(i + 9) : content.substring(i + 9, end);
+                // 去掉首尾的一个换行（Laravel 行为近似）
+                if (body.startsWith("\n")) {
+                    body = body.substring(1);
+                }
+                text.append(body);
+                i = end < 0 ? n : end + "@endverbatim".length();
+                continue;
+            }
+            // @@xxx → 输出 @xxx
+            if (content.startsWith("@@", i)) {
+                text.append('@');
+                i += 2;
+                continue;
+            }
+            // @{{ ... }} → 原样输出 {{ ... }}
+            if (content.startsWith("@{{", i)) {
+                int end = content.indexOf("}}", i + 3);
+                if (end >= 0) {
+                    text.append(content, i + 1, end + 2);
+                    i = end + 2;
+                } else {
+                    text.append(content.charAt(i));
+                    i++;
+                }
+                continue;
+            }
+            // @{!! ... !!} → 原样输出
+            if (content.startsWith("@{!!", i)) {
+                int end = content.indexOf("!!}", i + 4);
+                if (end >= 0) {
+                    text.append(content, i + 1, end + 3);
+                    i = end + 3;
+                } else {
+                    text.append(content.charAt(i));
+                    i++;
+                }
+                continue;
+            }
+            // {!! ... !!}
+            if (content.startsWith("{!!", i)) {
+                int end = content.indexOf("!!}", i + 3);
+                if (end >= 0) {
+                    flushText(toks, text);
+                    toks.add(new Tok(N_RAW_ECHO, content.substring(i + 3, end).trim(), null, null));
+                    i = end + 3;
+                    continue;
+                }
+            }
+            // {{ ... }}
+            if (content.startsWith("{{", i)) {
+                int end = content.indexOf("}}", i + 2);
+                if (end >= 0) {
+                    flushText(toks, text);
+                    toks.add(new Tok(N_ECHO, content.substring(i + 2, end).trim(), null, null));
+                    i = end + 2;
+                    continue;
+                }
+            }
+            // @directive
+            char c = content.charAt(i);
+            if (c == '@' && i + 1 < n && Character.isLetter(content.charAt(i + 1))) {
+                int j = i + 1;
+                while (j < n && (Character.isLetterOrDigit(content.charAt(j)) || content.charAt(j) == '_')) {
+                    j++;
+                }
+                String name = content.substring(i + 1, j);
+                // 括号参数（允许名字与括号间的空格/制表符）
+                int k = j;
+                while (k < n && (content.charAt(k) == ' ' || content.charAt(k) == '\t')) {
+                    k++;
+                }
+                String args = null;
+                int consumeEnd = j;
+                if (k < n && content.charAt(k) == '(') {
+                    int close = findMatchingParen(content, k + 1);
+                    if (close > 0) {
+                        args = content.substring(k + 1, close);
+                        consumeEnd = close + 1;
+                    }
+                }
+                if (isKnownDirective(name)) {
+                    // @php 块形式（无参数）：捕获至 @endphp
+                    if ("php".equals(name) && args == null) {
+                        int end = content.indexOf("@endphp", consumeEnd);
+                        String body = end < 0 ? content.substring(consumeEnd) : content.substring(consumeEnd, end);
+                        flushText(toks, text);
+                        toks.add(new Tok(N_DIRECTIVE, "phpblock", body, null));
+                        i = end < 0 ? n : end + "@endphp".length();
+                        continue;
+                    }
+                    flushText(toks, text);
+                    toks.add(new Tok(N_DIRECTIVE, name, args,
+                            content.substring(i, consumeEnd)));
+                    i = consumeEnd;
+                    continue;
+                }
+                // 未知指令：原样输出（CSS @media、邮箱、Vue @click 等）
+                text.append(content, i, j);
+                i = j;
+                continue;
+            }
+            text.append(c);
+            i++;
+        }
+        flushText(toks, text);
+        return toks;
+    }
+
+    private void flushText(List<Tok> toks, StringBuilder text) {
+        if (text.length() > 0) {
+            toks.add(new Tok(N_TEXT, text.toString(), null, null));
+            text.setLength(0);
+        }
+    }
+
+    /**
+     * 从 start（开括号之后）找到匹配的闭括号位置（引号感知）。
+     */
+    private int findMatchingParen(String expr, int start) {
+        int depth = 1;
+        char quote = 0;
+        for (int i = start; i < expr.length(); i++) {
+            char c = expr.charAt(i);
+            if (quote != 0) {
+                if (c == '\\') {
+                    i++;
+                } else if (c == quote) {
+                    quote = 0;
+                }
+                continue;
+            }
+            if (c == '"' || c == '\'') {
+                quote = c;
+            } else if (c == '(') {
+                depth++;
+            } else if (c == ')') {
+                depth--;
+                if (depth == 0) {
+                    return i;
+                }
+            }
+        }
+        return -1;
+    }
+
+    /* =====================================================================
+     * 代码生成
+     * ===================================================================== */
+
+    /** 输出目标（render 主体 / section 体 / 组件默认插槽 / 具名插槽） */
+    private static class Emitter {
+        final String kind;        // render | section | component | slot
+        final String name;        // section/slot 名
+        final String writerVar;
+        final StringBuilder code = new StringBuilder();
+        String sectionMode = "extend"; // extend | append | overwrite
+        // component 专用
+        String slotsVar;
+        String dataExpr;
+        String componentName;
+        String parentWriterVar;
+
+        Emitter(String kind, String name, String writerVar) {
+            this.kind = kind;
+            this.name = name;
+            this.writerVar = writerVar;
+        }
+    }
+
+    /** 控制流栈帧 */
+    private static class Frame {
+        final String type;    // if | unless | isset | empty | foreach | forelse | for | while | auth | guest | custom | hasSection
+        String closing;       // 关闭时输出的代码
+        boolean forelseHasEmpty;
+
+        Frame(String type, String closing) {
+            this.type = type;
+            this.closing = closing;
+        }
+    }
+
+    private int varCounter;
+
+    private String nextVar(String prefix) {
+        return "__" + prefix + (varCounter++);
+    }
+
+    private String generateJavaCode(String className, String templateName, String content) {
+        varCounter = 0;
+        List<Tok> toks = tokenize(content);
+
+        StringBuilder initCode = new StringBuilder();
+        Emitter renderEmitter = new Emitter("render", null, "writer");
+        Deque<Emitter> emitters = new ArrayDeque<>();
+        emitters.push(renderEmitter);
+        Deque<Frame> frames = new ArrayDeque<>();
+
+        for (Tok tok : toks) {
+            Emitter em = emitters.peek();
+            switch (tok.type) {
+                case N_TEXT:
+                    emitText(em, tok.value);
+                    break;
+                case N_ECHO:
+                    if (!tok.value.isEmpty()) {
+                        PhpExpressionTranslator.Expr e = translateExpr(tok.value, templateName);
+                        em.code.append("        echo(").append(em.writerVar).append(", ")
+                                .append(e.asObject()).append(");\n");
+                    }
+                    break;
+                case N_RAW_ECHO:
+                    if (!tok.value.isEmpty()) {
+                        PhpExpressionTranslator.Expr e = translateExpr(tok.value, templateName);
+                        em.code.append("        echoRaw(").append(em.writerVar).append(", ")
+                                .append(e.asObject()).append(");\n");
+                    }
+                    break;
+                case N_DIRECTIVE:
+                    handleDirective(tok, emitters, frames, initCode, renderEmitter, templateName);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        if (emitters.size() != 1) {
+            Emitter unclosed = emitters.peek();
+            throw new IllegalStateException("模板 [" + templateName + "] 存在未闭合的 @"
+                    + unclosed.kind + (unclosed.name != null ? "('" + unclosed.name + "')" : ""));
+        }
+        if (!frames.isEmpty()) {
+            throw new IllegalStateException("模板 [" + templateName + "] 存在未闭合的控制指令 @" + frames.peek().type);
+        }
+
         StringBuilder javaCode = new StringBuilder();
         javaCode.append("import com.weacsoft.jaravel.vendor.jblade.*;\n");
         javaCode.append("import java.io.*;\n");
@@ -172,1102 +474,689 @@ public class BladeCompiler {
         javaCode.append("import java.util.function.*;\n\n");
         javaCode.append("public class ").append(className).append(" extends BladeTemplate {\n\n");
 
-        Map<String, String> sections = extractSections(content);
-        for (Map.Entry<String, String> entry : sections.entrySet()) {
-            String sectionName = entry.getKey();
-            String sectionContent = entry.getValue();
-            javaCode.append("    private void renderSection_").append(sectionName).append("(Writer writer) throws Exception {\n");
-            javaCode.append("        BladeContext ctx = getContext();\n");
-            String sectionCode = compileSectionContent(sectionContent);
-            javaCode.append(sectionCode);
-            javaCode.append("    }\n\n");
-        }
-
         javaCode.append("    @Override\n");
         javaCode.append("    public void init() {\n");
         javaCode.append("        try {\n");
         javaCode.append("            BladeContext ctx = getContext();\n");
-
-        for (String sectionName : sections.keySet()) {
-            javaCode.append("            ctx.setSectionRenderer(\"").append(sectionName).append("\", writer -> {\n");
-            javaCode.append("                try {\n");
-            javaCode.append("                    renderSection_").append(sectionName).append("(writer);\n");
-            javaCode.append("                } catch (Exception e) {\n");
-            javaCode.append("                    e.printStackTrace();\n");
-            javaCode.append("                }\n");
-            javaCode.append("            });\n");
-        }
-
-        String initCode = processInitDirectives(content);
-        javaCode.append(initCode);
-
+        javaCode.append(indent(initCode.toString(), "        "));
         javaCode.append("        } catch (Exception e) {\n");
-        javaCode.append("            e.printStackTrace();\n");
+        javaCode.append("            throw new RuntimeException(\"模板 init 失败: ")
+                .append(escapeJava(templateName)).append("\", e);\n");
         javaCode.append("        }\n");
         javaCode.append("    }\n\n");
 
         javaCode.append("    @Override\n");
         javaCode.append("    public void render(Writer writer) throws Exception {\n");
         javaCode.append("        BladeContext ctx = getContext();\n");
-
-        String renderCode = processRenderDirectives(content, sections.keySet());
-        javaCode.append(renderCode);
-
-        String componentCode = processComponents(content);
-        javaCode.append(componentCode);
-
+        javaCode.append(renderEmitter.code);
         javaCode.append("    }\n");
         javaCode.append("}\n");
-
         return javaCode.toString();
     }
 
-    private Map<String, String> extractSections(String content) {
-        Map<String, String> sections = new HashMap<>();
-        String[] lines = content.split("\r?\n");
-        boolean inSection = false;
-        String currentSection = null;
-        StringBuilder sectionContent = new StringBuilder();
-
-        for (String line : lines) {
-            String trimmedLine = line.trim();
-            Matcher matcher = DIRECTIVE_PATTERN.matcher(trimmedLine);
-
-            if (matcher.find()) {
-                String directive = matcher.group(1);
-                String args = matcher.group(2) != null ? matcher.group(2) : "";
-
-                if (directive.equals("section")) {
-                    if (!args.contains(",")) {
-                        inSection = true;
-                        currentSection = args.replace("'", "").replace("\"", "");
-                        sectionContent = new StringBuilder();
-                    }
-                } else if (directive.equals("endsection")) {
-                    if (inSection) {
-                        sections.put(currentSection, sectionContent.toString());
-                        inSection = false;
-                        currentSection = null;
-                    }
-                } else if (inSection) {
-                    sectionContent.append(line).append("\n");
-                }
-            } else if (inSection) {
-                sectionContent.append(line).append("\n");
-            }
+    private PhpExpressionTranslator.Expr translateExpr(String phpExpr, String templateName) {
+        try {
+            return PhpExpressionTranslator.translate(phpExpr);
+        } catch (RuntimeException ex) {
+            throw new IllegalStateException("模板 [" + templateName + "] 表达式编译失败: " + phpExpr, ex);
         }
-
-        return sections;
     }
 
-    private String compileSectionContent(String content) {
-        StringBuilder code = new StringBuilder();
-        String[] lines = content.split("\r?\n");
-        Stack<DirectiveContext> directiveStack = new Stack<>();
-        Set<String> localVars = new HashSet<>();
-
-        for (String line : lines) {
-            String trimmedLine = line.trim();
-            Matcher directiveMatcher = DIRECTIVE_PATTERN.matcher(trimmedLine);
-
-            if (directiveMatcher.find()) {
-                String directive = directiveMatcher.group(1);
-                String args = directiveMatcher.group(2) != null ? directiveMatcher.group(2) : "";
-
-                switch (directive) {
-                    case "if":
-                        code.append("        if (").append(compileConditionExpression(args, localVars)).append(") {\n");
-                        directiveStack.push(new DirectiveContext("if", 0));
-                        break;
-                    case "elseif":
-                        code.append("        } else if (").append(compileConditionExpression(args, localVars)).append(") {\n");
-                        break;
-                    case "else":
-                        code.append("        } else {\n");
-                        break;
-                    case "endif":
-                        code.append("        }\n");
-                        if (!directiveStack.isEmpty() && directiveStack.peek().type.equals("if")) {
-                            directiveStack.pop();
-                        }
-                        break;
-                    case "for":
-                        String[] forParts = args.split(";");
-                        if (forParts.length == 3) {
-                            String initPart = forParts[0].trim();
-                            List<String> forVars = new ArrayList<>();
-                            if (initPart.contains("=")) {
-                                String varDecl = initPart.split("=")[0].trim();
-                                String[] varParts = varDecl.split("\\s+");
-                                if (varParts.length >= 2) {
-                                    String varName = varParts[1];
-                                    localVars.add(varName);
-                                    forVars.add(varName);
-                                }
-                            }
-                            code.append("        for (").append(compileOutputExpression(forParts[0], localVars)).append("; ")
-                                    .append(compileOutputExpression(forParts[1], localVars)).append("; ")
-                                    .append(compileOutputExpression(forParts[2], localVars)).append(") {\n");
-                            directiveStack.push(new DirectiveContext("for", forVars));
-                        }
-                        break;
-                    case "endfor":
-                        code.append("        }\n");
-                        if (!directiveStack.isEmpty() && directiveStack.peek().type.equals("for")) {
-                            DirectiveContext ctx = directiveStack.pop();
-                            for (String var : ctx.forVars) {
-                                localVars.remove(var);
-                            }
-                        }
-                        break;
-                    case "foreach":
-                        String[] foreachParts = args.split(" as ");
-                        if (foreachParts.length == 2) {
-                            String collectionExpr = foreachParts[0].trim();
-                            String collection;
-                            if (collectionExpr.startsWith("$")) {
-                                String varName = collectionExpr.substring(1);
-                                if (localVars.contains(varName)) {
-                                    collection = varName;
-                                } else {
-                                    collection = "ctx.getVariable(\"" + varName + "\")";
-                                }
-                            } else {
-                                collection = compileConditionExpression(collectionExpr, localVars);
-                            }
-                            String var = foreachParts[1].trim().replace("$", "");
-                            code.append("        for (Object ").append(var).append(" : (Iterable) ").append(collection).append(") {\n");
-                            localVars.add(var);
-                            List<String> foreachVars = new ArrayList<>();
-                            foreachVars.add(var);
-                            directiveStack.push(new DirectiveContext("foreach", foreachVars));
-                        }
-                        break;
-                    case "endforeach":
-                        code.append("        }\n");
-                        if (!directiveStack.isEmpty() && directiveStack.peek().type.equals("foreach")) {
-                            DirectiveContext ctx = directiveStack.pop();
-                            for (String var : ctx.forVars) {
-                                localVars.remove(var);
-                            }
-                        }
-                        break;
-                    default:
-                        // 未知指令作为普通内容输出
-                        processLineWithEcho(code, line, localVars);
-                        code.append("        write(writer, \"\\n\");\n");
-                        break;
-                }
-            } else {
-                processLineWithEcho(code, line, localVars);
-                code.append("        write(writer, \"\\n\");\n");
-            }
+    private void emitText(Emitter em, String text) {
+        if (text.isEmpty()) {
+            return;
         }
-
-        return code.toString();
+        // 分块输出，避免超长字符串常量
+        int chunk = 4096;
+        for (int off = 0; off < text.length(); off += chunk) {
+            String part = text.substring(off, Math.min(text.length(), off + chunk));
+            em.code.append("        write(").append(em.writerVar).append(", \"")
+                    .append(escapeJava(part)).append("\");\n");
+        }
     }
 
-    private String processInitDirectives(String content) {
-        StringBuilder code = new StringBuilder();
-        String[] lines = content.split("\n");
-        boolean inSection = false;
-        String currentSection = null;
-        StringBuilder sectionContent = new StringBuilder();
+    /**
+     * 必须携带 (...) 参数才有意义的指令。
+     * 当模板文本中出现不带括号的同名词（如说明文案 "wire:click + @foreach"），
+     * 不应被当作指令编译，而是按纯文本原样输出。
+     */
+    private static final Set<String> ARGS_REQUIRED_DIRECTIVES = new HashSet<>(Arrays.asList(
+            "extends", "section", "yield", "hasSection", "sectionMissing",
+            "if", "elseif", "unless", "isset",
+            "foreach", "forelse", "for", "while",
+            "include", "includeIf", "includeWhen", "includeUnless",
+            "component", "slot", "json", "method", "route", "asset"
+    ));
 
-        for (String line : lines) {
-            line = line.trim();
-            Matcher matcher = DIRECTIVE_PATTERN.matcher(line);
+    private void handleDirective(Tok tok, Deque<Emitter> emitters, Deque<Frame> frames,
+                                 StringBuilder initCode, Emitter renderEmitter, String templateName) {
+        Emitter em = emitters.peek();
+        String name = tok.value;
+        String args = tok.args;
+        StringBuilder code = em.code;
 
-            if (matcher.find()) {
-                String directive = matcher.group(1);
-                String args = matcher.group(2) != null ? matcher.group(2) : "";
-
-                switch (directive) {
-                    case "extends":
-                        code.append("            ctx.setParentTemplate(\"").append(args.replace("'", "").replace("\"", "")).append("\");\n");
-                        break;
-                    case "section":
-                        if (args.contains(",")) {
-                            String[] parts = args.split(",", 2);
-                            String sectionName = parts[0].trim().replace("'", "").replace("\"", "");
-                            String sectionValue = parts[1].trim();
-                            // 判断值是字符串字面量（引号包裹）还是表达式（如 $title）
-                            if (sectionValue.startsWith("'") || sectionValue.startsWith("\"")) {
-                                // 字符串字面量：去引号后直接使用
-                                sectionValue = sectionValue.replaceAll("^['\"]|['\"]$", "");
-                                code.append("            ctx.setSection(\"").append(sectionName).append("\", \"").append(escapeJava(sectionValue)).append("\");\n");
-                            } else {
-                                // 表达式（如 $title, $title ?? 'default'）：编译为 Blade 表达式
-                                String compiledExpr = compileExpression(sectionValue, new HashSet<>());
-                                code.append("            ctx.setSection(\"").append(sectionName).append("\", String.valueOf(").append(compiledExpr).append("));\n");
-                            }
-                        } else {
-                            inSection = true;
-                            currentSection = args.replace("'", "").replace("\"", "");
-                            sectionContent = new StringBuilder();
-                        }
-                        break;
-                    case "endsection":
-                        if (inSection) {
-                            inSection = false;
-                            currentSection = null;
-                        }
-                        break;
-                }
-            } else if (inSection) {
-                sectionContent.append(line).append("\n");
-            }
-        }
-
-        return code.toString();
-    }
-
-    private String processRenderDirectives(String content, Set<String> sectionNames) {
-        StringBuilder code = new StringBuilder();
-        String[] lines = content.split("\n");
-        Set<String> localVars = new HashSet<>();
-
-        for (int i = 0; i < lines.length; i++) {
-            String line = lines[i];
-            String trimmedLine = line.trim();
-            Matcher directiveMatcher = DIRECTIVE_PATTERN.matcher(trimmedLine);
-
-            if (directiveMatcher.find()) {
-                String directive = directiveMatcher.group(1);
-                String args = directiveMatcher.group(2) != null ? directiveMatcher.group(2) : "";
-                int dirStart = directiveMatcher.start();
-                int dirEnd = directiveMatcher.end();
-
-                switch (directive) {
-                    case "extends":
-                    case "section":
-                    case "endsection":
-                        break;
-                    case "yield":
-                        // 输出指令前的文本（如 <title>）
-                        if (dirStart > 0) {
-                            processLineWithEcho(code, trimmedLine.substring(0, dirStart), localVars);
-                        }
-                        // 解析 @yield('name') 或 @yield('name', 'default value')
-                        String[] yieldParts = args.split(",", 2);
-                        String yieldName = yieldParts[0].trim().replace("'", "").replace("\"", "");
-                        String yieldDefault = (yieldParts.length == 2) ? yieldParts[1].trim().replace("'", "").replace("\"", "") : null;
-                        code.append("        {\n");
-                        // Wire section 包装：使用 HTML 注释标记边界，不增加额外标签
-                        // 区块 section 用 <div wire:section>（可替换子树），字符串 section 用注释标记（仅替换文本节点）
-                        code.append("            boolean __wireMode = ctx.getVariable(\"__wire_mode\") != null;\n");
-                        code.append("            if (__wireMode) {\n");
-                        code.append("                write(writer, \"<!--wire:section-start:").append(yieldName).append("-->\");\n");
-                        code.append("            }\n");
-                        code.append("            Consumer<Writer> renderer = ctx.getSectionRenderer(\"").append(yieldName).append("\");\n");
-                        code.append("            if (renderer != null) {\n");
-                        code.append("                renderer.accept(writer);\n");
-                        code.append("            } else {\n");
-                        code.append("                String yieldContent = ctx.getSection(\"").append(yieldName).append("\");\n");
-                        code.append("                if (yieldContent != null) {\n");
-                        code.append("                    write(writer, yieldContent);\n");
-                        if (yieldDefault != null && !yieldDefault.isEmpty()) {
-                            code.append("                } else {\n");
-                            code.append("                    write(writer, \"").append(escapeJava(yieldDefault)).append("\");\n");
-                        }
-                        code.append("                }\n");
-                        code.append("            }\n");
-                        code.append("            if (__wireMode) {\n");
-                        code.append("                write(writer, \"<!--wire:section-end:").append(yieldName).append("-->\");\n");
-                        code.append("            }\n");
-                        code.append("        }\n");
-                        // 输出指令后的文本（如 </title>）
-                        if (dirEnd < trimmedLine.length()) {
-                            processLineWithEcho(code, trimmedLine.substring(dirEnd), localVars);
-                        }
-                        break;
-                    case "foreach":
-                        String[] foreachParts = args.split(" as ");
-                        if (foreachParts.length == 2) {
-                            String collectionExpr = foreachParts[0].trim();
-                            String collection;
-                            if (collectionExpr.startsWith("$")) {
-                                String varName = collectionExpr.substring(1);
-                                if (localVars.contains(varName)) {
-                                    collection = varName;
-                                } else {
-                                    collection = "ctx.getVariable(\"" + varName + "\")";
-                                }
-                            } else {
-                                collection = compileConditionExpression(collectionExpr, localVars);
-                            }
-                            String var = foreachParts[1].trim().replace("$", "");
-                            code.append("        Object[] ").append(var).append("Array = ").append(collection).append(" instanceof Object[] ? (Object[]) ").append(collection).append(" : new Object[]{").append(collection).append("};\n");
-                            code.append("        for (int ").append(var).append("Index = 0; ").append(var).append("Index < ").append(var).append("Array.length; ").append(var).append("Index++) {\n");
-                            code.append("            Object ").append(var).append(" = ").append(var).append("Array[").append(var).append("Index];\n");
-                            localVars.add(var);
-                        }
-                        break;
-                    case "endforeach":
-                        code.append("        }\n");
-                        break;
-                    case "asset":
-                        // 输出指令前的文本
-                        if (dirStart > 0) {
-                            processLineWithEcho(code, trimmedLine.substring(0, dirStart), localVars);
-                        }
-                        // @asset('css/app.css') → 生成静态资源 URL
-                        String assetPath = args.trim().replace("'", "").replace("\"", "");
-                        code.append("        write(writer, BladeAssetHelper.url(\"").append(escapeJava(assetPath)).append("\"));\n");
-                        // 输出指令后的文本
-                        if (dirEnd < trimmedLine.length()) {
-                            processLineWithEcho(code, trimmedLine.substring(dirEnd), localVars);
-                        }
-                        break;
-                    case "component":
-                    case "endcomponent":
-                    case "slot":
-                    case "endslot":
-                        break;
-                    default:
-                        // 未知指令（如 CSS @media、@keyframes 等）作为普通内容输出
-                        processLineWithEcho(code, line, localVars);
-                        break;
-                }
-            } else {
-                processLineWithEcho(code, line, localVars);
-            }
-        }
-
-        return code.toString();
-    }
-
-    private String processComponents(String content) {
-        StringBuilder code = new StringBuilder();
-        String[] lines = content.split("\n");
-        int i = 0;
-
-        while (i < lines.length) {
-            String line = lines[i];
-            String trimmedLine = line.trim();
-            Matcher directiveMatcher = DIRECTIVE_PATTERN.matcher(trimmedLine);
-
-            if (directiveMatcher.find()) {
-                String directive = directiveMatcher.group(1);
-                String args = directiveMatcher.group(2) != null ? directiveMatcher.group(2) : "";
-
-                if (directive.equals("component")) {
-                    args = args.trim();
-                    String componentTemplate;
-                    String componentParams = "";
-
-                    if (args.startsWith("'") || args.startsWith("\"")) {
-                        int endQuote = args.indexOf(args.charAt(0), 1);
-                        if (endQuote > 0) {
-                            componentTemplate = args.substring(1, endQuote);
-                            if (endQuote + 1 < args.length()) {
-                                componentParams = args.substring(endQuote + 1).trim();
-                            }
-                        } else {
-                            componentTemplate = args.substring(1);
-                        }
-                    } else {
-                        componentTemplate = args.split("\\s+")[0];
-                    }
-
-                    code.append("        {\n");
-                    code.append("            Map<String, Object> componentData = new java.util.HashMap<>();\n");
-                    code.append("            Map<String, String> componentSlots = new java.util.HashMap<>();\n");
-                    code.append("            StringBuilder slotContent = new StringBuilder();\n");
-                    code.append("            String currentSlot = null;\n");
-                    code.append("            boolean inSlot = false;\n");
-
-                    code.append(parseComponentParams(componentParams));
-
-                    i++;
-                    int componentDepth = 1;
-
-                    while (i < lines.length && componentDepth > 0) {
-                        String componentLine = lines[i];
-                        String componentTrimmed = componentLine.trim();
-                        Matcher componentDirectiveMatcher = DIRECTIVE_PATTERN.matcher(componentTrimmed);
-
-                        if (componentDirectiveMatcher.find()) {
-                            String componentDirective = componentDirectiveMatcher.group(1);
-
-                            if (componentDirective.equals("component")) {
-                                componentDepth++;
-                            } else if (componentDirective.equals("endcomponent")) {
-                                componentDepth--;
-                                if (componentDepth == 0) {
-                                    i++;
-                                    break;
-                                }
-                            } else if (componentDirective.equals("slot")) {
-                                String slotName = componentDirectiveMatcher.group(2) != null ?
-                                        componentDirectiveMatcher.group(2).replace("'", "").replace("\"", "").split("\\s+")[0] : "default";
-                                code.append("            if (currentSlot != null && inSlot) {\n");
-                                code.append("                componentSlots.put(currentSlot, slotContent.toString());\n");
-                                code.append("            }\n");
-                                code.append("            currentSlot = \"").append(slotName).append("\";\n");
-                                code.append("            slotContent = new StringBuilder();\n");
-                                code.append("            inSlot = true;\n");
-                                i++;
-                                continue;
-                            } else if (componentDirective.equals("endslot")) {
-                                code.append("            if (currentSlot != null && inSlot) {\n");
-                                code.append("                componentSlots.put(currentSlot, slotContent.toString());\n");
-                                code.append("            }\n");
-                                code.append("            currentSlot = null;\n");
-                                code.append("            inSlot = false;\n");
-                                i++;
-                                continue;
-                            }
-                        }
-
-                        code.append("            slotContent.append(\"").append(escapeJava(componentLine)).append("\\n\");\n");
-                        i++;
-                    }
-
-                    code.append("            if (currentSlot != null && inSlot) {\n");
-                    code.append("                componentSlots.put(currentSlot, slotContent.toString());\n");
-                    code.append("            }\n");
-
-                    code.append("            if (!componentSlots.containsKey(\"default\")) {\n");
-                    code.append("                componentSlots.put(\"default\", slotContent.toString());\n");
-                    code.append("            }\n");
-                    code.append("            renderComponent(writer, \"").append(componentTemplate).append("\", componentData, componentSlots);\n");
-                    code.append("        }\n");
-                } else {
-                    i++;
-                }
-            } else {
-                i++;
-            }
-        }
-
-        return code.toString();
-    }
-
-    private void processLineWithEcho(StringBuilder code, String line, Set<String> localVars) {
-        if (line == null || line.trim().isEmpty()) {
-            // 空行也输出换行符，保持 HTML 结构（特别是 <script>、<pre> 等标签内的换行）
-            code.append("        write(writer, \"\\n\");\n");
+        // 必带参数的指令若未跟 (...)，视为普通文本（如文案中的 "@foreach"）
+        if (args == null && ARGS_REQUIRED_DIRECTIVES.contains(name)) {
+            emitText(em, "@" + name);
             return;
         }
 
-        String processed = line;
-
-        Matcher commentMatcher = COMMENT_PATTERN.matcher(processed);
-        processed = commentMatcher.replaceAll("");
-
-        Matcher echoMatcher = ECHO_PATTERN.matcher(processed);
-        int lastEnd = 0;
-        while (echoMatcher.find()) {
-            String before = processed.substring(lastEnd, echoMatcher.start());
-            before = COMMENT_PATTERN.matcher(before).replaceAll("");
-            if (!before.isEmpty()) {
-                code.append("        write(writer, \"").append(escapeJava(before)).append("\");\n");
+        switch (name) {
+            /* ---------- 布局继承 ---------- */
+            case "extends": {
+                String tpl = literalArg(args, templateName, "@extends");
+                initCode.append("        ctx.setParentTemplate(\"").append(escapeJava(tpl)).append("\");\n");
+                return;
+            }
+            case "section": {
+                List<String> parts = PhpExpressionTranslator.splitTopLevel(args);
+                String sectionName = literalArg(parts.get(0), templateName, "@section");
+                if (parts.size() >= 2) {
+                    // 内联 section：@section('title', 'xxx')
+                    PhpExpressionTranslator.Expr valueExpr = translateExpr(parts.get(1), templateName);
+                    initCode.append("        registerSection(\"").append(escapeJava(sectionName))
+                            .append("\", ").append(valueExpr.asString()).append(");\n");
+                    return;
+                }
+                String swVar = nextVar("sw");
+                Emitter sectionEmitter = new Emitter("section", sectionName, swVar);
+                emitters.push(sectionEmitter);
+                return;
+            }
+            case "endsection":
+            case "stop":
+            case "append":
+            case "overwrite":
+            case "show": {
+                if (!"section".equals(em.kind)) {
+                    throw new IllegalStateException("模板 [" + templateName + "] @" + name + " 没有对应的 @section");
+                }
+                emitters.pop();
+                String registerMethod = "registerSection";
+                if ("append".equals(name)) {
+                    registerMethod = "registerSectionAppend";
+                } else if ("overwrite".equals(name)) {
+                    registerMethod = "registerSectionOverwrite";
+                }
+                initCode.append("        {\n");
+                initCode.append("            final java.io.StringWriter ").append(em.writerVar)
+                        .append(" = new java.io.StringWriter();\n");
+                initCode.append(indent(em.code.toString(), "    "));
+                initCode.append("            ").append(registerMethod).append("(\"")
+                        .append(escapeJava(em.name)).append("\", ").append(em.writerVar).append(".toString());\n");
+                initCode.append("        }\n");
+                if ("show".equals(name)) {
+                    // @show：在当前位置输出该 section（含子模板覆盖与 @parent 合并）
+                    emitters.peek().code.append("        yieldSection(").append(emitters.peek().writerVar)
+                            .append(", \"").append(escapeJava(em.name)).append("\", null);\n");
+                }
+                return;
+            }
+            case "parent": {
+                if (!"section".equals(em.kind)) {
+                    throw new IllegalStateException("模板 [" + templateName + "] @parent 只能出现在 @section 内");
+                }
+                code.append("        write(").append(em.writerVar).append(", BladeContext.PARENT_PLACEHOLDER);\n");
+                return;
+            }
+            case "yield": {
+                List<String> parts = PhpExpressionTranslator.splitTopLevel(args);
+                PhpExpressionTranslator.Expr nameExpr = translateExpr(parts.get(0), templateName);
+                String defaultCode = "null";
+                if (parts.size() >= 2) {
+                    defaultCode = translateExpr(parts.get(1), templateName).asObject();
+                }
+                code.append("        yieldSection(").append(em.writerVar).append(", ")
+                        .append(nameExpr.asString()).append(", ").append(defaultCode).append(");\n");
+                return;
+            }
+            case "hasSection": {
+                PhpExpressionTranslator.Expr nameExpr = translateExpr(args, templateName);
+                code.append("        if (hasSection(").append(nameExpr.asString()).append(")) {\n");
+                frames.push(new Frame("if", "        }\n"));
+                return;
+            }
+            case "sectionMissing": {
+                PhpExpressionTranslator.Expr nameExpr = translateExpr(args, templateName);
+                code.append("        if (sectionMissing(").append(nameExpr.asString()).append(")) {\n");
+                frames.push(new Frame("if", "        }\n"));
+                return;
             }
 
-            String expression = echoMatcher.group(1).trim();
-            if (expression.startsWith("--") && expression.endsWith("--")) {
-                lastEnd = echoMatcher.end();
+            /* ---------- 条件 ---------- */
+            case "if": {
+                code.append("        if (").append(translateExpr(args, templateName).asBoolean()).append(") {\n");
+                frames.push(new Frame("if", "        }\n"));
+                return;
+            }
+            case "elseif": {
+                code.append("        } else if (").append(translateExpr(args, templateName).asBoolean()).append(") {\n");
+                return;
+            }
+            case "else": {
+                code.append("        } else {\n");
+                return;
+            }
+            case "endif":
+            case "endunless":
+            case "endisset":
+            case "endauth":
+            case "endguest": {
+                popFrame(frames, code, templateName, name);
+                return;
+            }
+            case "unless": {
+                code.append("        if (!(").append(translateExpr(args, templateName).asBoolean()).append(")) {\n");
+                frames.push(new Frame("unless", "        }\n"));
+                return;
+            }
+            case "isset": {
+                List<String> parts = PhpExpressionTranslator.splitTopLevel(args);
+                StringBuilder cond = new StringBuilder();
+                for (int i = 0; i < parts.size(); i++) {
+                    if (i > 0) {
+                        cond.append(" && ");
+                    }
+                    cond.append("isset(").append(translateExpr(parts.get(i), templateName).asObject()).append(")");
+                }
+                code.append("        if (").append(cond).append(") {\n");
+                frames.push(new Frame("isset", "        }\n"));
+                return;
+            }
+            case "empty": {
+                if (args == null || args.trim().isEmpty()) {
+                    // @forelse 的空分支
+                    Frame f = findFrame(frames, "forelse");
+                    if (f != null && !f.forelseHasEmpty) {
+                        f.forelseHasEmpty = true;
+                        code.append(f.closing);      // 关闭 for 循环 + popLoop + if 分支
+                        code.append("        } else {\n");
+                        f.closing = "        }\n        }\n"; // 关闭 else + 外层块
+                        return;
+                    }
+                    // 无对应 forelse：按文本输出
+                    emitText(em, "@empty");
+                    return;
+                }
+                code.append("        if (empty(").append(translateExpr(args, templateName).asObject()).append(")) {\n");
+                frames.push(new Frame("empty", "        }\n"));
+                return;
+            }
+            case "endempty": {
+                popFrame(frames, code, templateName, name);
+                return;
+            }
+            case "auth": {
+                code.append("        if (toBoolean(BladeFunctions.callOrDefault(\"auth_check\", Boolean.FALSE))) {\n");
+                frames.push(new Frame("auth", "        }\n"));
+                return;
+            }
+            case "guest": {
+                code.append("        if (!toBoolean(BladeFunctions.callOrDefault(\"auth_check\", Boolean.FALSE))) {\n");
+                frames.push(new Frame("guest", "        }\n"));
+                return;
+            }
+
+            /* ---------- 循环 ---------- */
+            case "foreach": {
+                ForeachParts fp = parseForeach(args, templateName);
+                String pairsVar = nextVar("it");
+                String loopVar = nextVar("loop");
+                String idxVar = nextVar("i");
+                String entryVar = nextVar("e");
+                code.append("        {\n");
+                code.append("        java.util.List<Object[]> ").append(pairsVar)
+                        .append(" = toPairs(").append(fp.collection).append(");\n");
+                code.append("        LoopHelper ").append(loopVar)
+                        .append(" = getContext().pushLoop(").append(pairsVar).append(".size());\n");
+                code.append("        int ").append(idxVar).append(" = 0;\n");
+                code.append("        for (Object[] ").append(entryVar).append(" : ").append(pairsVar).append(") {\n");
+                code.append("        ").append(loopVar).append(".advance(").append(idxVar).append("++);\n");
+                if (fp.keyVar != null) {
+                    code.append("        setVar(\"").append(fp.keyVar).append("\", ").append(entryVar).append("[0]);\n");
+                }
+                code.append("        setVar(\"").append(fp.valueVar).append("\", ").append(entryVar).append("[1]);\n");
+                frames.push(new Frame("foreach", "        }\n        getContext().popLoop();\n        }\n"));
+                return;
+            }
+            case "endforeach": {
+                popFrame(frames, code, templateName, name);
+                return;
+            }
+            case "forelse": {
+                ForeachParts fp = parseForeach(args, templateName);
+                String pairsVar = nextVar("it");
+                String loopVar = nextVar("loop");
+                String idxVar = nextVar("i");
+                String entryVar = nextVar("e");
+                code.append("        {\n");
+                code.append("        java.util.List<Object[]> ").append(pairsVar)
+                        .append(" = toPairs(").append(fp.collection).append(");\n");
+                code.append("        if (!").append(pairsVar).append(".isEmpty()) {\n");
+                code.append("        LoopHelper ").append(loopVar)
+                        .append(" = getContext().pushLoop(").append(pairsVar).append(".size());\n");
+                code.append("        int ").append(idxVar).append(" = 0;\n");
+                code.append("        for (Object[] ").append(entryVar).append(" : ").append(pairsVar).append(") {\n");
+                code.append("        ").append(loopVar).append(".advance(").append(idxVar).append("++);\n");
+                if (fp.keyVar != null) {
+                    code.append("        setVar(\"").append(fp.keyVar).append("\", ").append(entryVar).append("[0]);\n");
+                }
+                code.append("        setVar(\"").append(fp.valueVar).append("\", ").append(entryVar).append("[1]);\n");
+                Frame f = new Frame("forelse",
+                        "        }\n        getContext().popLoop();\n");
+                frames.push(f);
+                return;
+            }
+            case "endforelse": {
+                Frame f = frames.pop();
+                if (!"forelse".equals(f.type)) {
+                    throw new IllegalStateException("模板 [" + templateName + "] @endforelse 与 @" + f.type + " 不匹配");
+                }
+                if (f.forelseHasEmpty) {
+                    code.append(f.closing);
+                } else {
+                    code.append(f.closing);   // 关闭 for + popLoop
+                    code.append("        }\n");  // 关闭 if
+                    code.append("        }\n");  // 关闭外层块
+                }
+                return;
+            }
+            case "for": {
+                String[] parts = splitForParts(args);
+                if (parts.length != 3) {
+                    throw new IllegalStateException("模板 [" + templateName + "] @for 参数格式错误: " + args);
+                }
+                String init = parts[0].trim().isEmpty() ? "" : translateExpr(parts[0], templateName).code;
+                String cond = parts[1].trim().isEmpty() ? "true" : translateExpr(parts[1], templateName).asBoolean();
+                String update = parts[2].trim().isEmpty() ? "" : translateExpr(parts[2], templateName).code;
+                code.append("        for (").append(init).append("; ").append(cond).append("; ")
+                        .append(update).append(") {\n");
+                frames.push(new Frame("for", "        }\n"));
+                return;
+            }
+            case "endfor": {
+                popFrame(frames, code, templateName, name);
+                return;
+            }
+            case "while": {
+                code.append("        while (").append(translateExpr(args, templateName).asBoolean()).append(") {\n");
+                frames.push(new Frame("while", "        }\n"));
+                return;
+            }
+            case "endwhile": {
+                popFrame(frames, code, templateName, name);
+                return;
+            }
+            case "continue": {
+                if (args != null && !args.trim().isEmpty()) {
+                    code.append("        if (").append(translateExpr(args, templateName).asBoolean())
+                            .append(") { continue; }\n");
+                } else {
+                    code.append("        if (true) { continue; }\n");
+                }
+                return;
+            }
+            case "break": {
+                if (args != null && !args.trim().isEmpty()) {
+                    code.append("        if (").append(translateExpr(args, templateName).asBoolean())
+                            .append(") { break; }\n");
+                } else {
+                    code.append("        if (true) { break; }\n");
+                }
+                return;
+            }
+
+            /* ---------- PHP 代码 ---------- */
+            case "php": {
+                // 内联形式 @php($x = 1)
+                emitPhpStatements(code, args, templateName);
+                return;
+            }
+            case "phpblock": {
+                emitPhpStatements(code, args, templateName);
+                return;
+            }
+            case "endphp":
+                return; // 块形式在 tokenizer 已整体处理
+
+            /* ---------- 子视图 ---------- */
+            case "include":
+            case "includeIf": {
+                List<String> parts = PhpExpressionTranslator.splitTopLevel(args);
+                PhpExpressionTranslator.Expr nameExpr = translateExpr(parts.get(0), templateName);
+                String dataCode = "null";
+                if (parts.size() >= 2) {
+                    dataCode = "(java.util.Map<String,Object>)(Object)("
+                            + translateExpr(parts.get(1), templateName).asObject() + ")";
+                }
+                String method = "include".equals(name) ? "includeTemplate" : "includeTemplateIf";
+                code.append("        ").append(method).append("(").append(em.writerVar).append(", ")
+                        .append(nameExpr.asString()).append(", ").append(dataCode).append(");\n");
+                return;
+            }
+            case "includeWhen":
+            case "includeUnless": {
+                List<String> parts = PhpExpressionTranslator.splitTopLevel(args);
+                String cond = translateExpr(parts.get(0), templateName).asBoolean();
+                if ("includeUnless".equals(name)) {
+                    cond = "!(" + cond + ")";
+                }
+                PhpExpressionTranslator.Expr nameExpr = translateExpr(parts.get(1), templateName);
+                String dataCode = "null";
+                if (parts.size() >= 3) {
+                    dataCode = "(java.util.Map<String,Object>)(Object)("
+                            + translateExpr(parts.get(2), templateName).asObject() + ")";
+                }
+                code.append("        if (").append(cond).append(") { includeTemplate(")
+                        .append(em.writerVar).append(", ").append(nameExpr.asString()).append(", ")
+                        .append(dataCode).append("); }\n");
+                return;
+            }
+
+            /* ---------- 组件与插槽 ---------- */
+            case "component": {
+                List<String> parts = PhpExpressionTranslator.splitTopLevel(args);
+                String componentName = literalArg(parts.get(0), templateName, "@component");
+                String slotsVar = nextVar("slots");
+                String defVar = nextVar("def");
+                code.append("        {\n");
+                code.append("        java.util.Map<String,String> ").append(slotsVar)
+                        .append(" = new java.util.LinkedHashMap<>();\n");
+                code.append("        java.io.StringWriter ").append(defVar)
+                        .append(" = new java.io.StringWriter();\n");
+                Emitter comp = new Emitter("component", componentName, defVar);
+                comp.slotsVar = slotsVar;
+                comp.componentName = componentName;
+                comp.parentWriterVar = em.writerVar;
+                comp.dataExpr = parts.size() >= 2
+                        ? "(java.util.Map<String,Object>)(Object)("
+                            + translateExpr(parts.get(1), templateName).asObject() + ")"
+                        : "new java.util.HashMap<String,Object>()";
+                emitters.push(comp);
+                return;
+            }
+            case "endcomponent": {
+                if (!"component".equals(em.kind)) {
+                    throw new IllegalStateException("模板 [" + templateName + "] @endcomponent 没有对应的 @component");
+                }
+                emitters.pop();
+                Emitter outer = emitters.peek();
+                outer.code.append(em.code);
+                outer.code.append("        ").append(em.slotsVar).append(".put(\"default\", ")
+                        .append(em.writerVar).append(".toString());\n");
+                outer.code.append("        renderComponent(").append(em.parentWriterVar).append(", \"")
+                        .append(escapeJava(em.componentName)).append("\", ").append(em.dataExpr)
+                        .append(", ").append(em.slotsVar).append(");\n");
+                outer.code.append("        }\n");
+                return;
+            }
+            case "slot": {
+                if (!"component".equals(em.kind)) {
+                    throw new IllegalStateException("模板 [" + templateName + "] @slot 只能出现在 @component 内");
+                }
+                String slotName = literalArg(PhpExpressionTranslator.splitTopLevel(args).get(0),
+                        templateName, "@slot");
+                String slVar = nextVar("sl");
+                Emitter slot = new Emitter("slot", slotName, slVar);
+                emitters.push(slot);
+                return;
+            }
+            case "endslot": {
+                if (!"slot".equals(em.kind)) {
+                    throw new IllegalStateException("模板 [" + templateName + "] @endslot 没有对应的 @slot");
+                }
+                emitters.pop();
+                Emitter comp = emitters.peek();
+                comp.code.append("        java.io.StringWriter ").append(em.writerVar)
+                        .append(" = new java.io.StringWriter();\n");
+                comp.code.append(em.code);
+                comp.code.append("        ").append(comp.slotsVar).append(".put(\"")
+                        .append(escapeJava(em.name)).append("\", ").append(em.writerVar).append(".toString());\n");
+                return;
+            }
+
+            /* ---------- 杂项 ---------- */
+            case "csrf": {
+                code.append("        write(").append(em.writerVar).append(", csrf());\n");
+                return;
+            }
+            case "method": {
+                code.append("        write(").append(em.writerVar).append(", methodField(")
+                        .append(translateExpr(args, templateName).asObject()).append("));\n");
+                return;
+            }
+            case "json": {
+                List<String> parts = PhpExpressionTranslator.splitTopLevel(args);
+                code.append("        echoRaw(").append(em.writerVar).append(", json_encode(")
+                        .append(translateExpr(parts.get(0), templateName).asObject()).append("));\n");
+                return;
+            }
+            case "route": {
+                // @route('name') — http 模块路由别名 → URL
+                List<String> parts = PhpExpressionTranslator.splitTopLevel(args);
+                String nameCode = translateExpr(parts.get(0), templateName).asObject();
+                String paramsCode = parts.size() >= 2
+                        ? translateExpr(parts.get(1), templateName).asObject() : "null";
+                code.append("        write(").append(em.writerVar).append(", routeAny(")
+                        .append(nameCode).append(", ").append(paramsCode).append("));\n");
+                return;
+            }
+            case "asset": {
+                String path = literalArgOrNull(args);
+                if (path != null) {
+                    code.append("        write(").append(em.writerVar).append(", BladeAssetHelper.url(\"")
+                            .append(escapeJava(path)).append("\"));\n");
+                } else {
+                    code.append("        write(").append(em.writerVar).append(", BladeAssetHelper.url(String.valueOf(")
+                            .append(translateExpr(args, templateName).asObject()).append(")));\n");
+                }
+                return;
+            }
+            default:
+                break;
+        }
+
+        /* ---------- 动态注册的自定义指令 ---------- */
+        if (BladeDirectives.hasCondition(name)) {
+            code.append("        if (evalCondition(\"").append(escapeJava(name)).append("\"")
+                    .append(argListCode(args, templateName)).append(")) {\n");
+            frames.push(new Frame("custom:" + name, "        }\n"));
+            return;
+        }
+        if (name.startsWith("else") && name.length() > 4 && BladeDirectives.hasCondition(name.substring(4))) {
+            String base = name.substring(4);
+            code.append("        } else if (evalCondition(\"").append(escapeJava(base)).append("\"")
+                    .append(argListCode(args, templateName)).append(")) {\n");
+            return;
+        }
+        if (name.startsWith("end") && BladeDirectives.hasCondition(name.substring(3))) {
+            Frame f = frames.pop();
+            if (!f.type.equals("custom:" + name.substring(3))) {
+                throw new IllegalStateException("模板 [" + templateName + "] @" + name + " 与 @" + f.type + " 不匹配");
+            }
+            code.append(f.closing);
+            return;
+        }
+        if (BladeDirectives.hasDirective(name)) {
+            code.append("        write(").append(em.writerVar).append(", evalDirective(\"")
+                    .append(escapeJava(name)).append("\"").append(argListCode(args, templateName)).append("));\n");
+            return;
+        }
+
+        // 理论不可达（tokenizer 已过滤未知指令），兜底按原文输出
+        emitText(em, tok.raw != null ? tok.raw : "@" + name);
+    }
+
+    private String argListCode(String args, String templateName) {
+        if (args == null || args.trim().isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (PhpExpressionTranslator.Expr e : PhpExpressionTranslator.translateArgs(args)) {
+            sb.append(", ").append(e.asObject());
+        }
+        return sb.toString();
+    }
+
+    private void popFrame(Deque<Frame> frames, StringBuilder code, String templateName, String directive) {
+        if (frames.isEmpty()) {
+            throw new IllegalStateException("模板 [" + templateName + "] @" + directive + " 没有对应的开始指令");
+        }
+        Frame f = frames.pop();
+        code.append(f.closing);
+    }
+
+    private Frame findFrame(Deque<Frame> frames, String type) {
+        for (Frame f : frames) {
+            if (f.type.equals(type)) {
+                return f;
+            }
+        }
+        return null;
+    }
+
+    /** @php 内容：按顶层分号切分为语句并翻译 */
+    private void emitPhpStatements(StringBuilder code, String phpSource, String templateName) {
+        if (phpSource == null) {
+            return;
+        }
+        for (String stmt : splitStatements(phpSource)) {
+            String trimmed = stmt.trim();
+            if (trimmed.isEmpty()) {
                 continue;
             }
-            expression = COMMENT_PATTERN.matcher(expression).replaceAll("");
-            if (!expression.isEmpty()) {
-                String converted = compileOutputExpression(expression, localVars);
-                code.append("        write(writer, (").append(converted).append("));\n");
+            PhpExpressionTranslator.Expr e = translateExpr(trimmed, templateName);
+            code.append("        { Object ").append(nextVar("php")).append(" = ")
+                    .append(e.asObject()).append("; }\n");
+        }
+    }
+
+    /** 按不在括号/引号内的分号切分 */
+    private List<String> splitStatements(String src) {
+        List<String> parts = new ArrayList<>();
+        int depth = 0;
+        char quote = 0;
+        StringBuilder cur = new StringBuilder();
+        for (int i = 0; i < src.length(); i++) {
+            char c = src.charAt(i);
+            if (quote != 0) {
+                cur.append(c);
+                if (c == '\\' && i + 1 < src.length()) {
+                    cur.append(src.charAt(++i));
+                } else if (c == quote) {
+                    quote = 0;
+                }
+                continue;
             }
-
-            lastEnd = echoMatcher.end();
-        }
-
-        String after = processed.substring(lastEnd);
-        after = COMMENT_PATTERN.matcher(after).replaceAll("");
-        if (!after.isEmpty()) {
-            code.append("        write(writer, \"").append(escapeJava(after)).append("\\n\");\n");
-        } else {
-            // 非空行但末尾无内容时也输出换行符（如只有 {{ }} 表达式的行）
-            code.append("        write(writer, \"\\n\");\n");
-        }
-    }
-
-    // ===== Blade 表达式编译引擎 =====
-    // jblade 编译器原生支持 Blade 模板表达式语法，将其编译为 Java 代码。
-    // 这是 jblade 编译器的核心能力，不是外部转换层。
-
-    /**
-     * 编译表达式用于条件判断（@if, @elseif），布尔上下文。
-     * 简单变量引用自动包装为 toBoolean()。
-     */
-    private String compileConditionExpression(String expr, Set<String> localVars) {
-        String compiled = compileExpression(expr, localVars);
-        // 如果是简单变量引用，包装为 toBoolean()
-        if (compiled.equals("ctx.getVariable(\"" + expr.trim().replace("$", "") + "\")")) {
-            return "toBoolean(" + compiled + ")";
-        }
-        return compiled;
-    }
-
-    /**
-     * 编译表达式用于输出（{{ }}），值上下文，不包装 toBoolean()。
-     */
-    private String compileOutputExpression(String expr, Set<String> localVars) {
-        return compileExpression(expr, localVars);
-    }
-
-    /**
-     * 编译 Blade 表达式为 Java 表达式。
-     * <p>
-     * jblade 原生支持以下 Blade 语法：
-     * <ul>
-     *   <li>单引号字符串字面量 'text' → Java 双引号 "text"</li>
-     *   <li>静态方法调用 URL::method(), Carbon::method() → 方法调用</li>
-     *   <li>辅助函数 csrf_field(), csrf_token(), old() → 空字符串</li>
-     *   <li>对象方法调用 $var->method(args) → invokeMethod(...)</li>
-     *   <li>对象属性访问 $var->prop → getProperty(...)</li>
-     *   <li>数组访问 $var['key'] → getMapValue(...)</li>
-     *   <li>关联数组字面量 ['key' => value] → Map.of("key", value)</li>
-     *   <li>字符串拼接运算符 . → Java +</li>
-     *   <li>空合并运算符 ?? → nullCoalescing()</li>
-     *   <li>Elvis 运算符 ?: → elvis()</li>
-     *   <li>三元运算符 ? : → toBoolean() ? :</li>
-     *   <li>变量引用 $var → ctx.getVariable("var")</li>
-     * </ul>
-     */
-    private String compileExpression(String expr, Set<String> localVars) {
-        String result = expr.trim();
-
-        // Step 1: 单引号字符串 → 双引号字符串
-        result = compileStringLiterals(result);
-
-        // Step 2: 静态方法调用和命名空间
-        // URL::asset('path') → asset("path")
-        result = result.replaceAll("\\bURL::(\\w+)\\s*\\(", "$1(");
-        // \Carbon\Carbon::parse($date) → carbonParse($date)
-        result = result.replaceAll("\\\\?Carbon\\\\Carbon::(\\w+)\\s*\\(", "carbon$1(");
-        // \Illuminate\Support\Carbon::today() → carbonToday()
-        result = result.replaceAll("\\\\?Illuminate\\\\Support\\\\Carbon::(\\w+)\\s*\\(", "carbon$1(");
-        // Carbon::parse($date) → carbonParse($date) (without namespace)
-        result = result.replaceAll("\\bCarbon::(\\w+)\\s*\\(", "carbon$1(");
-
-        // Step 3: 空返回值的辅助函数
-        result = result.replaceAll("\\bcsrf_field\\s*\\(\\s*\\)", "\"\"");
-        result = result.replaceAll("\\bcsrf_token\\s*\\(\\s*\\)", "\"\"");
-        result = result.replaceAll("\\bold\\s*\\(\\s*\\)", "\"\"");
-
-        // Step 4: 对象方法调用 $var->method(args) → invokeMethod(varRef, "method", args)
-        result = compileMethodCalls(result, localVars);
-
-        // Step 5: 对象属性访问 $var->prop → getProperty(varRef, "prop")
-        result = compilePropertyAccess(result, localVars);
-
-        // Step 5b: 方法调用结果的属性访问 method()->prop → getProperty(method(), "prop")
-        result = compileMethodChainProperty(result);
-
-        // Step 6: 数组访问 $var['key'] 或 $var["key"] → getMapValue(varRef, "key")
-        result = compileArrayAccess(result, localVars);
-
-        // Step 7: 关联数组字面量 ['key' => value] → Map.of("key", value)
-        result = compileArrayLiterals(result, localVars);
-
-        // Step 8: 字符串拼接 . → +（仅在字符串外部）
-        result = compileStringConcatenation(result);
-
-        // Step 8b: 空合并运算符 ?? → nullCoalescing()
-        result = compileNullCoalescing(result, localVars);
-
-        // Step 9: Elvis 运算符 ?: → elvis()
-        result = compileElvisOperator(result, localVars);
-
-        // Step 10: 三元运算符 ? : → toBoolean() ? :
-        result = compileTernaryOperator(result, localVars);
-
-        // Step 11: 剩余 $var → ctx.getVariable("var") 或本地变量
-        result = compileVariables(result, localVars);
-
-        return result;
-    }
-
-    /**
-     * 编译单引号字符串字面量为 Java 双引号字符串。
-     * 'text' → "text"，同时转义内部双引号。
-     */
-    private String compileStringLiterals(String expr) {
-        StringBuilder result = new StringBuilder();
-        int i = 0;
-        while (i < expr.length()) {
-            char c = expr.charAt(i);
-            if (c == '\'') {
-                // 查找闭合单引号
-                int end = i + 1;
-                while (end < expr.length()) {
-                    if (expr.charAt(end) == '\\' && end + 1 < expr.length()) {
-                        end += 2;
-                    } else if (expr.charAt(end) == '\'') {
-                        break;
-                    } else {
-                        end++;
-                    }
-                }
-                if (end < expr.length()) {
-                    String content = expr.substring(i + 1, end);
-                    // 转义双引号和反斜杠
-                    content = content.replace("\\", "\\\\").replace("\"", "\\\"");
-                    // 处理 PHP 单引号转义：\\ → \，\' → '
-                    content = content.replace("\\\\'", "'").replace("\\\\", "\\");
-                    result.append('"').append(content).append('"');
-                    i = end + 1;
-                } else {
-                    result.append(c);
-                    i++;
-                }
+            if (c == '\'' || c == '"') {
+                quote = c;
+                cur.append(c);
+            } else if (c == '(' || c == '[' || c == '{') {
+                depth++;
+                cur.append(c);
+            } else if (c == ')' || c == ']' || c == '}') {
+                depth--;
+                cur.append(c);
+            } else if (c == ';' && depth == 0) {
+                parts.add(cur.toString());
+                cur.setLength(0);
             } else {
-                result.append(c);
-                i++;
+                cur.append(c);
             }
         }
-        return result.toString();
+        if (cur.toString().trim().length() > 0) {
+            parts.add(cur.toString());
+        }
+        return parts;
     }
 
-    /**
-     * 编译对象方法调用 $var->method(args) → invokeMethod(varRef, "method", args)。
-     * 正确处理带参数的方法调用，手动查找匹配的闭括号并替换整个方法调用。
-     */
-    private String compileMethodCalls(String expr, Set<String> localVars) {
-        Pattern pattern = Pattern.compile("\\$(\\w+)->(\\w+)\\s*\\(");
-        Matcher matcher = pattern.matcher(expr);
-        StringBuilder result = new StringBuilder();
-        int lastEnd = 0;
-        while (matcher.find()) {
-            // 追加匹配前的内容
-            result.append(expr, lastEnd, matcher.start());
+    /** @for 的三段式参数切分（引号/括号感知） */
+    private String[] splitForParts(String args) {
+        List<String> parts = splitStatements(args);
+        return parts.toArray(new String[0]);
+    }
 
-            String varName = matcher.group(1);
-            String methodName = matcher.group(2);
-            String varRef = localVars.contains(varName) ? varName : "ctx.getVariable(\"" + varName + "\")";
+    private static class ForeachParts {
+        String collection;
+        String keyVar;
+        String valueVar;
+    }
 
-            // 找到匹配的闭括号
-            int argsStart = matcher.end();
-            int argsEnd = findMatchingParen(expr, argsStart);
+    private static final Pattern FOREACH_PATTERN =
+            Pattern.compile("^(.+?)\\s+as\\s+(?:\\$(\\w+)\\s*=>\\s*)?\\$(\\w+)\\s*$", Pattern.DOTALL);
 
-            if (argsEnd > 0) {
-                String args = expr.substring(argsStart, argsEnd).trim();
-                if (args.isEmpty()) {
-                    result.append("invokeMethod(").append(varRef).append(", \"").append(methodName).append("\")");
-                } else {
-                    result.append("invokeMethod(").append(varRef).append(", \"").append(methodName).append("\", ").append(args).append(")");
-                }
-                lastEnd = argsEnd + 1; // 跳过闭括号
-            } else {
-                result.append("invokeMethod(").append(varRef).append(", \"").append(methodName).append("\")(");
-                lastEnd = matcher.end();
+    private ForeachParts parseForeach(String args, String templateName) {
+        Matcher m = FOREACH_PATTERN.matcher(args.trim());
+        if (!m.matches()) {
+            throw new IllegalStateException("模板 [" + templateName + "] @foreach 参数格式错误: " + args);
+        }
+        ForeachParts fp = new ForeachParts();
+        fp.collection = translateExpr(m.group(1), templateName).asObject();
+        fp.keyVar = m.group(2);
+        fp.valueVar = m.group(3);
+        return fp;
+    }
+
+    /** 提取编译期字符串字面量参数（section 名、模板名等） */
+    private String literalArg(String argSource, String templateName, String directive) {
+        PhpExpressionTranslator.Expr e = translateExpr(argSource, templateName);
+        if (e.literalString == null) {
+            throw new IllegalStateException("模板 [" + templateName + "] " + directive
+                    + " 的名称参数必须是字符串字面量: " + argSource);
+        }
+        return e.literalString;
+    }
+
+    private String literalArgOrNull(String argSource) {
+        try {
+            PhpExpressionTranslator.Expr e = PhpExpressionTranslator.translate(argSource);
+            return e.literalString;
+        } catch (RuntimeException ex) {
+            return null;
+        }
+    }
+
+    private String indent(String code, String prefix) {
+        if (code.isEmpty()) {
+            return code;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (String line : code.split("\n", -1)) {
+            if (line.isEmpty()) {
+                continue;
             }
+            sb.append(prefix).append(line).append("\n");
         }
-        result.append(expr, lastEnd, expr.length());
-        return result.toString();
-    }
-
-    /**
-     * 找到匹配的闭括号位置。
-     * @param expr 表达式
-     * @param start 起始位置（开括号之后）
-     * @return 闭括号位置，或 -1 如果未找到
-     */
-    private int findMatchingParen(String expr, int start) {
-        int depth = 1;
-        boolean inString = false;
-        char stringDelimiter = '"';
-        for (int i = start; i < expr.length(); i++) {
-            char c = expr.charAt(i);
-            if (!inString) {
-                if (c == '"' || c == '\'') {
-                    inString = true;
-                    stringDelimiter = c;
-                } else if (c == '(') {
-                    depth++;
-                } else if (c == ')') {
-                    depth--;
-                    if (depth == 0) {
-                        return i;
-                    }
-                }
-            } else {
-                if (c == '\\' && i + 1 < expr.length()) {
-                    i++;
-                } else if (c == stringDelimiter) {
-                    inString = false;
-                }
-            }
-        }
-        return -1;
-    }
-
-    /**
-     * 编译对象属性访问 $var->prop → getProperty(varRef, "prop")。
-     */
-    private String compilePropertyAccess(String expr, Set<String> localVars) {
-        Pattern pattern = Pattern.compile("\\$(\\w+)->(\\w+)");
-        Matcher matcher = pattern.matcher(expr);
-        StringBuffer sb = new StringBuffer();
-        while (matcher.find()) {
-            String varName = matcher.group(1);
-            String propName = matcher.group(2);
-            String varRef = localVars.contains(varName) ? varName : "ctx.getVariable(\"" + varName + "\")";
-            matcher.appendReplacement(sb, "getProperty(" + varRef + ", \"" + propName + "\")");
-        }
-        matcher.appendTail(sb);
         return sb.toString();
-    }
-
-    /**
-     * 编译数组访问 $var['key'] 或 $var["key"] → getMapValue(varRef, "key")。
-     */
-    private String compileArrayAccess(String expr, Set<String> localVars) {
-        // 匹配 $var['key'] 或 $var["key"]
-        Pattern pattern = Pattern.compile("\\$(\\w+)\\[(?:'([^']*)'|\"([^\"]*)\")\\]");
-        Matcher matcher = pattern.matcher(expr);
-        StringBuffer sb = new StringBuffer();
-        while (matcher.find()) {
-            String varName = matcher.group(1);
-            String key = matcher.group(2) != null ? matcher.group(2) : matcher.group(3);
-            String varRef = localVars.contains(varName) ? varName : "ctx.getVariable(\"" + varName + "\")";
-            matcher.appendReplacement(sb, "getMapValue(" + varRef + ", \"" + key + "\")");
-        }
-        matcher.appendTail(sb);
-        return sb.toString();
-    }
-
-    /**
-     * 编译关联数组字面量 ['key' => value] → Map.of("key", value)。
-     * 支持多键值对。
-     */
-    private String compileArrayLiterals(String expr, Set<String> localVars) {
-        // 匹配 ['key' => value] 或 ["key" => value]
-        Pattern pattern = Pattern.compile("\\[([^\\[\\]]+)\\]");
-        Matcher matcher = pattern.matcher(expr);
-        StringBuffer sb = new StringBuffer();
-        while (matcher.find()) {
-            String inner = matcher.group(1).trim();
-            // 检查是否是 PHP 关联数组（包含 =>）
-            if (inner.contains("=>")) {
-                String[] pairs = inner.split(",");
-                StringBuilder mapBuilder = new StringBuilder("Map.of(");
-                boolean first = true;
-                boolean hasArrow = false;
-                for (String pair : pairs) {
-                    pair = pair.trim();
-                    if (pair.contains("=>")) {
-                        hasArrow = true;
-                        String[] kv = pair.split("=>", 2);
-                        String key = kv[0].trim().replace("'", "").replace("\"", "");
-                        String value = kv[1].trim();
-                        if (!first) {
-                            mapBuilder.append(", ");
-                        }
-                        mapBuilder.append("\"").append(key).append("\", ").append(value);
-                        first = false;
-                    }
-                }
-                if (hasArrow) {
-                    mapBuilder.append(")");
-                    matcher.appendReplacement(sb, mapBuilder.toString());
-                } else {
-                    matcher.appendReplacement(sb, "[" + inner + "]");
-                }
-            } else {
-                matcher.appendReplacement(sb, "[" + inner + "]");
-            }
-        }
-        matcher.appendTail(sb);
-        return sb.toString();
-    }
-
-    /**
-     * 编译字符串拼接运算符 . 为 Java +。
-     * 仅在字符串字面量外部进行编译，避免破坏字符串内容。
-     */
-    private String compileStringConcatenation(String expr) {
-        StringBuilder result = new StringBuilder();
-        boolean inString = false;
-        char stringDelimiter = '"';
-        int i = 0;
-        while (i < expr.length()) {
-            char c = expr.charAt(i);
-
-            if (!inString) {
-                if (c == '"' || c == '\'') {
-                    inString = true;
-                    stringDelimiter = c;
-                    result.append(c);
-                    i++;
-                } else if (c == '.' && i > 0 && i < expr.length() - 1) {
-                    // 检查是否是数字小数点（前后都是数字）
-                    char prev = expr.charAt(i - 1);
-                    char next = expr.charAt(i + 1);
-                    if (Character.isDigit(prev) && Character.isDigit(next)) {
-                        result.append(c);
-                    } else {
-                        // 检查是否是 -> 的一部分（已经被处理过，但以防万一）
-                        if (prev == '-' || next == '>') {
-                            result.append(c);
-                        } else if (Character.isLetterOrDigit(prev) && Character.isLetter(next)) {
-                            // Java 方法调用/属性访问: ctx.getVariable(...) → 不转换
-                            result.append(c);
-                        } else {
-                            // PHP 字符串拼接 . → Java +
-                            result.append(" + ");
-                        }
-                    }
-                    i++;
-                } else {
-                    result.append(c);
-                    i++;
-                }
-            } else {
-                if (c == '\\' && i + 1 < expr.length()) {
-                    result.append(c);
-                    result.append(expr.charAt(i + 1));
-                    i += 2;
-                } else if (c == stringDelimiter) {
-                    inString = false;
-                    result.append(c);
-                    i++;
-                } else {
-                    result.append(c);
-                    i++;
-                }
-            }
-        }
-        return result.toString();
-    }
-
-    /**
-     * 编译 Elvis 运算符 ?: → elvis(a, b)。
-     * 注意：需要在三元运算符之前处理，因为 ?: 是 ? : 的简写。
-     */
-    private String compileElvisOperator(String expr, Set<String> localVars) {
-        // 匹配 a ?: b 模式（非贪婪）
-        // 需要确保 ? 后面紧跟着 :（没有中间内容）
-        Pattern pattern = Pattern.compile("([^?]+?)\\?:(.+)");
-        Matcher matcher = pattern.matcher(expr);
-        if (matcher.matches()) {
-            String a = matcher.group(1).trim();
-            String b = matcher.group(2).trim();
-            return "elvis(" + a + ", " + b + ")";
-        }
-        return expr;
-    }
-
-    /**
-     * 编译三元运算符 ? : → Java 三元运算符。
-     * 将条件部分包装为 toBoolean()。
-     */
-    private String compileTernaryOperator(String expr, Set<String> localVars) {
-        // 简单的三元运算符转换：condition ? truePart : falsePart
-        // 需要找到 ? 和 : 的位置，注意嵌套
-        int questionMark = findTernaryQuestionMark(expr);
-        if (questionMark < 0) {
-            return expr;
-        }
-        int colon = findTernaryColon(expr, questionMark + 1);
-        if (colon < 0) {
-            return expr;
-        }
-        String condition = expr.substring(0, questionMark).trim();
-        String truePart = expr.substring(questionMark + 1, colon).trim();
-        String falsePart = expr.substring(colon + 1).trim();
-        return "toBoolean(" + condition + ") ? " + truePart + " : " + falsePart;
-    }
-
-    /**
-     * 查找三元运算符的 ? 位置（跳过字符串内的 ?）。
-     */
-    private int findTernaryQuestionMark(String expr) {
-        boolean inString = false;
-        char stringDelimiter = '"';
-        for (int i = 0; i < expr.length(); i++) {
-            char c = expr.charAt(i);
-            if (!inString) {
-                if (c == '"' || c == '\'') {
-                    inString = true;
-                    stringDelimiter = c;
-                } else if (c == '?') {
-                    // 检查不是 ?: (Elvis，已处理)
-                    if (i + 1 < expr.length() && expr.charAt(i + 1) == ':') {
-                        return -1; // Elvis，不是三元
-                    }
-                    return i;
-                }
-            } else {
-                if (c == '\\' && i + 1 < expr.length()) {
-                    i++;
-                } else if (c == stringDelimiter) {
-                    inString = false;
-                }
-            }
-        }
-        return -1;
-    }
-
-    /**
-     * 查找三元运算符的 : 位置（跳过字符串内的 :）。
-     */
-    private int findTernaryColon(String expr, int start) {
-        boolean inString = false;
-        char stringDelimiter = '"';
-        for (int i = start; i < expr.length(); i++) {
-            char c = expr.charAt(i);
-            if (!inString) {
-                if (c == '"' || c == '\'') {
-                    inString = true;
-                    stringDelimiter = c;
-                } else if (c == ':') {
-                    return i;
-                }
-            } else {
-                if (c == '\\' && i + 1 < expr.length()) {
-                    i++;
-                } else if (c == stringDelimiter) {
-                    inString = false;
-                }
-            }
-        }
-        return -1;
-    }
-
-    /**
-     * 编译剩余的 $var 为 ctx.getVariable("var") 或本地变量名。
-     */
-    private String compileVariables(String expr, Set<String> localVars) {
-        Matcher varMatcher = VAR_PATTERN.matcher(expr);
-        StringBuffer sb = new StringBuffer();
-        while (varMatcher.find()) {
-            String varName = varMatcher.group(1);
-            if (localVars.contains(varName)) {
-                varMatcher.appendReplacement(sb, varName);
-            } else {
-                varMatcher.appendReplacement(sb, "ctx.getVariable(\"" + varName + "\")");
-            }
-        }
-        varMatcher.appendTail(sb);
-        return sb.toString();
-    }
-
-    /**
-     * 编译方法调用链的属性访问 method()->prop → getProperty(method(), "prop")。
-     * 处理如 carbonToday()->year 的模式。
-     */
-    private String compileMethodChainProperty(String expr) {
-        // 匹配 word(args)->prop 模式（简单括号，无嵌套）
-        Pattern pattern = Pattern.compile("(\\w+\\([^()]*\\))->(\\w+)");
-        Matcher matcher = pattern.matcher(expr);
-        StringBuffer sb = new StringBuffer();
-        while (matcher.find()) {
-            String methodCall = matcher.group(1);
-            String propName = matcher.group(2);
-            // Carbon 特殊处理：carbonToday()->year → carbonYear(carbonToday())
-            if ("year".equals(propName) && methodCall.startsWith("carbon")) {
-                matcher.appendReplacement(sb, "carbonYear(" + methodCall + ")");
-            } else {
-                matcher.appendReplacement(sb, "getProperty(" + methodCall + ", \"" + propName + "\")");
-            }
-        }
-        matcher.appendTail(sb);
-        return sb.toString();
-    }
-
-    /**
-     * 编译空合并运算符 ?? → nullCoalescing(a, b)。
-     * $a ?? $b 返回 a 如果 a 不为 null，否则返回 b。
-     */
-    private String compileNullCoalescing(String expr, Set<String> localVars) {
-        // 查找 ?? 运算符（不在字符串内）
-        int pos = findOperator(expr, "??");
-        if (pos < 0) {
-            return expr;
-        }
-        String left = expr.substring(0, pos).trim();
-        String right = expr.substring(pos + 2).trim();
-        return "nullCoalescing(" + left + ", " + right + ")";
-    }
-
-    /**
-     * 在表达式中查找运算符位置（跳过字符串内的匹配）。
-     * @param expr 表达式
-     * @param op 运算符字符串
-     * @return 运算符位置，或 -1 如果未找到
-     */
-    private int findOperator(String expr, String op) {
-        boolean inString = false;
-        char stringDelimiter = '"';
-        for (int i = 0; i < expr.length() - op.length() + 1; i++) {
-            char c = expr.charAt(i);
-            if (!inString) {
-                if (c == '"' || c == '\'') {
-                    inString = true;
-                    stringDelimiter = c;
-                } else if (expr.substring(i, i + op.length()).equals(op)) {
-                    return i;
-                }
-            } else {
-                if (c == '\\' && i + 1 < expr.length()) {
-                    i++;
-                } else if (c == stringDelimiter) {
-                    inString = false;
-                }
-            }
-        }
-        return -1;
     }
 
     private String escapeJava(String str) {
-        return str.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
-    }
-
-    private String parseComponentParams(String params) {
-        if (params == null || params.trim().isEmpty()) {
-            return "";
-        }
-
-        StringBuilder code = new StringBuilder();
-        params = params.trim();
-
-        if (params.startsWith("[") && params.endsWith("]")) {
-            String inner = params.substring(1, params.length() - 1).trim();
-            String[] pairs = inner.split(",");
-
-            for (String pair : pairs) {
-                pair = pair.trim();
-                if (pair.contains("=>")) {
-                    String[] kv = pair.split("=>", 2);
-                    if (kv.length == 2) {
-                        String key = kv[0].trim().replace("'", "").replace("\"", "");
-                        String value = kv[1].trim();
-
-                        if (value.startsWith("'") || value.startsWith("\"")) {
-                            value = value.substring(1, value.length() - 1);
-                            code.append("            componentData.put(\"").append(key).append("\", \"").append(escapeJava(value)).append("\");\n");
-                        } else {
-                            code.append("            componentData.put(\"").append(key).append("\", ").append(value).append(");\n");
-                        }
+        StringBuilder sb = new StringBuilder(str.length() + 16);
+        for (int i = 0; i < str.length(); i++) {
+            char c = str.charAt(i);
+            switch (c) {
+                case '\\': sb.append("\\\\"); break;
+                case '"': sb.append("\\\""); break;
+                case '\n': sb.append("\\n"); break;
+                case '\r': sb.append("\\r"); break;
+                case '\t': sb.append("\\t"); break;
+                default:
+                    if (c < 0x20) {
+                        sb.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        sb.append(c);
                     }
-                }
             }
         }
-
-        return code.toString();
+        return sb.toString();
     }
 
     /**
      * 从处理后的源代码中提取包名（已移除注释和字符串）
      */
     private String extractPackageName(String processedSourceCode) {
-        // 只匹配文件开头的package声明（忽略前导空白）
         Pattern pattern = Pattern.compile("^\\s*package\\s+([\\w.]+)\\s*;");
         Matcher matcher = pattern.matcher(processedSourceCode);
-
         if (matcher.find()) {
             return matcher.group(1);
         }
@@ -1284,43 +1173,32 @@ public class BladeCompiler {
         boolean inSingleLineComment = false;
         boolean inMultiLineComment = false;
         boolean inString = false;
-        char stringDelimiter = '"'; // 字符串分隔符，可能是"或'
+        char stringDelimiter = '"';
 
         while (i < length) {
             char c = sourceCode.charAt(i);
-
-            // 处理注释和字符串状态切换
             if (!inSingleLineComment && !inMultiLineComment && !inString) {
-                // 检查单行注释
                 if (c == '/' && i + 1 < length && sourceCode.charAt(i + 1) == '/') {
                     inSingleLineComment = true;
                     i += 2;
                     continue;
-                }
-                // 检查多行注释
-                else if (c == '/' && i + 1 < length && sourceCode.charAt(i + 1) == '*') {
+                } else if (c == '/' && i + 1 < length && sourceCode.charAt(i + 1) == '*') {
                     inMultiLineComment = true;
                     i += 2;
                     continue;
-                }
-                // 检查字符串开始
-                else if (c == '"' || c == '\'') {
+                } else if (c == '"' || c == '\'') {
                     inString = true;
                     stringDelimiter = c;
                     i++;
                     continue;
                 }
-            }
-            // 单行注释结束（遇到换行）
-            else if (inSingleLineComment) {
+            } else if (inSingleLineComment) {
                 if (c == '\n' || c == '\r') {
                     inSingleLineComment = false;
                 }
                 i++;
                 continue;
-            }
-            // 多行注释结束
-            else if (inMultiLineComment) {
+            } else if (inMultiLineComment) {
                 if (c == '*' && i + 1 < length && sourceCode.charAt(i + 1) == '/') {
                     inMultiLineComment = false;
                     i += 2;
@@ -1328,11 +1206,8 @@ public class BladeCompiler {
                 }
                 i++;
                 continue;
-            }
-            // 字符串结束
-            else if (inString) {
+            } else {
                 if (c == stringDelimiter) {
-                    // 处理转义的分隔符（如\"或\'）
                     if (i > 0 && sourceCode.charAt(i - 1) != '\\') {
                         inString = false;
                     }
@@ -1340,30 +1215,9 @@ public class BladeCompiler {
                 i++;
                 continue;
             }
-
-            // 只保留非注释和非字符串的内容
             result.append(c);
             i++;
         }
-
         return result.toString();
-    }
-
-    private static class DirectiveContext {
-        String type;
-        int depth;
-        List<String> forVars;
-
-        DirectiveContext(String type, int depth) {
-            this.type = type;
-            this.depth = depth;
-            this.forVars = new ArrayList<>();
-        }
-
-        DirectiveContext(String type, List<String> forVars) {
-            this.type = type;
-            this.depth = 0;
-            this.forVars = forVars;
-        }
     }
 }
