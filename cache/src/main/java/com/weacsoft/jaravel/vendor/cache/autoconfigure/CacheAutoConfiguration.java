@@ -14,6 +14,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -158,8 +159,19 @@ public class CacheAutoConfiguration {
      */
     @Bean
     @ConditionalOnMissingBean(CacheStoreRegistrar.class)
-    public CacheStoreRegistrar cacheStoreRegistrar() {
-        return new CacheStoreRegistrar();
+    public CacheStoreRegistrar cacheStoreRegistrar(ApplicationContext context, CacheManager cacheManager) {
+        return new CacheStoreRegistrar(context, cacheManager);
+    }
+
+    /**
+     * 声明 cache 模块的可发布配置类，供 {@code artisan vendor:publish --tag=cache} 使用。
+     * <p>
+     * 仅声明元数据，不依赖 artisan 模块；未引入 artisan 时该 Bean 无人消费，无副作用。
+     */
+    @Bean
+    @ConditionalOnMissingBean(CachePublishableConfig.class)
+    public CachePublishableConfig cachePublishableConfig() {
+        return new CachePublishableConfig();
     }
 
     /**

@@ -115,6 +115,29 @@ public class SpringBootRouteAutoConfiguration {
     }
 
     /**
+     * 注册 {@link BladeDirectiveRegistrar}，扫描 {@code @RegisterDirective}
+     * 注解方法并把自定义指令注册到 {@code BladeDirectives}。
+     * <p>
+     * 未声明任何 {@code @RegisterDirective} 时不注册任何指令，不影响启动。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public BladeDirectiveRegistrar bladeDirectiveRegistrar(ApplicationContext applicationContext) {
+        return new BladeDirectiveRegistrar(applicationContext);
+    }
+
+    /**
+     * 声明视图模块的可发布配置类，供 {@code artisan vendor:publish --tag=view} 使用。
+     * <p>
+     * 仅声明元数据，不依赖 artisan 模块；未引入 artisan 时该 Bean 无人消费，无副作用。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public ViewPublishableConfig viewPublishableConfig() {
+        return new ViewPublishableConfig();
+    }
+
+    /**
      * 认证处理器 bean：当 auth 模块在 classpath 且 AuthManager bean 存在时启用。
      * <p>
      * 封装 {@code AuthContext} 和 {@code AuthManager} 的调用，使主路由逻辑不直接

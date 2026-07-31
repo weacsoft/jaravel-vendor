@@ -58,6 +58,19 @@ public class StorageAutoConfiguration {
     }
 
     /**
+     * 声明 storage 模块的可发布配置类，供 {@code artisan vendor:publish --tag=storage} 使用。
+     * <p>
+     * 仅声明元数据，不依赖 artisan 模块；未引入 artisan 时该 Bean 无人消费，无副作用。
+     *
+     * @return 可发布配置
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public StoragePublishableConfig storagePublishableConfig() {
+        return new StoragePublishableConfig();
+    }
+
+    /**
      * 内置数据库文件存储驱动，支持 {@code database} 驱动名。
      * 通过 {@code ApplicationContext} 解析数据源（默认主数据源，可指定独立数据源 Bean）。
      *

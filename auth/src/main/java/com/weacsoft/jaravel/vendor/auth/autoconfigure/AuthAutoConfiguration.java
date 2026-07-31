@@ -7,12 +7,14 @@ import com.weacsoft.jaravel.vendor.auth.contract.UserProviderDriver;
 import com.weacsoft.jaravel.vendor.auth.filter.AuthLifecycleFilter;
 import com.weacsoft.jaravel.vendor.auth.guard.SessionGuardDriver;
 import com.weacsoft.jaravel.vendor.auth.session.CookieSessionStore;
+import com.weacsoft.jaravel.vendor.auth.session.SessionStoreHolder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 
 import java.util.List;
@@ -79,27 +81,41 @@ public class AuthAutoConfiguration {
     }
 
     /**
-     * 默认 Cookie Session 存储（使用 Servlet HttpSession）。
+     * 全局 Session 存储持有者。
      * <p>
-     * 当应用未注册任何 {@link SessionStore} Bean 时，提供默认实现。
-     * 业务方可通过在 {@code config/SessionConfig.java} 中注册 {@code SessionStore} Bean 覆盖此默认实现。
+     * 作为 {@link SessionStore} 的间接层注入到 {@link SessionGuardDriver}，
+     * 使得 {@code @RegisterSessionStore} 注解可以在所有 Bean 初始化完成后
+     * 再决定真正的实现，而不影响驱动的构造时机。
      */
     @Bean
-    @ConditionalOnMissingBean(SessionStore.class)
-    public SessionStore cookieSessionStore() {
-        return new CookieSessionStore();
+    @ConditionalOnMissingBean
+    public SessionStoreHolder sessionStoreHolder() {
+        return new SessionStoreHolder();
+    }
+
+    /**
+     * 注册 {@link SessionStoreRegistrar}，扫描 {@code @RegisterSessionStore}
+     * 注解方法并解析出全局唯一的 Session 存储（含唯一性校验与默认回退）。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public SessionStoreRegistrar sessionStoreRegistrar(ApplicationContext context,
+                                                      SessionStoreHolder holder) {
+        return new SessionStoreRegistrar(context, holder);
     }
 
     /**
      * Session 守卫驱动（工厂模式）。
      * <p>
      * 实现 {@link AuthGuardDriver}，支持 "session" 驱动。
-     * 注入全局唯一的 {@link SessionStore} Bean，由 {@code SessionConfig} 决定具体实现。
+     * 注入 {@link SessionStoreHolder}，实际存储实现由
+     * {@code @RegisterSessionStore} 注解或 {@link SessionStore} Bean 决定，
+     * 都没有时回退到 {@link CookieSessionStore}。
      */
     @Bean
     @ConditionalOnMissingBean
-    public SessionGuardDriver sessionGuardDriver(SessionStore sessionStore) {
-        return new SessionGuardDriver(sessionStore);
+    public SessionGuardDriver sessionGuardDriver(SessionStoreHolder sessionStoreHolder) {
+        return new SessionGuardDriver(sessionStoreHolder);
     }
 
     /**

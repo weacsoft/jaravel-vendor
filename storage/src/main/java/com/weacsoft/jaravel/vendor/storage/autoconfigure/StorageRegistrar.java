@@ -1,17 +1,13 @@
 package com.weacsoft.jaravel.vendor.storage.autoconfigure;
 
+import com.weacsoft.jaravel.vendor.core.registrar.AnnotationDrivenRegistrar;
 import com.weacsoft.jaravel.vendor.storage.RegisterDisk;
 import com.weacsoft.jaravel.vendor.storage.StorageException;
 import com.weacsoft.jaravel.vendor.storage.StorageManager;
 import com.weacsoft.jaravel.vendor.storage.contract.DiskDefinition;
 import com.weacsoft.jaravel.vendor.storage.contract.Filesystem;
 import com.weacsoft.jaravel.vendor.storage.contract.FilesystemDriver;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.aop.support.AopUtils;
-import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.context.ApplicationContext;
-import org.springframework.core.annotation.AnnotatedElementUtils;
 
 import java.lang.reflect.Method;
 import java.util.Map;
@@ -39,25 +35,31 @@ import java.util.Map;
  *   <li>{@link Filesystem} — 直接注册实例，完全自定义</li>
  * </ul>
  */
-public class StorageRegistrar implements SmartInitializingSingleton {
+public class StorageRegistrar extends AnnotationDrivenRegistrar<RegisterDisk> {
 
-    private static final Logger log = LoggerFactory.getLogger(StorageRegistrar.class);
-
-    private final ApplicationContext context;
     private final StorageManager manager;
     private final StorageProperties properties;
 
     public StorageRegistrar(ApplicationContext context, StorageManager manager, StorageProperties properties) {
-        this.context = context;
+        super(context, RegisterDisk.class);
         this.manager = manager;
         this.properties = properties;
     }
 
+    /**
+     * 扫描前：注册驱动与配置式磁盘，使注解式注册可覆盖同名配置。
+     */
     @Override
-    public void afterSingletonsInstantiated() {
+    protected void beforeScan() {
         registerDrivers();
         registerConfiguredDisks();
-        scanAnnotatedDisks();
+    }
+
+    /**
+     * 扫描后：兜底注册 local 磁盘，并输出就绪日志。
+     */
+    @Override
+    protected void afterScan() {
         registerFallbackDisk();
 
         if (log.isInfoEnabled()) {
@@ -91,83 +93,28 @@ public class StorageRegistrar implements SmartInitializingSingleton {
     }
 
     /**
-     * 扫描 {@link RegisterDisk @RegisterDisk} 注解方法并注册磁盘。
+     * 登记 {@link RegisterDisk @RegisterDisk} 方法返回的磁盘。
+     * <p>
+     * 支持两种返回类型：{@link DiskDefinition}（交由驱动工厂延迟创建）
+     * 与 {@link Filesystem}（直接注册实例）。
      */
-    private void scanAnnotatedDisks() {
-        for (String beanName : context.getBeanDefinitionNames()) {
-            Object bean = resolveBeanQuietly(beanName);
-            if (bean == null) {
-                continue;
-            }
-            Class<?> targetClass = AopUtils.getTargetClass(bean);
-            for (Method method : targetClass.getDeclaredMethods()) {
-                RegisterDisk annotation =
-                        AnnotatedElementUtils.findMergedAnnotation(method, RegisterDisk.class);
-                if (annotation != null) {
-                    invokeAndRegister(bean, method, annotation);
-                }
-            }
-        }
-    }
-
-    /**
-     * 安全获取 Bean，忽略懒加载失败/作用域不匹配等异常，避免影响启动。
-     */
-    private Object resolveBeanQuietly(String beanName) {
-        try {
-            return context.getBean(beanName);
-        } catch (Exception e) {
-            log.trace("跳过无法解析的 Bean: {}", beanName);
-            return null;
-        }
-    }
-
-    /**
-     * 调用注解方法（自动注入参数）并注册返回的磁盘。
-     */
-    private void invokeAndRegister(Object bean, Method method, RegisterDisk annotation) {
+    @Override
+    protected void register(Object result, Method method, RegisterDisk annotation) {
         String diskName = annotation.value();
-        try {
-            method.setAccessible(true);
-            Object result = method.invoke(bean, resolveArguments(method));
-            if (result == null) {
-                log.warn("@RegisterDisk 方法 {}#{} 返回 null，已跳过磁盘 [{}]",
-                        method.getDeclaringClass().getSimpleName(), method.getName(), diskName);
-                return;
-            }
-            if (result instanceof Filesystem filesystem) {
-                manager.registerDisk(diskName, filesystem);
-            } else if (result instanceof DiskDefinition definition) {
-                manager.registerDisk(diskName, definition);
-            } else {
-                throw new StorageException("@RegisterDisk 方法 "
-                        + method.getDeclaringClass().getSimpleName() + "#" + method.getName()
-                        + " 的返回类型必须是 DiskDefinition 或 Filesystem，实际为 "
-                        + result.getClass().getName());
-            }
-            if (annotation.defaultDisk()) {
-                manager.setDefaultDisk(diskName);
-            }
-            log.debug("按 @RegisterDisk 注册磁盘: {}{}", diskName,
-                    annotation.defaultDisk() ? "（默认磁盘）" : "");
-        } catch (StorageException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new StorageException("调用 @RegisterDisk 方法失败: "
-                    + method.getDeclaringClass().getSimpleName() + "#" + method.getName(), e);
+        if (result instanceof Filesystem filesystem) {
+            manager.registerDisk(diskName, filesystem);
+        } else if (result instanceof DiskDefinition definition) {
+            manager.registerDisk(diskName, definition);
+        } else {
+            throw new StorageException("@RegisterDisk 方法 " + describe(method)
+                    + " 的返回类型必须是 DiskDefinition 或 Filesystem，实际为 "
+                    + result.getClass().getName());
         }
-    }
-
-    /**
-     * 按类型从容器解析方法参数，行为与 {@code @Bean} 方法参数注入一致。
-     */
-    private Object[] resolveArguments(Method method) {
-        Class<?>[] types = method.getParameterTypes();
-        Object[] args = new Object[types.length];
-        for (int i = 0; i < types.length; i++) {
-            args[i] = context.getBean(types[i]);
+        if (annotation.defaultDisk()) {
+            manager.setDefaultDisk(diskName);
         }
-        return args;
+        log.debug("按 @RegisterDisk 注册磁盘: {}{}", diskName,
+                annotation.defaultDisk() ? "（默认磁盘）" : "");
     }
 
     /**

@@ -22,6 +22,11 @@ Java 版 Laravel 框架核心库，在 Spring Boot 3.2.5 基础上近乎 100% �
 - **多磁盘存储**：Storage 门面 + Filesystem 契约，`@RegisterDisk` 注解式注册磁盘，驱动 SPI 可扩展 S3/OSS，流式 IO 支持任意大小文件
 - **不限大小上传**：aether-upload 分片 + 断点/断线续传，落盘可直接走 storage 的任意磁盘
 
+> **注解注册 / 依赖回退 / 发布配置**：各模块的 `@RegisterXxx` 注解式注册机制、
+> 模块间"有则使用无则回退"策略、`artisan vendor:publish` 发布配置类、
+> 以及各模块的 artisan 命令与**数据库表要求**，
+> 请统一参见 **[MODULES.md](MODULES.md)**。
+
 ## 模块结构
 
 | 模块 | artifactId | 说明 | README |

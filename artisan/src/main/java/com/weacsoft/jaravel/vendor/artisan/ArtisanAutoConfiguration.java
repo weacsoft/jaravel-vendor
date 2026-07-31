@@ -9,14 +9,20 @@ import com.weacsoft.jaravel.vendor.artisan.make.MakeListenerCommand;
 import com.weacsoft.jaravel.vendor.artisan.make.MakeMiddlewareCommand;
 import com.weacsoft.jaravel.vendor.artisan.make.MakeMigrationCommand;
 import com.weacsoft.jaravel.vendor.artisan.make.MakeModelCommand;
+import com.weacsoft.jaravel.vendor.artisan.vendor.VendorPublishCommand;
+import com.weacsoft.jaravel.vendor.core.publish.PublishableConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
+
+import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Artisan 自动装配。
@@ -108,5 +114,23 @@ public class ArtisanAutoConfiguration {
         MakeAllCommand cmd = new MakeAllCommand();
         cmd.setProperties(properties);
         return cmd;
+    }
+
+    // ==================== vendor:publish 命令注册 ====================
+
+    /**
+     * {@code vendor:publish} 命令。
+     * <p>
+     * 通过 {@link ObjectProvider} 收集容器中所有 {@link PublishableConfig}，
+     * 实现「有则发布，无则提示」：未引入任何声明可发布配置的模块时，
+     * 列表为空，命令不报错。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public VendorPublishCommand vendorPublishCommand(ObjectProvider<PublishableConfig> publishables,
+                                                     MakeCodeProperties properties) {
+        List<PublishableConfig> configs = publishables.orderedStream().collect(Collectors.toList());
+        log.debug("[Artisan] vendor:publish 发现 {} 个可发布配置", configs.size());
+        return new VendorPublishCommand(configs, properties);
     }
 }

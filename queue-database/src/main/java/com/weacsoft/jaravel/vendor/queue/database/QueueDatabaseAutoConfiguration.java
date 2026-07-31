@@ -90,6 +90,41 @@ public class QueueDatabaseAutoConfiguration {
     }
 
     /**
+     * 声明 queue 模块的可发布配置类，供 {@code artisan vendor:publish --tag=queue} 使用。
+     * <p>
+     * 仅声明元数据，不依赖 artisan 模块；未引入 artisan 时该 Bean 无人消费，无副作用。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public QueuePublishableConfig queuePublishableConfig() {
+        return new QueuePublishableConfig();
+    }
+
+    /**
+     * 队列驱动持有者。
+     * <p>
+     * 声明为 {@link QueueDriverHolder} 类型而非 {@link QueueDriver}，
+     * 避免被 {@code @ConditionalOnMissingBean(QueueDriver.class)} 误判，
+     * 从而不影响 database / redis 驱动的自动装配条件。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public QueueDriverHolder queueDriverHolder() {
+        return new QueueDriverHolder();
+    }
+
+    /**
+     * 注册 {@link QueueDriverRegistrar}，扫描 {@code @RegisterQueueDriver}
+     * 注解方法并解析出全局唯一的队列驱动（含唯一性校验与 sync 回退）。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public QueueDriverRegistrar queueDriverRegistrar(ApplicationContext context,
+                                                     QueueDriverHolder holder) {
+        return new QueueDriverRegistrar(context, holder);
+    }
+
+    /**
      * 队列工作线程 bean，适用于任何 {@link QueueDriver} 实现（database / redis）。
      * <p>
      * 仅当 {@code auto-start=true} 时自动启动。

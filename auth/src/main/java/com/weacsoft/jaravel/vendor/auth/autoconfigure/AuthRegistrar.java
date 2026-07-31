@@ -7,14 +7,13 @@ import com.weacsoft.jaravel.vendor.auth.contract.AuthGuardDriver;
 import com.weacsoft.jaravel.vendor.auth.contract.GuardDefinition;
 import com.weacsoft.jaravel.vendor.auth.contract.UserProvider;
 import com.weacsoft.jaravel.vendor.auth.contract.UserProviderDriver;
+import com.weacsoft.jaravel.vendor.core.registrar.AnnotationScanner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.SmartInitializingSingleton;
-import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 
-import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 
@@ -72,9 +71,7 @@ public class AuthRegistrar implements SmartInitializingSingleton, ApplicationCon
 
     @Override
     public void afterSingletonsInstantiated() {
-        ConfigurableListableBeanFactory beanFactory =
-                ((org.springframework.context.ConfigurableApplicationContext) applicationContext)
-                        .getBeanFactory();
+        AnnotationScanner scanner = new AnnotationScanner(applicationContext);
 
         // 1. 注册提供者驱动
         for (UserProviderDriver driver : providerDrivers) {
@@ -89,7 +86,7 @@ public class AuthRegistrar implements SmartInitializingSingleton, ApplicationCon
         }
 
         // 3. 注解声明式提供者注册（@RegisterProvider，覆盖同名配置式）
-        scanRegisterProvider(beanFactory);
+        scanRegisterProvider(scanner);
 
         // 4. 配置式守卫注册
         if (properties.getGuards() != null) {
@@ -99,7 +96,7 @@ public class AuthRegistrar implements SmartInitializingSingleton, ApplicationCon
         }
 
         // 5. 注解声明式守卫注册（@RegisterGuard，覆盖同名配置式，含默认守卫标记）
-        scanRegisterGuard(beanFactory);
+        scanRegisterGuard(scanner);
 
         // 6. 守卫驱动注册
         for (AuthGuardDriver driver : guardDrivers) {
@@ -110,110 +107,43 @@ public class AuthRegistrar implements SmartInitializingSingleton, ApplicationCon
     /**
      * 扫描所有 Bean 中标注 {@link RegisterProvider} 的方法，调用并注册到 {@link AuthManager}。
      */
-    private void scanRegisterProvider(ConfigurableListableBeanFactory beanFactory) {
-        String[] beanNames = applicationContext.getBeanDefinitionNames();
-        for (String beanName : beanNames) {
-            Class<?> beanType = getBeanType(beanName);
-            if (beanType == null) continue;
-
-            for (Method method : beanType.getMethods()) {
-                RegisterProvider annotation = method.getAnnotation(RegisterProvider.class);
-                if (annotation == null) continue;
-
-                String providerName = annotation.value();
-                Object result = invokeAnnotatedMethod(method, beanName, beanType, beanFactory,
-                        "RegisterProvider");
-
-                if (result instanceof UserProvider) {
-                    authManager.registerProvider(providerName, (UserProvider) result);
-                    logger.info("[auth] @RegisterProvider 注册 provider: name={}, type={}",
-                            providerName, result.getClass().getSimpleName());
-                } else {
-                    logger.warn("[auth] @RegisterProvider 方法返回值不是 UserProvider: {}.{}()",
-                            beanType.getSimpleName(), method.getName());
-                }
+    private void scanRegisterProvider(AnnotationScanner scanner) {
+        scanner.scan(RegisterProvider.class, (result, annotation, method) -> {
+            String providerName = annotation.value();
+            if (result instanceof UserProvider) {
+                authManager.registerProvider(providerName, (UserProvider) result);
+                logger.info("[auth] @RegisterProvider 注册 provider: name={}, type={}",
+                        providerName, result.getClass().getSimpleName());
+            } else {
+                logger.warn("[auth] @RegisterProvider 方法返回值不是 UserProvider: {}.{}()",
+                        method.getDeclaringClass().getSimpleName(), method.getName());
             }
-        }
+        });
     }
 
     /**
      * 扫描所有 Bean 中标注 {@link RegisterGuard} 的方法，调用并注册到 {@link AuthManager}。
      * 处理 {@link RegisterGuard#defaultGuard()} 标记。
      */
-    private void scanRegisterGuard(ConfigurableListableBeanFactory beanFactory) {
-        String[] beanNames = applicationContext.getBeanDefinitionNames();
-        for (String beanName : beanNames) {
-            Class<?> beanType = getBeanType(beanName);
-            if (beanType == null) continue;
+    private void scanRegisterGuard(AnnotationScanner scanner) {
+        scanner.scan(RegisterGuard.class, (result, annotation, method) -> {
+            String guardName = annotation.value();
+            boolean isDefault = annotation.defaultGuard();
 
-            for (Method method : beanType.getMethods()) {
-                RegisterGuard annotation = method.getAnnotation(RegisterGuard.class);
-                if (annotation == null) continue;
+            if (result instanceof GuardDefinition def) {
+                authManager.registerGuard(guardName, def.driver(), def.provider(), def.config());
+                logger.info("[auth] @RegisterGuard 注册 guard: name={}, driver={}, provider={}{}",
+                        guardName, def.driver(), def.provider(), isDefault ? " (默认)" : "");
 
-                String guardName = annotation.value();
-                boolean isDefault = annotation.defaultGuard();
-                Object result = invokeAnnotatedMethod(method, beanName, beanType, beanFactory,
-                        "RegisterGuard");
-
-                if (result instanceof GuardDefinition) {
-                    GuardDefinition def = (GuardDefinition) result;
-                    authManager.registerGuard(guardName, def.driver(), def.provider(), def.config());
-                    logger.info("[auth] @RegisterGuard 注册 guard: name={}, driver={}, provider={}{}",
-                            guardName, def.driver(), def.provider(),
-                            isDefault ? " (默认)" : "");
-
-                    // 处理默认守卫标记
-                    if (isDefault) {
-                        authManager.setDefaultGuard(guardName);
-                        logger.info("[auth] @RegisterGuard 设置默认守卫: {}", guardName);
-                    }
-                } else {
-                    logger.warn("[auth] @RegisterGuard 方法返回值不是 GuardDefinition: {}.{}()",
-                            beanType.getSimpleName(), method.getName());
+                // 处理默认守卫标记
+                if (isDefault) {
+                    authManager.setDefaultGuard(guardName);
+                    logger.info("[auth] @RegisterGuard 设置默认守卫: {}", guardName);
                 }
+            } else {
+                logger.warn("[auth] @RegisterGuard 方法返回值不是 GuardDefinition: {}.{}()",
+                        method.getDeclaringClass().getSimpleName(), method.getName());
             }
-        }
-    }
-
-    /**
-     * 获取 Bean 类型，异常或无法确定时返回 null。
-     */
-    private Class<?> getBeanType(String beanName) {
-        try {
-            return applicationContext.getType(beanName);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    /**
-     * 反射调用注解方法，自动从 Spring 容器按类型解析方法参数。
-     */
-    private Object invokeAnnotatedMethod(Method method, String beanName, Class<?> beanType,
-                                          ConfigurableListableBeanFactory beanFactory,
-                                          String annotationName) {
-        Object bean = applicationContext.getBean(beanName);
-        Object[] args = resolveArguments(method, beanFactory);
-
-        try {
-            method.setAccessible(true);
-            return method.invoke(bean, args);
-        } catch (Exception e) {
-            throw new IllegalStateException(
-                    "调用 @" + annotationName + " 方法失败: " + beanType.getName()
-                            + "." + method.getName() + "()", e);
-        }
-    }
-
-    /**
-     * 从 Spring 容器按类型解析方法参数。
-     */
-    private Object[] resolveArguments(Method method, ConfigurableListableBeanFactory beanFactory) {
-        Class<?>[] paramTypes = method.getParameterTypes();
-        Object[] args = new Object[paramTypes.length];
-        for (int i = 0; i < paramTypes.length; i++) {
-            args[i] = beanFactory.getBean(paramTypes[i]);
-        }
-        return args;
+        });
     }
 }
