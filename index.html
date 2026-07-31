@@ -162,7 +162,7 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
 <div class="layout">
 <div class="sidebar">
 <h2>jaravel-vendor</h2>
-<div class="version">v0.1.2 · 28 模块 · 463 测试</div>
+<div class="version">v0.1.2 · 30 模块 · 523 测试</div>
 <nav>
 <a href="#overview" class="group">框架总览</a>
 <a href="#core" class="group">核心模块</a>
@@ -198,6 +198,9 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
 <a href="#cat-plugin-jar-remote-client" class="sub" title="远程执行客户端，TCP/HTTP 双传输，协调器路由，动态代理，多子服务器负载均衡">2. HTTP 模式支持 — plugin-jar-remote-client</a>
 <a href="#cat-remote-tree" class="sub" title="树形中继转发，节点无插件时自动转发子节点，三重防环机制（visitedNodes + maxHops + maxDepth）">3. 树形拓扑</a>
 <a href="#cat-remote-combo" class="sub" title="远程执行 + 热加载组合：分布式插件分发，热更新自动同步到子节点">4. 与热加载结合</a>
+<a href="#storage" class="group">文件存储</a>
+<a href="#cat-storage" class="sub" title="Laravel Storage 风格多磁盘抽象，@RegisterDisk 注解式注册，驱动 SPI 可扩展 S3/OSS，流式 IO + 路径穿越防护">storage — 多磁盘存储</a>
+<a href="#cat-aether-upload" class="sub" title="不限大小分片上传，断点/断线续传、base64 传输、多组配置，落盘可走 storage 任意磁盘">aether-upload — 分片上传</a>
 <a href="#other" class="group">其他</a>
 <a href="#cat-springboot" class="sub" title="SpringBoot 集成核心，自动装配路由/中间件/响应">springboot — SpringBoot 适配</a>
 <a href="#cat-wechat-sdk" class="sub" title="公众号/小程序支持，AccessToken 缓存，OAuth 授权">wechat-sdk — 微信 SDK</a>
@@ -210,7 +213,7 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
 <div class="content">
 <div class="hero">
 <h1>jaravel-vendor</h1>
-<div class="subtitle">Laravel 风格的 Java Web 框架 · 路由/模板/ORM/认证/缓存/事件/CLI/插件热加载/远程执行</div>
+<div class="subtitle">Laravel 风格的 Java Web 框架 · 路由/模板/ORM/认证/缓存/事件/CLI/插件热加载/远程执行/文件存储</div>
 <div class="meta">
 <span>28 个模块</span>
 <span>463 个测试</span>
@@ -243,9 +246,11 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
 <tr><td>**静态资源**</td><td>Router.serveStatic() 静态目录服务，MIME 推断，路径穿越防护</td></tr>
 <tr><td>**微信 SDK**</td><td>公众号/小程序，AccessToken 缓存，OAuth 授权</td></tr>
 <tr><td>**Wire 渲染**</td><td>Laravel Livewire 风格的反应式 UI，wire.js 自动注入，服务端渲染模板</td></tr>
+<tr><td>**多磁盘存储**</td><td>Storage 门面 + Filesystem 契约，@RegisterDisk 注解式注册，驱动 SPI 可扩展 S3/OSS</td></tr>
+<tr><td>**分片上传**</td><td>不限大小分片上传，断点/断线续传，base64 传输，落盘走 storage 任意磁盘</td></tr>
 </table>
 
-<h5 id="overview-模块总览（28-个模块）">模块总览（28 个模块）</h5>
+<h5 id="overview-模块总览（30-个模块）">模块总览（30 个模块）</h5>
 
 <table>
 <tr><th>分类</th><th>模块</th><th>说明</th></tr>
@@ -318,7 +323,7 @@ public class App {
 
 <h6 id="overview-测试覆盖">测试覆盖</h6>
 
-<p>全部 28 个模块均有单元测试，共 463 个测试用例，覆盖核心功能、边界条件和异常处理。</p>
+<p>全部 30 个模块均有单元测试，共 523 个测试用例，覆盖核心功能、边界条件和异常处理。</p>
 
 </section>
 <h2 id="core">核心模块</h2>
@@ -21829,6 +21834,418 @@ System.out.println(dispatcher.dumpTree());
 <li>两者都可独立使用：只用热加载（单机插件），或只用远程执行（远程调用已有 Bean）</li>
 <li>两者都仅依赖 SpringBoot，不强依赖 jaravel 的路由/模板/ORM 等功能</li>
 <li>组合使用时，热加载负责本地插件生命周期，远程执行负责跨节点方法调用</li>
+
+</section>
+<h2 id="storage">文件存储</h2>
+<p class="module-desc">多磁盘文件存储抽象与不限大小分片上传。</p>
+<section id="cat-storage">
+<h3>storage — 多磁盘文件存储</h3>
+<p class="module-desc">Laravel Storage 风格的 Filesystem 抽象，@RegisterDisk 注解式注册，驱动 SPI 可扩展 S3/OSS</p>
+<h4>简介</h4>
+<p>对齐 Laravel <code>Storage</code> Facade 与 <code>config/filesystems.php</code>，提供统一的文件系统抽象。采用与 <code>auth</code> 模块一致的<strong>方法注解式注册</strong>（<code>@RegisterDisk</code>）+ <strong>驱动工厂 SPI</strong>（<code>FilesystemDriver</code>）设计，同一套 API 可落到本地磁盘或任意远程对象存储。</p>
+
+<h5 id="storage-特性">特性</h5>
+
+<table>
+<tr><th>特性</th><th>说明</th></tr>
+<tr><td>多磁盘（disk）</td><td>按名称解析不同存储位置，<code>Storage.disk("public")</code></td></tr>
+<tr><td>注解式注册</td><td><code>@RegisterDisk("name")</code> 声明磁盘，磁盘名与 bean name 解耦，不会冲突</td></tr>
+<tr><td>驱动 SPI</td><td>实现 <code>FilesystemDriver</code> 并注册为 Bean 即自动接入，可扩展 S3/OSS/FTP</td></tr>
+<tr><td>流式 IO</td><td><code>putStream</code> / <code>readStream</code> / <code>writeTo</code> 内存占用恒定，支持任意大小文件</td></tr>
+<tr><td>路径穿越防护</td><td>所有路径规范化后校验，<code>../</code> 逃逸根目录直接抛 <code>StorageException</code></td></tr>
+<tr><td>开箱即用</td><td>零配置也会兜底注册 <code>local</code> 磁盘（根目录 <code>storage/app</code>）</td></tr>
+</table>
+
+<h5 id="storage-maven-坐标">Maven 坐标</h5>
+
+<pre><code>
+&lt;dependency&gt;
+    &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
+    &lt;artifactId&gt;storage&lt;/artifactId&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
+&lt;/dependency&gt;
+</code></pre>
+
+<p>自动配置通过 <code>AutoConfiguration.imports</code> 生效，无需任何注解。模块本身只依赖 <code>core</code> 与 SpringBoot autoconfigure。</p>
+
+<h5 id="storage-配置式注册">配置式注册</h5>
+
+<pre><code>
+jaravel:
+  storage:
+    enabled: true
+    default-disk: local
+    disks:
+      local:
+        driver: local
+        root: storage/app
+      public:
+        driver: local
+        root: storage/app/public
+        url: /storage          # 生成 URL 的前缀
+        visibility: public
+      uploads:
+        driver: local
+        root: /data/uploads
+        options:               # 传给驱动的自定义参数
+          any-key: any-value
+</code></pre>
+
+<h5 id="storage-注解式注册">注解式注册（推荐）</h5>
+
+<p>与 auth 模块的 <code>@RegisterGuard</code> / <code>@RegisterProvider</code> 完全同构：<code>StorageRegistrar</code> 实现 <code>SmartInitializingSingleton</code>，在所有单例就绪后反射扫描标注方法，方法参数按类型自动注入（与 <code>@Bean</code> 一致），返回值注册到 <code>StorageManager</code>。</p>
+
+<pre><code>
+@Configuration
+public class StorageConfig {
+
+    // 返回 DiskDefinition，由驱动工厂延迟创建
+    @RegisterDisk("local")
+    public DiskDefinition localDisk() {
+        return DiskDefinition.local("storage/app");
+    }
+
+    // defaultDisk = true 覆盖 jaravel.storage.default-disk
+    @RegisterDisk(value = "public", defaultDisk = true)
+    public DiskDefinition publicDisk() {
+        return DiskDefinition.local("storage/app/public")
+                .url("/storage")
+                .visibility(Visibility.PUBLIC);
+    }
+
+    // 方法参数按类型自动注入
+    @RegisterDisk("s3")
+    public DiskDefinition s3Disk(AwsProperties aws) {
+        return DiskDefinition.of("s3")
+                .with("bucket", aws.getBucket())
+                .with("region", aws.getRegion());
+    }
+
+    // 也可直接返回 Filesystem 实例，完全自定义
+    @RegisterDisk("memory")
+    public Filesystem memoryDisk() {
+        return new InMemoryFilesystem("memory");
+    }
+}
+</code></pre>
+
+<p><strong>注册优先级</strong>：驱动收集 → 配置式磁盘 → <code>@RegisterDisk</code>（覆盖同名）→ 兜底 <code>local</code>。</p>
+
+<h6 id="storage-为什么不用-bean">为什么不用 @Bean</h6>
+
+<p><code>@Bean("public")</code> 的 bean name 全局唯一，与其他模块同名 bean 冲突时会抛 <code>BeanDefinitionOverrideException</code>。<code>@RegisterDisk</code> 将磁盘名与 bean name 解耦，方法不注册为 Spring Bean，因此不存在冲突。</p>
+
+<h5 id="storage-使用">使用</h5>
+
+<pre><code>
+// 默认磁盘
+Storage.put("notes/todo.txt", "hello");
+String text = Storage.get("notes/todo.txt");
+boolean ok  = Storage.exists("notes/todo.txt");
+Storage.delete("notes/todo.txt");
+
+// 指定磁盘
+Storage.disk("public").put("logo.png", bytes);
+String url = Storage.disk("public").url("logo.png");   // =&gt; /storage/logo.png
+
+// 大文件流式写入，内存占用恒定
+try (InputStream in = request.file("video").getInputStream()) {
+    Storage.disk("uploads").putStream("videos/a.mp4", in);
+}
+
+// 流式下载
+Storage.disk("uploads").writeTo("videos/a.mp4", response.getOutputStream());
+
+// 目录
+for (FileInfo f : Storage.files("avatars")) {
+    log.info("{} {} bytes", f.path(), f.size());
+}
+List&lt;FileInfo&gt; all = Storage.allFiles("avatars");   // 递归
+Storage.makeDirectory("tmp/work");
+Storage.deleteDirectory("tmp/work");
+
+// 元信息
+long size        = Storage.size("a.png");
+Instant modified = Storage.lastModified("a.png");
+String mime      = Storage.mimeType("a.png");
+FileInfo info    = Storage.info("a.png");
+
+// 本地绝对路径（仅 local 驱动；大文件随机写入场景需要）
+if (Storage.disk("uploads").supportsLocalPath()) {
+    String abs = Storage.disk("uploads").path("videos/a.mp4");
+}
+</code></pre>
+
+<p>也可注入 <code>StorageManager</code> 使用，避免静态门面：</p>
+
+<pre><code>
+@Service
+public class AvatarService {
+    private final StorageManager storage;
+
+    public AvatarService(StorageManager storage) {
+        this.storage = storage;
+    }
+
+    public String save(byte[] data) {
+        String path = "avatars/" + UUID.randomUUID() + ".png";
+        storage.disk("public").put(path, data);
+        return storage.disk("public").url(path);
+    }
+}
+</code></pre>
+
+<h5 id="storage-filesystem-方法一览">Filesystem 方法一览</h5>
+
+<p>所有方法的 <code>path</code> 均为磁盘内相对路径，越界访问抛 <code>StorageException</code>。</p>
+
+<table>
+<tr><th>分类</th><th>方法</th><th>说明</th></tr>
+<tr><td>存在性</td><td><code>boolean exists(String path)</code></td><td>文件或目录是否存在</td></tr>
+<tr><td></td><td><code>boolean missing(String path)</code></td><td><code>exists</code> 取反（default 方法）</td></tr>
+<tr><td>读取</td><td><code>byte[] read(String path)</code></td><td>全量读为字节数组</td></tr>
+<tr><td></td><td><code>String get(String path)</code></td><td>全量读为 UTF-8 字符串</td></tr>
+<tr><td></td><td><code>InputStream readStream(String path)</code></td><td>流式读，调用方负责关闭</td></tr>
+<tr><td></td><td><code>long writeTo(String path, OutputStream out)</code></td><td>流式写出到目标流，返回字节数</td></tr>
+<tr><td>写入</td><td><code>void put(String path, byte[] contents)</code></td><td>覆盖写入，自动创建父目录</td></tr>
+<tr><td></td><td><code>void put(String path, String contents)</code></td><td>UTF-8 覆盖写入</td></tr>
+<tr><td></td><td><code>long putStream(String path, InputStream in)</code></td><td>流式写入，返回字节数，内存恒定</td></tr>
+<tr><td></td><td><code>void append(String path, byte[]/String)</code></td><td>追加写入</td></tr>
+<tr><td>删除/移动</td><td><code>boolean delete(String path)</code></td><td>删除单个文件，返回是否真实删除</td></tr>
+<tr><td></td><td><code>int delete(List&lt;String&gt; paths)</code></td><td>批量删除，返回成功数</td></tr>
+<tr><td></td><td><code>void copy(String from, String to)</code></td><td>复制</td></tr>
+<tr><td></td><td><code>void move(String from, String to)</code></td><td>移动 / 重命名</td></tr>
+<tr><td>元信息</td><td><code>long size(String path)</code></td><td>字节数</td></tr>
+<tr><td></td><td><code>Instant lastModified(String path)</code></td><td>最后修改时间</td></tr>
+<tr><td></td><td><code>String mimeType(String path)</code></td><td>MIME 类型，探测失败返回 null</td></tr>
+<tr><td></td><td><code>FileInfo info(String path)</code></td><td>一次性返回全部元信息</td></tr>
+<tr><td>可见性</td><td><code>Visibility visibility(String path)</code></td><td>读取可见性</td></tr>
+<tr><td></td><td><code>void setVisibility(String path, Visibility v)</code></td><td>设置可见性（非 POSIX 平台静默忽略）</td></tr>
+<tr><td>目录</td><td><code>List&lt;FileInfo&gt; files(String dir)</code></td><td>一级文件</td></tr>
+<tr><td></td><td><code>List&lt;FileInfo&gt; allFiles(String dir)</code></td><td>递归所有文件</td></tr>
+<tr><td></td><td><code>List&lt;FileInfo&gt; directories(String dir)</code></td><td>一级子目录</td></tr>
+<tr><td></td><td><code>void makeDirectory(String dir)</code></td><td>递归创建目录</td></tr>
+<tr><td></td><td><code>boolean deleteDirectory(String dir)</code></td><td>递归删除目录</td></tr>
+<tr><td>定位</td><td><code>String url(String path)</code></td><td>访问 URL，未配置 url 前缀时返回 null</td></tr>
+<tr><td></td><td><code>String path(String path)</code></td><td>本地绝对路径，不支持时抛异常</td></tr>
+<tr><td></td><td><code>boolean supportsLocalPath()</code></td><td>是否支持 <code>path()</code>，默认 false</td></tr>
+<tr><td></td><td><code>String name()</code></td><td>磁盘名</td></tr>
+</table>
+
+<h5 id="storage-扩展自定义驱动">扩展自定义驱动</h5>
+
+<pre><code>
+@Component
+public class S3FilesystemDriver implements FilesystemDriver {
+
+    @Override
+    public boolean support(String driver) {
+        return "s3".equalsIgnoreCase(driver);
+    }
+
+    @Override
+    public Filesystem create(String name, Map&lt;String, Object&gt; config) {
+        return new S3Filesystem(name, (String) config.get("bucket"));
+    }
+}
+</code></pre>
+
+<p>注册为 Spring Bean 后由 <code>StorageRegistrar</code> 自动收集，无需手动注册。磁盘实例<strong>延迟创建</strong>（首次 <code>disk(name)</code> 时），因此远程存储不可用不会阻断应用启动，也让驱动 Bean 与磁盘定义的注册顺序解耦。</p>
+
+<h5 id="storage-类总览">类总览</h5>
+
+<table>
+<tr><th>类型</th><th>说明</th></tr>
+<tr><td><code>Filesystem</code></td><td>文件系统契约，一个实例代表一个磁盘</td></tr>
+<tr><td><code>FilesystemDriver</code></td><td>驱动工厂 SPI，<code>support(driver)</code> + <code>create(name, config)</code></td></tr>
+<tr><td><code>DiskDefinition</code></td><td>磁盘定义（driver + config），不可变，链式构造</td></tr>
+<tr><td><code>FileInfo</code></td><td>文件 / 目录元信息 record</td></tr>
+<tr><td><code>Visibility</code></td><td><code>PUBLIC</code> / <code>PRIVATE</code>，local 驱动映射为 POSIX 权限</td></tr>
+<tr><td><code>StorageManager</code></td><td>多磁盘管理器，延迟创建 + 进程级缓存</td></tr>
+<tr><td><code>Storage</code></td><td>静态门面，无 disk 参数的方法作用于默认磁盘</td></tr>
+<tr><td><code>@RegisterDisk</code></td><td>方法注解式注册磁盘</td></tr>
+<tr><td><code>StorageException</code></td><td>统一非受检异常</td></tr>
+</table>
+
+<h5 id="storage-设计说明">设计说明</h5>
+
+<li><strong>磁盘实例进程级共享</strong>：<code>Filesystem</code> 无请求级可变状态（不像 guard 需要缓存当前用户），因此用 <code>ConcurrentHashMap</code> 缓存而非 ThreadLocal，无需请求结束清理；代价是要求所有实现线程安全，已在契约中写明</li>
+<li><strong>可见性跨平台</strong>：Windows 等非 POSIX 系统上 <code>setVisibility</code> 静默忽略，<code>visibility()</code> 返回磁盘配置的默认值</li>
+<li><strong><code>local</code> 与 <code>public</code> 是同一驱动</strong>：<code>public</code> 只是语义别名，区别仅在于是否配置了 <code>url</code> 前缀与 <code>visibility: public</code>，避免无谓的重复实现</li>
+
+<h5 id="storage-测试">测试</h5>
+
+<p>39 个用例，覆盖读写、流式 IO、目录操作、路径穿越防护、可见性、驱动工厂与 <code>StorageManager</code> 的磁盘解析 / 延迟创建。</p>
+
+</section>
+<section id="cat-aether-upload">
+<h3>aether-upload — 不限大小分片上传</h3>
+<p class="module-desc">分片 + 断点/断线续传、base64 传输、多组配置，落盘可走 storage 任意磁盘</p>
+<h4>简介</h4>
+<p>对齐 Laravel <a href="https://github.com/peinhu/AetherUpload-Laravel">peinhu/AetherUpload</a> 的大文件上传模块，并在其基础上扩展多组配置、事件、中间件与 storage 落盘。</p>
+
+<h5 id="aether-upload-能力一览">能力一览</h5>
+
+<table>
+<tr><th>能力</th><th>说明</th></tr>
+<tr><td>任意大小上传</td><td>分片 + <code>RandomAccessFile</code> 偏移写入（稀疏预分配），不占内存、不限大小</td></tr>
+<tr><td>分片大小可配</td><td>后端组配置 <code>chunk-size</code>（默认 1MB）；前端可在 prepare 时自定义（组开关 <code>allow-client-chunk-size</code>）</td></tr>
+<tr><td>进度</td><td>前端百分比进度回调 + 后端 <code>progress</code> 端点返回进度与已传分片</td></tr>
+<tr><td>类型/大小限制</td><td>前端（自动同步组配置）与后端（强制）双重校验：扩展名、MIME（支持 <code>video/*</code> 通配）、大小</td></tr>
+<tr><td>事件</td><td><code>UploadPreparedEvent</code> / <code>ChunkUploadedEvent</code> / <code>UploadCompletedEvent</code> / <code>UploadFailedEvent</code> / <code>UploadAbortedEvent</code></td></tr>
+<tr><td>中间件</td><td>全局 <code>middleware</code> 配置 + 组级 <code>middleware</code> 配置 + <code>register()</code> 附加中间件，三层叠加</td></tr>
+<tr><td>自定义路由</td><td><code>AetherUploadRoutes.register("api/upload", ...)</code> 任意前缀挂载端点</td></tr>
+<tr><td>多组配置</td><td>每组独立：记录头存储（内存 / cache / redis）、临时目录、保存目录、限制、base64 等</td></tr>
+<tr><td>base64 传输</td><td>组配置或前端开启后分片以 base64 表单字段传输，规避安全软件拦截二进制流</td></tr>
+<tr><td>同步上传</td><td><code>sync</code> 端点单请求整文件（小文件场景）</td></tr>
+<tr><td>断点/断线续传</td><td>记录头存分片位图；同 <code>identifier</code> 重新 prepare 直接返回已传分片继续上传；支持 pause/resume</td></tr>
+</table>
+
+<h5 id="aether-upload-maven-坐标">Maven 坐标</h5>
+
+<pre><code>
+&lt;dependency&gt;
+    &lt;groupId&gt;io.github.lijialong1313&lt;/groupId&gt;
+    &lt;artifactId&gt;aether-upload&lt;/artifactId&gt;
+    &lt;version&gt;0.1.2&lt;/version&gt;
+&lt;/dependency&gt;
+</code></pre>
+
+<h5 id="aether-upload-挂载路由">挂载路由</h5>
+
+<pre><code>
+// 默认前缀（配置 route-prefix，默认 aetherupload）
+AetherUploadRoutes.register();
+
+// 或自定义端点前缀 + 附加中间件
+AetherUploadRoutes.register("api/upload", "auth:api", "throttle:60,1");
+</code></pre>
+
+<p>生成的端点（每个上传组一套，可叠加组中间件）：</p>
+
+<pre><code>
+GET  {prefix}/{group}/config     组配置（前端限制用）
+POST {prefix}/{group}/prepare    创建/恢复上传任务
+POST {prefix}/{group}/chunk      上传分片（multipart 二进制 或 base64 字段）
+GET  {prefix}/{group}/progress   查询进度
+POST {prefix}/{group}/abort      中止上传
+POST {prefix}/{group}/sync       同步上传（单请求整文件）
+GET  {prefix}/aether-upload.js   前端上传组件
+GET  {prefix}/demo               内置演示页（进度条/续传/base64 全功能）
+</code></pre>
+
+<h5 id="aether-upload-配置">配置</h5>
+
+<pre><code>
+jaravel:
+  aether-upload:
+    enabled: true
+    route-prefix: aetherupload
+    default-group: file
+    middleware: []                  # 全局中间件别名
+    groups:
+      file:                         # 默认组：内存记录头
+        chunk-size: 1048576         # 分片 1MB（默认）
+        temp-dir: temp              # 临时目录（默认运行目录 temp）
+        save-dir: uploads
+      video:                        # 视频组：redis 记录头 + 类型限制
+        chunk-size: 2097152
+        max-size: 2147483648        # 2GB（0 = 不限制）
+        allowed-extensions: [mp4, mkv, avi]
+        allowed-mime-types: ["video/*"]
+        header-store: redis         # cache 模块中名为 redis 的 store
+        header-ttl-seconds: 172800
+        middleware: [auth]
+      secret:                       # base64 组：规避安全软件拦截二进制
+        base64: true
+        header-store: cache         # cache 模块默认 store
+      cloud:                        # 落盘到 storage 磁盘（可为 S3/OSS 等任意驱动）
+        disk: media                 # storage 模块中注册的磁盘名
+        save-dir: uploads           # 此时为磁盘内的相对子目录
+</code></pre>
+
+<p><code>header-store</code> 取值：</p>
+
+<li><code>memory</code>（默认）：进程内存记录文件 id / 分片位图</li>
+<li><code>cache</code>：cache 模块默认 store（统一管理）</li>
+<li>其他值（如 <code>redis</code>）：cache 模块中对应名称的 store，引入 <code>redis-cache</code> 并配置即可</li>
+
+<h5 id="aether-upload-落盘位置">落盘位置（storage 模块集成）</h5>
+
+<p><code>disk</code> 未配置（默认）时，完成的文件直接写本地 <code>save-dir</code>，行为与旧版一致。配置 <code>disk</code> 后落盘统一走 <a href="#cat-storage">storage</a> 模块的 <code>Filesystem</code> 抽象，<code>save-dir</code> 变为磁盘内的相对子目录，从而可落到任意驱动。</p>
+
+<p>转存策略自动选择，两条路径都支持任意大小文件：</p>
+
+<table>
+<tr><th>磁盘类型</th><th>策略</th><th><code>savedPath</code> 形态</th></tr>
+<tr><td>本地（<code>supportsLocalPath()</code>）</td><td><code>Files.move</code>，同分区为原子 rename，零拷贝</td><td>绝对路径</td></tr>
+<tr><td>远程（S3/OSS 等）</td><td>流式 <code>putStream</code>，内存占用恒定</td><td><code>disk://{磁盘名}/{相对路径}</code></td></tr>
+</table>
+
+<p>这里刻意<strong>没有让分片临时文件也走 Storage</strong>：分片合并依赖 <code>RandomAccessFile</code> 的随机偏移写入，而这是 <code>Filesystem</code> 抽象刻意不暴露的能力（远程对象存储无法支持）。因此临时文件始终留在本地，只有合并完成的成品才转存到目标磁盘——既保住不限大小的随机写入能力，又拿到多驱动落盘的灵活性。</p>
+
+<p>配合 storage 的 <code>url()</code> 可直接生成访问地址：</p>
+
+<pre><code>
+String relative = savedPath.substring(("disk://" + disk + "/").length());
+String url = Storage.disk("media").url(relative);
+</code></pre>
+
+<h5 id="aether-upload-前端">前端</h5>
+
+<pre><code>
+&lt;script src="/aetherupload/aether-upload.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+var uploader = new AetherUploader({
+  endpoint: '/aetherupload',
+  group: 'file',
+  // chunkSize: 2 * 1024 * 1024,   // 前端自定义分片（组允许时生效）
+  // base64: true,                 // 前端强制 base64 传输
+  onProgress: function (percent) { bar.style.width = percent + '%'; },
+  onSuccess:  function (result) { console.log('done', result.savedPath); },
+  onError:    function (err) { console.error(err); }
+});
+uploader.upload(file);     // 分片上传（自动断点/断线续传）
+uploader.pause();          // 暂停
+uploader.resume();         // 从断点继续
+uploader.abort();          // 中止并清理服务端任务
+uploader.uploadSync(file); // 同步上传（小文件）
+&lt;/script&gt;
+</code></pre>
+
+<p>访问 <code>GET /aetherupload/demo</code> 可打开内置演示页体验全部功能。</p>
+
+<h5 id="aether-upload-事件与门面">事件与后端门面</h5>
+
+<pre><code>
+EventFacade.listen(UploadCompletedEvent.class, e -&gt; {
+    log.info("上传完成: {} -&gt; {}", e.filename, e.savedPath);
+});
+EventFacade.listen(ChunkUploadedEvent.class, e -&gt; {
+    log.debug("分片进度: {}%", e.percent);
+});
+
+UploadResult r = AetherUpload.uploadSync("file", "a.txt", "text/plain", bytes);
+UploadResult p = AetherUpload.progress("file", resourceId);
+</code></pre>
+
+<h5 id="aether-upload-续传原理">断点/断线续传原理</h5>
+
+<li>前端 prepare 时携带 <code>identifier</code>（文件名 + 大小 + 修改时间，也可用文件 hash）</li>
+<li>记录头（含分片位图）保存在组配置的存储中（内存 / cache / redis），TTL 为 <code>header-ttl-seconds</code></li>
+<li>断线 / 刷新后重新 prepare：同 identifier 命中未完成任务时直接返回原 <code>resourceId</code> 与 <code>uploadedChunks</code>，前端跳过已传分片</li>
+<li>全部分片到齐后临时文件转存为 <code>save-dir/yyyyMM/{resourceId}_{filename}</code>（配置 <code>disk</code> 时落到对应磁盘）并分发完成事件</li>
+
+<p>&gt; <strong>多实例部署</strong>：请配置 redis 记录头，并保证同一上传任务的请求路由到同一节点（或使用共享磁盘 / 远程 disk）。</p>
+
+<h5 id="aether-upload-传输模式">传输模式</h5>
+
+<li><strong>二进制（默认）</strong>：<code>multipart/form-data</code>，分片放 <code>file</code> 字段</li>
+<li><strong>base64</strong>：分片编码为 base64 放普通表单字段 <code>data</code>（支持 dataURL 前缀），用于规避中间安全软件对二进制流的拦截。后端两种模式始终同时接受，前端按组配置或本地选项选择</li>
+
+<h5 id="aether-upload-测试">测试</h5>
+
+<p>21 个用例，覆盖分片写入与合并、断点续传、base64 传输、类型 / 大小校验、事件分发，以及与 storage 集成的 5 条路径（本地磁盘落盘、临时文件清理、同步上传落盘、远程磁盘流式转存、未配置 disk 的降级行为）。</p>
 
 </section>
 <h2 id="other">其他</h2>
