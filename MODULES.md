@@ -394,4 +394,4 @@ public class MyPublishableConfig implements PublishableConfig {
 | `Blade::if()` | `@RegisterDirective(condition = true)` |
 | `php artisan vendor:publish` | `artisan vendor:publish` |
 | `php artisan migrate` | `artisan migrate` |
-| `php artisan queue:work` | `artisan queue:work` |
+| `php artisan queue:work` | 无对应命令：消费由后台 Bean `DatabaseQueueWorker` 承担，由 `jaravel.queue.database.auto-start` 控制随应用启动 |

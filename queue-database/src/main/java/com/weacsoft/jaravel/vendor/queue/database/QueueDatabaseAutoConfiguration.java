@@ -52,10 +52,11 @@ import javax.sql.DataSource;
  *       queues: default
  * </pre>
  *
- * <p><b>注意</b>：worker 默认不自动启动。生产环境应通过 artisan 命令
- * {@code java -jar app.jar artisan queue:work} 启动 worker，
- * 或设置 {@code jaravel.queue.database.auto-start=true} 自动启动。
- * <p>
+ * <p><b>注意</b>：worker 默认不自动启动，由后台 Bean {@link DatabaseQueueWorker}
+ * 承担消费。生产环境设置 {@code jaravel.queue.database.auto-start=true} 随应用启动 worker，
+ * 或业务方自行注入 {@link DatabaseQueueWorker} 并调用其启动方法。
+ * 框架<b>不提供</b> {@code artisan queue:work} 命令（与 Laravel 不同）。
+ * </p>
  * <b>建表</b>：使用 database 驱动前需先执行 {@code artisan queue:table} 创建 jobs/failed_jobs 表，
  * 或手动调用 {@link DatabaseQueueDriver#createTable()}。
  */
