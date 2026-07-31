@@ -19,6 +19,8 @@ Java 版 Laravel 框架核心库，在 Spring Boot 3.2.5 基础上近乎 100% �
 - **定时任务**：Cron 调度器，Laravel 风格链式 API（dailyAt/hourly/everyMinute），Redis 分布式锁防多机重复执行
 - **Redis 集成**：多命名连接管理（standalone/sentinel/cluster），Redis 缓存驱动、Redis Session 守卫实现多机同步
 - **Wire 响应式 UI**：Laravel Livewire 风格的全栈组件，服务端渲染 + 前端局部更新，支持 wire:model 双向绑定、wire:click 事件、延迟重定向、认证过期无感跳转
+- **多磁盘存储**：Storage 门面 + Filesystem 契约，`@RegisterDisk` 注解式注册磁盘，驱动 SPI 可扩展 S3/OSS，流式 IO 支持任意大小文件
+- **不限大小上传**：aether-upload 分片 + 断点/断线续传，落盘可直接走 storage 的任意磁盘
 
 ## 模块结构
 
@@ -53,6 +55,8 @@ Java 版 Laravel 框架核心库，在 Spring Boot 3.2.5 基础上近乎 100% �
 | **plugin-jar-multi-tenant** | `plugin-jar-multi-tenant` | JAR插件多租户支持（租户隔离的Bean/路由前缀化，可选） | [README](plugin-jar-multi-tenant/README.md) | [AI-API](plugin-jar-multi-tenant/AI-API.md) |
 | **plugin-jar-remote-server** | `plugin-jar-remote-server` | JAR插件远程执行服务端（P2SP子节点，TCP/HTTP） | [README](plugin-jar-remote-server/README.md) | [AI-API](plugin-jar-remote-server/AI-API.md) |
 | **plugin-jar-remote-client** | `plugin-jar-remote-client` | JAR插件远程执行客户端（P2SP主节点，动态代理/协调器） | [README](plugin-jar-remote-client/README.md) | [AI-API](plugin-jar-remote-client/AI-API.md) |
+| **storage** | `storage` | 多磁盘文件存储（Filesystem契约/local驱动/@RegisterDisk注解式注册/驱动SPI，对齐Laravel Storage） | [README](storage/README.md) | - |
+| **aether-upload** | `aether-upload` | 不限大小分片上传（断点·断线续传/base64传输/多组配置/storage落盘，对齐peinhu/AetherUpload） | [README](aether-upload/README.md) | - |
 
 ## 快速集成
 

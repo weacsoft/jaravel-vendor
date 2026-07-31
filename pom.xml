@@ -84,6 +84,10 @@
         <module>captcha</module>
         <!-- Wire：Laravel Livewire 风格的部分更新模块，支持自定义 update URL 和 @section 无感 wire 更新 -->
         <module>wire</module>
+        <!-- Storage：多磁盘文件存储（Filesystem 契约、local 驱动、@RegisterDisk 注解式注册，对齐 Laravel Storage） -->
+        <module>storage</module>
+        <!-- AetherUpload：不限大小分片上传（断点/断线续传、base64 传输、多组配置，对齐 peinhu/AetherUpload） -->
+        <module>aether-upload</module>
     </modules>
 
     <parent>
@@ -261,6 +265,16 @@
             <dependency>
                 <groupId>io.github.lijialong1313</groupId>
                 <artifactId>wire</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>storage</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>aether-upload</artifactId>
                 <version>${project.version}</version>
             </dependency>
 

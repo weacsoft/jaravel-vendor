@@ -1,0 +1,270 @@
+# Storage — 多磁盘文件存储模块
+
+对齐 Laravel `Storage` Facade 与 `config/filesystems.php`，提供统一的文件系统抽象。
+采用与 `auth` 模块一致的**方法注解式注册**（`@RegisterDisk`）+ **驱动工厂 SPI**（`FilesystemDriver`）设计。
+
+## 特性
+
+- **多磁盘（disk）**：按名称解析不同的存储位置，`Storage.disk("public")`
+- **注解式注册**：`@RegisterDisk("name")` 声明磁盘，避免 `@Bean` 名称冲突
+- **驱动 SPI**：实现 `FilesystemDriver` 并注册为 Bean 即自动接入，可扩展 S3/OSS/FTP
+- **流式 IO**：`putStream` / `readStream` / `writeTo` 内存占用恒定，支持任意大小文件
+- **路径穿越防护**：所有路径规范化后校验，`../` 逃逸根目录直接抛异常
+- **开箱即用**：不做任何配置也会兜底注册 `local` 磁盘（根目录 `storage/app`）
+
+## 引入
+
+```xml
+<dependency>
+    <groupId>io.github.lijialong1313</groupId>
+    <artifactId>storage</artifactId>
+</dependency>
+```
+
+自动配置通过 `AutoConfiguration.imports` 生效，无需任何注解。
+
+## 配置式注册
+
+```yaml
+jaravel:
+  storage:
+    enabled: true
+    default-disk: local
+    disks:
+      local:
+        driver: local
+        root: storage/app
+      public:
+        driver: local
+        root: storage/app/public
+        url: /storage          # 生成 URL 的前缀
+        visibility: public
+      uploads:
+        driver: local
+        root: /data/uploads
+        options:               # 传给驱动的自定义参数
+          any-key: any-value
+```
+
+## 注解式注册（推荐）
+
+与 auth 模块的 `@RegisterGuard` / `@RegisterProvider` 完全同构。
+
+```java
+@Configuration
+public class StorageConfig {
+
+    // 返回 DiskDefinition，由驱动工厂延迟创建
+    @RegisterDisk("local")
+    public DiskDefinition localDisk() {
+        return DiskDefinition.local("storage/app");
+    }
+
+    // defaultDisk = true 覆盖 jaravel.storage.default-disk
+    @RegisterDisk(value = "public", defaultDisk = true)
+    public DiskDefinition publicDisk() {
+        return DiskDefinition.local("storage/app/public")
+                .url("/storage")
+                .visibility(Visibility.PUBLIC);
+    }
+
+    // 方法参数按类型自动注入（与 @Bean 一致）
+    @RegisterDisk("s3")
+    public DiskDefinition s3Disk(AwsProperties aws) {
+        return DiskDefinition.of("s3")
+                .with("bucket", aws.getBucket())
+                .with("region", aws.getRegion());
+    }
+
+    // 也可直接返回 Filesystem 实例，完全自定义
+    @RegisterDisk("memory")
+    public Filesystem memoryDisk() {
+        return new InMemoryFilesystem("memory");
+    }
+}
+```
+
+**注册优先级**：驱动收集 → 配置式磁盘 → `@RegisterDisk`（覆盖同名）→ 兜底 `local`。
+
+### 为什么不用 `@Bean`
+
+`@Bean("public")` 的 bean name 全局唯一，与其他模块同名 bean 冲突时会抛
+`BeanDefinitionOverrideException`。`@RegisterDisk` 将磁盘名与 bean name 解耦，
+方法不注册为 Spring Bean，因此不存在冲突。
+
+## 使用
+
+```java
+// 默认磁盘
+Storage.put("notes/todo.txt", "hello");
+String text = Storage.get("notes/todo.txt");
+boolean ok  = Storage.exists("notes/todo.txt");
+Storage.delete("notes/todo.txt");
+
+// 指定磁盘
+Storage.disk("public").put("logo.png", bytes);
+String url = Storage.disk("public").url("logo.png");   // => /storage/logo.png
+
+// 大文件流式写入，内存占用恒定
+try (InputStream in = request.file("video").getInputStream()) {
+    Storage.disk("uploads").putStream("videos/a.mp4", in);
+}
+
+// 流式下载
+Storage.disk("uploads").writeTo("videos/a.mp4", response.getOutputStream());
+
+// 目录
+for (FileInfo f : Storage.files("avatars")) {
+    log.info("{} {} bytes", f.path(), f.size());
+}
+List<FileInfo> all = Storage.allFiles("avatars");   // 递归
+Storage.makeDirectory("tmp/work");
+Storage.deleteDirectory("tmp/work");
+
+// 元信息
+long size          = Storage.size("a.png");
+Instant modified   = Storage.lastModified("a.png");
+String mime        = Storage.mimeType("a.png");
+FileInfo info      = Storage.info("a.png");
+
+// 本地绝对路径（仅 local 驱动；大文件随机写入场景需要）
+if (Storage.disk("uploads").supportsLocalPath()) {
+    String abs = Storage.disk("uploads").path("videos/a.mp4");
+}
+```
+
+也可注入 `StorageManager` 使用，避免静态门面：
+
+```java
+@Service
+public class AvatarService {
+    private final StorageManager storage;
+
+    public AvatarService(StorageManager storage) {
+        this.storage = storage;
+    }
+
+    public String save(byte[] data) {
+        String path = "avatars/" + UUID.randomUUID() + ".png";
+        storage.disk("public").put(path, data);
+        return storage.disk("public").url(path);
+    }
+}
+```
+
+## 扩展自定义驱动
+
+```java
+@Component
+public class S3FilesystemDriver implements FilesystemDriver {
+
+    @Override
+    public boolean support(String driver) {
+        return "s3".equalsIgnoreCase(driver);
+    }
+
+    @Override
+    public Filesystem create(String name, Map<String, Object> config) {
+        return new S3Filesystem(name, (String) config.get("bucket"));
+    }
+}
+```
+
+注册为 Spring Bean 后由 `StorageRegistrar` 自动收集，无需手动注册。
+磁盘实例**延迟创建**（首次 `disk(name)` 时），因此远程存储不可用不会阻断应用启动。
+
+## 核心 API
+
+| 类型 | 说明 |
+| --- | --- |
+| `Filesystem` | 文件系统契约，一个实例代表一个磁盘 |
+| `FilesystemDriver` | 驱动工厂 SPI，`support(driver)` + `create(name, config)` |
+| `DiskDefinition` | 磁盘定义（driver + config），不可变，链式构造 |
+| `FileInfo` | 文件/目录元信息 record |
+| `Visibility` | `PUBLIC` / `PRIVATE`，local 驱动映射为 POSIX 权限 |
+| `StorageManager` | 多磁盘管理器，延迟创建 + 进程级缓存 |
+| `Storage` | 静态门面，无 disk 参数的方法作用于默认磁盘 |
+| `@RegisterDisk` | 方法注解式注册磁盘 |
+| `StorageException` | 统一非受检异常 |
+
+### `Filesystem` 方法一览
+
+所有方法的 `path` 均为磁盘内相对路径，越界访问抛 `StorageException`。
+
+| 分类 | 方法 | 说明 |
+| --- | --- | --- |
+| 存在性 | `boolean exists(String path)` | 文件或目录是否存在 |
+| | `boolean missing(String path)` | `exists` 取反（default 方法） |
+| 读取 | `byte[] read(String path)` | 全量读为字节数组 |
+| | `String get(String path)` | 全量读为 UTF-8 字符串（default） |
+| | `InputStream readStream(String path)` | 流式读，调用方负责关闭 |
+| | `long writeTo(String path, OutputStream out)` | 流式写出到目标流，返回字节数 |
+| 写入 | `void put(String path, byte[] contents)` | 覆盖写入，自动创建父目录 |
+| | `void put(String path, String contents)` | UTF-8 覆盖写入（default） |
+| | `long putStream(String path, InputStream in)` | 流式写入，返回字节数，内存恒定 |
+| | `void append(String path, byte[]/String)` | 追加写入 |
+| 删除/移动 | `boolean delete(String path)` | 删除单个文件，返回是否真实删除 |
+| | `int delete(List<String> paths)` | 批量删除，返回成功数（default） |
+| | `void copy(String from, String to)` | 复制 |
+| | `void move(String from, String to)` | 移动/重命名 |
+| 元信息 | `long size(String path)` | 字节数 |
+| | `Instant lastModified(String path)` | 最后修改时间 |
+| | `String mimeType(String path)` | MIME 类型，探测失败返回 `null` |
+| | `FileInfo info(String path)` | 一次性返回全部元信息 |
+| 可见性 | `Visibility visibility(String path)` | 读取可见性 |
+| | `void setVisibility(String path, Visibility v)` | 设置可见性（非 POSIX 平台静默忽略） |
+| 目录 | `List<FileInfo> files(String dir)` | 一级文件 |
+| | `List<FileInfo> allFiles(String dir)` | 递归所有文件 |
+| | `List<FileInfo> directories(String dir)` | 一级子目录 |
+| | `void makeDirectory(String dir)` | 递归创建目录 |
+| | `boolean deleteDirectory(String dir)` | 递归删除目录 |
+| 定位 | `String url(String path)` | 访问 URL，未配置 `url` 前缀时返回 `null` |
+| | `String path(String path)` | 本地绝对路径，不支持时抛异常 |
+| | `boolean supportsLocalPath()` | 是否支持 `path()`，默认 `false` |
+| | `String name()` | 磁盘名 |
+
+## 设计说明
+
+- **磁盘实例进程级共享**：`Filesystem` 无请求级可变状态，不使用 ThreadLocal，
+  所有实现必须线程安全（与 auth 的 guard 需要请求级缓存不同）。
+- **可见性跨平台**：Windows 等非 POSIX 系统上 `setVisibility` 静默忽略，
+  `visibility()` 返回磁盘配置的默认值。
+- **`local` 与 `public` 是同一驱动**：`public` 只是语义别名，
+  区别在于是否配置了 `url` 前缀与 `visibility: public`。
+
+## 与 aether-upload 集成
+
+[aether-upload](../aether-upload/README.md) 的组配置 `disk` 指定磁盘名后，
+上传完成的文件会自动落到该磁盘：
+
+```yaml
+jaravel:
+  storage:
+    disks:
+      media:
+        driver: local
+        root: /data/media
+        url: /media
+  aether-upload:
+    groups:
+      file:
+        disk: media       # 落盘到 media 磁盘
+        save-dir: uploads # 此时为磁盘内的相对子目录
+```
+
+分片临时文件始终留在本地（合并依赖 `RandomAccessFile` 随机偏移写入，
+这是 `Filesystem` 刻意不暴露的能力），只有合并完成的成品才转存到目标磁盘：
+
+| 磁盘类型 | 转存策略 |
+| --- | --- |
+| 本地（`supportsLocalPath()` 为 true） | `Files.move`，同分区为原子 rename、零拷贝 |
+| 远程（S3/OSS 等） | 流式 `putStream`，内存占用恒定 |
+
+## 测试
+
+```bash
+mvn -pl storage test
+```
+
+39 个用例，覆盖读写、流式 IO、目录操作、路径穿越防护、可见性、
+驱动工厂与 `StorageManager` 的磁盘解析/延迟创建。
