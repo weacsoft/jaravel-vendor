@@ -2,6 +2,9 @@ package com.weacsoft.jaravel.vendor.storage.contract;
 
 import com.weacsoft.jaravel.vendor.storage.StorageException;
 
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -119,6 +122,56 @@ public interface Filesystem {
      */
     default void put(String path, String contents) {
         put(path, contents.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * 将 HTTP 上传文件存入磁盘（整合 {@link org.springframework.web.multipart.MultipartFile}）。
+     * <p>
+     * 文件名取自上传文件的原始文件名，最终路径为 {@code dir + "/" + 原始文件名}。
+     * 与 {@link #put} 一样会自动创建父目录。
+     *
+     * @param dir  目标目录（相对磁盘根，可为空串表示根目录）
+     * @param file 上传文件
+     * @return 实际写入的相对路径
+     * @throws StorageException 写入失败
+     */
+    default String putFile(String dir, MultipartFile file) throws IOException {
+        String name = file.getOriginalFilename();
+        if (name == null || name.isEmpty()) {
+            name = "file";
+        }
+        String path = (dir == null || dir.isEmpty()) ? name : stripTrailingSlash(dir) + "/" + name;
+        put(path, file.getBytes());
+        return path;
+    }
+
+    /**
+     * 将 HTTP 上传文件存入磁盘，并使用指定文件名。
+     *
+     * @param dir  目标目录（相对磁盘根，可为空串表示根目录）
+     * @param file 上传文件
+     * @param name 目标文件名
+     * @return 实际写入的相对路径
+     * @throws StorageException 写入失败
+     */
+    default String putFileAs(String dir, MultipartFile file, String name) throws IOException {
+        if (name == null || name.isEmpty()) {
+            name = "file";
+        }
+        String path = (dir == null || dir.isEmpty()) ? name : stripTrailingSlash(dir) + "/" + name;
+        put(path, file.getBytes());
+        return path;
+    }
+
+    /**
+     * 去除结尾的 {@code /}，用于拼接目录与文件名。
+     */
+    private static String stripTrailingSlash(String dir) {
+        String d = dir.replace('\\', '/');
+        while (d.endsWith("/")) {
+            d = d.substring(0, d.length() - 1);
+        }
+        return d;
     }
 
     /**

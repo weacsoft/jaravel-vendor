@@ -44,6 +44,56 @@ jaravel:
         root: /data/uploads
         options:               # 传给驱动的自定义参数
           any-key: any-value
+      files:
+        driver: database        # 把文件存进数据库
+        binary: true            # true=LONGBLOB 二进制；false=LONGTEXT base64 文本
+        content-column: content # 存放文件内容的列名（默认 content，可自行指定）
+        chunk-size: 1048576     # 单条分片字节上限，超过则切分多行；0/负=不切分
+        table-prefix: storage_  # 数据表前缀，默认 storage_
+        datasource: gaaravelDataSource  # 可选，指定 DataSource bean 名；省略=主库
+        visibility: private
+```
+
+### `driver: database`（数据库存储）
+
+把文件直接存进数据库的两张表：`<prefix>file`（元信息）与 `<prefix>file_chunk`（内容分片）。
+无需提前建表——磁盘首次使用时通过 `CREATE TABLE IF NOT EXISTS` 自动建表，也可执行迁移脚本显式管理。
+
+**内容列名可定制**：文件内容统一落在一列，列名由 `content-column` 指定，默认 `content`。
+允许自行指定（如 `file_data`、`blob` 等）。
+
+**二进制 / 文本由 `binary` 开关决定（单列）**：
+
+- `binary: true`（默认）：内容以二进制写入该列（`LONGBLOB`），适合支持二进制列的关系型数据库。
+- `binary: false`：内容以 base64 编码写入该列（`LONGTEXT`），以兼容不支持二进制列的数据库。
+
+> 不再区分 `content_binary` / `content_text` 双列，**无论二进制还是文本都使用同一列**。
+> 切换 `binary` 开关后，新文件按新方式写入；如需兼容旧数据，请统一开关再执行迁移脚本重建表。
+
+**自定义列名示例**：
+
+```yaml
+jaravel:
+  storage:
+    disks:
+      files:
+        driver: database
+        content-column: file_data   # 使用自定义列名
+        binary: false               # 文本列（LONGTEXT）
+```
+
+对应的迁移脚本（默认 `content` + 二进制模式）：
+
+```java
+schema.create("storage_file_chunk", table -> {
+    table.string("disk", 64).notNull().primary();
+    table.string("path", 1024).notNull().primary();
+    table.integer("chunk_index").notNull().primary();
+    table.binary("content").nullable();   // 列名即 content-column，类型由 binary 决定
+    table.integer("size").notNull().defaultValue(0);
+    table.bigInteger("created_at").nullable();
+    table.bigInteger("updated_at").nullable();
+});
 ```
 
 ## 注解式注册（推荐）

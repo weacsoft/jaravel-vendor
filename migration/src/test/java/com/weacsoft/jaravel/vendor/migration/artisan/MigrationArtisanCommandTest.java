@@ -6,6 +6,7 @@ import com.weacsoft.jaravel.vendor.migration.engine.MigrationExecutor;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -26,7 +27,7 @@ class MigrationArtisanCommandTest {
         final List<String[]> capturedArgs = new ArrayList<>();
 
         CapturingExecutor() {
-            super(null, new MigrationProperties());
+            super(new LinkedHashMap<>(), new MigrationProperties());
         }
 
         @Override
@@ -130,7 +131,7 @@ class MigrationArtisanCommandTest {
 
     @Test
     void testHandleExceptionReturnsOne() {
-        MigrationExecutor failingExecutor = new MigrationExecutor(null, new MigrationProperties()) {
+        MigrationExecutor failingExecutor = new MigrationExecutor(new LinkedHashMap<>(), new MigrationProperties()) {
             @Override
             public void execute(String... args) {
                 throw new RuntimeException("DB connection failed");

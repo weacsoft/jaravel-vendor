@@ -1,13 +1,20 @@
 package com.weacsoft.jaravel.vendor.storage.facade;
 
 import com.weacsoft.jaravel.vendor.core.Facade;
+import com.weacsoft.jaravel.vendor.http.controller.response.Response;
+import com.weacsoft.jaravel.vendor.http.controller.response.ResponseBuilder;
 import com.weacsoft.jaravel.vendor.storage.StorageManager;
 import com.weacsoft.jaravel.vendor.storage.contract.FileInfo;
 import com.weacsoft.jaravel.vendor.storage.contract.Filesystem;
 import com.weacsoft.jaravel.vendor.storage.contract.Visibility;
 
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
@@ -367,5 +374,165 @@ public final class Storage {
      */
     public static String path(String path) {
         return disk().path(path);
+    }
+
+    // ==================== HTTP 集成：上传（Request） ====================
+
+    /**
+     * 将 HTTP 上传文件存入指定磁盘。
+     *
+     * @param disk 磁盘名称
+     * @param dir  目标目录
+     * @param file 上传文件
+     * @return 实际写入的相对路径
+     * @throws IOException 读取上传流失败
+     */
+    public static String putFile(String disk, String dir, MultipartFile file) throws IOException {
+        return disk(disk).putFile(dir, file);
+    }
+
+    /**
+     * 将 HTTP 上传文件存入默认磁盘。
+     *
+     * @param dir  目标目录
+     * @param file 上传文件
+     * @return 实际写入的相对路径
+     * @throws IOException 读取上传流失败
+     */
+    public static String putFile(String dir, MultipartFile file) throws IOException {
+        return disk().putFile(dir, file);
+    }
+
+    /**
+     * 将 HTTP 上传文件存入指定磁盘并使用指定文件名。
+     *
+     * @param disk  磁盘名称
+     * @param dir   目标目录
+     * @param file  上传文件
+     * @param name  目标文件名
+     * @return 实际写入的相对路径
+     * @throws IOException 读取上传流失败
+     */
+    public static String putFileAs(String disk, String dir, MultipartFile file, String name) throws IOException {
+        return disk(disk).putFileAs(dir, file, name);
+    }
+
+    // ==================== HTTP 集成：下载 / 预览（Response） ====================
+
+    /**
+     * 以附件形式下载文件，返回可直接作为控制器返回值的 {@link Response}。
+     *
+     * @param disk 磁盘名称
+     * @param path 相对路径
+     * @return 下载响应（文件不存在时返回 404）
+     */
+    public static Response download(String disk, String path) {
+        Filesystem fs = disk(disk);
+        if (!fs.exists(path)) {
+            return ResponseBuilder.error(404, "文件不存在: " + path);
+        }
+        return ResponseBuilder.file(fs.read(path), filenameOf(path));
+    }
+
+    /**
+     * 以附件形式下载文件（默认磁盘）。
+     *
+     * @param path 相对路径
+     * @return 下载响应
+     */
+    public static Response download(String path) {
+        return download(manager().getDefaultDisk(), path);
+    }
+
+    /**
+     * 以内联形式返回文件（按 MIME 预览，可用于图片/PDF 等），返回 {@link Response}。
+     *
+     * @param disk 磁盘名称
+     * @param path 相对路径
+     * @return 预览响应（文件不存在时返回 404）
+     */
+    public static Response response(String disk, String path) {
+        Filesystem fs = disk(disk);
+        if (!fs.exists(path)) {
+            return ResponseBuilder.error(404, "文件不存在: " + path);
+        }
+        String mime = fs.mimeType(path);
+        if (mime == null || mime.isEmpty()) {
+            mime = "application/octet-stream";
+        }
+        return ResponseBuilder.staticFile(fs.read(path), mime, 3600);
+    }
+
+    /**
+     * 以内联形式返回文件（默认磁盘）。
+     *
+     * @param path 相对路径
+     * @return 预览响应
+     */
+    public static Response response(String path) {
+        return response(manager().getDefaultDisk(), path);
+    }
+
+    // ==================== 指定磁盘的便捷委托 ====================
+
+    /**
+     * 列举目录下文件（指定磁盘，不递归）。
+     *
+     * @param disk      磁盘名称
+     * @param directory 目录路径
+     * @return 文件列表
+     */
+    public static List<FileInfo> files(String disk, String directory) {
+        return disk(disk).files(directory);
+    }
+
+    /**
+     * 递归列举目录下所有文件（指定磁盘）。
+     *
+     * @param disk      磁盘名称
+     * @param directory 目录路径
+     * @return 文件列表
+     */
+    public static List<FileInfo> allFiles(String disk, String directory) {
+        return disk(disk).allFiles(directory);
+    }
+
+    /**
+     * 删除文件（指定磁盘）。
+     *
+     * @param disk 磁盘名称
+     * @param path 相对路径
+     * @return 实际删除返回 true
+     */
+    public static boolean delete(String disk, String path) {
+        return disk(disk).delete(path);
+    }
+
+    /**
+     * 文件元信息（指定磁盘）。
+     *
+     * @param disk 磁盘名称
+     * @param path 相对路径
+     * @return 元信息
+     */
+    public static FileInfo info(String disk, String path) {
+        return disk(disk).info(path);
+    }
+
+    /**
+     * 获取可见性（指定磁盘）。
+     *
+     * @param disk 磁盘名称
+     * @param path 相对路径
+     * @return 可见性
+     */
+    public static Visibility visibility(String disk, String path) {
+        return disk(disk).visibility(path);
+    }
+
+    private static String filenameOf(String path) {
+        int idx = path.lastIndexOf('/');
+        String name = idx < 0 ? path : path.substring(idx + 1);
+        return name.isEmpty() ? "file" : name;
     }
 }

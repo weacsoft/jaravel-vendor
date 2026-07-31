@@ -181,18 +181,58 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
     @Override
     @JsonIgnore
     public GaarasonDataSource getGaarasonDataSource() {
-        // 优先检查 @DataSource 注解，对齐 Laravel Model 的 $connection 属性
-        // 必须在注入字段之前检查，否则 @Autowired 总是注入 @Primary 数据源
+        // 1. 优先通过 getConnectionAlias() 方法决定连接别名（业务 Model 可重写），
+        //    对齐 Laravel Model 的 $connection 属性，且比 @DataSource 注解更灵活
+        String alias = getConnectionAlias();
+        if (alias != null && !alias.isEmpty()) {
+            // 别名不存在（例如默认 "primary" 未被注册为独立 bean）时，回退到 @Primary 数据源
+            if ("primary".equals(alias) && !SpringContext.contains("primary")) {
+                if (gaarasonDataSource != null) {
+                    return gaarasonDataSource;
+                }
+                return SpringContext.bean(GaarasonDataSource.class);
+            }
+            return SpringContext.bean(alias, GaarasonDataSource.class);
+        }
+        // 2. 回退：检查 @DataSource 注解
         DataSource dsAnnotation = this.getClass().getAnnotation(DataSource.class);
         if (dsAnnotation != null) {
             return SpringContext.bean(dsAnnotation.value(), GaarasonDataSource.class);
         }
-        // 未标注 @DataSource 时，使用 Spring 注入的数据源（默认为 @Primary）
+        // 3. 未标注时，使用 Spring 注入的数据源（默认为 @Primary）
         if (gaarasonDataSource != null) {
             return gaarasonDataSource;
         }
-        // 回退：从容器获取默认数据源
+        // 4. 最终回退：从容器获取默认数据源
         return SpringContext.bean(GaarasonDataSource.class);
+    }
+
+    /**
+     * 声明本 Model 使用的数据库连接别名（多数据库支持）。
+     * <p>
+     * 返回的别名对应 Spring 容器中 {@code GaarasonDataSource} 的 bean 名称（例如
+     * {@code gaarasonDataSource}、{@code mysql}、{@code sqlite}、{@code oracle}、{@code pg} 等）。
+     * 默认优先级：若类上标注了 {@link DataSource @DataSource} 注解则返回其 {@code value()}，
+     * 否则返回 {@code "primary"}（主数据源）。
+     * <p>
+     * 业务 Model 可重写本方法以切换到其它数据库，例如：
+     * <pre>
+     * &#64;Override
+     * protected String getConnectionAlias() {
+     *     return "mysql";   // 使用名为 mysql 的 GaarasonDataSource bean
+     * }
+     * </pre>
+     * 这与迁移接口的 {@code Migration#connection()} 命名一致，便于在「同一数据库」上保持
+     * 表结构迁移与 ORM 读写使用相同的连接别名。
+     *
+     * @return 数据库连接别名
+     */
+    protected String getConnectionAlias() {
+        DataSource dsAnnotation = this.getClass().getAnnotation(DataSource.class);
+        if (dsAnnotation != null) {
+            return dsAnnotation.value();
+        }
+        return "primary";
     }
 
     // ==================== getSelf / self ====================

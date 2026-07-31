@@ -675,7 +675,7 @@ properties.setWatermarkScale(0.2f);                         // 图片水印缩�
 | 4. 非匀速检查 | 速度方差 | 人类拖动具有"加速→匀速→减速"特征，速度方差应大于阈值。匀速直线运动判定为机器行为 |
 | 5. 加速度方向多样性 | 加速度正负方向 | 人类拖动过程中加速度方向会变化（先正后负），全程同方向加速度判定为可疑（仅在总位移较大时强制要求） |
 
-> 完整验证逻辑实现于 `com.weacsoft.jaravel.vendor.captcha.TrajectoryValidator`，详见 [AI-API.md](AI-API.md)。
+> 完整验证逻辑实现于 `com.weacsoft.jaravel.vendor.captcha.TrajectoryValidator`。
 
 ### 8.4 前端轨迹采集示例
 
@@ -1237,7 +1237,7 @@ verify(captchaKey, userInput)
   └─ 3. 调用 doVerify(answer, userInput)  ← 子类实现
 ```
 
-> `AbstractCaptcha` 还提供丰富的图像工具方法供子类复用：`createImage`、`createArgbImage`、`randomColor`、`drawRandomBackground`、`loadBackgroundImage`（加载自定义背景图）、`addNoise`、`addInterfereLines`、`addArcInterference`（弧线干扰）、`drawText`（支持配置化字体/大小/旋转）、`applyWatermark`（叠加文字 / 图片水印）、`toBase64`、`randomString`（支持自定义字符集）等。各方法签名详见 [AI-API.md](AI-API.md)。
+> `AbstractCaptcha` 还提供丰富的图像工具方法供子类复用：`createImage`、`createArgbImage`、`randomColor`、`drawRandomBackground`、`loadBackgroundImage`（加载自定义背景图）、`addNoise`、`addInterfereLines`、`addArcInterference`（弧线干扰）、`drawText`（支持配置化字体/大小/旋转）、`applyWatermark`（叠加文字 / 图片水印）、`toBase64`、`randomString`（支持自定义字符集）等。
 
 ---
 
@@ -1510,4 +1510,4 @@ const captcha2 = Captcha.init('container2', {
 </html>
 ```
 
-> 更多 API 细节（方法签名、参数格式、内部方法等）详见 [AI-API.md](AI-API.md) 的 "Frontend JavaScript API" 章节。
+> 更多 API 细节（方法签名、参数格式、内部方法等）参见上文 "Frontend JavaScript API" 章节。

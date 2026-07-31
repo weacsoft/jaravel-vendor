@@ -79,6 +79,58 @@
 
 单次 `up()` 可连续调用多次 `Schema.create()` 或 `Schema.table()` 处理多张表，`down()` 应对称地删除/回滚所有在 `up()` 中创建或修改的表。
 
+### 多数据库连接（按别名）
+
+除了跨数据库方言，「不同迁移落到不同数据库实例」也是常见需求：例如某个迁移连 MySQL、另一个连 SQLite、
+第三个连 Oracle / PostgreSQL，彼此连接方式（驱动、URL、账号）互不相同。
+
+实现方式：在 `Migration` 实现类中重写 `connection()` 方法，返回目标数据库的连接别名。
+该别名对应 Spring 容器中 `DataSource` 的 bean 名称（如 `gaaravelDataSource`、`mysql`、`sqlite`、`oracle`、`pg` 等）。
+框架按别名选取对应 `DataSource` 执行该迁移，并把迁移记录（`migrations` 表）也写到对应数据库。
+
+```java
+@MigrationAnnotation
+public class Migration_2024_01_01_CreateUsersTable implements Migration {
+    // 该迁移使用名为 "mysql" 的 DataSource bean（与主库连接方式不同）
+    @Override
+    public String connection() {
+        return "mysql";
+    }
+
+    @Override
+    public void up(Schema schema) { /* ... */ }
+
+    @Override
+    public void down(Schema schema) { /* ... */ }
+}
+```
+
+**默认行为**：未重写 `connection()` 时返回 `"primary"`，映射到被 `@Primary` 标记的主数据源。
+因此绝大多数迁移无需改动即可使用主库；只有需要落到其它库的迁移才需重写。
+
+**配置多个 DataSource**：在 Spring 中注册多个 `DataSource` Bean 即可（bean 名即连接别名），
+`MigrationAutoConfiguration` 会自动收集所有 `DataSource` 并补全 `primary` 别名：
+
+```java
+@Bean
+public DataSource mysql() {
+    HikariDataSource ds = new HikariDataSource();
+    ds.setJdbcUrl("jdbc:mysql://localhost:3306/app");
+    // ...
+    return ds;
+}
+
+@Bean
+@Primary
+public DataSource gaaravelDataSource() {   // 主库，别名 primary
+    // ...
+    return ds;
+}
+```
+
+> 迁移记录的 `migrations` 表会按连接分别维护：每个数据库各自有一张 `migrations` 表，
+> 只记录落到该库的迁移。`migrate` / `rollback` / `reset` / `status` 都会按别名分别处理。
+
 ### 五种迁移源模式
 
 模块支持五种迁移来源（`MigrationSource` 枚举），适配不同的部署环境：

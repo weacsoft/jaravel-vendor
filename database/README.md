@@ -22,7 +22,7 @@
 Database 模块是 Jaravel 框架的数据库 ORM 层，基于 `gaarason/database-query`（Laravel 风格的 Java ORM），对齐 Laravel 的 `Illuminate\Database\Eloquent`。它提供了三大核心能力：
 
 - **BaseModel（合并模型）**：对齐 Laravel Eloquent 的「单一类同时承担实体定义与查询职责」设计。业务 Model 继承 `BaseModel` 后，无需再拆分「User 实体 POJO」与「UserModel 查询类」，一个类即可完成实体定义、增删改查、查询构造。内置软删除支持（基于 `deleted_at` 列，对齐 Laravel `SoftDeletes` trait）。
-- **@DataSource 注解（多数据源）**：对齐 Laravel Model 的 `$connection` 属性，通过注解指定 Model 使用的数据源 Bean 名称，支持多数据库。
+- **@DataSource 注解 + getConnectionAlias() 方法（多数据源）**：对齐 Laravel Model 的 `$connection` 属性。通过 `@DataSource` 注解指定数据源 Bean 名称，或重写 `BaseModel.getConnectionAlias()` 方法以编程方式切换数据库连接，支持多数据库。
 - **EloquentUserProvider（认证集成）**：对齐 Laravel 的 `EloquentUserProvider`，基于 Eloquent Model 实现 `UserProvider` 契约，仅负责按主键/凭证取出用户，不校验密码。
 
 ### 与 Laravel 的对齐关系
@@ -144,17 +144,36 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K>
 
 ```
 getGaarasonDataSource()
-  ├── 1. 检查 @DataSource 注解
+  ├── 1. 调用 getConnectionAlias() 取得连接别名（业务 Model 可重写此方法）
+  │     ├── 别名存在且可解析 → SpringContext.bean(alias, GaarasonDataSource.class)
+  │     └── 别名为 "primary" 但未单独注册 → 回退到 @Primary 数据源
+  ├── 2. 检查 @DataSource 注解（getConnectionAlias() 默认即返回其 value）
   │     ├── 存在 → SpringContext.bean(annotation.value(), GaarasonDataSource.class)
   │     └── 不存在 → 继续
-  ├── 2. 检查 Spring 注入的数据源
+  ├── 3. 检查 Spring 注入的数据源
   │     ├── gaarasonDataSource != null → 返回注入的数据源（默认 @Primary）
   │     └── 为 null → 继续
-  └── 3. 回退：从容器获取默认数据源
+  └── 4. 回退：从容器获取默认数据源
         └── SpringContext.bean(GaarasonDataSource.class)
 ```
 
-> **关键**：必须先检查 `@DataSource` 注解，否则 `@Autowired` 总是注入 `@Primary` 数据源。
+`getConnectionAlias()`（默认实现）：若类标注了 `@DataSource` 注解则返回其 `value()`，否则返回 `"primary"`。
+**业务 Model 可直接重写 `getConnectionAlias()` 来选择不同的数据库连接**，优先级高于 `@DataSource` 注解，
+且与迁移接口的 `Migration#connection()` 命名一致（同一数据库上的「表结构迁移」与「ORM 读写」使用相同别名）。
+
+```java
+@Repository
+@Table(name = "products")
+public class Product extends BaseModel<Product, Long> {
+    // 方法式连接切换，优先级高于 @DataSource 注解
+    @Override
+    protected String getConnectionAlias() {
+        return "mysql";   // 使用名为 mysql 的 GaarasonDataSource bean
+    }
+}
+```
+
+> **关键**：必须先检查 `getConnectionAlias()` / `@DataSource` 注解，否则 `@Autowired` 总是注入 `@Primary` 数据源。
 
 ### 实例方法
 
@@ -470,22 +489,47 @@ public class OperationLog extends BaseModel<OperationLog, Long> {
 
 ### 解析逻辑
 
-`BaseModel.getGaarasonDataSource()` 优先检查 `@DataSource` 注解：
+`BaseModel.getGaarasonDataSource()` 优先通过 `getConnectionAlias()` 决定连接别名（业务 Model 可重写），
+其次回退到 `@DataSource` 注解：
 
 ```java
 @Override
 public GaarasonDataSource getGaarasonDataSource() {
-    // 1. 优先检查 @DataSource 注解
+    // 1. 优先通过 getConnectionAlias() 方法决定连接别名（业务 Model 可重写）
+    String alias = getConnectionAlias();
+    if (alias != null && !alias.isEmpty()) {
+        // 别名为 "primary" 但未单独注册时，回退到 @Primary 数据源
+        if ("primary".equals(alias) && !SpringContext.contains("primary")) {
+            if (gaarasonDataSource != null) {
+                return gaarasonDataSource;
+            }
+            return SpringContext.bean(GaarasonDataSource.class);
+        }
+        return SpringContext.bean(alias, GaarasonDataSource.class);
+    }
+    // 2. 回退：检查 @DataSource 注解
     DataSource dsAnnotation = this.getClass().getAnnotation(DataSource.class);
     if (dsAnnotation != null) {
         return SpringContext.bean(dsAnnotation.value(), GaarasonDataSource.class);
     }
-    // 2. 未标注 @DataSource 时，使用 Spring 注入的数据源（默认为 @Primary）
+    // 3. 未标注时，使用 Spring 注入的数据源（默认为 @Primary）
     if (gaarasonDataSource != null) {
         return gaarasonDataSource;
     }
-    // 3. 回退：从容器获取默认数据源
+    // 4. 最终回退：从容器获取默认数据源
     return SpringContext.bean(GaarasonDataSource.class);
+}
+
+/**
+ * 连接别名，默认：标注 @DataSource 时返回其 value，否则返回 "primary"。
+ * 业务 Model 可重写以切换到其它数据库。
+ */
+protected String getConnectionAlias() {
+    DataSource dsAnnotation = this.getClass().getAnnotation(DataSource.class);
+    if (dsAnnotation != null) {
+        return dsAnnotation.value();
+    }
+    return "primary";
 }
 ```
 

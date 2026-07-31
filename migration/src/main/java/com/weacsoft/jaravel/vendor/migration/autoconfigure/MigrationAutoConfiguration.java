@@ -5,6 +5,8 @@ import com.weacsoft.jaravel.vendor.migration.engine.MigrationExecutor;
 import com.weacsoft.jaravel.vendor.migration.engine.MigrationRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -18,6 +20,8 @@ import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 
 import javax.sql.DataSource;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * 迁移模块自动装配（SpringBoot 适配层）。
@@ -72,8 +76,18 @@ public class MigrationAutoConfiguration {
      */
     @Bean
     @ConditionalOnMissingBean
-    public MigrationExecutor migrationExecutor(DataSource dataSource, MigrationProperties properties) {
-        return new MigrationExecutor(dataSource, properties);
+    public MigrationExecutor migrationExecutor(MigrationProperties properties,
+                                                @Autowired(required = false) Map<String, DataSource> dataSources,
+                                                @Autowired @Qualifier("gaarasonDataSource") DataSource primaryDataSource) {
+        // 汇总所有 DataSource（bean 名即连接别名），并确保存在 primary 别名指向主库
+        Map<String, DataSource> aliasMap = new LinkedHashMap<>();
+        if (dataSources != null) {
+            aliasMap.putAll(dataSources);
+        }
+        if (!aliasMap.containsKey("primary") && primaryDataSource != null) {
+            aliasMap.put("primary", primaryDataSource);
+        }
+        return new MigrationExecutor(aliasMap, properties);
     }
 
     /**

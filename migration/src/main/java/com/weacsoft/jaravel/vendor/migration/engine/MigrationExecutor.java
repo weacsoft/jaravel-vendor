@@ -1,7 +1,6 @@
 package com.weacsoft.jaravel.vendor.migration.engine;
 
 
-import com.weacsoft.jaravel.vendor.migration.Schema;
 import com.weacsoft.jaravel.vendor.migration.autoconfigure.MigrationProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,7 +9,9 @@ import javax.sql.DataSource;
 import java.io.File;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 迁移执行器，对齐 Laravel artisan 的 migrate 系列命令。
@@ -42,17 +43,31 @@ public class MigrationExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(MigrationExecutor.class);
 
-    private final DataSource dataSource;
+    private final Map<String, DataSource> dataSources;
     private final MigrationProperties properties;
 
     /**
-     * 构造迁移执行器。
+     * 构造迁移执行器（多数据库）。
+     *
+     * @param dataSources 连接别名 → DataSource 映射（至少应包含 {@code primary}）
+     * @param properties  迁移配置
+     */
+    public MigrationExecutor(Map<String, DataSource> dataSources, MigrationProperties properties) {
+        this.dataSources = dataSources;
+        this.properties = properties;
+    }
+
+    /**
+     * 构造迁移执行器（单数据库，兼容旧用法）。
+     * <p>
+     * 等价于以 {@code primary} 为别名注册唯一数据源。
      *
      * @param dataSource 数据源（用于创建 Schema 和 MigrationRepository）
      * @param properties 迁移配置
      */
     public MigrationExecutor(DataSource dataSource, MigrationProperties properties) {
-        this.dataSource = dataSource;
+        this.dataSources = new LinkedHashMap<>();
+        this.dataSources.put("primary", dataSource);
         this.properties = properties;
     }
 
@@ -118,10 +133,8 @@ public class MigrationExecutor {
                     throw new IllegalStateException("未知的迁移源类型: " + properties.getSource());
             }
 
-            // 创建 Schema、MigrationRepository、Migrator
-            Schema schema = new Schema(dataSource);
-            MigrationRepository repository = new MigrationRepository(dataSource, properties.getTable());
-            Migrator migrator = new Migrator(repository, schema, scanner);
+            // 创建 Migrator（按迁移 connection() 选择对应的 DataSource）
+            Migrator migrator = new Migrator(dataSources, properties.getTable(), scanner);
 
             // 执行命令（兼容 --jaravel.xxx 和裸命令两种格式）
             if (argList.contains("migrate") || argList.contains("--jaravel.migrate")) {

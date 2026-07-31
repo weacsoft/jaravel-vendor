@@ -24,39 +24,39 @@ Java 版 Laravel 框架核心库，在 Spring Boot 3.2.5 基础上近乎 100% �
 
 ## 模块结构
 
-| 模块 | artifactId | 说明 | README | AI-API |
-|------|-----------|------|-------|--------|
-| core | `core` | Facade/Config/ServiceProvider/SpringContext/Validation/Str·Arr | [README](core/README.md) | [AI-API](core/AI-API.md) |
-| json | `json` | JSON 编解码 SPI（Jackson 2/3 双支持，自动检测 classpath，无 Spring 依赖） | - | - |
-| utils | `utils` | 内存编译基础设施（MemoryClassLoader 等，jblade/migration 复用） | [README](utils/README.md) | [AI-API](utils/AI-API.md) |
-| http | `http` | Middleware管道/Request·Response/路由系统 | [README](http/README.md) | [AI-API](http/AI-API.md) |
-| cache | `cache` | CacheManager/驱动分包/Cache门面 | [README](cache/README.md) | [AI-API](cache/AI-API.md) |
-| jblade | `jblade` | Blade模板引擎（@if/@foreach/@extends等指令，表达式编译） | [README](jblade/README.md) | [AI-API](jblade/AI-API.md) |
-| auth | `auth` | AuthManager/Guard(JWT·Session)/UserProvider/Auth门面 | [README](auth/README.md) | [AI-API](auth/AI-API.md) |
-| jwt | `jwt` | JWT认证插件（续期/登出黑名单/Cache集成） | [README](jwt/README.md) | [AI-API](jwt/AI-API.md) |
-| database | `database` | BaseModel(Eloquent合并模式)/@DataSource多数据源 | [README](database/README.md) | [AI-API](database/AI-API.md) |
-| migration | `migration` | Blueprint/Schema/Migrator/方言分包（运行时编译，3种源模式，MySQL/SQLite/H2/SQL Server/PostgreSQL/Oracle，跨库表迁移） | [README](migration/README.md) | [AI-API](migration/AI-API.md) |
-| event | `event` | Dispatcher/Listener/QueueManager（多队列+重试） | [README](event/README.md) | [AI-API](event/AI-API.md) |
-| redis-config | `redis-config` | RedisManager/RedisProperties（多命名连接，standalone/sentinel/cluster，分布式锁） | [README](redis-config/README.md) | [AI-API](redis-config/AI-API.md) |
-| redis-cache | `redis-cache` | RedisCacheDriver（CacheDriver实现，多机缓存同步） | [README](redis-cache/README.md) | [AI-API](redis-cache/AI-API.md) |
-| session-redis | `session-redis` | RedisSessionGuard/RedisSessionStore（多机Session同步） | [README](session-redis/README.md) | [AI-API](session-redis/AI-API.md) |
-| artisan | `artisan` | ArtisanApplication/ArtisanCommand/ArtisanRunner（CLI命令框架，签名解析） | [README](artisan/README.md) | [AI-API](artisan/AI-API.md) |
-| schedule | `schedule` | Schedule/ScheduleRunner/ScheduledTask（Cron调度，Redis分布式锁） | [README](schedule/README.md) | [AI-API](schedule/AI-API.md) |
-| queue-database | `queue-database` | DatabaseQueueDriver/DatabaseQueueWorker（持久化队列，多实例消费，重试） | [README](queue-database/README.md) | [AI-API](queue-database/AI-API.md) |
-| springboot | `springboot` | RouterFunction桥接/全局中间件注入/MVC解析 | [README](springboot/README.md) | [AI-API](springboot/AI-API.md) |
-| wire | `wire` | Wire响应式UI（Livewire风格，wire:model双向绑定/wire:click事件/部分更新/延迟重定向） | [README](wire/README.md) | [AI-API](wire/AI-API.md) |
-| captcha | `captcha` | 验证码生成器/存储/加密分子包（number/arithmetic/slider/rotate，轨迹验证，水印） | [README](captcha/README.md) | [AI-API](captcha/AI-API.md) |
-| wechat-sdk | `wechat-sdk` | 微信SDK（公众号/小程序API，对齐overtrue/laravel-wechat） | [README](wechat-sdk/README.md) | [AI-API](wechat-sdk/AI-API.md) |
-| **model-cache** | `model-cache` | 模型查询缓存（版本化失效，@CachableModel注解按需开启，可选） | [README](model-cache/README.md) | [AI-API](model-cache/AI-API.md) |
-| starter | `starter` | 聚合Starter（引入即自动装配全部模块，jwt/model-cache可选） | [README](starter/README.md) | [AI-API](starter/AI-API.md) |
-| **plugin-jar-core** | `plugin-jar-core` | JAR插件系统（动态加载/卸载/三级ClassLoader/ASM扫描/动态路由） | [README](plugin-jar-core/README.md) | [AI-API](plugin-jar-core/AI-API.md) |
-| **plugin-jar-database** | `plugin-jar-database` | JAR插件数据库持久化（BaseModel/自动建表/多实例共享） | [README](plugin-jar-database/README.md) | [AI-API](plugin-jar-database/AI-API.md) |
-| **plugin-java-core** | `plugin-java-core` | Java文件插件系统（动态编译.java/热更新/轻量替代JAR） | [README](plugin-java-core/README.md) | [AI-API](plugin-java-core/AI-API.md) |
-| **plugin-jar-multi-tenant** | `plugin-jar-multi-tenant` | JAR插件多租户支持（租户隔离的Bean/路由前缀化，可选） | [README](plugin-jar-multi-tenant/README.md) | [AI-API](plugin-jar-multi-tenant/AI-API.md) |
-| **plugin-jar-remote-server** | `plugin-jar-remote-server` | JAR插件远程执行服务端（P2SP子节点，TCP/HTTP） | [README](plugin-jar-remote-server/README.md) | [AI-API](plugin-jar-remote-server/AI-API.md) |
-| **plugin-jar-remote-client** | `plugin-jar-remote-client` | JAR插件远程执行客户端（P2SP主节点，动态代理/协调器） | [README](plugin-jar-remote-client/README.md) | [AI-API](plugin-jar-remote-client/AI-API.md) |
-| **storage** | `storage` | 多磁盘文件存储（Filesystem契约/local驱动/@RegisterDisk注解式注册/驱动SPI，对齐Laravel Storage） | [README](storage/README.md) | - |
-| **aether-upload** | `aether-upload` | 不限大小分片上传（断点·断线续传/base64传输/多组配置/storage落盘，对齐peinhu/AetherUpload） | [README](aether-upload/README.md) | - |
+| 模块 | artifactId | 说明 | README |
+|------|-----------|------|-------|
+| core | `core` | Facade/Config/ServiceProvider/SpringContext/Validation/Str·Arr | [README](core/README.md) |
+| json | `json` | JSON 编解码 SPI（Jackson 2/3 双支持，自动检测 classpath，无 Spring 依赖） | - |
+| utils | `utils` | 内存编译基础设施（MemoryClassLoader 等，jblade/migration 复用） | [README](utils/README.md) |
+| http | `http` | Middleware管道/Request·Response/路由系统 | [README](http/README.md) |
+| cache | `cache` | CacheManager/驱动分包/Cache门面 | [README](cache/README.md) |
+| jblade | `jblade` | Blade模板引擎（@if/@foreach/@extends等指令，表达式编译） | [README](jblade/README.md) |
+| auth | `auth` | AuthManager/Guard(JWT·Session)/UserProvider/Auth门面 | [README](auth/README.md) |
+| jwt | `jwt` | JWT认证插件（续期/登出黑名单/Cache集成） | [README](jwt/README.md) |
+| database | `database` | BaseModel(Eloquent合并模式)/@DataSource多数据源 | [README](database/README.md) |
+| migration | `migration` | Blueprint/Schema/Migrator/方言分包（运行时编译，3种源模式，MySQL/SQLite/H2/SQL Server/PostgreSQL/Oracle，跨库表迁移） | [README](migration/README.md) |
+| event | `event` | Dispatcher/Listener/QueueManager（多队列+重试） | [README](event/README.md) |
+| redis-config | `redis-config` | RedisManager/RedisProperties（多命名连接，standalone/sentinel/cluster，分布式锁） | [README](redis-config/README.md) |
+| redis-cache | `redis-cache` | RedisCacheDriver（CacheDriver实现，多机缓存同步） | [README](redis-cache/README.md) |
+| session-redis | `session-redis` | RedisSessionGuard/RedisSessionStore（多机Session同步） | [README](session-redis/README.md) |
+| artisan | `artisan` | ArtisanApplication/ArtisanCommand/ArtisanRunner（CLI命令框架，签名解析） | [README](artisan/README.md) |
+| schedule | `schedule` | Schedule/ScheduleRunner/ScheduledTask（Cron调度，Redis分布式锁） | [README](schedule/README.md) |
+| queue-database | `queue-database` | DatabaseQueueDriver/DatabaseQueueWorker（持久化队列，多实例消费，重试） | [README](queue-database/README.md) |
+| springboot | `springboot` | RouterFunction桥接/全局中间件注入/MVC解析 | [README](springboot/README.md) |
+| wire | `wire` | Wire响应式UI（Livewire风格，wire:model双向绑定/wire:click事件/部分更新/延迟重定向） | [README](wire/README.md) |
+| captcha | `captcha` | 验证码生成器/存储/加密分子包（number/arithmetic/slider/rotate，轨迹验证，水印） | [README](captcha/README.md) |
+| wechat-sdk | `wechat-sdk` | 微信SDK（公众号/小程序API，对齐overtrue/laravel-wechat） | [README](wechat-sdk/README.md) |
+| **model-cache** | `model-cache` | 模型查询缓存（版本化失效，@CachableModel注解按需开启，可选） | [README](model-cache/README.md) |
+| starter | `starter` | 聚合Starter（引入即自动装配全部模块，jwt/model-cache可选） | [README](starter/README.md) |
+| **plugin-jar-core** | `plugin-jar-core` | JAR插件系统（动态加载/卸载/三级ClassLoader/ASM扫描/动态路由） | [README](plugin-jar-core/README.md) |
+| **plugin-jar-database** | `plugin-jar-database` | JAR插件数据库持久化（BaseModel/自动建表/多实例共享） | [README](plugin-jar-database/README.md) |
+| **plugin-java-core** | `plugin-java-core` | Java文件插件系统（动态编译.java/热更新/轻量替代JAR） | [README](plugin-java-core/README.md) |
+| **plugin-jar-multi-tenant** | `plugin-jar-multi-tenant` | JAR插件多租户支持（租户隔离的Bean/路由前缀化，可选） | [README](plugin-jar-multi-tenant/README.md) |
+| **plugin-jar-remote-server** | `plugin-jar-remote-server` | JAR插件远程执行服务端（P2SP子节点，TCP/HTTP） | [README](plugin-jar-remote-server/README.md) |
+| **plugin-jar-remote-client** | `plugin-jar-remote-client` | JAR插件远程执行客户端（P2SP主节点，动态代理/协调器） | [README](plugin-jar-remote-client/README.md) |
+| **storage** | `storage` | 多磁盘文件存储（Filesystem契约/local驱动/@RegisterDisk注解式注册/驱动SPI，对齐Laravel Storage） | [README](storage/README.md) |
+| **aether-upload** | `aether-upload` | 不限大小分片上传（断点·断线续传/base64传输/多组配置/storage落盘，对齐peinhu/AetherUpload） | [README](aether-upload/README.md) |
 
 ## 快速集成
 
@@ -381,7 +381,6 @@ jaravel:
 
 | 资源 | 路径 | 说明 |
 |------|------|------|
-| AI 接口文档 | 各模块目录下 `AI-API.md` | 25 个模块的结构化接口文档，适合 AI 读取 |
 | API 文档站点 | [https://weacsoft.github.io/jaravel-vendor/](https://weacsoft.github.io/jaravel-vendor/) | 25 个模块完整 API 参考（GitHub Pages） |
 | Demo 项目 | `../jaravel/` | 展示全部 jaravel 能力的前后端分离示例项目（Laravel 文档风格） |
 

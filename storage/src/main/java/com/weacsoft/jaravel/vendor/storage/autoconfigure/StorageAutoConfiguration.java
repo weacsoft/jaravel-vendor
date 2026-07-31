@@ -1,6 +1,7 @@
 package com.weacsoft.jaravel.vendor.storage.autoconfigure;
 
 import com.weacsoft.jaravel.vendor.storage.StorageManager;
+import com.weacsoft.jaravel.vendor.storage.database.DatabaseFilesystemDriver;
 import com.weacsoft.jaravel.vendor.storage.local.LocalFilesystemDriver;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -54,6 +55,18 @@ public class StorageAutoConfiguration {
     @ConditionalOnMissingBean
     public LocalFilesystemDriver localFilesystemDriver() {
         return new LocalFilesystemDriver();
+    }
+
+    /**
+     * 内置数据库文件存储驱动，支持 {@code database} 驱动名。
+     * 通过 {@code ApplicationContext} 解析数据源（默认主数据源，可指定独立数据源 Bean）。
+     *
+     * @return 驱动实例
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public DatabaseFilesystemDriver databaseFilesystemDriver() {
+        return new DatabaseFilesystemDriver();
     }
 
     /**
