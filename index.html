@@ -5616,17 +5616,33 @@ public abstract class BaseModel&lt;T, K&gt; extends Model&lt;QueryBuilder&lt;T, 
 
 <pre><code>
 getGaarasonDataSource()
-  ├── 1. 检查 @DataSource 注解
+  ├── 1. 调用 getConnectionAlias() 取得连接别名（业务 Model 可重写此方法）
+  │     ├── 别名存在且可解析 → SpringContext.bean(alias, GaarasonDataSource.class)
+  │     └── 别名为 "primary" 但未单独注册 → 回退到 @Primary 数据源
+  ├── 2. 检查 @DataSource 注解（getConnectionAlias() 默认即返回其 value）
   │     ├── 存在 → SpringContext.bean(annotation.value(), GaarasonDataSource.class)
   │     └── 不存在 → 继续
-  ├── 2. 检查 Spring 注入的数据源
+  ├── 3. 检查 Spring 注入的数据源
   │     ├── gaarasonDataSource != null → 返回注入的数据源（默认 @Primary）
   │     └── 为 null → 继续
-  └── 3. 回退：从容器获取默认数据源
+  └── 4. 回退：从容器获取默认数据源
         └── SpringContext.bean(GaarasonDataSource.class)
 </code></pre>
 
-<p>&gt; <strong>关键</strong>：必须先检查 <code>@DataSource</code> 注解，否则 <code>@Autowired</code> 总是注入 <code>@Primary</code> 数据源。</p>
+<p><code>getConnectionAlias()</code>（默认实现）：若类标注了 <code>@DataSource</code> 注解则返回其 <code>value()</code>，否则返回 <code>"primary"</code>。<strong>业务 Model 可直接重写 <code>getConnectionAlias()</code> 来选择不同的数据库连接</strong>，优先级高于 <code>@DataSource</code> 注解，且与迁移接口的 <code>Migration#connection()</code> 命名一致（同一数据库上的「表结构迁移」与「ORM 读写」使用相同别名）。</p>
+
+<pre><code>@Repository
+@Table(name = "products")
+public class Product extends BaseModel&lt;Product, Long&gt; {
+    // 方法式连接切换，优先级高于 @DataSource 注解
+    @Override
+    protected String getConnectionAlias() {
+        return "mysql";   // 使用名为 mysql 的 GaarasonDataSource bean
+    }
+}
+</code></pre>
+
+<p>&gt; <strong>关键</strong>：必须先检查 <code>getConnectionAlias()</code> / <code>@DataSource</code> 注解，否则 <code>@Autowired</code> 总是注入 <code>@Primary</code> 数据源。</p>
 
 <h6 id="database-实例方法">实例方法</h6>
 
@@ -5872,26 +5888,50 @@ public class OperationLog extends BaseModel&lt;OperationLog, Long&gt; {
 
 <h6 id="database-解析逻辑">解析逻辑</h6>
 
-<p><code>BaseModel.getGaarasonDataSource()</code> 优先检查 <code>@DataSource</code> 注解：</p>
+<p><code>BaseModel.getGaarasonDataSource()</code> 优先通过 <code>getConnectionAlias()</code> 决定连接别名（业务 Model 可重写），其次回退到 <code>@DataSource</code> 注解：</p>
 
 <pre><code>
 @Override
 public GaarasonDataSource getGaarasonDataSource() {
-    // 1. 优先检查 @DataSource 注解
+    // 1. 优先通过 getConnectionAlias() 方法决定连接别名（业务 Model 可重写）
+    String alias = getConnectionAlias();
+    if (alias != null &amp;&amp; !alias.isEmpty()) {
+        // 别名为 "primary" 但未单独注册时，回退到 @Primary 数据源
+        if ("primary".equals(alias) &amp;&amp; !SpringContext.contains("primary")) {
+            if (gaarasonDataSource != null) {
+                return gaarasonDataSource;
+            }
+            return SpringContext.bean(GaarasonDataSource.class);
+        }
+        return SpringContext.bean(alias, GaarasonDataSource.class);
+    }
+    // 2. 回退：检查 @DataSource 注解
     DataSource dsAnnotation = this.getClass().getAnnotation(DataSource.class);
     if (dsAnnotation != null) {
         return SpringContext.bean(dsAnnotation.value(), GaarasonDataSource.class);
     }
-    // 2. 未标注 @DataSource 时，使用 Spring 注入的数据源（默认为 @Primary）
+    // 3. 未标注时，使用 Spring 注入的数据源（默认为 @Primary）
     if (gaarasonDataSource != null) {
         return gaarasonDataSource;
     }
-    // 3. 回退：从容器获取默认数据源
+    // 4. 最终回退：从容器获取默认数据源
     return SpringContext.bean(GaarasonDataSource.class);
+}
+
+/**
+ * 连接别名，默认：标注 @DataSource 时返回其 value，否则返回 "primary"。
+ * 业务 Model 可重写以切换到其它数据库。
+ */
+protected String getConnectionAlias() {
+    DataSource dsAnnotation = this.getClass().getAnnotation(DataSource.class);
+    if (dsAnnotation != null) {
+        return dsAnnotation.value();
+    }
+    return "primary";
 }
 </code></pre>
 
-<p>&gt; 未标注此注解的 Model 使用默认（Primary）数据源。</p>
+<p>&gt; 未标注 <code>@DataSource</code> 且未重写 <code>getConnectionAlias()</code> 的 Model 使用默认（Primary）数据源。</p>
 
 <p>---</p>
 
@@ -6487,6 +6527,32 @@ Auth.login(user);
 <h6 id="migration-多表支持">多表支持</h6>
 
 <p>单次 <code>up()</code> 可连续调用多次 <code>Schema.create()</code> 或 <code>Schema.table()</code> 处理多张表，<code>down()</code> 应对称地删除/回滚所有在 <code>up()</code> 中创建或修改的表。</p>
+
+<h6 id="migration-多数据库连接按别名">多数据库连接（按别名）</h6>
+
+<p>除了跨数据库方言，「不同迁移落到不同数据库实例」也是常见需求：例如某个迁移连 MySQL、另一个连 SQLite、第三个连 Oracle / PostgreSQL，彼此连接方式（驱动、URL、账号）互不相同。</p>
+
+<p>实现方式：在 <code>Migration</code> 实现类中重写 <code>connection()</code> 方法，返回目标数据库的连接别名。该别名对应 Spring 容器中 <code>DataSource</code> 的 bean 名称（如 <code>gaaravelDataSource</code>、<code>mysql</code>、<code>sqlite</code>、<code>oracle</code>、<code>pg</code> 等）。框架按别名选取对应 <code>DataSource</code> 执行该迁移，并把迁移记录（<code>migrations</code> 表）也写到对应数据库。</p>
+
+<pre><code>@MigrationAnnotation
+public class Migration_2024_01_01_CreateUsersTable implements Migration {
+    // 该迁移使用名为 "mysql" 的 DataSource bean（与主库连接方式不同）
+    @Override
+    public String connection() {
+        return "mysql";
+    }
+
+    @Override
+    public void up(Schema schema) { /* ... */ }
+
+    @Override
+    public void down(Schema schema) { /* ... */ }
+}
+</code></pre>
+
+<p><strong>默认行为</strong>：未重写 <code>connection()</code> 时返回 <code>"primary"</code>，映射到被 <code>@Primary</code> 标记的主数据源。因此绝大多数迁移无需改动即可使用主库；只有需要落到其它库的迁移才需重写。</p>
+
+<p><strong>配置多个 DataSource</strong>：在 Spring 中注册多个 <code>DataSource</code> Bean 即可（bean 名即连接别名），<code>MigrationAutoConfiguration</code> 会自动收集所有 <code>DataSource</code> 并补全 <code>primary</code> 别名。迁移记录（<code>migrations</code> 表）会按连接分别维护，每个数据库各自有一张 <code>migrations</code> 表，只记录落到该库的迁移。</p>
 
 <h6 id="migration-五种迁移源模式">五种迁移源模式</h6>
 
@@ -21624,7 +21690,7 @@ private RemoteExecutionDispatcher dispatcher;
 
 <p>&gt; 无 plugin-jar-core 时，本模块通过 <code>SpringBeanResolver</code> 从 Spring 容器获取 Bean，可独立于 jaravel 热加载系统使用，仅依赖 SpringBoot。</p>
 
-<p>&gt; 注：上述 <code>protocol</code> 与 <code>spi</code> 包类型由 plugin-jar-remote-server 模块定义，本模块作为客户端消费这些契约；服务端需实现对应的处理器（如 <code>HttpRpcHandler.processRequest</code>，现已接受 <code>BeanResolver</code> 参数）与 TCP 服务端逻辑。详细的服务端 API 请参阅 plugin-jar-remote-server 模块的 AI-API 文档。</p>
+<p>&gt; 注：上述 <code>protocol</code> 与 <code>spi</code> 包类型由 plugin-jar-remote-server 模块定义，本模块作为客户端消费这些契约；服务端需实现对应的处理器（如 <code>HttpRpcHandler.processRequest</code>，现已接受 <code>BeanResolver</code> 参数）与 TCP 服务端逻辑。详细的服务端 API 请参阅 plugin-jar-remote-server 模块文档。</p>
 </section>
 <section id="cat-remote-tree">
 <h3>3. 树形拓扑</h3>
@@ -21889,6 +21955,42 @@ jaravel:
         root: /data/uploads
         options:               # 传给驱动的自定义参数
           any-key: any-value
+      files:
+        driver: database        # 把文件存进数据库
+        binary: true            # true=LONGBLOB 二进制；false=LONGTEXT base64 文本
+        content-column: content # 存放文件内容的列名（默认 content，可自行指定）
+        chunk-size: 1048576     # 单条分片字节上限，超过则切分多行；0/负=不切分
+        table-prefix: storage_  # 数据表前缀，默认 storage_
+        datasource: gaaravelDataSource  # 可选，指定 DataSource bean 名；省略=主库
+        visibility: private
+</code></pre>
+
+<h6 id="storage-driver-database">driver: database（数据库存储）</h6>
+
+<p>把文件直接存进数据库的两张表：<code>&lt;prefix&gt;file</code>（元信息）与 <code>&lt;prefix&gt;file_chunk</code>（内容分片）。无需提前建表——磁盘首次使用时通过 <code>CREATE TABLE IF NOT EXISTS</code> 自动建表，也可执行迁移脚本显式管理。</p>
+
+<p><strong>内容列名可定制</strong>：文件内容统一落在一列，列名由 <code>content-column</code> 指定，默认 <code>content</code>。允许自行指定（如 <code>file_data</code>、<code>blob</code> 等）。</p>
+
+<p><strong>二进制 / 文本由 <code>binary</code> 开关决定（单列）</strong>：</p>
+
+<ul>
+<li><code>binary: true</code>（默认）：内容以二进制写入该列（<code>LONGBLOB</code>），适合支持二进制列的关系型数据库。</li>
+<li><code>binary: false</code>：内容以 base64 编码写入该列（<code>LONGTEXT</code>），以兼容不支持二进制列的数据库。</li>
+</ul>
+
+<p>不再区分 <code>content_binary</code> / <code>content_text</code> 双列，无论二进制还是文本都使用同一列。切换 <code>binary</code> 开关后，新文件按新方式写入。</p>
+
+<p>对应的迁移脚本（默认 <code>content</code> + 二进制模式）：</p>
+
+<pre><code>schema.create("storage_file_chunk", table -&gt; {
+    table.string("disk", 64).notNull().primary();
+    table.string("path", 1024).notNull().primary();
+    table.integer("chunk_index").notNull().primary();
+    table.binary("content").nullable();   // 列名即 content-column，类型由 binary 决定
+    table.integer("size").notNull().defaultValue(0);
+    table.bigInteger("created_at").nullable();
+    table.bigInteger("updated_at").nullable();
+});
 </code></pre>
 
 <h5 id="storage-注解式注册">注解式注册（推荐）</h5>
@@ -24073,7 +24175,7 @@ properties.setWatermarkScale(0.2f);                         // 图片水印缩�
 <tr><td>5. 加速度方向多样性</td><td>加速度正负方向</td><td>人类拖动过程中加速度方向会变化（先正后负），全程同方向加速度判定为可疑（仅在总位移较大时强制要求）</td></tr>
 </table>
 
-<p>&gt; 完整验证逻辑实现于 <code>com.weacsoft.jaravel.vendor.captcha.TrajectoryValidator</code>，详见 <a href="AI-API.md">AI-API.md</a>。</p>
+<p>&gt; 完整验证逻辑实现于 <code>com.weacsoft.jaravel.vendor.captcha.TrajectoryValidator</code>，详见 AI-API。</p>
 
 <h6 id="captcha-84-前端轨迹采集示例">8.4 前端轨迹采集示例</h6>
 
@@ -24644,7 +24746,7 @@ verify(captchaKey, userInput)
   └─ 3. 调用 doVerify(answer, userInput)  ← 子类实现
 </code></pre>
 
-<p>&gt; <code>AbstractCaptcha</code> 还提供丰富的图像工具方法供子类复用：<code>createImage</code>、<code>createArgbImage</code>、<code>randomColor</code>、<code>drawRandomBackground</code>、<code>loadBackgroundImage</code>（加载自定义背景图）、<code>addNoise</code>、<code>addInterfereLines</code>、<code>addArcInterference</code>（弧线干扰）、<code>drawText</code>（支持配置化字体/大小/旋转）、<code>applyWatermark</code>（叠加文字 / 图片水印）、<code>toBase64</code>、<code>randomString</code>（支持自定义字符集）等。各方法签名详见 <a href="AI-API.md">AI-API.md</a>。</p>
+<p>&gt; <code>AbstractCaptcha</code> 还提供丰富的图像工具方法供子类复用：<code>createImage</code>、<code>createArgbImage</code>、<code>randomColor</code>、<code>drawRandomBackground</code>、<code>loadBackgroundImage</code>（加载自定义背景图）、<code>addNoise</code>、<code>addInterfereLines</code>、<code>addArcInterference</code>（弧线干扰）、<code>drawText</code>（支持配置化字体/大小/旋转）、<code>applyWatermark</code>（叠加文字 / 图片水印）、<code>toBase64</code>、<code>randomString</code>（支持自定义字符集）等。各方法签名详见 AI-API。</p>
 
 <p>---</p>
 
