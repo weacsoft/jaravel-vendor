@@ -46,6 +46,7 @@ Database 模块是 Jaravel 框架的数据库 ORM 层，基于 `gaarason/databas
 | `$model->restore()` | `softDeleteRestore()` 设置 `deleted_at = NULL` |
 | `Model::withTrashed()` | `scopeSoftDeleteWithTrashed` 查询包含已删除记录 |
 | `Model::onlyTrashed()` | `scopeSoftDeleteOnlyTrashed` 仅查询已删除记录 |
+| `Model::withTrashed()->updateOrCreate(...)` | `withTrash().updateOrCreate(...)`（软删除感知的更新或创建，返回可 `restore()` 的 `Record`） |
 
 ### 关键设计决策
 
@@ -281,6 +282,48 @@ int affected = User.query().where("id", 1L).delete();
 // 恢复软删除的记录：deleted_at 置 NULL（触发 softDeleteRestore）
 int restored = User.query().onlyTrashed().where("id", 1L).restore();
 ```
+
+#### 软删除感知的「更新或创建」（withTrash + updateOrCreate + restore）
+
+gaarason 原生的 `updateOrCreate` / `findOrCreate` / `findOrNew` 定义在 Model 上，其内部固定使用 `newQuery()`，而 `newQuery()` 会自动附加默认软删除作用域（`WHERE deleted_at IS NULL`）；同时 `withTrashed()` / `onlyTrashed()` 返回的是 `Builder`，其上并没有 `updateOrCreate` 等方法。二者无法链式组合，因此原生 API **无法**表达「在包含软删除数据的范围内 updateOrCreate」。
+
+由此带来的问题是：对一条**已被软删除**的记录再次 `updateOrCreate` 时，因默认作用域查不到该记录而误判为「不存在」，从而**重复 INSERT**（甚至触发唯一键冲突）。
+
+`BaseModel` 为此提供了软删除感知的入口方法，复刻 gaarason 的 updateOrCreate 逻辑但将条件查询所用 Builder 替换为对应软删除作用域，返回 gaarason `Record`，可继续链式调用 `restore()` / `save()` / `delete()`：
+
+| 入口方法 | 对齐 Laravel | 说明 |
+| --- | --- | --- |
+| `withTrash()` | `Model::withTrashed()` | 在**包含已软删除**记录的范围内进行条件匹配 |
+| `onlyTrash()` | `Model::onlyTrashed()` | 在**仅已软删除**记录的范围内进行条件匹配 |
+| `withoutTrash()` | 默认行为 | 在**仅未删除**记录的范围内进行条件匹配 |
+
+三个入口均返回 `TrashedScope`，其上提供 `updateOrCreate` / `findOrCreate` / `findOrNew` / `first` / `query` 方法。
+
+```java
+// 更新或创建，并在命中的是「已软删除记录」时立即恢复
+// 对齐 Laravel：Admin::withTrashed()->updateOrCreate($condition, $complement)->restore();
+Admin condition = new Admin();
+condition.setUsername("root");
+Admin complement = new Admin();
+complement.setNickname("超级管理员");
+
+Admin.self().withTrash()
+     .updateOrCreate(condition, complement)   // 在含软删除范围内匹配：命中则 UPDATE，未命中则 INSERT
+     .restore();                              // 若命中的是已软删除记录，则恢复（deleted_at 置 NULL）
+
+// 仅在回收站中查询或创建
+Admin.self().onlyTrash().findOrCreate(condition);
+
+// 在含软删除范围内查询或新建（不持久化），随后自行处理
+Record<Admin, Long> rec = Admin.self().withTrash().findOrNew(condition);
+
+// 获取带软删除作用域的 Builder 继续拼接自定义条件
+List<Admin> list = Admin.self().withTrash().query()
+        .where("status", 1)
+        .get().toObjectList();
+```
+
+> 注：链式末端的 `restore()` 是 gaarason `Record` 上的方法（针对单条记录做软删除恢复），因此仅在该记录确为软删除状态时才产生恢复效果；若命中的是正常记录或新建记录，`restore()` 为幂等的无害操作。
 
 #### 业务 Model 自定义软删除列名
 

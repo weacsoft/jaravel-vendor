@@ -504,4 +504,240 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
                       .data("updated_at", TimestampFill.nowString())
                       .update();
     }
+
+    // ==================== 软删除感知的写入操作（withTrash / withoutTrash / onlyTrash） ====================
+    //
+    // 背景（为什么需要这一段）：
+    // gaarason 的 updateOrCreate / findOrCreate / findOrNew 等方法定义在 Model（ModelOfQuery）上，
+    // 其内部实现固定为 `newQuery().select(...).where(conditionEntity).first()`，而 newQuery()
+    // 会自动附加默认软删除作用域（scopeSoftDelete，即 `WHERE deleted_at IS NULL`）。
+    // 同时 withTrashed() / onlyTrashed() 返回的是一个 Builder（QueryBuilder），Builder 上并没有
+    // updateOrCreate 等方法（它们只在 Model 上）。二者无法链式组合，因此原生 API 无法表达
+    // 「在包含软删除数据的范围内 updateOrCreate」这种语义，导致对一条已被软删除的记录再次
+    // updateOrCreate 时会因默认作用域查不到而误判为「不存在」，从而重复 INSERT。
+    //
+    // 解决方案：在 BaseModel 上提供 withTrash() / onlyTrash() 入口，返回一个链式作用域对象
+    // TrashedScope，在其上复刻 gaarason ModelOfQuery 的 updateOrCreate/findOrCreate/findOrNew 逻辑，
+    // 但把用于条件查询的 Builder 换成 withTrashed()/onlyTrashed() 产生的、不带默认软删除过滤的 Builder。
+    // 由于这些方法返回 gaarason 的 Record，天然支持继续链式调用 Record 上的 restore()/save()/delete()，
+    // 从而实现形如：
+    //     Admin.self().withTrash().updateOrCreate(condition, complement).restore();
+    // 的「更新或创建 + 合并软删除处理」能力，语义对齐 Laravel 的
+    //     Admin::withTrashed()->updateOrCreate($condition, $complement)->restore();
+
+    /**
+     * 软删除数据的可见范围，决定条件查询时使用哪一个 gaarason 内置作用域构造 Builder。
+     */
+    public enum TrashScope {
+        /** 仅未删除（默认，等价于普通查询）：{@code WHERE deleted_at IS NULL} */
+        WITHOUT_TRASHED,
+        /** 包含已删除：不追加软删除过滤（对齐 Laravel {@code withTrashed()}） */
+        WITH_TRASHED,
+        /** 仅已删除：{@code WHERE deleted_at IS NOT NULL}（对齐 Laravel {@code onlyTrashed()}） */
+        ONLY_TRASHED
+    }
+
+    /**
+     * 进入「包含软删除数据」的作用域，对齐 Laravel {@code Model::withTrashed()}。
+     * <p>
+     * 返回的 {@link TrashedScope} 上可继续调用 {@code updateOrCreate}、{@code findOrCreate}、
+     * {@code findOrNew}、{@code first} 等方法；这些方法在<b>包含已软删除记录</b>的范围内进行
+     * 条件匹配，从而弥补 gaarason 原生 {@code updateOrCreate} 只能在「未删除」范围内匹配的缺陷。
+     * <pre>
+     * // 更新或创建后立即恢复（若命中的是已软删除记录）
+     * Admin.self().withTrash().updateOrCreate(condition, complement).restore();
+     * </pre>
+     *
+     * @return 包含软删除数据的链式作用域对象
+     */
+    public TrashedScope withTrash() {
+        return new TrashedScope(TrashScope.WITH_TRASHED);
+    }
+
+    /**
+     * {@link #withTrash()} 的别名，命名对齐 gaarason/Laravel 的 {@code withTrashed()}。
+     */
+    public TrashedScope withTrashScope() {
+        return new TrashedScope(TrashScope.WITH_TRASHED);
+    }
+
+    /**
+     * 进入「仅软删除数据」的作用域，对齐 Laravel {@code Model::onlyTrashed()}。
+     * <p>
+     * 在<b>仅已软删除</b>的范围内进行条件匹配，可用于「仅在回收站中更新或创建」等场景。
+     *
+     * @return 仅软删除数据的链式作用域对象
+     */
+    public TrashedScope onlyTrash() {
+        return new TrashedScope(TrashScope.ONLY_TRASHED);
+    }
+
+    /**
+     * 显式进入「不含软删除数据」的作用域（与默认行为一致），便于统一写法。
+     *
+     * @return 不含软删除数据的链式作用域对象
+     */
+    public TrashedScope withoutTrash() {
+        return new TrashedScope(TrashScope.WITHOUT_TRASHED);
+    }
+
+    /**
+     * 根据软删除可见范围构造用于条件查询的 Builder。
+     * <p>
+     * 复用 gaarason 内置的 {@code withTrashed()} / {@code onlyTrashed()} / {@code newQuery()}，
+     * 分别对应「包含已删除」「仅已删除」「仅未删除」三种作用域，确保软删除过滤条件正确应用。
+     *
+     * @param scope 软删除可见范围
+     * @return 已附加对应作用域的查询构造器
+     */
+    @SuppressWarnings("unchecked")
+    private Builder<QueryBuilder<T, K>, T, K> newScopedQuery(TrashScope scope) {
+        BaseModel<T, K> bean = (BaseModel<T, K>) SpringContext.bean(this.getClass());
+        switch (scope) {
+            case WITH_TRASHED:
+                return bean.withTrashed();
+            case ONLY_TRASHED:
+                return bean.onlyTrashed();
+            case WITHOUT_TRASHED:
+            default:
+                return bean.newQuery();
+        }
+    }
+
+    /**
+     * 软删除感知的链式作用域对象。
+     * <p>
+     * 复刻 gaarason {@code ModelOfQuery} 的 {@code updateOrCreate}/{@code findOrCreate}/
+     * {@code findOrNew} 逻辑，但条件查询所用的 Builder 由 {@link #newScopedQuery(TrashScope)}
+     * 按软删除范围构造，使这些「查不到则新建、查得到则更新/复用」的操作能够感知软删除记录。
+     * 返回值均为 gaarason {@link Record}，可继续链式调用 {@code restore()}/{@code save()}/{@code delete()} 等。
+     */
+    public final class TrashedScope {
+
+        private final TrashScope scope;
+
+        private TrashedScope(TrashScope scope) {
+            this.scope = scope;
+        }
+
+        /**
+         * 在当前软删除范围内「更新或创建」，对齐 Laravel {@code updateOrCreate($condition, $complement)}。
+         * <p>
+         * 依据 {@code conditionEntity} 的非空字段作为匹配条件查询首条记录：
+         * <ul>
+         *   <li>命中：用 {@code complementEntity} 补全并 {@code save()}（执行 UPDATE），返回该记录；</li>
+         *   <li>未命中：以 {@code conditionEntity + complementEntity} 组合新建并 {@code save()}（执行 INSERT），返回新记录。</li>
+         * </ul>
+         * 与 gaarason 原生方法的差异仅在于：条件查询是在 {@link TrashScope} 指定的范围（如包含软删除）内进行。
+         *
+         * @param conditionEntity  匹配条件实体（非空字段参与 WHERE）
+         * @param complementEntity 补充/更新用实体
+         * @return 更新或创建后的记录，可继续 {@code .restore()} 等链式操作
+         */
+        public Record<T, K> updateOrCreate(T conditionEntity, T complementEntity) {
+            BaseModel<T, K> bean = (BaseModel<T, K>) SpringContext.bean(BaseModel.this.getClass());
+            Record<T, K> first = newScopedQuery(scope)
+                    .select(bean.getEntityClass())
+                    .where(conditionEntity)
+                    .first();
+            if (first != null) {
+                first.fillEntity(complementEntity);
+                first.save();
+                return first;
+            }
+            Record<T, K> theRecord = bean.newRecord();
+            theRecord.getEntity(conditionEntity);
+            theRecord.fillEntity(complementEntity);
+            theRecord.save();
+            return theRecord;
+        }
+
+        /**
+         * 在当前软删除范围内「查询或新建」（不持久化），对齐 Laravel {@code firstOrNew}。
+         * <p>
+         * 命中则返回已绑定数据的记录；未命中则返回一个以 {@code entity} 填充、尚未持久化的新记录
+         * （不写库，需自行 {@code save()}）。
+         *
+         * @param entity 匹配条件实体
+         * @return 已存在或新建（未持久化）的记录
+         */
+        public Record<T, K> findOrNew(T entity) {
+            BaseModel<T, K> bean = (BaseModel<T, K>) SpringContext.bean(BaseModel.this.getClass());
+            Record<T, K> first = newScopedQuery(scope)
+                    .select(bean.getEntityClass())
+                    .where(entity)
+                    .first();
+            if (first != null) {
+                return first;
+            }
+            Record<T, K> theRecord = bean.newRecord();
+            theRecord.getEntity(entity);
+            return theRecord;
+        }
+
+        /**
+         * 在当前软删除范围内「查询或创建」，对齐 Laravel {@code firstOrCreate}。
+         * <p>
+         * 命中则直接返回；未命中则以 {@code entity} 新建并持久化后返回。
+         *
+         * @param entity 匹配条件 / 新建用实体
+         * @return 已存在或新建（已持久化）的记录
+         */
+        public Record<T, K> findOrCreate(T entity) {
+            Record<T, K> theRecord = findOrNew(entity);
+            if (!theRecord.isHasBind()) {
+                theRecord.save();
+            }
+            return theRecord;
+        }
+
+        /**
+         * 在当前软删除范围内「查询或创建」（条件与补充分离），对齐 Laravel
+         * {@code firstOrCreate($condition, $complement)}。
+         *
+         * @param conditionEntity  匹配条件实体
+         * @param complementEntity 未命中时用于补全的实体
+         * @return 已存在或新建（已持久化）的记录
+         */
+        public Record<T, K> findOrCreate(T conditionEntity, T complementEntity) {
+            BaseModel<T, K> bean = (BaseModel<T, K>) SpringContext.bean(BaseModel.this.getClass());
+            Record<T, K> first = newScopedQuery(scope)
+                    .select(bean.getEntityClass())
+                    .where(conditionEntity)
+                    .first();
+            if (first != null) {
+                return first;
+            }
+            Record<T, K> theRecord = bean.newRecord();
+            theRecord.getEntity(conditionEntity);
+            theRecord.fillEntity(complementEntity);
+            theRecord.save();
+            return theRecord;
+        }
+
+        /**
+         * 在当前软删除范围内按条件实体查询首条记录，命中返回记录，未命中返回 {@code null}。
+         *
+         * @param conditionEntity 匹配条件实体
+         * @return 首条匹配记录或 {@code null}
+         */
+        public Record<T, K> first(T conditionEntity) {
+            BaseModel<T, K> bean = (BaseModel<T, K>) SpringContext.bean(BaseModel.this.getClass());
+            return newScopedQuery(scope)
+                    .select(bean.getEntityClass())
+                    .where(conditionEntity)
+                    .first();
+        }
+
+        /**
+         * 返回当前软删除范围对应的 Builder，便于在其上继续拼接自定义查询条件后再执行。
+         * <p>
+         * 例如：{@code self().withTrash().query().where("status", 1).get()}。
+         *
+         * @return 已附加对应软删除作用域的查询构造器
+         */
+        public Builder<QueryBuilder<T, K>, T, K> query() {
+            return newScopedQuery(scope);
+        }
+    }
 }
