@@ -3,7 +3,7 @@ package com.weacsoft.jaravel.vendor.auth;
 import com.weacsoft.jaravel.vendor.auth.contract.AuthGuard;
 import com.weacsoft.jaravel.vendor.auth.contract.AuthGuardDriver;
 import com.weacsoft.jaravel.vendor.auth.contract.Authenticatable;
-import com.weacsoft.jaravel.vendor.auth.contract.SessionStore;
+import com.weacsoft.jaravel.vendor.http.session.SessionStore;
 import com.weacsoft.jaravel.vendor.auth.contract.UserProvider;
 import com.weacsoft.jaravel.vendor.auth.guard.SessionGuard;
 import org.junit.jupiter.api.AfterEach;

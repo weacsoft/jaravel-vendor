@@ -54,7 +54,7 @@
 
 ### 2.1 工作原理
 
-`session-redis` 模块提供 `RedisSessionGuard`，对齐 Laravel 的 `SessionGuard`，但将 Session 后端从本地存储替换为共享 Redis，从而实现多机 Session 同步。
+`session-redis` 模块提供 `RedisSessionStore`（实现 http 模块的 `SessionStore` 接口），将 Session 后端从本地 Servlet HttpSession 替换为共享 Redis，从而实现多机 Session 同步。
 
 #### Session ID 的流转
 
@@ -150,7 +150,7 @@ Auth.guard("web").logout();             // 登出，销毁 Redis Session
 
 ### 2.4 与基础 SessionGuard 的对比
 
-| 对比维度 | 基础 SessionGuard（auth 模块） | RedisSessionGuard（session-redis 模块） |
+| 对比维度 | 基础 SessionGuard（auth 模块，使用 http 的 CookieSessionStore） | RedisSessionStore（session-redis 模块，使用共享 Redis） |
 | --- | --- | --- |
 | Session 后端 | HttpSession（容器本地内存） | Redis（共享存储） |
 | 多机同步 | 不支持，仅单节点有效 | 支持，所有节点共享同一 Redis |

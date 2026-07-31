@@ -1,8 +1,7 @@
-package com.weacsoft.jaravel.vendor.auth.session;
+package com.weacsoft.jaravel.vendor.http.session;
 
-import com.weacsoft.jaravel.vendor.auth.AuthContext;
-import com.weacsoft.jaravel.vendor.auth.contract.SessionStore;
 import com.weacsoft.jaravel.vendor.http.controller.request.Request;
+import com.weacsoft.jaravel.vendor.http.controller.request.RequestFactory;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 
@@ -14,17 +13,17 @@ import jakarta.servlet.http.HttpSession;
  * <p>
  * 对齐 Laravel 的 {@code cookie} session driver。
  * <p>
- * 本类由 auth 模块的 {@code AuthAutoConfiguration} 注册为 Bean。
+ * 本类由 http 模块的 {@code HttpSessionAutoConfiguration} 注册为默认 Session 存储（通过 holder 回退）。
  *
  * <h3>线程安全</h3>
- * 本类为无状态单例，通过 {@link AuthContext} 获取当前请求的 {@link HttpServletRequest}，
+ * 本类为无状态单例，通过 {@link RequestFactory#getCurrentRequest()} 获取当前请求的 {@link HttpServletRequest}，
  * 每个请求线程持有独立的 Servlet Session，天然隔离。
  */
 public class CookieSessionStore implements SessionStore {
 
     /** 获取当前请求的 HttpSession（不自动创建） */
     private HttpSession session(boolean create) {
-        Request req = AuthContext.get();
+        Request req = RequestFactory.getCurrentRequest();
         if (req == null) return null;
         HttpServletRequest servlet = req.getRequest();
         if (servlet == null) return null;

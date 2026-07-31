@@ -2,7 +2,7 @@ package com.weacsoft.jaravel.vendor.auth.guard;
 
 import com.weacsoft.jaravel.vendor.auth.contract.AuthGuard;
 import com.weacsoft.jaravel.vendor.auth.contract.Authenticatable;
-import com.weacsoft.jaravel.vendor.auth.contract.SessionStore;
+import com.weacsoft.jaravel.vendor.http.session.SessionStore;
 import com.weacsoft.jaravel.vendor.auth.contract.UserProvider;
 
 /**
@@ -13,7 +13,7 @@ import com.weacsoft.jaravel.vendor.auth.contract.UserProvider;
  * <p>
  * <b>线程安全</b>：本守卫实例由 {@link com.weacsoft.jaravel.vendor.auth.AuthManager} 通过 ThreadLocal
  * 按请求隔离，{@code cachedUser}、{@code resolved} 为请求级状态，不跨请求共享。
- * {@link SessionStore} 为无状态单例，通过 {@link com.weacsoft.jaravel.vendor.auth.AuthContext} 获取当前请求上下文。
+ * {@link SessionStore} 为无状态单例，通过 {@link com.weacsoft.jaravel.vendor.http.controller.request.RequestFactory} 获取当前请求上下文。
  */
 public class SessionGuard implements AuthGuard {
 

@@ -37,7 +37,7 @@ Spring 的 bean name 全局唯一。若用 `@Bean("admin")` 注册名为 `admin`
 |------|---------|---------|-------|------|
 | `@RegisterGuard` | auth | `GuardDefinition` | ✅ 命名多实例 | 守卫，`defaultGuard = true` 设为默认 |
 | `@RegisterProvider` | auth | `UserProvider` | ✅ 命名多实例 | 用户提供者 |
-| `@RegisterSessionStore` | auth | `SessionStore` | ❌ **全局唯一** | Session 存储 |
+| `@RegisterSessionStore` | http | `SessionStore` | ❌ **全局唯一** | Session 存储（归属 http 模块） |
 | `@RegisterCacheStore` | cache | `CacheStore` | ✅ 命名多实例 | 缓存 store，`defaultStore = true` 设为默认 |
 | `@RegisterDisk` | storage | `DiskDefinition` / `Filesystem` | ✅ 命名多实例 | 文件磁盘，`defaultDisk = true` 设为默认 |
 | `@RegisterQueueDriver` | queue-database | `QueueDriver` | ❌ **全局唯一** | 队列驱动 |
@@ -136,7 +136,7 @@ public SessionStore mySessionStore() { ... }
 artisan 在各模块的 pom 中均为 `optional`。模块注册命令的方式是
 `@ConditionalOnClass(ArtisanCommand.class)`：
 
-- **引入了 artisan** → 注册该模块的命令（如 `queue:work`、`migrate`）
+- **引入了 artisan** → 注册该模块的命令（如 `queue:table`、`migrate`）
 - **没引入 artisan** → 相关 `@Bean` 不装配，模块其余功能照常工作
 
 因此**完全可以不使用 artisan**，只是失去命令行能力。

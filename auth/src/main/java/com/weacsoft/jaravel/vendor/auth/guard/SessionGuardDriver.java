@@ -2,7 +2,7 @@ package com.weacsoft.jaravel.vendor.auth.guard;
 
 import com.weacsoft.jaravel.vendor.auth.contract.AuthGuard;
 import com.weacsoft.jaravel.vendor.auth.contract.AuthGuardDriver;
-import com.weacsoft.jaravel.vendor.auth.contract.SessionStore;
+import com.weacsoft.jaravel.vendor.http.session.SessionStore;
 import com.weacsoft.jaravel.vendor.auth.contract.UserProvider;
 import java.util.Map;
 
@@ -12,10 +12,11 @@ import java.util.Map;
  * 采用工厂模式：通过 {@link #support(String)} 声明支持的驱动名称，
  * 通过 {@link #create} 创建 {@link SessionGuard} 实例。
  * <p>
- * <b>Session 存储是全局配置，不与 Guard 绑定</b>。本驱动直接注入唯一的 {@link SessionStore} Bean，
- * 该 Bean 由应用的 {@code config/SessionConfig.java} 决定具体实现。
- * 如果应用未注册任何 {@code SessionStore} Bean，auth 模块默认提供
- * {@link com.weacsoft.jaravel.vendor.auth.session.CookieSessionStore}（Servlet HttpSession）。
+ * <b>Session 存储是全局配置，不与 Guard 绑定</b>。本驱动直接注入 http 模块提供的
+ * {@link com.weacsoft.jaravel.vendor.http.session.SessionStoreHolder}，最终实现由
+ * 应用的 {@code config/SessionConfig.java} 决定（通过 {@code @RegisterSessionStore} 或 Spring Bean）。
+ * 如果应用未注册任何 {@code SessionStore}，http 模块默认提供
+ * {@link com.weacsoft.jaravel.vendor.http.session.CookieSessionStore}（Servlet HttpSession）。
  * <p>
  * 本驱动由 auth 模块的 {@code AuthAutoConfiguration} 注册为 Bean，
  * 再自动收集并注册到 {@link com.weacsoft.jaravel.vendor.auth.AuthManager}。

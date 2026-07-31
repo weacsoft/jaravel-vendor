@@ -1,9 +1,5 @@
-package com.weacsoft.jaravel.vendor.auth.autoconfigure;
+package com.weacsoft.jaravel.vendor.http.session;
 
-import com.weacsoft.jaravel.vendor.auth.RegisterSessionStore;
-import com.weacsoft.jaravel.vendor.auth.contract.SessionStore;
-import com.weacsoft.jaravel.vendor.auth.session.CookieSessionStore;
-import com.weacsoft.jaravel.vendor.auth.session.SessionStoreHolder;
 import com.weacsoft.jaravel.vendor.core.registrar.SingletonRegistrar;
 import org.springframework.context.ApplicationContext;
 
@@ -44,7 +40,7 @@ public class SessionStoreRegistrar extends SingletonRegistrar<RegisterSessionSto
     @Override
     protected void apply(SessionStore instance) {
         holder.set(instance);
-        log.info("[auth] Session 存储: {}（@RegisterSessionStore）",
+        log.info("[http] Session 存储: {}（@RegisterSessionStore）",
                 instance.getClass().getSimpleName());
     }
 
@@ -57,11 +53,11 @@ public class SessionStoreRegistrar extends SingletonRegistrar<RegisterSessionSto
         SessionStore fromBean = resolveFromBeans();
         if (fromBean != null) {
             holder.set(fromBean);
-            log.info("[auth] Session 存储: {}（Spring Bean）", fromBean.getClass().getSimpleName());
+            log.info("[http] Session 存储: {}（Spring Bean）", fromBean.getClass().getSimpleName());
             return;
         }
         holder.set(new CookieSessionStore());
-        log.info("[auth] Session 存储: CookieSessionStore（默认回退）");
+        log.info("[http] Session 存储: CookieSessionStore（默认回退）");
     }
 
     /**

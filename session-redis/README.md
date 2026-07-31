@@ -2,13 +2,14 @@
 
 Redis Session 存储模块，提供 `RedisSessionStore`（实现 `SessionStore` 接口），对齐 Laravel 的 `RedisSessionHandler`。基于 `redis-config` 模块将 Session 数据存储在共享 Redis 中，实现多机 Session 同步——用户在任一节点登录后，其他节点可通过同一 Session ID 读取登录态。
 
-本模块**不再是 Guard**，而是 `SessionStore` 实现。auth 模块的 `SessionGuard`（由 `SessionGuardDriver` 创建）通过 `SessionStore` 接口抽象存储后端。**Session 存储是全局配置，不与 Guard 绑定**：`RedisSessionStore` 通过自动装配注册为全局唯一的 `SessionStore` Bean（由 `@ConditionalOnMissingBean(SessionStore.class)` 保证唯一性），`SessionGuardDriver` 直接注入该 Bean 用于创建所有 `session` 驱动的守卫。
+本模块**不再是 Guard**，而是 `SessionStore` 实现。auth 模块的 `SessionGuard`（由 `SessionGuardDriver` 创建）通过 `SessionStore` 接口抽象存储后端。**Session 存储是全局配置，不与 Guard 绑定**：`RedisSessionStore` 通过 `@RegisterSessionStore(override = true)` 注册为全局唯一的 `SessionStore`（由 http 模块的 `SessionStoreRegistrar` 统一扫描保证唯一性），`SessionGuardDriver` 注入 http 提供的 `SessionStoreHolder` 用于创建所有 `session` 驱动的守卫。
+
+> 本模块**不强依赖 auth**：只依赖 http 模块提供的 Session 功能（`SessionStore` 接口与 `@RegisterSessionStore` 注册机制）。当项目仅引入 core + auth（无 http 的 Session 功能）时，auth 退化为使用原生 Servlet HttpSession。
 
 ## 依赖
 
 - `core` — 基础设施
-- `http` — 提供 `Request`（读取 Cookie、添加 Cookie）
-- `auth` — 提供 `SessionStore` 接口、`AuthManager`、`AuthContext`、`SessionGuard`、`SessionGuardDriver`
+- `http` — 提供 `SessionStore` 接口、`Request`（读取 Cookie、添加 Cookie）、`@RegisterSessionStore` 注册机制与默认 `CookieSessionStore`
 - `redis-config` — 提供 `RedisManager` 命名连接管理
 - `spring-boot-autoconfigure` — 自动装配
 - `jakarta.servlet-api` — Cookie（provided）
@@ -21,7 +22,7 @@ Redis Session 存储模块，提供 `RedisSessionStore`（实现 `SessionStore` 
 
 Redis Session 存储，实现 `SessionStore` 接口，对齐 Laravel `RedisSessionHandler`。将 Session 数据以 Hash 结构存储在 Redis 中，键格式为 `<prefix>:<sessionId>`，TTL 为 Session 生命周期。每次读写都会刷新 TTL，实现滑动过期。
 
-本类注册为全局 `SessionStore` Bean 后，由 `SessionGuardDriver` 直接注入用于创建所有 `session` 驱动的守卫。本类为**无状态单例**，通过 `AuthContext` 获取当前请求上下文（读取 Cookie 中的 Session ID），无需在方法参数中传递 sessionId。
+本类注册为全局 `SessionStore` 后，由 http 的 `SessionStoreHolder` 注入到 `SessionGuardDriver` 用于创建所有 `session` 驱动的守卫。本类为**无状态单例**，通过 `RequestFactory` 获取当前请求上下文（读取 Cookie 中的 Session ID），无需在方法参数中传递 sessionId。
 
 ```java
 public class RedisSessionStore implements SessionStore {
@@ -53,7 +54,7 @@ HSET <prefix>:<sessionId> login_web_id "12345" login_wechat_id "67890"
 EXPIRE <prefix>:<sessionId> 1800
 ```
 
-线程安全：本类为无状态单例，通过 `AuthContext` 获取当前请求上下文。Redis 命令本身是原子的，多线程并发读写同一 Session 时通过 Redis 保证一致性。
+线程安全：本类为无状态单例，通过 `RequestFactory` 获取当前请求上下文。Redis 命令本身是原子的，多线程并发读写同一 Session 时通过 Redis 保证一致性。
 
 ### SessionRedisProperties
 
@@ -107,17 +108,17 @@ jaravel:
 
 **方式一：自动注册（默认）**
 
-引入本模块依赖后，`SessionRedisAutoConfiguration` 会在 `RedisManager` 与 `AuthManager` 均存在且 `jaravel.session.redis.auto-register=true`（默认）时，自动将 `RedisSessionStore` 注册为全局 `SessionStore` Bean。业务方无需额外配置。
+引入本模块依赖后，`SessionRedisAutoConfiguration` 会在 `RedisManager` 存在且 `jaravel.session.redis.auto-register=true`（默认）时，通过 `@RegisterSessionStore(override = true)` 自动将 `RedisSessionStore` 注册为全局 `SessionStore`（覆盖 http 默认的 `CookieSessionStore`）。业务方无需额外配置。
 
 **方式二：手动注册**
 
-如需关闭自动注册（`auto-register: false`）或自定义参数，在应用的 `config/SessionConfig.java` 中手动注册 `SessionStore` Bean 即可：
+如需关闭自动注册（`auto-register: false`）或自定义参数，在应用的 `config/SessionConfig.java` 中通过 `@RegisterSessionStore(override = true)` 注册即可：
 
 ```java
 @Configuration
 public class SessionConfig {
-    @Bean
-    public SessionStore sessionStore(RedisManager redisManager, SessionRedisProperties props) {
+    @RegisterSessionStore(override = true)
+    public SessionStore redisSessionStore(RedisManager redisManager, SessionRedisProperties props) {
         return new RedisSessionStore(redisManager, props.getConnection(), props.getPrefix(),
                 props.getLifetime(), props.getCookie());
     }
@@ -148,7 +149,7 @@ Auth.guard("web").logout();             // 登出，销毁 Redis Session
 
 ## 自动装配
 
-`SessionRedisAutoConfiguration` 通过 `@AutoConfiguration` 注册，在 `RedisAutoConfiguration` 与 `AuthAutoConfiguration` 之后装配。当 `RedisManager` 与 `AuthManager` 均存在，且 `jaravel.session.redis.auto-register` 为 true（默认）时生效。
+`SessionRedisAutoConfiguration` 通过 `@AutoConfiguration` 注册，在 `RedisAutoConfiguration` 与 http 的 `HttpSessionAutoConfiguration` 之后装配。当 `RedisManager` 存在（`@ConditionalOnClass(RedisManager.class)`）、为 Servlet Web 应用、且 `jaravel.session.redis.auto-register` 为 true（默认）时生效，**与 AuthManager 是否存在无关**。
 
 创建的 bean：
-- `RedisSessionStore` — Redis Session 存储，实现 `SessionStore` 接口，注册为全局唯一的 `SessionStore` 类型 Bean（通过 `@ConditionalOnMissingBean(SessionStore.class)` 确保全局只有一个 `SessionStore` 生效，便于业务方覆盖）。注册后，auth 模块的 `SessionGuardDriver` 直接注入该 Bean，所有 `session` 驱动的守卫都将使用 `RedisSessionStore` 作为存储后端。
+- `RedisSessionStore` — Redis Session 存储，实现 `SessionStore` 接口，通过 `@RegisterSessionStore(override = true)` 注册为全局唯一的 `SessionStore`（由 http 的 `SessionStoreRegistrar` 统一扫描保证唯一性，便于业务方覆盖）。注册后，http 的 `SessionStoreHolder` 持有该实例，auth 模块的 `SessionGuardDriver` 注入该 Holder，所有 `session` 驱动的守卫都将使用 `RedisSessionStore` 作为存储后端。

@@ -56,6 +56,7 @@
 | 路由 | `Router` / `Route` / `RouteService` | 路由注册与分组 |
 | 控制器路由 | `ControllerRegistry` / `ControllerActionResolver` + `Router` 控制器引用重载 | 对齐 Laravel `Route::get('/users', 'UserController@index')`，支持字符串与类对象引用 |
 | `public` 目录 / `asset()` | `StaticResourceHandler` / `StaticResourceRoute` / `Router.serveStatic()` | 静态资源目录服务，对齐 Laravel `public` 与 `asset()` |
+| Session 存储 | `SessionStore` / `CookieSessionStore` / `SessionStoreHolder` / `SessionStoreRegistrar` / `RegisterSessionStore` | 全局 Session 存储抽象（默认 CookieSessionStore = Servlet HttpSession），由 auth 等模块的守卫复用 |
 
 **重要设计原则**：内置中间件**不是** Spring Bean（不再标注 `@Component`），而是普通类。配置通过**继承式**模式完成——子类覆盖 `protected` 方法（如 `except()`、`encryptionKey()`、`trustedProxies()`）自定义行为，而非通过构造器传参。使用者继承预定义中间件后标注 `@MiddlewareAlias` 注解，由 `springboot` 模块通过反射实例化（要求有无参构造器）并注册到全局 `MiddlewareAliasRegistry`，从而以别名、类对象或类名三种方式在路由中引用。预定义中间件本身不标注 `@MiddlewareAlias`，由使用者继承后自行标注。
 
@@ -120,6 +121,12 @@ com.weacsoft.jaravel.vendor
     ├── Controllers                    // 控制器契约（含 Runner 函数式接口）
     ├── ControllerRegistry             // 控制器注册表（全局静态，Class/名称双映射）
     └── ControllerActionResolver       // 控制器动作解析器（字符串/类对象 → Runner，带缓存）
+└── session
+    ├── SessionStore                   // 全局 Session 存储契约（抽象登录态持久化后端）
+    ├── CookieSessionStore             // 默认实现：Servlet HttpSession（Cookie 方式）
+    ├── SessionStoreHolder             // 全局持有者，delegate 模式，默认回退 CookieSessionStore
+    ├── SessionStoreRegistrar          // 扫描 @RegisterSessionStore，注册全局唯一 SessionStore
+    └── RegisterSessionStore           // 声明式注册 Session 存储的注解
 ```
 
 ---
@@ -1434,3 +1441,88 @@ jaravel:
 ```
 
 `@asset('相对路径')` 会拼接配置的 `urlPrefix`（默认 `/static`），渲染为完整 URL。资源目录与 URL 前缀保持一致即可正确服务模板引用的资源。
+
+---
+
+## 12. Session 功能（SessionStore / CookieSessionStore / RegisterSessionStore）
+
+> **位置说明**：Session 功能（存储契约、默认实现、注册机制）**归属 http 模块**，而非 auth。这样 auth 模块仅弱引用 Session——当项目仅引入 `core + auth`（未引入 http 的 Session 功能）时，auth 退化为使用原生 Servlet `HttpSession`；引入 http 后，由 `HttpSessionAutoConfiguration` 提供默认的 `CookieSessionStore`（基于 Servlet HttpSession）。多机 Session 同步等高级场景由独立的 `session-redis` 模块提供 Redis 实现，仅依赖本模块的 `SessionStore` 接口与 `@RegisterSessionStore` 机制。
+
+### 12.1 SessionStore 契约
+
+`com.weacsoft.jaravel.vendor.http.session.SessionStore`
+
+抽象登录态的持久化方式。认证驱动（如 auth 的 `SessionGuardDriver`）中 `session` 驱动的守卫通过该接口读写登录态。
+
+```java
+public interface SessionStore {
+    Object get(String key);
+    void put(String key, Object value);
+    void remove(String key);
+    void destroy();
+}
+```
+
+**设计要点**：
+- **全局唯一，不与 Guard 绑定**：一个应用只会有一种登录态持久化方式。具体实现由应用的 `config/SessionConfig.java` 决定（通过 `@RegisterSessionStore` 注册或声明为 Spring Bean）。
+- **无状态单例**：实现类通过 `RequestFactory.getCurrentRequest()` 获取当前请求的 `HttpServletRequest`，每个请求线程持有独立的 Servlet Session，天然隔离，无需在方法参数中传递 sessionId 或 Request。
+- **内置实现**：`CookieSessionStore`（默认，Servlet HttpSession）、`RedisSessionStore`（session-redis 模块）。
+
+### 12.2 CookieSessionStore（默认）
+
+`com.weacsoft.jaravel.vendor.http.session.CookieSessionStore`
+
+使用 Servlet 容器的 HttpSession（Cookie 方式，默认 Cookie 名 `JSESSIONID`），对齐 Laravel 的 `cookie` session driver。由 `HttpSessionAutoConfiguration` 注册为默认实现（通过 holder 惰性回退）。
+
+| 方法 | 说明 |
+| --- | --- |
+| `Object get(String key)` | 读属性，无 Session 时返回 null |
+| `void put(String key, Object value)` | 写属性，Session 未启动则自动创建 |
+| `void remove(String key)` | 移除属性 |
+| `void destroy()` | 销毁当前 Session（`session.invalidate()`） |
+
+### 12.3 SessionStoreHolder（持有者）
+
+`com.weacsoft.jaravel.vendor.http.session.SessionStoreHolder`
+
+解决「注册时机」与「使用时机」的先后问题：认证驱动在 Bean 创建阶段就需要 `SessionStore`，而 `@RegisterSessionStore` 注解要等所有单例初始化完成后才扫描得到。驱动注入的是 holder 而非具体实现，调用时通过 `get()` 取出真实实例。`get()` 未设置实现时惰性回退到 `CookieSessionStore`。
+
+### 12.4 注册机制（RegisterSessionStore + SessionStoreRegistrar）
+
+`com.weacsoft.jaravel.vendor.http.session.RegisterSessionStore`（注解）+ `SessionStoreRegistrar`（扫描器）
+
+**为什么只允许注册一个？** 与 cache store / storage disk 这类「命名多实例」组件不同，Session 存储是全局唯一的。因此本注解不带名称参数，且框架强制唯一性——若扫描到多个 `@RegisterSessionStore`（且无 override）则启动报错。解析优先级（从高到低）：
+
+1. `@RegisterSessionStore(override = true)` 注解方法
+2. `@RegisterSessionStore` 注解方法
+3. 容器中已有的 `SessionStore` Bean（兼容旧的 `@Bean` 写法）
+4. 回退到 `CookieSessionStore`（Servlet HttpSession）
+
+注解属性：
+
+| 属性 | 默认值 | 说明 |
+| --- | --- | --- |
+| `boolean override()` | `false` | 是否覆盖已有注册。默认 `false` 时多注册项报错；`true` 时本项优先生效（多个 `true` 仍报错） |
+
+```java
+@Configuration
+public class SessionConfig {
+
+    @RegisterSessionStore
+    public SessionStore redisSessionStore(RedisManager redisManager, SessionRedisProperties props) {
+        return new RedisSessionStore(redisManager, props.getConnection(), props.getPrefix(),
+                props.getLifetime(), props.getCookie());
+    }
+}
+```
+
+### 12.5 HttpSessionAutoConfiguration（自动装配）
+
+`com.weacsoft.jaravel.vendor.http.autoconfigure.HttpSessionAutoConfiguration`
+
+仅在 Servlet Web 应用下生效（`@ConditionalOnWebApplication(SERVLET)`），注册：
+- `SessionStoreHolder` — 全局持有者（默认回退 CookieSessionStore）
+- `SessionStoreRegistrar` — 扫描 `@RegisterSessionStore` 注解
+
+auth 模块的 `SessionGuardDriver` 直接注入本配置提供的 `SessionStoreHolder`，不强引用具体 Session 实现。
+

@@ -2,19 +2,16 @@ package com.weacsoft.jaravel.vendor.auth.autoconfigure;
 
 import com.weacsoft.jaravel.vendor.auth.AuthManager;
 import com.weacsoft.jaravel.vendor.auth.contract.AuthGuardDriver;
-import com.weacsoft.jaravel.vendor.auth.contract.SessionStore;
 import com.weacsoft.jaravel.vendor.auth.contract.UserProviderDriver;
 import com.weacsoft.jaravel.vendor.auth.filter.AuthLifecycleFilter;
 import com.weacsoft.jaravel.vendor.auth.guard.SessionGuardDriver;
-import com.weacsoft.jaravel.vendor.auth.session.CookieSessionStore;
-import com.weacsoft.jaravel.vendor.auth.session.SessionStoreHolder;
+import com.weacsoft.jaravel.vendor.http.session.SessionStoreHolder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 
 import java.util.List;
@@ -53,9 +50,12 @@ import java.util.List;
  *   <li>注册守卫驱动（{@link AuthGuardDriver}）</li>
  * </ol>
  *
- * <h3>Session 存储是全局配置</h3>
- * {@link SessionStore} 作为全局唯一的 Bean 注入到 {@link SessionGuardDriver}。
- * 如果应用未注册任何 {@code SessionStore} Bean，本配置类默认提供 {@link CookieSessionStore}。
+ * <h3>Session 存储由 http 模块提供，auth 不强引用</h3>
+ * Session 功能（{@code SessionStore} 接口、{@code CookieSessionStore} 默认实现、
+ * {@code @RegisterSessionStore} 扫描）已迁移到 http 模块，由
+ * {@code HttpSessionAutoConfiguration} 注册全局 {@code SessionStoreHolder} 并回退到 HttpSession。
+ * 本配置类仅消费 {@code SessionStoreHolder}（通过 {@link com.weacsoft.jaravel.vendor.http.session.SessionStoreHolder}）；
+ * 若项目未引入 http 的 Session 功能，则兜底构造一个 holder，退化为原生 Servlet HttpSession。
  */
 @AutoConfiguration
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
@@ -65,6 +65,12 @@ public class AuthAutoConfiguration {
 
     @Autowired
     private AuthProperties properties;
+
+    /**
+     * http 模块提供的全局 Session 存储持有者（弱引用，缺失时兜底）。
+     */
+    @Autowired(required = false)
+    private SessionStoreHolder sessionStoreHolder;
 
     @Bean
     @ConditionalOnMissingBean
@@ -81,41 +87,18 @@ public class AuthAutoConfiguration {
     }
 
     /**
-     * 全局 Session 存储持有者。
-     * <p>
-     * 作为 {@link SessionStore} 的间接层注入到 {@link SessionGuardDriver}，
-     * 使得 {@code @RegisterSessionStore} 注解可以在所有 Bean 初始化完成后
-     * 再决定真正的实现，而不影响驱动的构造时机。
-     */
-    @Bean
-    @ConditionalOnMissingBean
-    public SessionStoreHolder sessionStoreHolder() {
-        return new SessionStoreHolder();
-    }
-
-    /**
-     * 注册 {@link SessionStoreRegistrar}，扫描 {@code @RegisterSessionStore}
-     * 注解方法并解析出全局唯一的 Session 存储（含唯一性校验与默认回退）。
-     */
-    @Bean
-    @ConditionalOnMissingBean
-    public SessionStoreRegistrar sessionStoreRegistrar(ApplicationContext context,
-                                                      SessionStoreHolder holder) {
-        return new SessionStoreRegistrar(context, holder);
-    }
-
-    /**
      * Session 守卫驱动（工厂模式）。
      * <p>
      * 实现 {@link AuthGuardDriver}，支持 "session" 驱动。
-     * 注入 {@link SessionStoreHolder}，实际存储实现由
-     * {@code @RegisterSessionStore} 注解或 {@link SessionStore} Bean 决定，
-     * 都没有时回退到 {@link CookieSessionStore}。
+     * 注入 http 模块提供的 {@link SessionStoreHolder}，实际存储实现由
+     * {@code @RegisterSessionStore} 注解或 {@link com.weacsoft.jaravel.vendor.http.session.SessionStore} Bean 决定，
+     * 都没有时回退到 {@code CookieSessionStore}（基于 Servlet HttpSession）。
      */
     @Bean
     @ConditionalOnMissingBean
-    public SessionGuardDriver sessionGuardDriver(SessionStoreHolder sessionStoreHolder) {
-        return new SessionGuardDriver(sessionStoreHolder);
+    public SessionGuardDriver sessionGuardDriver() {
+        SessionStoreHolder holder = (sessionStoreHolder != null) ? sessionStoreHolder : new SessionStoreHolder();
+        return new SessionGuardDriver(holder);
     }
 
     /**

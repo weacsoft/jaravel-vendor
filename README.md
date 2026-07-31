@@ -44,7 +44,7 @@ Java 版 Laravel 框架核心库，在 Spring Boot 3.2.5 基础上近乎 100% �
 | event | `event` | Dispatcher/Listener/QueueManager（多队列+重试） | [README](event/README.md) |
 | redis-config | `redis-config` | RedisManager/RedisProperties（多命名连接，standalone/sentinel/cluster，分布式锁） | [README](redis-config/README.md) |
 | redis-cache | `redis-cache` | RedisCacheDriver（CacheDriver实现，多机缓存同步） | [README](redis-cache/README.md) |
-| session-redis | `session-redis` | RedisSessionGuard/RedisSessionStore（多机Session同步） | [README](session-redis/README.md) |
+| session-redis | `session-redis` | RedisSessionStore（多机Session同步，基于 http 的 SessionStore） | [README](session-redis/README.md) |
 | artisan | `artisan` | ArtisanApplication/ArtisanCommand/ArtisanRunner（CLI命令框架，签名解析） | [README](artisan/README.md) |
 | schedule | `schedule` | Schedule/ScheduleRunner/ScheduledTask（Cron调度，Redis分布式锁） | [README](schedule/README.md) |
 | queue-database | `queue-database` | DatabaseQueueDriver/DatabaseQueueWorker（持久化队列，多实例消费，重试） | [README](queue-database/README.md) |

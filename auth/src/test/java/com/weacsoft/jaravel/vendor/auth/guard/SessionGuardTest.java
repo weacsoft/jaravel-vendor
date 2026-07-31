@@ -1,11 +1,11 @@
 package com.weacsoft.jaravel.vendor.auth.guard;
 
-import com.weacsoft.jaravel.vendor.auth.AuthContext;
 import com.weacsoft.jaravel.vendor.auth.contract.Authenticatable;
-import com.weacsoft.jaravel.vendor.auth.contract.SessionStore;
 import com.weacsoft.jaravel.vendor.auth.contract.UserProvider;
-import com.weacsoft.jaravel.vendor.auth.session.CookieSessionStore;
 import com.weacsoft.jaravel.vendor.http.controller.request.Request;
+import com.weacsoft.jaravel.vendor.http.controller.request.RequestFactory;
+import com.weacsoft.jaravel.vendor.http.session.CookieSessionStore;
+import com.weacsoft.jaravel.vendor.http.session.SessionStore;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import org.junit.jupiter.api.AfterEach;
@@ -33,7 +33,7 @@ class SessionGuardTest {
 
     @AfterEach
     void clearContext() {
-        AuthContext.clear();
+        RequestFactory.clearCurrentRequest();
     }
 
     static class TestUser implements Authenticatable {
@@ -125,7 +125,7 @@ class SessionGuardTest {
 
         Request req = new Request();
         req.setRequest(servletMock);
-        AuthContext.set(req);
+        RequestFactory.setCurrentRequest(req);
 
         SessionGuard guard = new SessionGuard("web", new StubProvider(), new CookieSessionStore());
 
@@ -152,7 +152,7 @@ class SessionGuardTest {
 
         Request req = new Request();
         req.setRequest(servletMock);
-        AuthContext.set(req);
+        RequestFactory.setCurrentRequest(req);
 
         SessionGuard guard = new SessionGuard("web", new StubProvider(), new CookieSessionStore());
 
@@ -176,7 +176,7 @@ class SessionGuardTest {
 
         Request req = new Request();
         req.setRequest(servletMock);
-        AuthContext.set(req);
+        RequestFactory.setCurrentRequest(req);
 
         SessionGuard guard = new SessionGuard("web", new StubProvider(), new CookieSessionStore());
         guard.login(new TestUser(5001L));
@@ -198,7 +198,7 @@ class SessionGuardTest {
 
         Request req = new Request();
         req.setRequest(servletMock);
-        AuthContext.set(req);
+        RequestFactory.setCurrentRequest(req);
 
         SessionGuard guard = new SessionGuard("web", new StubProvider(), new CookieSessionStore());
         assertNull(guard.user(), "无 session 时 user 应返回 null");

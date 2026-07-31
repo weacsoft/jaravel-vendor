@@ -46,7 +46,7 @@ Auth 模块是 Jaravel 框架的认证核心，对齐 Laravel 的 `Illuminate\Au
 - **多守卫（Multi-Guard）**：支持在同一应用中配置多个认证守卫（如 `web` 使用 Session、`api` 使用 JWT），按名称解析。
 - **多提供者（Multi-Provider）**：支持注册多个 `UserProvider`，不同守卫可绑定不同提供者。
 - **工厂模式驱动**：通过 `AuthGuardDriver` 的 `support()` 方法匹配驱动（对齐 database-all 多数据库支持），第三方模块只需注册为 Spring Bean 即可自动收集。
-- **Session 存储分离**：Session 存储后端是**全局配置**（由 `config/SessionConfig.java` 决定），不绑定到具体守卫。`SessionGuardDriver` 直接注入全局 `SessionStore` Bean，默认使用 cookie（Servlet HttpSession）。
+- **Session 存储分离**：Session 存储后端是**全局配置**（由 `config/SessionConfig.java` 决定），不绑定到具体守卫。`SessionGuardDriver` 注入 http 模块提供的 `SessionStoreHolder`（默认实现 `CookieSessionStore`，基于 Servlet HttpSession，由 http 模块的 `HttpSessionAutoConfiguration` 注册）。**Session 功能归属 http 模块**，auth 仅弱引用，不强依赖具体 Session 实现。
 - **请求级隔离**：基于 `ThreadLocal` 实现每请求独立的认证上下文，杜绝线程池复用导致的串态问题。
 - **密码校验解耦**：`Authenticatable` 与 `UserProvider` 均不包含密码相关方法，密码校验完全由应用层负责。
 
@@ -111,14 +111,11 @@ com.weacsoft.jaravel.vendor.auth
 │   ├── AuthGuard            # 认证守卫契约
 │   ├── UserProvider         # 用户提供者契约（仅取出用户，无密码校验）
 │   ├── AuthGuardDriver      # 守卫驱动契约（工厂模式：support() 匹配 + create() 创建）
-│   └── SessionStore         # Session 存储契约（全局配置，由 config/SessionConfig.java 决定）
 ├── facade
 │   └── Auth                 # Auth 门面（静态 API）
 ├── guard
-│   ├── SessionGuard         # Session 守卫实现（使用 SessionStore 读写登录态）
+│   ├── SessionGuard         # Session 守卫实现（通过 http 的 SessionStoreHolder 读写登录态）
 │   └── SessionGuardDriver   # Session 守卫驱动（support("session") → 创建 SessionGuard）
-├── session
-│   └── CookieSessionStore   # Cookie Session 存储（Servlet HttpSession，默认实现）
 ├── middleware
 │   └── Authenticate         # 认证中间件（支持守卫名称参数）
 ├── filter
@@ -344,9 +341,11 @@ public interface AuthGuardDriver {
 
 ---
 
-### SessionStore
+### SessionStore（契约，已迁移到 http 模块）
 
-Session 存储契约。Session 存储后端是全局配置（由 `config/SessionConfig.java` 决定），`SessionGuardDriver` 直接注入全局 `SessionStore` Bean。
+> **注意**：`SessionStore` 接口、`CookieSessionStore` 默认实现、`SessionStoreHolder`、`SessionStoreRegistrar`、`RegisterSessionStore` 注解均已迁移到 **http 模块**（`com.weacsoft.jaravel.vendor.http.session`），详见 http/README.md 第 12 章。以下保留接口定义供参考。
+
+Session 存储契约。Session 存储后端是全局配置（由 `config/SessionConfig.java` 决定），`SessionGuardDriver` 注入 http 模块提供的 `SessionStoreHolder`（默认实现 `CookieSessionStore`）。
 
 ```java
 public interface SessionStore {
@@ -369,13 +368,13 @@ public interface SessionStore {
 
 | 方法 | 说明 |
 |---|---|
-| `get(String)` | 从当前 session 读取值（需通过 `AuthContext` 获取当前请求） |
+| `get(String)` | 从当前 session 读取值（实现类通过 `RequestFactory` 获取当前请求） |
 | `put(String, Object)` | 写入当前 session |
 | `remove(String)` | 移除 session 中的指定 key |
 | `destroy()` | 销毁当前 session |
 
-**内置实现**：
-- `CookieSessionStore`（auth 模块）：使用 Servlet HttpSession，默认实现
+**内置实现**（均在 http 模块）：
+- `CookieSessionStore`（http 模块）：使用 Servlet HttpSession，默认实现
 - `RedisSessionStore`（session-redis 模块）：使用 Redis Hash 存储
 
 ---
@@ -530,15 +529,15 @@ public final class AuthContext {
 
 ### SessionGuardDriver
 
-Session 守卫驱动，实现 `AuthGuardDriver` 接口。`support("session")` 匹配成功后，直接使用注入的全局 `SessionStore` Bean 创建 `SessionGuard`。Session 存储后端由 `config/SessionConfig.java` 全局决定，不再绑定到具体守卫。
+Session 守卫驱动，实现 `AuthGuardDriver` 接口。`support("session")` 匹配成功后，使用注入的 http 模块提供的 `SessionStoreHolder` 创建 `SessionGuard`。Session 存储后端由 `config/SessionConfig.java` 全局决定，不再绑定到具体守卫。`SessionStoreHolder` 默认回退到 `CookieSessionStore`（Servlet HttpSession），由 http 的 `HttpSessionAutoConfiguration` 注册；auth 仅弱引用，不强依赖具体 Session 实现。
 
 ```java
 public class SessionGuardDriver implements AuthGuardDriver {
 
-    private final SessionStore sessionStore;
+    private final SessionStoreHolder sessionStoreHolder;
 
-    public SessionGuardDriver(SessionStore sessionStore) {
-        this.sessionStore = sessionStore;
+    public SessionGuardDriver(SessionStoreHolder sessionStoreHolder) {
+        this.sessionStoreHolder = sessionStoreHolder;
     }
 
     @Override
@@ -613,11 +612,13 @@ public void login(Authenticatable user) {
 
 ---
 
-## Session 存储（session）
+## Session 存储（契约在 http 模块）
 
-### CookieSessionStore
+### CookieSessionStore（默认实现，已迁移到 http 模块）
 
-Cookie Session 存储，默认实现。使用 Servlet HttpSession 持久化登录态，浏览器通过 JSESSIONID cookie 自动携带。
+> 完整说明见 http/README.md 第 12.2 节。以下保留类签名供参考。
+
+Cookie Session 存储，默认实现。使用 Servlet HttpSession 持久化登录态，浏览器通过 JSESSIONID cookie 自动携带。由 http 模块的 `HttpSessionAutoConfiguration` 注册为默认实现（通过 `SessionStoreHolder` 惰性回退）。
 
 ```java
 public class CookieSessionStore implements SessionStore {
@@ -654,9 +655,9 @@ public class CookieSessionStore implements SessionStore {
 }
 ```
 
-由 `AuthAutoConfiguration` 自动注册为 Spring Bean（`@ConditionalOnMissingBean(SessionStore.class)`），业务方可通过覆盖此 Bean 使用自定义存储。
+由 http 模块的 `HttpSessionAutoConfiguration` 通过 `SessionStoreHolder` 回退注册（默认使用 CookieSessionStore），业务方可通过 `@RegisterSessionStore` 覆盖。
 
-**扩展 Redis 存储**：引入 `session-redis` 模块后，`RedisSessionStore` 自动注册为 Bean。在 `config/SessionConfig.java` 中将其声明为全局 `SessionStore` 即可让所有 session 守卫使用 Redis 存储。
+**扩展 Redis 存储**：引入 `session-redis` 模块后，`RedisSessionStore` 通过 `@RegisterSessionStore(override = true)` 注册为全局 `SessionStore`。所有 session 守卫将自动使用 Redis 存储。
 
 ---
 
@@ -832,7 +833,7 @@ public class AuthLifecycleFilter extends OncePerRequestFilter {
 
 ### AuthAutoConfiguration
 
-Spring Boot 自动装配类，注册 `AuthManager`、`AuthLifecycleFilter`、内置 `CookieSessionStore` 和 `SessionGuardDriver`，并自动收集所有 `AuthGuardDriver` Bean 注册到 `AuthManager`。
+Spring Boot 自动装配类，注册 `AuthManager`、`AuthLifecycleFilter` 和 `SessionGuardDriver`，并自动收集所有 `AuthGuardDriver` Bean 注册到 `AuthManager`。**Session 存储（CookieSessionStore / SessionStoreHolder / 扫描 @RegisterSessionStore）由 http 模块的 `HttpSessionAutoConfiguration` 负责**，auth 仅消费 http 提供的 `SessionStoreHolder`（通过 `@Autowired(required = false)` 弱引用，缺失时兜底构造，退化为原生 HttpSession），不强依赖具体 Session 实现。
 
 ```java
 @AutoConfiguration
@@ -849,15 +850,10 @@ public class AuthAutoConfiguration implements SmartInitializingSingleton {
     @ConditionalOnMissingBean
     public AuthLifecycleFilter authLifecycleFilter(AuthManager authManager) { ... }
 
-    /** 默认 Cookie Session 存储 */
-    @Bean
-    @ConditionalOnMissingBean(SessionStore.class)
-    public SessionStore cookieSessionStore() { ... }
-
-    /** Session 守卫驱动 */
+    /** Session 守卫驱动（注入 http 提供的 SessionStoreHolder，弱引用） */
     @Bean
     @ConditionalOnMissingBean
-    public SessionGuardDriver sessionGuardDriver(SessionStore sessionStore) { ... }
+    public SessionGuardDriver sessionGuardDriver() { ... }
 
     /** 所有单例就绪后，自动将所有 AuthGuardDriver Bean 注册到 AuthManager */
     @Override
@@ -974,12 +970,11 @@ public class AuthConfig {
 public class SessionConfig {
 
     /**
-     * 全局 SessionStore Bean。SessionGuardDriver 会直接注入此 Bean。
-     * 默认使用 CookieSessionStore（Servlet HttpSession）。
-     * 若需切换为 Redis，引入 session-redis 模块后在此返回 RedisSessionStore 即可。
+     * 全局 SessionStore 注册。SessionGuardDriver 通过 http 的 SessionStoreHolder 使用此存储。
+     * 默认使用 CookieSessionStore（Servlet HttpSession，由 http 模块回退提供）。
+     * 若需切换为 Redis，引入 session-redis 模块后其 RedisSessionStore 会通过 @RegisterSessionStore 自动覆盖。
      */
-    @Bean
-    @ConditionalOnMissingBean
+    @RegisterSessionStore
     public SessionStore sessionStore() {
         return new CookieSessionStore();
     }

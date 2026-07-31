@@ -1,6 +1,4 @@
-package com.weacsoft.jaravel.vendor.auth;
-
-import com.weacsoft.jaravel.vendor.auth.contract.SessionStore;
+package com.weacsoft.jaravel.vendor.http.session;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -11,7 +9,7 @@ import java.lang.annotation.Target;
  * 声明式注册 Session 存储，替代 {@code @Bean} 方式。
  * <p>
  * 标注在 {@code @Configuration} 类的方法上，方法返回 {@link SessionStore}。
- * {@code SessionStoreRegistrar} 会在所有 Bean 初始化完成后扫描此注解，
+ * {@link SessionStoreRegistrar} 会在所有 Bean 初始化完成后扫描此注解，
  * 调用方法并把返回的实例注册为全局 Session 存储。
  *
  * <h3>为什么只允许注册一个？</h3>
@@ -44,7 +42,7 @@ import java.lang.annotation.Target;
  *
  * <h3>回退默认</h3>
  * 若未注册任何 {@code @RegisterSessionStore}，也没有 {@link SessionStore} Bean，
- * auth 模块回退到 {@code CookieSessionStore}（基于 Servlet HttpSession），保证开箱即用。
+ * http 模块回退到 {@code CookieSessionStore}（基于 Servlet HttpSession），保证开箱即用。
  *
  * @see SessionStore
  */

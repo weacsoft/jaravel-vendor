@@ -1,12 +1,10 @@
-package com.weacsoft.jaravel.vendor.auth.session;
-
-import com.weacsoft.jaravel.vendor.auth.contract.SessionStore;
+package com.weacsoft.jaravel.vendor.http.session;
 
 /**
  * 全局 Session 存储持有者，解决「注册时机」与「使用时机」的先后问题。
  * <p>
- * {@code SessionGuardDriver} 在 Bean 创建阶段就需要 {@link SessionStore}，
- * 而 {@code @RegisterSessionStore} 注解要等到所有单例初始化完成后才扫描得到。
+ * 认证驱动在 Bean 创建阶段就需要 {@link SessionStore}，
+ * 而 {@link RegisterSessionStore} 注解要等到所有单例初始化完成后才扫描得到。
  * 因此注入本持有者而非具体实现：驱动持有 holder 的引用，
  * 实际调用时才通过 {@link #get()} 取出真正的存储实例。
  *

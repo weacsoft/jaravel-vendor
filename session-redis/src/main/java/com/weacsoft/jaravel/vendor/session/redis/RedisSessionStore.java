@@ -1,8 +1,8 @@
 package com.weacsoft.jaravel.vendor.session.redis;
 
-import com.weacsoft.jaravel.vendor.auth.AuthContext;
-import com.weacsoft.jaravel.vendor.auth.contract.SessionStore;
 import com.weacsoft.jaravel.vendor.http.controller.request.Request;
+import com.weacsoft.jaravel.vendor.http.controller.request.RequestFactory;
+import com.weacsoft.jaravel.vendor.http.session.SessionStore;
 import com.weacsoft.jaravel.vendor.json.Json;
 import com.weacsoft.jaravel.vendor.redis.RedisManager;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -65,7 +65,7 @@ public class RedisSessionStore implements SessionStore {
 
     /** 从当前请求的 Cookie 中获取 Session ID */
     private String getSessionId() {
-        Request req = AuthContext.get();
+        Request req = RequestFactory.getCurrentRequest();
         if (req == null) return null;
         String cookieValue = req.cookie(cookieName);
         if (cookieValue != null && !cookieValue.isEmpty()) {
@@ -81,7 +81,7 @@ public class RedisSessionStore implements SessionStore {
 
     /** 将 Session ID 写入响应 Cookie */
     private void setCookie(String sessionId) {
-        Request req = AuthContext.get();
+        Request req = RequestFactory.getCurrentRequest();
         if (req != null) {
             Cookie cookie = new Cookie(cookieName, sessionId);
             cookie.setPath("/");

@@ -268,7 +268,7 @@ public void dispatchAsync(String queueName, Object listener, Object event) {
 
 创建的 bean：
 - `QueueDriver`（`DatabaseQueueDriver` 或 `RedisQueueDriver`）— 队列驱动（`@ConditionalOnMissingBean`）
-- `DatabaseQueueWorker` — 队列工作线程（`@ConditionalOnMissingBean`），仅当 `auto-start=true` 时自动启动。生产环境应通过 artisan 命令 `java -jar app.jar artisan queue:work` 启动 worker，或设置 `auto-start=true`。
+- `DatabaseQueueWorker` — 队列工作线程（`@ConditionalOnMissingBean`），由后台 Bean 承担消费。框架**不提供** `artisan queue:work` 命令（与 Laravel 不同）；生产环境设置 `jaravel.queue.database.auto-start=true` 随应用启动 worker，或业务方自行注入 `DatabaseQueueWorker` 调用其启动方法。
 - `DatabaseQueueDispatcher` — 持久化队列分发器（`@ConditionalOnMissingBean(QueueDispatcher.class)`），桥接 event 模块
 
 ## 模块关系
