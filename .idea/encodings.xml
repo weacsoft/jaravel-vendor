@@ -3,6 +3,7 @@
   <component name="Encoding">
     <file url="file://$USER_HOME$/src/main/java" charset="UTF-8" />
     <file url="file://$USER_HOME$/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/aether-upload/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/artisan/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/artisan/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/auth-driver-session/src/main/java" charset="UTF-8" />
@@ -52,6 +53,7 @@
     <file url="file://$PROJECT_DIR$/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/starter/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/storage/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/util/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/util/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/utils/src/main/java" charset="UTF-8" />

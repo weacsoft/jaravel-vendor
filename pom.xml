@@ -7,7 +7,7 @@
     <!-- Jaravel-Vendor : Laravel 风格的 SpringBoot 3 多模块框架（适配器包，类比 PHP vendor 目录） -->
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>jaravel-vendor</artifactId>
-    <version>0.1.2</version>
+    <version>0.1.2-SNAPSHOT</version>
     <packaging>pom</packaging>
     <name>jaravel-vendor</name>
     <description>Laravel 风格的 SpringBoot 3 高性能多模块框架：配置 / 路由 / 中间件 / Auth / Eloquent ORM / 迁移 / 缓存 /
@@ -121,10 +121,6 @@
     </properties>
 
     <repositories>
-        <repository>
-            <id>jitpack.io</id>
-            <url>https://jitpack.io</url>
-        </repository>
     </repositories>
 
     <dependencyManagement>
@@ -395,24 +391,69 @@
                     <parameters>true</parameters>
                 </configuration>
             </plugin>
-
-            <!-- 禁用原生deploy -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-deploy-plugin</artifactId>
-                <version>3.1.1</version>
-                <configuration>
-                    <skip>true</skip>
-                </configuration>
-            </plugin>
         </plugins>
     </build>
 
     <profiles>
+        <!-- 快照发布 profile：不需要签名、central插件，使用原生deploy上传 -->
+<!--        <profile>-->
+<!--            <id>snapshot-central</id>-->
+<!--            <build>-->
+<!--                <plugins>-->
+<!--                    &lt;!&ndash; 官方central发布插件，快照/正式自动分流 &ndash;&gt;-->
+<!--                    <plugin>-->
+<!--                        <groupId>org.sonatype.central</groupId>-->
+<!--                        <artifactId>central-publishing-maven-plugin</artifactId>-->
+<!--                        <version>0.9.0</version>-->
+<!--                        <extensions>true</extensions>-->
+<!--                        <configuration>-->
+<!--                            <publishingServerId>ossrh</publishingServerId>-->
+<!--                        </configuration>-->
+<!--                    </plugin>-->
+<!--                    &lt;!&ndash; 源码包 &ndash;&gt;-->
+<!--                    <plugin>-->
+<!--                        <groupId>org.apache.maven.plugins</groupId>-->
+<!--                        <artifactId>maven-source-plugin</artifactId>-->
+<!--                        <version>3.3.1</version>-->
+<!--                        <executions>-->
+<!--                            <execution>-->
+<!--                                <id>attach-sources</id>-->
+<!--                                <goals><goal>jar-no-fork</goal></goals>-->
+<!--                            </execution>-->
+<!--                        </executions>-->
+<!--                    </plugin>-->
+<!--                    &lt;!&ndash; 快照javadoc宽松校验，跳过缺失警告 &ndash;&gt;-->
+<!--                    <plugin>-->
+<!--                        <groupId>org.apache.maven.plugins</groupId>-->
+<!--                        <artifactId>maven-javadoc-plugin</artifactId>-->
+<!--                        <version>3.1.1</version>-->
+<!--                        <configuration>-->
+<!--                            <charset>UTF-8</charset>-->
+<!--                            <additionalJOption>-Xdoclint:none</additionalJOption>-->
+<!--                            <additionalJOption>-Xdoclint:-missing</additionalJOption>-->
+<!--                        </configuration>-->
+<!--                        <executions>-->
+<!--                            <execution>-->
+<!--                                <goals><goal>jar</goal></goals>-->
+<!--                            </execution>-->
+<!--                        </executions>-->
+<!--                    </plugin>-->
+<!--                </plugins>-->
+<!--            </build>-->
+<!--        </profile>-->
         <profile>
             <id>release-central</id>
             <build>
                 <plugins>
+                    <!-- 正式发布禁用原生deploy，交给central插件处理 -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-deploy-plugin</artifactId>
+                        <version>3.1.1</version>
+                        <configuration>
+                            <skip>true</skip>
+                        </configuration>
+                    </plugin>
                     <!-- 中央库发布插件 -->
                     <plugin>
                         <groupId>org.sonatype.central</groupId>
