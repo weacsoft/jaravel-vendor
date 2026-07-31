@@ -4,9 +4,14 @@ import com.weacsoft.jaravel.vendor.database.BaseModel;
 import gaarason.database.annotation.Column;
 import gaarason.database.annotation.Primary;
 import gaarason.database.annotation.Table;
+import gaarason.database.contract.eloquent.Record;
+import gaarason.database.eloquent.Model;
+import gaarason.database.query.QueryBuilder;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.springframework.stereotype.Repository;
+
+import java.util.List;
 
 /**
  * 插件元数据数据库模型，映射到 {@code plugin_metadata} 表。
@@ -82,5 +87,37 @@ public class PluginMetadataModel extends BaseModel<PluginMetadataModel, Long> {
      */
     public static PluginMetadataModel self() {
         return BaseModel.self(PluginMetadataModel.class);
+    }
+
+    /**
+     * Eloquent 风格的静态查询入口，对齐 Laravel 的 {@code Model::query()}。
+     *
+     * @return 新的查询构造器
+     */
+    public static QueryBuilder<PluginMetadataModel, Long> query() {
+        return self().newQuery();
+    }
+
+    /**
+     * 查询全部记录，对齐 Laravel 的 {@code Model::all()}。
+     *
+     * @return 全部记录实体列表，无记录时返回空列表
+     */
+    public static List<PluginMetadataModel> all() {
+        return self().findAll().toObjectList();
+    }
+
+    /**
+     * 按主键查询单条记录，对齐 Laravel 的 {@code Model::find($id)}。
+     *
+     * @param id 主键值
+     * @return 对应实体，未找到返回 {@code null}
+     */
+    public static PluginMetadataModel find(Long id) {
+        // 注意：不能写成 self().find(id)——静态方法 find(Long) 与 gaarason 实例方法同名同参，
+        // 编译期会优先解析到本静态方法造成无限递归，故显式以父类类型引用调用实例方法。
+        Model<QueryBuilder<PluginMetadataModel, Long>, PluginMetadataModel, Long> model = self();
+        Record<PluginMetadataModel, Long> record = model.find(id);
+        return record == null ? null : record.toObject();
     }
 }
