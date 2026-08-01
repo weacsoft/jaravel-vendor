@@ -329,7 +329,7 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
 <table>
 <tr><th>配置类</th><th>包路径</th><th>说明</th></tr>
 <tr><td>`config/App.java`</td><td>`com.weacsoft.jaravel.vendor.config`</td><td>中央配置入口，类似 Laravel 的 `config/app.php`。通过 `@Import` 显式导入各模块配置类，控制功能启用。用户通过修改此类决定加载哪些模块</td></tr>
-<tr><td>`config/view/ViewConfig.java`</td><td>`com.weacsoft.jaravel.vendor.config.view`</td><td>视图引擎配置。控制 jblade 模板引擎的初始化与注册</td></tr>
+<tr><td>`config/view/ViewConfig.java`</td><td>`com.weacsoft.jaravel.vendor.config.view`</td><td>视图引擎配置。通过 `@RegisterView` 声明式注册 Blade 模板引擎实现（对齐 Laravel 的 Blade 服务提供者），由 `ViewAutoConfiguration` 收集并绑定 `ViewFacade`</td></tr>
 <tr><td>`config/database/DatabaseConfig.java`</td><td>`com.weacsoft.jaravel.vendor.config.database`</td><td>数据库配置。控制多数据源管理、Eloquent ORM 集成等数据层功能的启用</td></tr>
 <tr><td>`config/wire/WireConfig.java`</td><td>`com.weacsoft.jaravel.vendor.config.wire`</td><td>Wire 模块配置。控制 Wire 渲染模块（Livewire 风格反应式 UI）的启用与配置</td></tr>
 </table>
@@ -2663,14 +2663,13 @@ Request current = RequestFactory.getCurrentRequest();
 <tr><td>`static Response forbidden(String message)`</td><td>403 禁止访问</td></tr>
 <tr><td>`static Response error(int status, String message)`</td><td>自定义错误状态，JSON 格式 `{"message": "..."}`</td></tr>
 <tr><td>`static String toJson(Object data)`</td><td>将对象序列化为 JSON 字符串</td></tr>
-<tr><td>`static void setBladeEngine(Object engine)`</td><td>注入 Blade 模板引擎实例（用于 `view`）</td></tr>
 </table>
 
 <pre><code>
 // JSON 响应
 Response r1 = ResponseBuilder.json(Map.of(&quot;id&quot;, 1, &quot;name&quot;, &quot;Alice&quot;));
 
-// 视图响应（需先注入 BladeEngine）
+// 视图响应（引擎由 ViewFacade 自动注入，无需手动 setBladeEngine）
 Response r2 = ResponseBuilder.view(&quot;user.profile&quot;, Map.of(&quot;user&quot;, user));
 
 // 文件下载
@@ -2684,7 +2683,7 @@ Response r5 = ResponseBuilder.error(404, &quot;资源不存在&quot;);
 Response r6 = ResponseBuilder.unauthorized(&quot;请先登录&quot;);
 </code></pre>
 
-<p>&gt; <code>view</code> 方法依赖 jblade 模块。若未通过 <code>setBladeEngine</code> 注入引擎，调用时会抛 <code>RuntimeException(&quot;jblade 模块未引入&quot;)</code>。</p>
+<p>&gt; <code>view</code> 方法依赖 jblade 模块。引擎由 <code>ViewFacade</code> 在启动阶段自动绑定（通过 <code>ViewAutoConfiguration</code> 收集 <code>@RegisterView</code> 声明的 <code>BladeView</code>），调用时若未引入 jblade 会抛 <code>RuntimeException(&quot;jblade 模块未引入&quot;)</code>。</p>
 
 <h6 id="http-63-jsonresponseresolver">6.3 JSONResponseResolver</h6>
 
@@ -2947,7 +2946,7 @@ ControllerRegistry.register(&quot;user&quot;, new UserController());
 <tr><td>`Middleware` / `NextFunction`</td><td>线程安全</td><td>函数式接口，无状态</td></tr>
 <tr><td>`Request`</td><td>**单请求隔离**</td><td>每次请求新建实例，内部 Map 非线程安全。`RequestFactory` 通过 `ThreadLocal` 维护当前请求，确保请求间隔离。不应跨请求共享同一个 `Request`</td></tr>
 <tr><td>`RequestFactory`</td><td>线程安全</td><td>静态方法无共享可变状态；`currentRequest` 为 `ThreadLocal`，天然线程隔离</td></tr>
-<tr><td>`ResponseBuilder`</td><td>线程安全</td><td>静态工厂方法，每次返回新的 `AbstractResponse` 实例。`ObjectMapper` 为静态 final 线程安全。`bladeEngine` 静态字段在启动阶段单次写入后只读</td></tr>
+<tr><td>`ResponseBuilder`</td><td>线程安全</td><td>静态工厂方法，每次返回新的 `AbstractResponse` 实例。`ObjectMapper` 为静态 final 线程安全。`view()` 通过 `ViewFacade.getView()` 获取已绑定的 `View`，`ViewFacade` 的 `ViewManager` 在启动阶段单次绑定后只读</td></tr>
 <tr><td>`JSONResponseResolver`</td><td>线程安全</td><td>静态方法，`ObjectMapper` 为静态 final</td></tr>
 <tr><td>`Router` / `Route`</td><td>启动期安全</td><td>内部使用 `CopyOnWriteArrayList`，适合启动阶段注册、运行时只读。运行时动态增删路由虽线程安全但开销较大</td></tr>
 <tr><td>`RouteService`</td><td>线程安全</td><td>纯静态无状态方法</td></tr>
@@ -3395,7 +3394,6 @@ Request current = RequestFactory.getCurrentRequest();
 
 <table>
 <tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
-<tr><td>`setBladeEngine`</td><td>`Object engine`</td><td>`void`</td><td>设置 Blade 模板引擎实例</td></tr>
 <tr><td>`ok`</td><td>无</td><td>`Response`</td><td>创建 200 "ok" 响应</td></tr>
 <tr><td>`view`</td><td>`String templateName, Map<String, Object> data`</td><td>`Response`</td><td>渲染 Blade 模板返回 HTML 响应</td></tr>
 <tr><td>`json`</td><td>`Object data`</td><td>`Response`</td><td>创建 JSON 响应</td></tr>
