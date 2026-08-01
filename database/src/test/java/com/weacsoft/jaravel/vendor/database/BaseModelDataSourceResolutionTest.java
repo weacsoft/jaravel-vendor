@@ -5,6 +5,7 @@ import gaarason.database.annotation.Column;
 import gaarason.database.annotation.Primary;
 import gaarason.database.contract.connection.GaarasonDataSource;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.support.GenericApplicationContext;
 
@@ -36,9 +37,17 @@ class BaseModelDataSourceResolutionTest {
         private Long id;
     }
 
+    @BeforeEach
+    void setUp() {
+        // 连接注册表是静态的，必须先复位，否则其它测试残留的连接会抢在 Spring 回退之前被解析
+        ConnectionManager.clear();
+        new SpringContext().setApplicationContext(null);
+    }
+
     @AfterEach
     void tearDown() {
-        // 复位静态上下文，避免影响其它测试
+        // 复位静态上下文与连接注册表，避免影响其它测试
+        ConnectionManager.clear();
         new SpringContext().setApplicationContext(null);
     }
 

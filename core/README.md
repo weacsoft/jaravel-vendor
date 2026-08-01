@@ -17,7 +17,8 @@
 - [9. 工具类（Str / Arr）](#9-工具类str--arr)
 - [10. 校验体系（FormRequest / Validator / Rule / Rules）](#10-校验体系formrequest--validator--rule--rules)
 - [11. 异常类（ValidationException / UnauthorizedException）](#11-异常类validationexception--unauthorizedexception)
-- [12. 线程安全说明](#12-线程安全说明)
+- [12. OnDriverInUseCondition —— 驱动按需装配条件](#12-ondriverinusecondition--驱动按需装配条件)
+- [13. 线程安全说明](#13-线程安全说明)
 
 ---
 
@@ -77,6 +78,8 @@ com.weacsoft.jaravel.vendor.core
 │   ├── ConfigRepository           // 配置仓库（三层来源）
 │   ├── ConfigDefinition           // 代码级配置定义接口
 │   └── ConfigDefinitionRegistrar  // 代码级配置自动注册器
+├── condition
+│   └── OnDriverInUseCondition     // 驱动按需装配条件基类（安装 != 启用）
 ├── provider
 │   ├── ServiceProvider            // 服务提供者基类
 │   └── ProviderRegistry           // 服务提供者注册器（两阶段引导）
@@ -758,7 +761,88 @@ try {
 
 ---
 
-## 12. 线程安全说明
+## 12. OnDriverInUseCondition —— 驱动按需装配条件
+
+`com.weacsoft.jaravel.vendor.core.condition.OnDriverInUseCondition`
+
+整个 vendor 模块组的**统一装配原则**：**安装 ≠ 启用**。
+
+对齐 Laravel 的心智模型——把依赖放进 classpath 只表示"这个驱动可用"，
+不表示"要启用它"。凡是需要**外部资源**的驱动型模块（redis 缓存、redis session、
+database 缓存、redis/database 队列……），只有在用户**显式选用**时才注册与配置；
+否则完全静默：不创建任何 Bean、不连接任何外部服务、不影响应用启动。
+
+> **典型反例**：项目引入了 `session-redis` 依赖但 `jaravel.session.driver` 配的是
+> `file`。若 session-redis 仍自动装配并连接 Redis，就会导致无 Redis 环境启动失败。
+
+### 与 Spring 条件注解的分工
+
+| 场景 | 用什么 |
+| --- | --- |
+| 判断**驱动是否被选用** | `OnDriverInUseCondition` 子类 |
+| 判断**类是否在 classpath** | `@ConditionalOnClass`（防 `NoClassDefFoundError`） |
+| 允许业务方**覆盖框架 Bean** | `@ConditionalOnMissingBean` |
+| 判断**功能模块开关** | `@ConditionalOnProperty(name = "enabled")` |
+| ~~判断驱动资源是否可用~~ | ~~`@ConditionalOnBean(DataSource.class)`~~ ← **不要用** |
+
+`@ConditionalOnBean` 把模块与 Spring 的 Bean 图强绑定，时序脆弱，
+且感知不到 jaravel 自己的注册表（如 `@RegisterConnection` 的连接）。
+正确做法是**运行时惰性解析**：先查框架注册表，再回退 Spring 容器。
+
+### 判定优先级
+
+1. **覆盖开关**（`enableKey`）—— `true` 强制启用，`false` 强制关闭；
+2. **单值配置键**（`singleKeys`）—— 如 `jaravel.session.driver`；
+3. **映射式配置键**（`mapKeyPrefix` + `mapKeySuffix`）—— 如 `jaravel.cache.stores.*.driver`。
+
+任意一处的值等于驱动名（忽略大小写）即判定为"被用上"。
+
+### 构造器
+
+| 构造器签名 | 说明 |
+| --- | --- |
+| `OnDriverInUseCondition(String driverName, String mapKeyPrefix, String mapKeySuffix, String... singleKeys)` | `driverName` 为本模块驱动名；`mapKeyPrefix`/`mapKeySuffix` 描述映射式配置（无则传 `null`）；`singleKeys` 为单值配置键 |
+
+| 方法签名 | 说明 |
+| --- | --- |
+| `protected OnDriverInUseCondition enableKey(String key)` | 设置覆盖开关键，优先级最高，返回 `this` 便于链式调用 |
+
+> 本类只实现 `spring-context` 的 `Condition` 接口，**不引入 `spring-boot-autoconfigure`**，
+> 以保持 core 模块的依赖足迹不变。
+
+### 使用示例
+
+```java
+public class OnRedisSessionDriverCondition extends OnDriverInUseCondition {
+    public OnRedisSessionDriverCondition() {
+        super("redis", "jaravel.session.stores.", ".driver", "jaravel.session.driver");
+        enableKey("jaravel.session.redis.auto-register");
+    }
+}
+```
+
+```java
+@AutoConfiguration
+@ConditionalOnClass({RedisSessionStore.class, RedisManager.class})
+@Conditional(OnRedisSessionDriverCondition.class)   // 用上了才装配
+@ConditionalOnBean(RedisManager.class)              // 兜底保护
+public class SessionRedisAutoConfiguration { ... }
+```
+
+### 已应用本条件的模块
+
+| 模块 | 驱动名 | 启用配置 |
+| --- | --- | --- |
+| `session-redis` | `redis` | `jaravel.session.driver: redis` |
+| `redis-cache` | `redis` | `jaravel.cache.stores.*.driver: redis` |
+| `cache`（database 驱动） | `database` | `jaravel.cache.stores.*.driver: database` |
+
+> **功能型模块**（wire、storage 的 local、schedule、captcha、plugin-* 等）
+> 不需要外部资源，默认启用，通过 `jaravel.<模块>.enabled: false` 关闭，不适用本条件。
+
+---
+
+## 13. 线程安全说明
 
 | 类 | 线程安全性 | 说明 |
 | --- | --- | --- |

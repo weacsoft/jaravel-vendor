@@ -25,10 +25,16 @@
 引入 `jaravel-starter` 后，框架自动完成以下工作：
 
 1. **注册核心基础设施**：`ConfigRepository`（配置仓库）、`SpringContext`（上下文持有器）、`ConfigDefinitionRegistrar`（代码级配置注册器）、`ProviderRegistry`（服务提供者注册器）。
-2. **聚合各模块自动装配**：通过传递依赖引入 `core`、`http`、`springboot`、`auth`、`database`、`migration`、`cache`、`jblade`、`event`、`redis-config`、`redis-cache`、`session-redis`、`artisan`、`schedule`、`queue-database`、`wechat-sdk` 共 16 个模块，各模块的 `@AutoConfiguration` 类由 Spring Boot 自动加载。
-3. **启用 Laravel 风格开发**：中间件管道、路由系统、Form Request 校验、门面（Facade）、配置仓库、Eloquent ORM、数据库迁移、缓存、事件分发、Blade 模板渲染全部就绪。
+2. **聚合基础必选模块自动装配**：通过传递依赖引入 `core`、`http`、`springboot`、`auth`、`database`、`migration`、`cache`、`jblade`、`event`、`artisan`、`schedule` 共 11 个基础模块，各模块的 `@AutoConfiguration` 类由 Spring Boot 自动加载。
+3. **启用 Laravel 风格基础开发**：中间件管道、路由系统、Form Request 校验、门面（Facade）、配置仓库、Eloquent ORM、数据库迁移、缓存、事件分发、Blade 模板渲染全部就绪。
 
-> **JWT 为可选模块**，不在 starter 中聚合。需要 JWT 认证时，用户按需单独引入 `com.weacsoft:jwt` 依赖即可。
+> 设计对齐 Laravel：**starter 只聚合基础必选组件，不假设用户一定有 Redis 或一定使用微信/队列**。Redis、微信、Wire、数据库队列、JWT 等均为**可选扩展模块**，由用户按需单独引入。
+>
+> - **Redis 相关**（`redis-config` / `redis-cache` / `session-redis`）：Laravel 中 Redis 同样属于额外驱动，本框架不内建，需用户显式引入并选用驱动。
+> - **`wechat-sdk`**：对齐 `overtrue/laravel-wechat`，属于业务扩展，非框架基础。
+> - **`wire`**：对齐 `laravel-livewire`，属于 UI 部分更新扩展，非框架基础。
+> - **`queue-database`**：Laravel 因无原生多线程而强制依赖数据库或 sync 队列；Java 拥有原生多线程，队列驱动为可选扩展，用户按需启用。
+> - **`jwt`**：`auth` 的可选 Guard 扩展，按需引入。
 
 ---
 
@@ -46,26 +52,28 @@
 
 ### 聚合的内部模块
 
-`starter` 通过传递依赖聚合以下 Jaravel-Vendor 模块：
+`starter` 仅通过传递依赖聚合**基础必选** Jaravel-Vendor 模块；Redis、微信、Wire、数据库队列、JWT 等属于**可选扩展**，不纳入聚合，由用户按需单独引入（对齐 Laravel 的设计理念）。
 
-| 模块 | artifactId | 提供能力 |
-| --- | --- | --- |
-| 核心 | `core` | 门面、配置仓库、服务提供者、校验器、Str/Arr 工具 |
-| HTTP | `http` | 中间件管道、Request/Response、路由系统 |
-| Spring Boot 集成 | `springboot` | RouterFunction 桥接、Request 注入、Response 处理 |
-| 认证 | `auth` | Auth 门面、Session Guard、UserProvider |
-| 数据库 | `database` | Eloquent ORM（基于 gaarason/database）、BaseModel、DataSource |
-| 迁移 | `migration` | 数据库迁移（运行时编译，3 种源模式）、Schema 构建器、Blueprint |
-| 缓存 | `cache` | 缓存管理器、Array/File 驱动 |
-| 模板引擎 | `jblade` | Blade 模板编译与渲染（表达式编译） |
-| 事件 | `event` | 事件分发器、监听器注册、队列支持 |
-| Redis 配置 | `redis-config` | Redis 连接管理（多机 session/缓存同步基础） |
-| Redis 缓存 | `redis-cache` | Redis 缓存驱动（多机缓存同步） |
-| Redis Session | `session-redis` | Redis Session 守卫（多机 Session 同步） |
-| 命令行工具 | `artisan` | Artisan CLI 命令框架 |
-| 定时任务 | `schedule` | 定时任务调度器 |
-| 数据库队列 | `queue-database` | 数据库队列驱动（持久化 + 多实例消费） |
-| 微信 SDK | `wechat-sdk` | 微信公众号 / 小程序 API（对齐 overtrue/laravel-wechat） |
+| 模块 | artifactId | 提供能力 | 是否聚合进 starter |
+| --- | --- | --- | --- |
+| 核心 | `core` | 门面、配置仓库、服务提供者、校验器、Str/Arr 工具 | ✅ 是 |
+| HTTP | `http` | 中间件管道、Request/Response、路由系统 | ✅ 是 |
+| Spring Boot 集成 | `springboot` | RouterFunction 桥接、Request 注入、Response 处理 | ✅ 是 |
+| 认证 | `auth` | Auth 门面、Session Guard、UserProvider | ✅ 是 |
+| 数据库 | `database` | Eloquent ORM（基于 gaarason/database）、BaseModel、DataSource | ✅ 是 |
+| 迁移 | `migration` | 数据库迁移（运行时编译，3 种源模式）、Schema 构建器、Blueprint | ✅ 是 |
+| 缓存 | `cache` | 缓存管理器、Array/File 驱动 | ✅ 是 |
+| 模板引擎 | `jblade` | Blade 模板编译与渲染（表达式编译） | ✅ 是 |
+| 事件 | `event` | 事件分发器、监听器注册、队列支持 | ✅ 是 |
+| 命令行工具 | `artisan` | Artisan CLI 命令框架 | ✅ 是 |
+| 定时任务 | `schedule` | 定时任务调度器 | ✅ 是 |
+| Redis 配置 | `redis-config` | Redis 连接管理（多机 session/缓存同步基础） | ❌ 可选，按需引入 |
+| Redis 缓存 | `redis-cache` | Redis 缓存驱动（多机缓存同步） | ❌ 可选，按需引入 |
+| Redis Session | `session-redis` | Redis Session 守卫（多机 Session 同步） | ❌ 可选，按需引入 |
+| 部分更新 | `wire` | Laravel Livewire 风格的部分更新模块 | ❌ 可选，按需引入 |
+| 数据库队列 | `queue-database` | 数据库队列驱动（Java 有原生多线程，队列非强制，按需启用） | ❌ 可选，按需引入 |
+| 微信 SDK | `wechat-sdk` | 微信公众号 / 小程序 API（对齐 overtrue/laravel-wechat） | ❌ 可选，按需引入 |
+| JWT | `jwt` | JWT 认证（auth 的可选 Guard 扩展） | ❌ 可选，按需引入 |
 
 ### 外部依赖
 
@@ -248,7 +256,7 @@ router.post("/users", request -> {
 | `SpringBootRequestMVCResolver` | Controller 方法 Request 参数注入 |
 | `SpringBootResponseMVCResolver` | Response 响应处理 + 安全响应头 |
 
-### 各功能模块（由各模块自身自动装配）
+### 基础模块（已随 starter 聚合，自动装配）
 
 | 模块 | 自动装配内容 |
 | --- | --- |
@@ -258,13 +266,20 @@ router.post("/users", request -> {
 | cache | CacheManager、Cache 驱动（Array/File） |
 | event | EventDispatcher、EventListenerRegistrar、QueueManager |
 | jblade | BladeEngine、BladeCompiler（模板渲染，表达式编译） |
+| artisan | Artisan CLI 命令注册与调度 |
+| schedule | 定时任务调度器、Cron 表达式解析 |
+
+### 可选扩展模块（不在 starter 中聚合，按需引入）
+
+| 模块 | 自动装配内容 |
+| --- | --- |
 | redis-config | Redis 连接配置、连接池管理（多机同步基础） |
 | redis-cache | Redis 缓存驱动（多机缓存同步） |
 | session-redis | Redis Session 守卫（多机 Session 同步） |
-| artisan | Artisan CLI 命令注册与调度 |
-| schedule | 定时任务调度器、Cron 表达式解析 |
+| wire | Laravel Livewire 风格的部分更新组件 |
 | queue-database | 数据库队列驱动（持久化 + 多实例消费） |
 | wechat-sdk | 微信公众号 / 小程序 API 封装 |
+| jwt | JWT 认证（auth 的可选 Guard 扩展，详见第 7 节） |
 
 ---
 

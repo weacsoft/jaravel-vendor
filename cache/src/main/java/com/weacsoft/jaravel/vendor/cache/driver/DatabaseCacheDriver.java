@@ -51,8 +51,16 @@ public class DatabaseCacheDriver implements CacheDriver {
     /** 缓存表名 */
     private final String table;
 
-    /** 数据库产品名（小写），用于方言适配 */
-    private final String databaseProductName;
+    /** 数据源，用于惰性识别数据库方言 */
+    private final DataSource dataSource;
+
+    /**
+     * 数据库产品名（小写），用于方言适配。
+     * <p>
+     * <b>惰性求值</b>：驱动可能在 {@code @RegisterConnection} 扫描完成之前就被创建，
+     * 此时探测方言会失败并错误地回退到 MySQL。因此推迟到第一次真正用到方言时才探测。
+     */
+    private volatile String databaseProductName;
 
     /** 用于异步删除过期记录的后台执行器（守护线程，不阻塞 JVM 退出） */
     private final ExecutorService expireCleaner;
@@ -82,7 +90,8 @@ public class DatabaseCacheDriver implements CacheDriver {
     public DatabaseCacheDriver(DataSource dataSource, String table) {
         this.jdbcTemplate = new JdbcTemplate(dataSource);
         this.table = (table == null || table.isEmpty()) ? DEFAULT_TABLE : table;
-        this.databaseProductName = detectProductName(dataSource);
+        this.dataSource = dataSource;
+        // 方言不在构造期探测：此刻连接可能尚未注册完成，探测会失败并错误回退到 MySQL
         this.expireCleaner = Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "jaravel-cache-db-expire-cleaner");
             t.setDaemon(true);
@@ -214,34 +223,56 @@ public class DatabaseCacheDriver implements CacheDriver {
         });
     }
 
-    /** 识别数据库产品名（小写），失败回退 MySQL 方言 */
-    private static String detectProductName(DataSource dataSource) {
-        try (Connection conn = dataSource.getConnection()) {
-            return conn.getMetaData().getDatabaseProductName().toLowerCase();
-        } catch (Exception e) {
-            logger.warn("[cache-db] 无法识别数据库产品，使用默认 MySQL 方言: {}", e.getMessage());
-            return "mysql";
+    /**
+     * 取数据库产品名（小写），首次调用时才真正探测并缓存结果。
+     * <p>
+     * 探测失败<b>不缓存</b>，下次调用会重试——这样即便首次访问发生在连接就绪之前，
+     * 后续也能拿到正确方言。
+     *
+     * @return 数据库产品名（小写），探测失败时临时回退 {@code mysql}
+     */
+    private String productName() {
+        String cached = databaseProductName;
+        if (cached != null) {
+            return cached;
+        }
+        synchronized (this) {
+            if (databaseProductName != null) {
+                return databaseProductName;
+            }
+            try (Connection conn = dataSource.getConnection()) {
+                String detected = conn.getMetaData().getDatabaseProductName().toLowerCase();
+                logger.debug("[cache-db] 识别数据库方言: {}", detected);
+                databaseProductName = detected;
+                return detected;
+            } catch (Exception e) {
+                // 不缓存失败结果，留待下次重试
+                logger.debug("[cache-db] 暂时无法识别数据库产品，临时使用 MySQL 方言: {}", e.getMessage());
+                return "mysql";
+            }
         }
     }
 
     private boolean isMysql() {
-        return databaseProductName.contains("mysql");
+        return productName().contains("mysql");
     }
 
     private boolean isPostgres() {
-        return databaseProductName.contains("postgresql") || databaseProductName.contains("postgres");
+        String name = productName();
+        return name.contains("postgresql") || name.contains("postgres");
     }
 
     private boolean isSqlite() {
-        return databaseProductName.contains("sqlite");
+        return productName().contains("sqlite");
     }
 
     private boolean isH2() {
-        return databaseProductName.contains("h2");
+        return productName().contains("h2");
     }
 
     private boolean isSqlServer() {
-        return databaseProductName.contains("sql server") || databaseProductName.contains("microsoft");
+        String name = productName();
+        return name.contains("sql server") || name.contains("microsoft");
     }
 
     /** 按方言对标识符加引号 */

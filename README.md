@@ -53,7 +53,7 @@ Java 版 Laravel 框架核心库，在 Spring Boot 3.2.5 基础上近乎 100% �
 | captcha | `captcha` | 验证码生成器/存储/加密分子包（number/arithmetic/slider/rotate，轨迹验证，水印） | [README](captcha/README.md) |
 | wechat-sdk | `wechat-sdk` | 微信SDK（公众号/小程序API，对齐overtrue/laravel-wechat） | [README](wechat-sdk/README.md) |
 | **model-cache** | `model-cache` | 模型查询缓存（版本化失效，@CachableModel注解按需开启，可选） | [README](model-cache/README.md) |
-| starter | `starter` | 聚合Starter（引入即自动装配全部模块，jwt/model-cache可选） | [README](starter/README.md) |
+| starter | `starter` | 聚合Starter（引入即自动装配基础模块；redis/wechat/wire/queue-database/jwt/model-cache 等为可选扩展，按需引入） | [README](starter/README.md) |
 | **plugin-jar-core** | `plugin-jar-core` | JAR插件系统（动态加载/卸载/三级ClassLoader/ASM扫描/动态路由） | [README](plugin-jar-core/README.md) |
 | **plugin-jar-database** | `plugin-jar-database` | JAR插件数据库持久化（BaseModel/自动建表/多实例共享） | [README](plugin-jar-database/README.md) |
 | **plugin-java-core** | `plugin-java-core` | Java文件插件系统（动态编译.java/热更新/轻量替代JAR） | [README](plugin-java-core/README.md) |

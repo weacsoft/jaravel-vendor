@@ -178,33 +178,47 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
         }
     }
 
+    /**
+     * 解析本 Model 使用的数据源。
+     * <p>
+     * <b>解析顺序</b>（对齐框架「别名优先」的统一约定）：
+     * <ol>
+     *   <li>由 {@link #getConnectionAlias()} 决定别名（默认读 {@link DataSource @DataSource} 注解，
+     *       业务 Model 也可重写）；</li>
+     *   <li>先在 {@link ConnectionManager} 注册表中查找 —— 即
+     *       {@code @RegisterConnection} 在 {@code config/DatabaseConfig.java} 中声明的连接；</li>
+     *   <li>注册表没有，再<b>回退</b>到 Spring 容器中同名的
+     *       {@code GaarasonDataSource} / {@code DataSource} bean（裸 DataSource 会用全局
+     *       {@code ContainerBootstrap} 自动包装）；</li>
+     *   <li>最后回退到 Spring 注入的默认数据源。</li>
+     * </ol>
+     * 这样「模型里使用的别名」不再直接从 Spring 里找，而是先扫描注册表，找不到才查 Spring。
+     *
+     * @return 本 Model 对应的 gaarason 数据源
+     */
     @Override
     @JsonIgnore
     public GaarasonDataSource getGaarasonDataSource() {
-        // 1. 优先通过 getConnectionAlias() 方法决定连接别名（业务 Model 可重写），
-        //    对齐 Laravel Model 的 $connection 属性，且比 @DataSource 注解更灵活
         String alias = getConnectionAlias();
-        if (alias != null && !alias.isEmpty()) {
-            // 别名不存在（例如默认 "primary" 未被注册为独立 bean）时，回退到 @Primary 数据源
-            if ("primary".equals(alias) && !SpringContext.contains("primary")) {
-                if (gaarasonDataSource != null) {
-                    return gaarasonDataSource;
-                }
-                return SpringContext.bean(GaarasonDataSource.class);
-            }
-            return SpringContext.bean(alias, GaarasonDataSource.class);
+
+        // 1) 别名优先走注册表（@RegisterConnection）
+        if (alias != null && !alias.isEmpty() && ConnectionManager.hasConnection(alias)) {
+            return ConnectionManager.connection(alias);
         }
-        // 2. 回退：检查 @DataSource 注解
-        DataSource dsAnnotation = this.getClass().getAnnotation(DataSource.class);
-        if (dsAnnotation != null) {
-            return SpringContext.bean(dsAnnotation.value(), GaarasonDataSource.class);
+
+        // 2) 注册表未命中：非默认别名交由 ConnectionManager 回退 Spring 解析
+        if (alias != null && !alias.isEmpty()
+                && !ConnectionManager.DEFAULT_CONNECTION.equals(alias)) {
+            return ConnectionManager.connection(alias);
         }
-        // 3. 未标注时，使用 Spring 注入的数据源（默认为 @Primary）
+
+        // 3) 默认别名：优先使用 Spring 注入的数据源（通常即 @Primary）
         if (gaarasonDataSource != null) {
             return gaarasonDataSource;
         }
-        // 4. 最终回退：从容器获取默认数据源
-        return SpringContext.bean(GaarasonDataSource.class);
+
+        // 4) 最终回退：由 ConnectionManager 解析默认连接
+        return ConnectionManager.connection(ConnectionManager.DEFAULT_CONNECTION);
     }
 
     /**

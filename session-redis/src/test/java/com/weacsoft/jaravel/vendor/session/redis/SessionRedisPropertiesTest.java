@@ -16,7 +16,7 @@ class SessionRedisPropertiesTest {
         assertEquals("laravel_session", props.getPrefix(), "默认前缀应为 laravel_session");
         assertEquals(30, props.getLifetime(), "默认生命周期应为 30 分钟");
         assertEquals("manage_session", props.getCookie(), "默认 Cookie 名应为 manage_session");
-        assertTrue(props.isAutoRegister(), "默认应自动注册");
+        assertNull(props.getAutoRegister(), "默认不设开关，由 jaravel.session.driver 自动判定");
     }
 
     @Test
@@ -51,6 +51,8 @@ class SessionRedisPropertiesTest {
     void testSetAutoRegister() {
         SessionRedisProperties props = new SessionRedisProperties();
         props.setAutoRegister(false);
-        assertFalse(props.isAutoRegister());
+        assertFalse(props.getAutoRegister());
+        props.setAutoRegister(true);
+        assertTrue(props.getAutoRegister());
     }
 }

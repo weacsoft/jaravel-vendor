@@ -180,7 +180,7 @@ Object val = Cache.store("redis").get("key");
 @ConfigurationProperties(prefix = "jaravel.cache.redis")
 public class RedisCacheProperties {
     private String connection = "cache";     // Redis 连接名，对应 jaravel.redis.connections
-    private boolean autoRegister = true;     // 是否自动注册工厂到 CacheManager
+    private Boolean autoRegister;            // 装配覆盖开关，null=按 store 的 driver 自动判定
 }
 ```
 
@@ -190,8 +190,8 @@ public class RedisCacheProperties {
 | --- | --- |
 | `String getConnection()` | 获取 Redis 连接名，默认 `cache` |
 | `void setConnection(String connection)` | 设置 Redis 连接名 |
-| `boolean isAutoRegister()` | 是否自动注册工厂到 CacheManager，默认 `true` |
-| `void setAutoRegister(boolean autoRegister)` | 设置是否自动注册 |
+| `Boolean getAutoRegister()` | 装配覆盖开关，`null`（默认）表示按 store 的 driver 自动判定 |
+| `void setAutoRegister(Boolean autoRegister)` | 设置覆盖开关 |
 
 ---
 
@@ -210,8 +210,15 @@ Redis 缓存自动装配。当 `RedisManager` 存在时，创建 `RedisCacheDriv
 | `@AutoConfiguration` | Spring Boot 自动装配 |
 | `@AutoConfigureAfter(RedisAutoConfiguration.class)` | 在 Redis 配置之后装配 |
 | `@ConditionalOnClass({RedisCacheDriver, CacheDriverFactory, RedisManager})` | 类路径存在相关类 |
-| `@ConditionalOnBean(RedisManager.class)` | 容器中存在 `RedisManager` bean |
-| `@ConditionalOnProperty(prefix = "jaravel.cache.redis", name = "auto-register", havingValue = "true", matchIfMissing = true)` | `auto-register` 为 true（默认开启） |
+| `@Conditional(OnRedisCacheStoreCondition.class)` | **配置里确实声明了 `driver: redis` 的缓存 store**（安装 ≠ 启用） |
+| `@ConditionalOnBean(RedisManager.class)` | 容器中存在 `RedisManager` bean（兜底保护） |
+
+> **装配原则：用上了才注册。** 仅把 `jaravel-redis-cache` 放进 classpath **不会**触发装配，
+> 必须在 `jaravel.cache.stores.*.driver` 中显式选用 `redis`。
+> 未选用时本模块不创建任何 Bean、不连接 Redis，**无 Redis 环境也能正常启动**。
+>
+> 覆盖开关 `jaravel.cache.redis.auto-register` 优先级最高：
+> `true` 强制启用、`false` 强制关闭、不配置则按 driver 自动判定。
 
 ### 注册的 Bean
 
@@ -234,10 +241,10 @@ jaravel:
   cache:
     redis:
       connection: cache          # Redis 连接名，对应 jaravel.redis.connections 中的配置
-      auto-register: true        # 是否自动注册工厂到 CacheManager（默认 true）
+      # auto-register: true      # 可选，覆盖开关（true 强制启用 / false 强制关闭）
     stores:
       redis:
-        driver: redis
+        driver: redis            # ← 本模块的启用开关，不写则完全不装配
         connection: cache        # 可覆盖顶层 jaravel.cache.redis.connection 配置
 ```
 

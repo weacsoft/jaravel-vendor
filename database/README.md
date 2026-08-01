@@ -90,7 +90,9 @@ public class User extends BaseModel<User, Long> {
 - `com.alibaba:druid`（数据源）
 - `spring-boot-starter-jdbc` / `spring-boot-starter-aop`（供 gaarason 核心使用）
 
-> 注意：本模块使用 `gaarason/database-query`（不含 SpringBoot 自动配置），需手动 `@Bean` 创建 `GaarasonDataSource`。
+> 注意：本模块使用 `gaarason/database-query`（不含 SpringBoot 自动配置），
+> 连接由 `config/DatabaseConfig.java` 中的 `@RegisterConnection` 声明，
+> 执行 `artisan vendor:publish --tag=database` 生成。
 
 ---
 
@@ -98,9 +100,14 @@ public class User extends BaseModel<User, Long> {
 
 ```
 com.weacsoft.jaravel.vendor.database
-├── BaseModel              # Eloquent Model 基类（合并实体 + 查询）
-├── DataSource             # @DataSource 注解（多数据源支持）
-└── EloquentUserProvider   # 基于 Eloquent 的用户提供者（认证集成）
+├── BaseModel                          # Eloquent Model 基类（合并实体 + 查询）
+├── DataSource                         # @DataSource 注解（按别名选择连接）
+├── RegisterConnection                 # @RegisterConnection 注解（别名注册连接，替代 @Bean）
+├── ConnectionManager                  # 连接注册表 + 全局唯一 ContainerBootstrap 持有者
+├── EloquentUserProvider               # 基于 Eloquent 的用户提供者（认证集成）
+└── autoconfigure/
+    ├── ConnectionRegistrar            # 扫描 @RegisterConnection 并注册到 ConnectionManager
+    └── DatabasePublishableConfig      # vendor:publish --tag=database 的模板
 ```
 
 ---
@@ -513,16 +520,16 @@ public class User extends BaseModel<User, Long> {
     // ...
 }
 
-// 指定 secondaryDataSource 数据源
-@DataSource("secondaryDataSource")
+// 指定 secondary 连接（对应 @RegisterConnection("secondary")）
+@DataSource("secondary")
 @Repository
 @Table(name = "products")
 public class Product extends BaseModel<Product, Long> {
     // ...
 }
 
-// 指定 logDataSource 数据源
-@DataSource("logDataSource")
+// 指定 log 连接（对应 @RegisterConnection("log")）
+@DataSource("log")
 @Repository
 @Table(name = "operation_logs")
 public class OperationLog extends BaseModel<OperationLog, Long> {
@@ -530,37 +537,38 @@ public class OperationLog extends BaseModel<OperationLog, Long> {
 }
 ```
 
+> `@DataSource` 填的是**连接别名**，不是 Spring bean name。别名在
+> `config/DatabaseConfig.java` 中用 `@RegisterConnection("别名")` 声明。
+
 ### 解析逻辑
 
-`BaseModel.getGaarasonDataSource()` 优先通过 `getConnectionAlias()` 决定连接别名（业务 Model 可重写），
-其次回退到 `@DataSource` 注解：
+`BaseModel.getGaarasonDataSource()` 先由 `getConnectionAlias()` 决定别名（默认读 `@DataSource`，
+业务 Model 可重写），随后**先查 `ConnectionManager` 注册表，找不到再回退 Spring 容器**：
 
 ```java
 @Override
 public GaarasonDataSource getGaarasonDataSource() {
-    // 1. 优先通过 getConnectionAlias() 方法决定连接别名（业务 Model 可重写）
     String alias = getConnectionAlias();
-    if (alias != null && !alias.isEmpty()) {
-        // 别名为 "primary" 但未单独注册时，回退到 @Primary 数据源
-        if ("primary".equals(alias) && !SpringContext.contains("primary")) {
-            if (gaarasonDataSource != null) {
-                return gaarasonDataSource;
-            }
-            return SpringContext.bean(GaarasonDataSource.class);
-        }
-        return SpringContext.bean(alias, GaarasonDataSource.class);
+
+    // 1) 别名优先走注册表（@RegisterConnection）
+    if (alias != null && !alias.isEmpty() && ConnectionManager.hasConnection(alias)) {
+        return ConnectionManager.connection(alias);
     }
-    // 2. 回退：检查 @DataSource 注解
-    DataSource dsAnnotation = this.getClass().getAnnotation(DataSource.class);
-    if (dsAnnotation != null) {
-        return SpringContext.bean(dsAnnotation.value(), GaarasonDataSource.class);
+
+    // 2) 注册表未命中：非默认别名交由 ConnectionManager 回退 Spring 解析
+    //    （同名 GaarasonDataSource bean → 同名 DataSource bean，后者自动用全局 Container 包装）
+    if (alias != null && !alias.isEmpty()
+            && !ConnectionManager.DEFAULT_CONNECTION.equals(alias)) {
+        return ConnectionManager.connection(alias);
     }
-    // 3. 未标注时，使用 Spring 注入的数据源（默认为 @Primary）
+
+    // 3) 默认别名：优先使用 Spring 注入的数据源（通常即 @Primary）
     if (gaarasonDataSource != null) {
         return gaarasonDataSource;
     }
-    // 4. 最终回退：从容器获取默认数据源
-    return SpringContext.bean(GaarasonDataSource.class);
+
+    // 4) 最终回退：由 ConnectionManager 解析默认连接
+    return ConnectionManager.connection(ConnectionManager.DEFAULT_CONNECTION);
 }
 
 /**
@@ -673,63 +681,151 @@ Auth.login(user);
 
 ## 配置项（application.yml）
 
-Database 模块本身不提供 `@ConfigurationProperties`，数据源需手动 `@Bean` 创建 `GaarasonDataSource`。
+数据库配置类由 `artisan vendor:publish --tag=database` 生成：
+
+```bash
+artisan vendor:publish --tag=database
+```
+
+生成 `config/DatabaseConfig.java`，内含全局唯一的 `ContainerBootstrap` 与 `@RegisterConnection` 连接注册。
 
 ### 数据源配置
 
 ```yaml
 spring:
   datasource:
-    # 主数据源
-    primary:
-      url: jdbc:mysql://localhost:3306/main_db?useSSL=false&serverTimezone=UTC
+    url: jdbc:mysql://localhost:3306/main_db?useSSL=false&serverTimezone=UTC
+    username: root
+    password: secret
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+# 额外连接（供 @RegisterConnection 读取，键名自定）
+jaravel:
+  database:
+    log:
+      url: jdbc:mysql://localhost:3306/log_db?useSSL=false&serverTimezone=UTC
       username: root
       password: secret
-      driver-class-name: com.mysql.cj.jdbc.Driver
-    # 次数据源
-    secondary:
-      url: jdbc:mysql://localhost:3306/secondary_db?useSSL=false&serverTimezone=UTC
-      username: root
-      password: secret
-      driver-class-name: com.mysql.cj.jdbc.Driver
 ```
 
-### 手动创建 GaarasonDataSource
+### ContainerBootstrap：必须全局唯一
+
+gaarason 在 SpringBoot 环境下，**每个 `GaarasonDataSource` 都必须携带 `ContainerBootstrap`**，
+且所有数据源必须**共用同一个实例**，否则 Model 注册表、类型转换器会分裂到不同容器，导致查询报错。
+
+发布出来的 `DatabaseConfig` 已处理好这件事：`containerBootstrap()` 创建唯一实例并存入
+`ConnectionManager`，其余连接方法只需声明 `ContainerBootstrap` 参数即可复用，**切勿另行 `build()`**。
 
 ```java
 @Configuration
 public class DatabaseConfig {
 
+    /** 创建并初始化全局唯一的 gaarason Container。 */
     @Bean
-    @Primary
-    public GaarasonDataSource primaryDataSource(
-            @Value("${spring.datasource.primary.url}") String url,
-            @Value("${spring.datasource.primary.username}") String username,
-            @Value("${spring.datasource.primary.password}") String password,
-            @Value("${spring.datasource.primary.driver-class-name}") String driver) {
-        DruidDataSource druid = new DruidDataSource();
-        druid.setUrl(url);
-        druid.setUsername(username);
-        druid.setPassword(password);
-        druid.setDriverClassName(driver);
-        return new GaarasonDataSource(druid);
+    public ContainerBootstrap containerBootstrap(@Autowired Environment env) {
+        String scanPackages = env.getProperty("gaarason.database.scan.packages",
+                "com.example.demo.app.model");
+        if (System.getProperty("gaarason.database.scan.packages") == null) {
+            System.setProperty("gaarason.database.scan.packages", scanPackages);
+        }
+
+        ContainerBootstrap bootstrap = ContainerBootstrap.build();
+        bootstrap.defaultRegister();
+
+        ModelInstanceProvider modelInstanceProvider = bootstrap.getBean(ModelInstanceProvider.class);
+        modelInstanceProvider.register(modelClass -> SpringContext.bean(modelClass));
+
+        bootstrap.bootstrapGaarasonAutoconfiguration();
+        bootstrap.initialization();
+
+        // 存入框架门面，保证全框架自始至终使用同一个 ContainerBootstrap
+        ConnectionManager.setContainer(bootstrap);
+        return bootstrap;
     }
 
-    @Bean("secondaryDataSource")
-    public GaarasonDataSource secondaryDataSource(
-            @Value("${spring.datasource.secondary.url}") String url,
-            @Value("${spring.datasource.secondary.username}") String username,
-            @Value("${spring.datasource.secondary.password}") String password,
-            @Value("${spring.datasource.secondary.driver-class-name}") String driver) {
+    /** 默认连接（别名 primary）：Model 未标注 @DataSource 时使用。 */
+    @RegisterConnection(value = "primary", defaultConnection = true)
+    public GaarasonDataSource primaryConnection(Environment env, ContainerBootstrap bootstrap) {
         DruidDataSource druid = new DruidDataSource();
-        druid.setUrl(url);
-        druid.setUsername(username);
-        druid.setPassword(password);
-        druid.setDriverClassName(driver);
-        return new GaarasonDataSource(druid);
+        druid.setUrl(env.getProperty("spring.datasource.url"));
+        druid.setDriverClassName(env.getProperty("spring.datasource.driver-class-name"));
+        druid.setUsername(env.getProperty("spring.datasource.username"));
+        druid.setPassword(env.getProperty("spring.datasource.password"));
+        return GaarasonDataSourceBuilder.build(druid, bootstrap);
+    }
+
+    /** 额外连接（别名 log）：Model 上写 @DataSource("log") 即可使用。 */
+    @RegisterConnection("log")
+    public GaarasonDataSource logConnection(Environment env, ContainerBootstrap bootstrap) {
+        DruidDataSource druid = new DruidDataSource();
+        druid.setUrl(env.getProperty("jaravel.database.log.url"));
+        druid.setDriverClassName("com.mysql.cj.jdbc.Driver");
+        druid.setUsername(env.getProperty("jaravel.database.log.username"));
+        druid.setPassword(env.getProperty("jaravel.database.log.password"));
+        // 复用同一个 bootstrap，切勿另行 build()
+        return GaarasonDataSourceBuilder.build(druid, bootstrap);
     }
 }
 ```
+
+### @RegisterConnection：别名 + 注解（而非 @Bean）
+
+与 auth 的 `@RegisterGuard`、cache 的 `@RegisterCacheStore` 是同一套机制：
+
+| 对比项 | `@Bean("mysql")` | `@RegisterConnection("mysql")` |
+|--------|------------------|-------------------------------|
+| 别名与 bean name | 耦合，全局唯一 | 解耦，可自由取名 |
+| 同名 bean 冲突 | 抛 `BeanDefinitionOverrideException` | 不会冲突 |
+| 是否进 Spring 容器 | 是 | 否，登记到 `ConnectionManager` |
+| 方法参数注入 | 支持 | 支持（按类型从容器解析） |
+
+由 `ConnectionRegistrar` 在所有单例就绪后扫描并注册。若方法返回裸 `DataSource`，
+框架会自动用全局唯一的 `ContainerBootstrap` 包装。
+
+### 默认连接会自动暴露为 Spring 的 DataSource Bean
+
+连接改用注解声明后，业务工程**不需要**再手写 `@Bean DataSource`。
+但 Spring 生态中大量组件仍依赖容器里存在 `DataSource` 类型的 Bean：
+
+- `DataSourceTransactionManager`（`@Transactional` 事务管理器）
+- `JdbcTemplate`
+- 第三方 starter 的 `@ConditionalOnBean(DataSource.class)`
+
+因此 `DatabaseAutoConfiguration` 会把**默认连接**以 `JaravelDataSource` 的形式
+注册为 `@Primary` 的 Spring Bean：
+
+```java
+@Bean
+@Primary
+@ConditionalOnMissingBean(javax.sql.DataSource.class)
+public JaravelDataSource jaravelDataSource() {
+    return new JaravelDataSource();
+}
+```
+
+**默认连接的确定规则**：
+
+1. 标记了 `@RegisterConnection(value = "x", defaultConnection = true)` 的连接；
+2. **若一个都没标记，则第一个注册的连接自动成为默认连接。**
+
+**为什么是惰性的**：`JaravelDataSource` 只是一个委托，构造时不解析任何东西，
+直到真正 `getConnection()` 才去 `ConnectionManager` 取默认连接。
+这样就避免了"`@RegisterConnection` 尚未扫描完成 ⇄ 事务管理器已需要 DataSource"的先后顺序死结。
+
+**向后兼容**：若业务工程自己定义了 `DataSource` Bean（历史写法），
+`@ConditionalOnMissingBean` 会让框架的 Bean 自动让位。
+
+### 别名解析顺序：先注册表，后 Spring
+
+Model 上 `@DataSource("别名")` 填写的是**连接别名**，不是 Spring bean name。解析顺序为：
+
+1. `ConnectionManager` 注册表（`@RegisterConnection` 声明的别名）；
+2. 回退 Spring 容器中同名的 `GaarasonDataSource` bean；
+3. 回退 Spring 容器中同名的 `javax.sql.DataSource` bean（自动用全局 Container 包装）；
+4. 均未命中 → 抛出异常并列出全部可用别名。
+
+因此历史的 `@Bean` 写法依然兼容，迁移无破坏性。迁移脚本（`Migration#connection()`）
+使用完全相同的一套别名语义。
 
 ---
 
@@ -803,7 +899,7 @@ public class User extends BaseModel<User, Long> implements Authenticatable {
 
 ```java
 @Repository
-@DataSource("secondaryDataSource")
+@DataSource("secondary")
 @jakarta.persistence.Table(name = "products")
 public class Product extends BaseModel<Product, Long> {
 

@@ -114,24 +114,95 @@ public SessionStore mySessionStore() { ... }
 默认实现通常采用**内存方式**（如 queue 的 sync）或**文件方式**（如 storage 的 local）。
 
 实现手段是 Maven `<optional>true</optional>` + Spring 的
-`@ConditionalOnClass` / `@ConditionalOnBean` / `@ConditionalOnMissingBean` /
-`@ConditionalOnProperty`。
+`@ConditionalOnClass` / `@ConditionalOnMissingBean` / `@ConditionalOnProperty`
+以及框架自带的 `OnDriverInUseCondition`。
 
-### 2.2 各模块回退矩阵
+### 2.2 驱动型模块：安装 ≠ 启用（重要）
+
+对齐 Laravel 的心智模型，**把依赖放进 classpath 只表示"可用"，不表示"启用"**。
+凡是需要**外部资源**的驱动（redis、database 等），一律遵循：
+
+> **只有用户显式选用了该驱动，才进行注册和配置；否则完全静默。**
+
+"完全静默"意味着：不创建任何 Bean、不连接任何外部服务、不影响应用启动。
+
+| 驱动模块 | 启用条件（满足其一） | 未启用时 |
+|---------|-------------------|---------|
+| **session-redis** | `jaravel.session.driver: redis` | 不装配，Session 回退 `CookieSessionStore` |
+| **redis-cache** | 任一 `jaravel.cache.stores.*.driver: redis` | 不装配，不连接 Redis |
+| **cache 的 database 驱动** | 任一 `jaravel.cache.stores.*.driver: database` | 不装配，无需数据源 |
+| **queue-database** | `jaravel.queue.driver: database` | 不装配，回退 `sync` |
+| **queue-redis** | `jaravel.queue.driver: redis` | 不装配，回退 `sync` |
+
+每个驱动模块还提供一个**覆盖开关**（优先级最高，用于特殊场景强制开关）：
+
+```yaml
+jaravel:
+  session:
+    redis:
+      auto-register: true     # 强制启用；false 则强制关闭；不配置＝按 driver 自动判定
+  cache:
+    redis:
+      auto-register: false    # 强制关闭
+```
+
+实现基类是 core 的 `OnDriverInUseCondition`（仅依赖 `spring-context`），
+子类声明"驱动名 + 配置键"即可，例如：
+
+```java
+public class OnRedisSessionDriverCondition extends OnDriverInUseCondition {
+    public OnRedisSessionDriverCondition() {
+        super("redis", "jaravel.session.stores.", ".driver", "jaravel.session.driver");
+        enableKey("jaravel.session.redis.auto-register");
+    }
+}
+```
+
+> **不要用 `@ConditionalOnBean(DataSource.class)` 之类判断驱动是否可用。**
+> 它把模块和 Spring 的 Bean 图强绑定，时序脆弱，且无法感知
+> jaravel 自己的 `@RegisterConnection` 连接注册表。
+> 正确做法是**运行时惰性解析**：先查 jaravel 的注册表，再回退 Spring 容器
+> （见 2.4）。
+
+### 2.3 功能型模块：默认启用
+
+不需要外部资源的**功能模块**（wire、storage 的 local、schedule、captcha、
+plugin-* 等）默认启用，通过 `jaravel.<模块>.enabled: false` 关闭。
+它们没有"连不上就崩"的风险，因此不适用 2.2 的规则。
+
+### 2.4 数据源解析顺序：先框架，后 Spring
+
+任何需要数据源的模块（cache 的 database 驱动、migration、storage 的 database 磁盘）
+都**不直接依赖 Spring 的 `DataSource` Bean**，而是按以下顺序在**运行时**解析：
+
+1. **jaravel `ConnectionManager` 注册表** —— 由 `@RegisterConnection` 声明的连接；
+2. **Spring 容器** —— 同名 Bean → 主 `DataSource` Bean。
+
+这与 Model 的连接解析语义完全一致。反过来，为了让 Spring 生态
+（`DataSourceTransactionManager`、`JdbcTemplate` 及第三方
+`@ConditionalOnBean(DataSource.class)`）也能工作，database 模块会把
+**默认连接**以 `JaravelDataSource`（惰性委托）的形式注册为 Spring Bean：
+
+- 标记 `@RegisterConnection(defaultConnection = true)` 的连接即默认连接；
+- **若一个都没标记，则第一个注册的连接自动成为默认连接**；
+- 该 Bean 惰性求值，因此不会与 `@RegisterConnection` 的扫描时机冲突；
+- 若业务工程自己定义了 `DataSource` Bean，框架自动让位（`@ConditionalOnMissingBean`）。
+
+### 2.5 各模块回退矩阵
 
 | 模块 | 有依赖时 | 无依赖时的回退 |
 |------|---------|--------------|
-| **cache** | `redis`（引入 redis-cache）/ `database`（有 `DataSource`）/ `file` | **array 内存驱动**（进程内，重启丢失） |
-| **storage** | `database` 磁盘（有 `DataSource`，自动建表） | **local 文件驱动**，根目录 `storage/app` |
-| **queue** | `driver=redis` + redis / `driver=database` + `DataSource` | **sync 同步模式**，任务在当前线程立即执行 |
-| **session** | 引入 session-redis → `RedisSessionStore`（多机同步） | **CookieSessionStore**（Servlet HttpSession） |
+| **cache** | `redis`（引入 redis-cache 并选用）/ `database`（选用且有连接）/ `file` | **array 内存驱动**（进程内，重启丢失） |
+| **storage** | `database` 磁盘（有连接，自动建表） | **local 文件驱动**，根目录 `storage/app` |
+| **queue** | `driver=redis` + redis / `driver=database` + 数据库连接 | **sync 同步模式**，任务在当前线程立即执行 |
+| **session** | 引入 session-redis **且** `driver=redis` → `RedisSessionStore`（多机同步） | **CookieSessionStore**（Servlet HttpSession） |
 | **auth** | 引入 jwt → `jwt` 守卫驱动可用 | 仅 `session` 守卫驱动 |
 | **artisan** | 引入 artisan → 各模块注册各自命令 | **不注册任何命令**，不影响 HTTP 服务 |
-| **migration** | 引入 migration → `migrate` 系列命令可用 | 需**手动建表**（见第四节） |
+| **migration** | 引入 migration → `migrate` 系列命令可用 | 无连接时仅告警，**不阻断启动** |
 | **schedule** | 引入 redis-config → Redis 分布式锁防多机重复执行 | 单机执行，无锁 |
 | **model-cache** | 引入 cache → 模型查询缓存生效 | 不缓存，直接查库 |
 
-### 2.3 artisan 的可选性
+### 2.6 artisan 的可选性
 
 artisan 在各模块的 pom 中均为 `optional`。模块注册命令的方式是
 `@ConditionalOnClass(ArtisanCommand.class)`：
@@ -141,7 +212,7 @@ artisan 在各模块的 pom 中均为 `optional`。模块注册命令的方式�
 
 因此**完全可以不使用 artisan**，只是失去命令行能力。
 
-### 2.4 vendor:publish 的可选依赖处理
+### 2.7 vendor:publish 的可选依赖处理
 
 `PublishableConfig` 接口定义在 **core** 而非 artisan，因此各模块声明可发布配置
 **无需依赖 artisan**。`vendor:publish` 命令通过
@@ -189,11 +260,17 @@ jaravel:
 
 | tag | 生成文件 | 内容 |
 |-----|---------|------|
+| `app` | `AppConfig.java` | 应用中央配置：`@Import` 功能开关 + 服务别名 + `auth()` / `cache()` / `config()` / `event()` / `session()` / `router()` / `route()` 全部访问器 |
+| `database` | `DatabaseConfig.java` | 全局唯一 `ContainerBootstrap` + `@RegisterConnection`（多连接别名） |
 | `auth` | `AuthConfig.java` | `@RegisterGuard` / `@RegisterProvider` / `@RegisterSessionStore` |
 | `cache` | `CacheConfig.java` | `@RegisterCacheStore`（array / file） |
 | `storage` | `StorageConfig.java` | `@RegisterDisk`（local / public / database 注释示例） |
 | `queue` | `QueueConfig.java` | `@RegisterQueueDriver` 示例与回退说明 |
 | `view` | `ViewConfig.java` | `@RegisterDirective`（输出指令 / 条件指令） |
+
+> `app` 与 `database` 是应用骨架，`artisan vendor:publish --all` 会一并发布。
+> 若 `AppConfig` 的 `@Import` 中引用了尚未发布的配置类（如 `AuthConfig`），
+> 请先发布对应 tag，或先注释掉该行以免编译报错。
 
 ### 3.5 为模块新增可发布配置
 
@@ -322,6 +399,22 @@ public class MyPublishableConfig implements PublishableConfig {
 **数据库表要求**：仅在使用 `database` 缓存驱动时需要。
 `array`（默认回退）、`file`、`redis` 驱动**均不需要数据库**。
 
+**装配时机**：`database` 缓存驱动工厂只有在配置里出现了
+`jaravel.cache.stores.*.driver: database` 时才注册（见 2.2）。
+未选用时，即使 classpath 上有 `spring-jdbc`、容器里没有任何数据源，也不影响启动。
+数据源在真正创建驱动时才解析，顺序为「jaravel 连接注册表 → Spring 容器」（见 2.4），
+可用 store 的 `connection` 字段指定连接别名：
+
+```yaml
+jaravel:
+  cache:
+    stores:
+      database:
+        driver: database
+        connection: primary       # 可选，缺省用默认连接
+        table: jaravel_cache
+```
+
 缓存表（默认 `jaravel_cache`，表名可配置）：
 
 | 字段 | 类型 | 说明 |
@@ -338,6 +431,21 @@ public class MyPublishableConfig implements PublishableConfig {
 
 **数据库表要求**：无。默认 `CookieSessionStore` 基于 Servlet HttpSession；
 `session-redis` 基于 Redis。**均不需要数据库表**。
+
+**启用 Redis Session**：引入 `jaravel-session-redis` 依赖后，还必须**显式选用**驱动：
+
+```yaml
+jaravel:
+  session:
+    driver: redis            # ← 不写这行，session-redis 完全不装配
+    redis:
+      connection: session
+      prefix: laravel_session
+      lifetime: 30
+```
+
+只引入依赖而不配置 `driver: redis` 时，模块保持静默、不连接 Redis，
+Session 回退到 `CookieSessionStore`——因此**无 Redis 环境也能正常启动**。
 
 ### 4.6 migration 模块
 

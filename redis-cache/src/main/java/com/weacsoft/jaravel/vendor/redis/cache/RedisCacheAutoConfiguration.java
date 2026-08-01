@@ -9,8 +9,9 @@ import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Conditional;
 
 /**
  * Redis 缓存自动装配。
@@ -22,18 +23,22 @@ import org.springframework.context.annotation.Bean;
  * 不再直接创建 {@code RedisCacheDriver} 或 {@code RedisCacheStore} Bean，
  * 而是注册工厂，由 {@code CacheManager} 根据配置按需创建（对齐 Laravel 的按需创建模式）。
  * <p>
- * 配置项：
+ *
+ * <h3>装配条件：用上了才装配</h3>
+ * 遵循 vendor 模块组统一原则——<b>安装 ≠ 启用</b>。
+ * 仅当配置里确实出现了 {@code driver: redis} 的缓存 store 才注册：
  * <pre>
  * jaravel:
  *   cache:
  *     redis:
  *       connection: cache          # 使用的 Redis 连接名，默认 cache
- *       auto-register: true        # 是否自动注册工厂到 CacheManager
  *     stores:
  *       redis:
- *         driver: redis
+ *         driver: redis            # ← 必须显式声明，否则本模块完全不装配
  *         connection: cache        # 可覆盖顶层 connection 配置
  * </pre>
+ * 也可用 {@code jaravel.cache.redis.auto-register} 强制启用（{@code true}）
+ * 或强制关闭（{@code false}），优先级最高。
  * <p>
  * 注册后，业务方可通过 {@code Cache::store("redis")} 使用 Redis 缓存，
  * 或将 {@code jaravel.cache.default-store} 设为 {@code redis} 使其成为默认 store。
@@ -41,8 +46,9 @@ import org.springframework.context.annotation.Bean;
 @AutoConfiguration
 @AutoConfigureAfter(com.weacsoft.jaravel.vendor.redis.RedisAutoConfiguration.class)
 @ConditionalOnClass({RedisCacheDriver.class, CacheDriverFactory.class, RedisManager.class})
+@Conditional(OnRedisCacheStoreCondition.class)
 @ConditionalOnBean(RedisManager.class)
-@ConditionalOnProperty(prefix = "jaravel.cache.redis", name = "auto-register", havingValue = "true", matchIfMissing = true)
+@EnableConfigurationProperties(RedisCacheProperties.class)
 public class RedisCacheAutoConfiguration {
 
     private static final Logger logger = LoggerFactory.getLogger(RedisCacheAutoConfiguration.class);

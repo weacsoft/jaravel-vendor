@@ -12,8 +12,19 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *       prefix: laravel_session      # Session 键前缀
  *       lifetime: 30                 # Session 生命周期（分钟）
  *       cookie: manage_session       # Cookie 名称
- *       auto-register: true          # 是否自动注册 redis-session guard 驱动到 AuthManager
+ *       auto-register: true          # 强制开关（可省略）
  * </pre>
+ *
+ * <h3>关于 auto-register</h3>
+ * 本模块是否装配，默认由 {@code jaravel.session.driver} 是否为 {@code redis} 决定
+ * （<b>安装 ≠ 启用</b>）。{@code auto-register} 仅作为覆盖开关，优先级最高：
+ * <ul>
+ *   <li>不配置（默认）—— 由 {@code jaravel.session.driver} 自动判定；</li>
+ *   <li>{@code true} —— 强制启用；</li>
+ *   <li>{@code false} —— 强制关闭。</li>
+ * </ul>
+ *
+ * @see OnRedisSessionDriverCondition
  */
 @ConfigurationProperties(prefix = "jaravel.session.redis")
 public class SessionRedisProperties {
@@ -30,8 +41,11 @@ public class SessionRedisProperties {
     /** Cookie 名称 */
     private String cookie = "manage_session";
 
-    /** 是否自动注册 redis-session guard 驱动到 AuthManager */
-    private boolean autoRegister = true;
+    /**
+     * 装配覆盖开关：{@code null}（默认）表示由 {@code jaravel.session.driver} 自动判定，
+     * {@code true} 强制启用，{@code false} 强制关闭。
+     */
+    private Boolean autoRegister;
 
     public String getConnection() {
         return connection;
@@ -65,11 +79,11 @@ public class SessionRedisProperties {
         this.cookie = cookie;
     }
 
-    public boolean isAutoRegister() {
+    public Boolean getAutoRegister() {
         return autoRegister;
     }
 
-    public void setAutoRegister(boolean autoRegister) {
+    public void setAutoRegister(Boolean autoRegister) {
         this.autoRegister = autoRegister;
     }
 }

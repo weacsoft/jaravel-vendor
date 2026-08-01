@@ -13,7 +13,7 @@ class RedisCachePropertiesTest {
     void testDefaultValues() {
         RedisCacheProperties props = new RedisCacheProperties();
         assertEquals("cache", props.getConnection(), "默认连接名应为 cache");
-        assertTrue(props.isAutoRegister(), "默认应自动注册到 CacheManager");
+        assertNull(props.getAutoRegister(), "默认不设开关，由缓存 store 的 driver 自动判定");
     }
 
     @Test
@@ -27,6 +27,8 @@ class RedisCachePropertiesTest {
     void testSetAutoRegister() {
         RedisCacheProperties props = new RedisCacheProperties();
         props.setAutoRegister(false);
-        assertFalse(props.isAutoRegister());
+        assertFalse(props.getAutoRegister());
+        props.setAutoRegister(true);
+        assertTrue(props.getAutoRegister());
     }
 }

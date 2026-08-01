@@ -2,6 +2,7 @@ package com.weacsoft.jaravel.vendor.database.autoconfigure;
 
 import com.weacsoft.jaravel.vendor.auth.contract.UserProviderDriver;
 import com.weacsoft.jaravel.vendor.database.EloquentUserProviderDriver;
+import com.weacsoft.jaravel.vendor.database.JaravelDataSource;
 import gaarason.database.contract.eloquent.Model;
 import gaarason.database.provider.ModelShadowProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -9,6 +10,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 
 import java.util.Map;
 
@@ -27,6 +29,63 @@ import java.util.Map;
 @AutoConfiguration
 @ConditionalOnClass({UserProviderDriver.class, EloquentUserProviderDriver.class})
 public class DatabaseAutoConfiguration {
+
+    /**
+     * 注册 {@code @RegisterConnection} 扫描器。
+     * <p>
+     * 在所有单例就绪后扫描配置类中的
+     * {@link com.weacsoft.jaravel.vendor.database.RegisterConnection @RegisterConnection}
+     * 方法，把连接按别名登记到
+     * {@link com.weacsoft.jaravel.vendor.database.ConnectionManager ConnectionManager}，
+     * 并绑定全局唯一的 {@code ContainerBootstrap}。
+     *
+     * @param applicationContext Spring 上下文
+     * @return 连接注册器
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public ConnectionRegistrar connectionRegistrar(ApplicationContext applicationContext) {
+        return new ConnectionRegistrar(applicationContext);
+    }
+
+    /**
+     * 把 {@code @RegisterConnection} 的<b>默认连接</b>暴露为 Spring 的 {@link javax.sql.DataSource} Bean。
+     * <p>
+     * 连接改用注解声明后，业务工程不再手写 {@code @Bean DataSource}，但 Spring 生态里
+     * {@code DataSourceTransactionManager}、{@code JdbcTemplate} 以及各类
+     * {@code @ConditionalOnBean(DataSource.class)} 仍需要容器中存在该类型的 Bean。
+     * 这里注册 {@link JaravelDataSource} 惰性委托即可同时满足两者：
+     * <ul>
+     *   <li>Bean 本身可以很早创建，不会与 {@code @RegisterConnection} 的扫描时机冲突；</li>
+     *   <li>真正取连接时才委托到 {@code ConnectionManager} 的默认连接。</li>
+     * </ul>
+     * 默认连接 = 标记了 {@code defaultConnection = true} 的连接；若一个都没标记，
+     * 则第一个注册的连接自动成为默认连接。
+     * <p>
+     * 若业务工程自己定义了 {@code DataSource} Bean（历史写法），
+     * {@code @ConditionalOnMissingBean} 会让本 Bean 自动让位，保持向后兼容。
+     *
+     * @return 默认连接的惰性委托数据源
+     */
+    @Bean
+    @Primary
+    @ConditionalOnMissingBean(javax.sql.DataSource.class)
+    public JaravelDataSource jaravelDataSource() {
+        return new JaravelDataSource();
+    }
+
+    /**
+     * 声明 {@code config/DatabaseConfig.java} 为可发布配置。
+     * <p>
+     * 使 {@code artisan vendor:publish --tag=database} 能发布数据库配置类。
+     *
+     * @return 可发布配置模板
+     */
+    @Bean
+    @ConditionalOnMissingBean(DatabasePublishableConfig.class)
+    public DatabasePublishableConfig databasePublishableConfig() {
+        return new DatabasePublishableConfig();
+    }
 
     /**
      * 注册 Eloquent 用户提供者驱动。

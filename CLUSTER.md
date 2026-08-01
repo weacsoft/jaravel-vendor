@@ -600,7 +600,8 @@ jaravel:
 
 ### 6.2 依赖引入
 
-- [ ] **引入 starter**：确认 `pom.xml` 中已引入 `starter` 依赖（聚合了 `redis-config`、`redis-cache`、`session-redis` 等模块）。
+- [ ] **引入 starter**：确认 `pom.xml` 中已引入 `starter` 基础依赖。
+- [ ] **（集群必需）单独引入 Redis 三件套**：`redis-config`、`redis-cache`、`session-redis` 为可选扩展模块，**不再由 starter 自动聚合**（对齐 Laravel，框架不假设用户一定有 Redis）。需显式引入这三个依赖以启用多机同步能力。
 
 ```xml
 <dependency>
@@ -782,4 +783,4 @@ starter（聚合入口）
 └── ...（其他模块）
 ```
 
-> **集群部署的核心三件套**：`redis-config`（连接管理）+ `redis-cache`（缓存共享）+ `session-redis`（Session 共享）。三者均已包含在 `starter` 中，引入 starter 即可获得全部集群能力。
+> **集群部署的核心三件套**：`redis-config`（连接管理）+ `redis-cache`（缓存共享）+ `session-redis`（Session 共享）。这三者为**可选扩展模块，不再由 starter 自动聚合**，需在使用集群部署时显式引入，再选用对应的 `redis` 驱动即可获得全部集群能力。

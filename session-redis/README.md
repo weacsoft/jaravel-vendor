@@ -67,21 +67,51 @@ public class SessionRedisProperties {
     private String prefix = "laravel_session";    // Session 键前缀
     private long lifetime = 30;                    // Session 生命周期（分钟）
     private String cookie = "manage_session";     // Cookie 名称
-    private boolean autoRegister = true;          // 是否自动注册 RedisSessionStore 为 SessionStore Bean
+    private Boolean autoRegister;                 // 装配覆盖开关，null=按 driver 自动判定
 }
 ```
+
+## 装配条件：安装 ≠ 启用（重要）
+
+本模块遵循 vendor 模块组的统一原则：**把依赖放进 classpath 只表示"可用"，不表示"启用"**。
+必须**显式选用** redis 作为 session 驱动，本模块才会注册与配置：
+
+```yaml
+jaravel:
+  session:
+    driver: redis      # ← 必须显式声明，否则本模块完全不装配
+```
+
+未选用时，本模块**不创建任何 Bean、不连接 Redis**，Session 回退到 http 模块的
+`CookieSessionStore`。因此项目即便引入了本依赖，在**没有 Redis 的环境下也能正常启动**。
+
+> **历史行为变更**：早期版本使用 `@ConditionalOnProperty(..., matchIfMissing = true)`，
+> 只要依赖在 classpath 上就自动装配并注入 `RedisManager`，导致"装了但没启用"的项目
+> 在无 Redis 时启动失败。现已修正为显式选用。
+
+覆盖开关（优先级最高，用于特殊场景）：
+
+| `jaravel.session.redis.auto-register` | 行为 |
+|---|---|
+| 不配置（默认） | 由 `jaravel.session.driver` 自动判定 |
+| `true` | 强制启用 |
+| `false` | 强制关闭 |
+
+此外还叠加了 `@ConditionalOnBean(RedisManager.class)` 兜底：即便误开了开关，
+只要 redis 模块本身没装配出 `RedisManager`，也不会因注入失败中断启动。
 
 ## 配置
 
 ```yaml
 jaravel:
   session:
+    driver: redis                # 启用本模块的开关
     redis:
-      connection: session          # Redis 连接名，对应 jaravel.redis.connections.session
-      prefix: laravel_session      # Session 键前缀
-      lifetime: 30                 # Session 生命周期（分钟）
-      cookie: manage_session       # Cookie 名称
-      auto-register: true          # 是否自动注册 RedisSessionStore 为 SessionStore Bean
+      connection: session        # Redis 连接名，对应 jaravel.redis.connections.session
+      prefix: laravel_session    # Session 键前缀
+      lifetime: 30               # Session 生命周期（分钟）
+      cookie: manage_session     # Cookie 名称
+      # auto-register: true      # 可选，覆盖开关
 
   auth:
     guards:
@@ -106,9 +136,12 @@ jaravel:
 
 启用 Redis Session 存储有两种方式：
 
-**方式一：自动注册（默认）**
+**方式一：自动注册（推荐）**
 
-引入本模块依赖后，`SessionRedisAutoConfiguration` 会在 `RedisManager` 存在且 `jaravel.session.redis.auto-register=true`（默认）时，通过 `@RegisterSessionStore(override = true)` 自动将 `RedisSessionStore` 注册为全局 `SessionStore`（覆盖 http 默认的 `CookieSessionStore`）。业务方无需额外配置。
+引入本模块依赖 + 配置 `jaravel.session.driver: redis` 即可。
+`SessionRedisAutoConfiguration` 会在 `RedisManager` 存在时，通过
+`@RegisterSessionStore(override = true)` 自动将 `RedisSessionStore` 注册为全局
+`SessionStore`（覆盖 http 默认的 `CookieSessionStore`）。业务方无需额外代码。
 
 **方式二：手动注册**
 

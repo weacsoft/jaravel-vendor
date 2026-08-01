@@ -49,6 +49,45 @@ public class SpringContext implements ApplicationContextAware {
     }
 
     /**
+     * 按类型安全获取 Bean，不存在（或容器尚未初始化）时返回 {@code null} 而非抛异常。
+     * <p>
+     * 供「先查自有注册表、找不到再回退 Spring」这类解析逻辑使用。
+     *
+     * @param type Bean 类型
+     * @param <T>  Bean 类型
+     * @return Bean 实例，不存在时返回 {@code null}
+     */
+    public static <T> T beanOrNull(Class<T> type) {
+        if (context == null) {
+            return null;
+        }
+        try {
+            return context.getBean(type);
+        } catch (BeansException e) {
+            return null;
+        }
+    }
+
+    /**
+     * 按名称 + 类型安全获取 Bean，不存在（或类型不匹配）时返回 {@code null} 而非抛异常。
+     *
+     * @param name Bean 名称
+     * @param type Bean 类型
+     * @param <T>  Bean 类型
+     * @return Bean 实例，不存在时返回 {@code null}
+     */
+    public static <T> T beanOrNull(String name, Class<T> type) {
+        if (context == null || name == null || !context.containsBean(name)) {
+            return null;
+        }
+        try {
+            return context.getBean(name, type);
+        } catch (BeansException e) {
+            return null;
+        }
+    }
+
+    /**
      * 运行时注册/替换单例 Bean。
      * <p>
      * 如果同名 Bean 已存在，先销毁旧实例再注册新实例，实现「更新」语义。

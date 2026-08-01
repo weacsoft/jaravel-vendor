@@ -85,8 +85,9 @@
 第三个连 Oracle / PostgreSQL，彼此连接方式（驱动、URL、账号）互不相同。
 
 实现方式：在 `Migration` 实现类中重写 `connection()` 方法，返回目标数据库的连接别名。
-该别名对应 Spring 容器中 `DataSource` 的 bean 名称（如 `gaaravelDataSource`、`mysql`、`sqlite`、`oracle`、`pg` 等）。
-框架按别名选取对应 `DataSource` 执行该迁移，并把迁移记录（`migrations` 表）也写到对应数据库。
+该别名的解析顺序为「**先 jaravel 连接注册表（`@RegisterConnection` 声明的别名），
+再 Spring 容器中 `DataSource` 的 bean 名称**」，与 Model 的连接解析语义一致。
+框架按别名选取对应数据源执行该迁移，并把迁移记录（`migrations` 表）也写到对应数据库。
 
 ```java
 @MigrationAnnotation
@@ -105,28 +106,32 @@ public class Migration_2024_01_01_CreateUsersTable implements Migration {
 }
 ```
 
-**默认行为**：未重写 `connection()` 时返回 `"primary"`，映射到被 `@Primary` 标记的主数据源。
+**默认行为**：未重写 `connection()` 时返回 `"primary"`，映射到默认连接。
 因此绝大多数迁移无需改动即可使用主库；只有需要落到其它库的迁移才需重写。
 
-**配置多个 DataSource**：在 Spring 中注册多个 `DataSource` Bean 即可（bean 名即连接别名），
-`MigrationAutoConfiguration` 会自动收集所有 `DataSource` 并补全 `primary` 别名：
+**配置多个连接（推荐）**：在 `config/DatabaseConfig.java` 中用 `@RegisterConnection`
+声明即可，方法上的别名就是迁移里 `connection()` 要返回的值：
 
 ```java
-@Bean
-public DataSource mysql() {
-    HikariDataSource ds = new HikariDataSource();
-    ds.setJdbcUrl("jdbc:mysql://localhost:3306/app");
-    // ...
-    return ds;
+/** 默认连接，别名 primary */
+@RegisterConnection(value = "primary", defaultConnection = true)
+public GaarasonDataSource primaryConnection(Environment env, ContainerBootstrap bootstrap) {
+    return GaarasonDataSourceBuilder.build(buildDruid(env), bootstrap);
 }
 
-@Bean
-@Primary
-public DataSource gaaravelDataSource() {   // 主库，别名 primary
-    // ...
+/** 额外连接，别名 mysql */
+@RegisterConnection("mysql")
+public DataSource mysqlConnection() {
+    HikariDataSource ds = new HikariDataSource();
+    ds.setJdbcUrl("jdbc:mysql://localhost:3306/app");
     return ds;
 }
 ```
+
+> 若未标记任何 `defaultConnection = true`，**第一个注册的连接**自动成为默认连接。
+
+**兼容旧写法**：在 Spring 中注册多个 `DataSource` Bean 同样可用（bean 名即连接别名），
+`MigrationAutoConfiguration` 会自动收集所有 `DataSource` 并补全 `primary` 别名。
 
 > 迁移记录的 `migrations` 表会按连接分别维护：每个数据库各自有一张 `migrations` 表，
 > 只记录落到该库的迁移。`migrate` / `rollback` / `reset` / `status` 都会按别名分别处理。
@@ -167,7 +172,8 @@ public DataSource gaaravelDataSource() {   // 主库，别名 primary
 | `org.springframework.boot:spring-boot-autoconfigure` | 自动装配 |
 | `org.slf4j:slf4j-api` | 日志门面 |
 
-> 运行环境要求：JDK 17+（DIRECTORY 模式）或 JRE 17+（DIRECTORY_CLASSES / PACKAGED / JAR / CLASSPATH 模式），Spring Boot 3.2.5（Spring 6.x），容器中需存在 `javax.sql.DataSource` Bean。
+> 运行环境要求：JDK 17+（DIRECTORY 模式）或 JRE 17+（DIRECTORY_CLASSES / PACKAGED / JAR / CLASSPATH 模式），Spring Boot 3.2.5（Spring 6.x）。
+> 至少需要一个可用的数据库连接——由 `@RegisterConnection` 声明，或容器中存在 `javax.sql.DataSource` Bean。
 
 ---
 
@@ -1600,7 +1606,13 @@ Per table: tableName + columnDefs + primaryKey + rowCount + rowData
 
 `com.weacsoft.jaravel.vendor.migration.MigrationAutoConfiguration`
 
-Spring Boot 自动装配类。当容器中存在 `DataSource` 且 `jaravel.migration.enabled=true`（默认）时，注册 `MigrationRunner` Bean。
+Spring Boot 自动装配类。当 `jaravel.migration.enabled=true`（默认）时注册 `MigrationRunner` Bean。
+
+> **不再使用 `@ConditionalOnBean(DataSource.class)`。** 迁移模块不与 Spring 的 `DataSource`
+> Bean 强绑定——jaravel 的连接可能只存在于 database 模块的 `ConnectionManager` 注册表中
+> （由 `@RegisterConnection` 声明）。因此改为**运行时解析**：先查连接注册表，再回退 Spring 容器。
+> 若最终一个连接都没有，仅打印告警并注册空执行器，**不阻断应用启动**；
+> 真正执行迁移命令时才给出明确错误。
 
 > **重要变更**：不再注入 `List<Migration>`，也不再注册 `Schema`、`MigrationRepository`、`Migrator` 为 Bean。迁移文件不再是 Spring 组件，而是通过 `MigrationScanner` 在运行时加载（DIRECTORY 编译 / DIRECTORY_CLASSES 加载 / PACKAGED 加载 / JAR 加载 / CLASSPATH 扫描）、反射实例化、执行后自动释放。本类仅注册 `MigrationRunner` 一个 Bean，注入 `DataSource` 与 `MigrationProperties`。
 

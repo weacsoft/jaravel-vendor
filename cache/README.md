@@ -81,7 +81,11 @@ TTL 单位统一为**秒**（对齐 Laravel），`ttl <= 0` 表示永不过期�
 
 > 运行环境要求：JDK 17+，Spring Boot 3.2.5（Spring 6.x）。
 >
-> **使用 database 驱动**时，应用需自行引入数据源与 `spring-jdbc`（如 `spring-boot-starter-jdbc` 或 `spring-boot-starter-data-jpa`），并配置 `DataSource`。`DatabaseCacheDriver` 仅在容器中存在 `DataSource` bean 时自动装配。
+> **使用 database 驱动**时，应用需自行引入 `spring-jdbc`（如 `spring-boot-starter-jdbc`）并准备一个数据库连接。
+>
+> `DatabaseCacheDriverFactory` 的装配条件是**配置里确实声明了 `driver: database` 的 store**，
+> 而**不是**"容器中存在 `DataSource` bean"。只用 array/file 驱动时，
+> 即便没有任何数据源也不会影响启动（详见第 12 节）。
 
 ---
 
@@ -101,7 +105,10 @@ com.weacsoft.jaravel.vendor.cache
 │   ├── FileCacheDriver          // 文件缓存驱动（Jackson JSON 序列化）
 │   ├── FileCacheDriverFactory   // file 驱动工厂
 │   ├── DatabaseCacheDriver      // 数据库缓存驱动（JdbcTemplate，不自动建表）
-│   └── DatabaseCacheDriverFactory // database 驱动工厂（需 DataSource）
+│   └── DatabaseCacheDriverFactory // database 驱动工厂（惰性解析数据源）
+├── autoconfigure/
+│   ├── CacheDataSourceResolver  // 数据源解析：先 jaravel 连接注册表，后 Spring 容器
+│   └── OnDatabaseCacheStoreCondition // 「声明了 driver: database 才装配」判定
 ├── CacheProperties              // 配置属性（jaravel.cache.*，含 stores 配置）
 └── CacheAutoConfiguration       // 自动装配（注册驱动工厂 + 手动装配 CacheManager）
 ```
@@ -575,7 +582,7 @@ Spring Boot 自动装配类，对齐 Laravel 缓存服务提供者。采用**工
 | --- | --- | --- |
 | `arrayCacheDriverFactory` | `ArrayCacheDriverFactory` | 内存缓存驱动工厂（始终注册） |
 | `fileCacheDriverFactory` | `FileCacheDriverFactory` | 文件缓存驱动工厂（始终注册） |
-| `databaseCacheDriverFactory` | `DatabaseCacheDriverFactory` | 数据库缓存驱动工厂；仅当 classpath 存在 `JdbcTemplate` 且容器中存在 `DataSource` bean 时装配 |
+| `databaseCacheDriverFactory` | `DatabaseCacheDriverFactory` | 数据库缓存驱动工厂；仅当 classpath 存在 `JdbcTemplate` **且配置里声明了 `driver: database` 的 store** 时装配 |
 | `cacheManager` | `CacheManager` | 缓存管理器，收集所有驱动工厂并根据 `stores` 配置按需创建 Store |
 
 ### 装配逻辑
@@ -595,7 +602,44 @@ public CacheManager cacheManager(CacheProperties properties,
 }
 ```
 
-`DatabaseCacheDriverFactory` 依赖可选的 `spring-jdbc`，因此独立到内部 `DatabaseCacheConfiguration` 装配（`@ConditionalOnClass({DataSource.class, JdbcTemplate.class})` + `@ConditionalOnBean(DataSource.class)`），避免未引入 `spring-jdbc` 的应用加载该类时抛出 `NoClassDefFoundError`。
+### database 驱动的装配条件（重要）
+
+`DatabaseCacheDriverFactory` 独立到内部 `DatabaseCacheConfiguration` 装配：
+
+```java
+@Configuration(proxyBeanMethods = false)
+@ConditionalOnClass({DataSource.class, JdbcTemplate.class})     // 避免 NoClassDefFoundError
+@Conditional(OnDatabaseCacheStoreCondition.class)               // 用上了才装配
+static class DatabaseCacheConfiguration { ... }
+```
+
+**1）用上了才装配。** `OnDatabaseCacheStoreCondition` 直接读取
+`jaravel.cache.stores.*.driver`，只有确实声明了 `database` 驱动才注册工厂：
+
+```yaml
+jaravel:
+  cache:
+    stores:
+      db:
+        driver: database        # ← 命中，装配
+        connection: primary     # 可选，指定连接别名
+        table: jaravel_cache
+```
+
+只用 array/file 时完全不装配，应用无需任何数据源即可启动。
+
+**2）不与 Spring 的 `DataSource` Bean 绑定。**
+早期版本用 `@ConditionalOnBean(DataSource.class)`，存在两个问题：
+一是把缓存模块和 Spring 的 Bean 图强绑定，时序脆弱；
+二是感知不到 jaravel 自己用 `@RegisterConnection` 注册的连接。
+
+现在数据源在**真正创建驱动时**才由 `CacheDataSourceResolver` 惰性解析，顺序为：
+
+1. **jaravel `ConnectionManager` 注册表**（`@RegisterConnection` 声明的连接）；
+2. **Spring 容器**中的 `DataSource` Bean。
+
+这与 Model 的连接解析语义一致。store 配置里的 `connection` 字段可指定别名；
+最终解析不到时抛出带操作建议的 `IllegalStateException`，而不是在启动期莫名失败。
 
 ### 第三方模块扩展
 

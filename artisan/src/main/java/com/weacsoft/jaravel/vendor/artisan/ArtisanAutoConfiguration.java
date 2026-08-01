@@ -10,6 +10,7 @@ import com.weacsoft.jaravel.vendor.artisan.make.MakeMiddlewareCommand;
 import com.weacsoft.jaravel.vendor.artisan.make.MakeMigrationCommand;
 import com.weacsoft.jaravel.vendor.artisan.make.MakeModelCommand;
 import com.weacsoft.jaravel.vendor.artisan.vendor.VendorPublishCommand;
+import com.weacsoft.jaravel.vendor.core.publish.AppPublishableConfig;
 import com.weacsoft.jaravel.vendor.core.publish.PublishableConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -125,6 +126,22 @@ public class ArtisanAutoConfiguration {
      * 实现「有则发布，无则提示」：未引入任何声明可发布配置的模块时，
      * 列表为空，命令不报错。
      */
+    /**
+     * 声明 {@code config/AppConfig.java} 为可发布配置。
+     * <p>
+     * AppConfig 属于 core 模块的产物，但 core 不含自动配置类，
+     * 故在此注册（artisan 必然依赖 core，且 {@code vendor:publish} 由本模块提供）。
+     * 这样执行 {@code artisan vendor:publish --all} 时会一并发布 AppConfig，
+     * 其中完整保留 session / router / auth / cache 等全部访问器方法。
+     *
+     * @return 可发布配置模板
+     */
+    @Bean
+    @ConditionalOnMissingBean(AppPublishableConfig.class)
+    public AppPublishableConfig appPublishableConfig() {
+        return new AppPublishableConfig();
+    }
+
     @Bean
     @ConditionalOnMissingBean
     public VendorPublishCommand vendorPublishCommand(ObjectProvider<PublishableConfig> publishables,
