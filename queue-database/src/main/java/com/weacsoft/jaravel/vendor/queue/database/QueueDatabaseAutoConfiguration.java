@@ -85,17 +85,6 @@ public class QueueDatabaseAutoConfiguration {
     }
 
     /**
-     * 声明 queue 模块的可发布配置类，供 {@code artisan vendor:publish --tag=queue} 使用。
-     * <p>
-     * 仅声明元数据，不依赖 artisan 模块；未引入 artisan 时该 Bean 无人消费，无副作用。
-     */
-    @Bean
-    @ConditionalOnMissingBean
-    public QueuePublishableConfig queuePublishableConfig() {
-        return new QueuePublishableConfig();
-    }
-
-    /**
      * 队列驱动持有者。
      * <p>
      * 声明为 {@link QueueDriverHolder} 类型而非 {@link QueueDriver}，
