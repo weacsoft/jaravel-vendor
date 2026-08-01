@@ -1,9 +1,9 @@
 package com.weacsoft.jaravel.vendor.http.controller.response;
 
+import com.weacsoft.jaravel.vendor.jblade.view.ViewFacade;
 import com.weacsoft.jaravel.vendor.json.Json;
 import jakarta.servlet.http.Cookie;
 
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -11,19 +11,6 @@ import java.util.List;
 import java.util.Map;
 
 public class ResponseBuilder {
-    private static Object bladeEngine;
-
-    private static Object getBladeEngine() {
-        if (bladeEngine == null) {
-            throw new RuntimeException("jblade 模块未引入");
-        }
-        return bladeEngine;
-    }
-
-    public static void setBladeEngine(Object engine) {
-        bladeEngine = engine;
-    }
-
     public static Response ok() {
         return new AbstractResponse() {
             @Override
@@ -52,9 +39,7 @@ public class ResponseBuilder {
             @Override
             public String getContent() {
                 try {
-                    Object engine = getBladeEngine();
-                    Method renderMethod = engine.getClass().getMethod("render", String.class, Map.class);
-                    return (String) renderMethod.invoke(engine, templateName, data);
+                    return ViewFacade.getView().render(templateName, data);
                 } catch (RuntimeException e) {
                     throw e;
                 } catch (Exception e) {

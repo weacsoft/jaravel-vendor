@@ -2,6 +2,9 @@ package com.weacsoft.jaravel.vendor.wire;
 
 import com.weacsoft.jaravel.vendor.json.Json;
 import com.weacsoft.jaravel.vendor.jblade.BladeEngine;
+import com.weacsoft.jaravel.vendor.jblade.view.BladeView;
+import com.weacsoft.jaravel.vendor.jblade.view.View;
+import com.weacsoft.jaravel.vendor.jblade.view.ViewFacade;
 
 import java.io.InputStream;
 import java.io.StringWriter;
@@ -55,10 +58,24 @@ public class WireManager {
 
     /**
      * 获取 BladeEngine 实例。
+     * <p>
+     * 优先使用 {@link #setEngine(BladeEngine)} 显式设置的实例；
+     * 若未设置，则从 {@link ViewFacade} 取当前激活的 {@link BladeView} 并复用其底层引擎。
+     * 这样无需手动把引擎塞进 WireManager，对齐"从 Facade 直接拿"的设计。
      */
     public static BladeEngine getEngine() {
         if (engine == null) {
-            throw new RuntimeException("Wire 模块未初始化：BladeEngine 未设置");
+            try {
+                View view = ViewFacade.getView();
+                if (view instanceof BladeView) {
+                    engine = ((BladeView) view).getEngine();
+                } else {
+                    throw new RuntimeException(
+                            "当前激活的 View 实现不是 BladeView，Wire 模块无法使用（需 Blade 引擎）");
+                }
+            } catch (RuntimeException e) {
+                throw new RuntimeException("Wire 模块未初始化，且无法从 ViewFacade 获取 BladeEngine：" + e.getMessage());
+            }
         }
         return engine;
     }

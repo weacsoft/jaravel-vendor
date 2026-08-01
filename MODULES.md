@@ -215,6 +215,11 @@ public class OnRedisSessionDriverCondition extends OnDriverInUseCondition {
 plugin-* 等）默认启用，通过 `jaravel.<模块>.enabled: false` 关闭。
 它们没有"连不上就崩"的风险，因此不适用 2.2 的规则。
 
+> **发布配置独立于运行开关**：各模块的 `PublishableConfig`（供 `vendor:publish` 发布配置模板）
+> 注册在独立的 `*PublishAutoConfiguration` 中，**不受 `jaravel.<模块>.enabled` 控制**。
+> 因此即使关闭模块运行能力，仍可在开发期发布对应 `Config.java`。storage 即采用此模式
+> （`StoragePublishAutoConfiguration` 与受 `enabled` 控制的 `StorageAutoConfiguration` 解耦）。
+
 ### 2.4 数据源解析顺序：先框架，后 Spring
 
 任何需要数据源的模块（cache 的 database 驱动、migration、storage 的 database 磁盘）

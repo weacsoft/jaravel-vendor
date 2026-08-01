@@ -151,6 +151,10 @@ public class StorageConfig {
 `StorageAutoConfiguration` 整体仍受 `jaravel.storage.enabled`（默认 true）开关控制（功能型模块），
 但模块一旦启用，只有真正被用到的磁盘驱动才会注册 Bean。
 
+> **发布配置与运行开关解耦**：`StoragePublishableConfig`（供 `artisan vendor:publish --tag=storage`
+> 发布 `StorageConfig.java`）由独立的 `StoragePublishAutoConfiguration` 注册，**不受
+> `jaravel.storage.enabled` 开关影响**。因此即使关闭存储运行能力，仍可在开发期发布配置模板。
+
 ### 为什么不用 `@Bean`
 
 `@Bean("public")` 的 bean name 全局唯一，与其他模块同名 bean 冲突时会抛
