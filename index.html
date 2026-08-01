@@ -267,6 +267,40 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
 
 <h5 id="overview-架构原则">架构原则</h5>
 
+<h6 id="overview-安装不等于启用">安装 ≠ 启用：驱动按需注册</h6>
+
+<p>对齐 Laravel 的心智模型，<strong>把依赖放进 classpath 只表示「这个驱动可用」，不表示「要启用它」</strong>。凡是需要<strong>外部资源</strong>的驱动型模块（redis 缓存、redis session、database 缓存、redis/database 队列等），只有在用户<strong>显式选用</strong>时才注册与配置；否则完全静默：不创建任何 Bean、不连接任何外部服务、不影响应用启动。</p>
+
+<p>&gt; <strong>典型反例</strong>：项目引入了 <code>session-redis</code> 依赖但 <code>jaravel.session.driver</code> 配的是 <code>file</code>。若 session-redis 仍自动装配并连接 Redis，就会导致无 Redis 环境启动失败。</p>
+
+<table>
+<tr><th>驱动模块</th><th>启用条件</th><th>未启用时</th></tr>
+<tr><td>session-redis</td><td><code>jaravel.session.driver: redis</code></td><td>不装配，回退 <code>CookieSessionStore</code></td></tr>
+<tr><td>redis-cache</td><td><code>jaravel.cache.stores.*.driver: redis</code></td><td>不装配，不连接 Redis</td></tr>
+<tr><td>cache 的 database 驱动</td><td><code>jaravel.cache.stores.*.driver: database</code></td><td>不装配，无需数据源</td></tr>
+<tr><td>queue-database</td><td><code>jaravel.queue.driver: database</code></td><td>不装配，回退 <code>sync</code></td></tr>
+<tr><td>queue-redis</td><td><code>jaravel.queue.driver: redis</code></td><td>不装配，回退 <code>sync</code></td></tr>
+</table>
+
+<p>实现基类是 core 的 <code>OnDriverInUseCondition</code>（仅依赖 <code>spring-context</code>），子类声明「驱动名 + 配置键」即可。每个驱动模块还提供 <code>auto-register</code> 覆盖开关（优先级最高，<code>true</code> 强制启用 / <code>false</code> 强制关闭）。</p>
+
+<p>&gt; <strong>不要用 <code>@ConditionalOnBean(DataSource.class)</code> 之类判断驱动是否可用。</strong> 它把模块和 Spring 的 Bean 图强绑定，时序脆弱，且无法感知 jaravel 自己的 <code>@RegisterConnection</code> 连接注册表。正确做法是<strong>运行时惰性解析</strong>：先查 jaravel 的注册表，再回退 Spring 容器。</p>
+
+<p><strong>功能型模块</strong>（wire、storage 的 local、schedule、captcha、plugin-* 等）不需要外部资源，默认启用，通过 <code>jaravel.&lt;模块&gt;.enabled: false</code> 关闭，不适用本原则。</p>
+
+<h6 id="overview-数据源解析顺序">数据源解析顺序：先框架，后 Spring</h6>
+
+<p>任何需要数据源的模块（cache 的 database 驱动、migration、storage 的 database 磁盘）都<strong>不直接依赖 Spring 的 <code>DataSource</code> Bean</strong>，而是按以下顺序在<strong>运行时</strong>解析：① jaravel <code>ConnectionManager</code> 注册表（<code>@RegisterConnection</code> 声明的连接）；② Spring 容器（同名 Bean → 主 <code>DataSource</code> Bean）。这与 Model 的连接解析语义完全一致。</p>
+
+<p>反过来，为了让 Spring 生态（<code>DataSourceTransactionManager</code>、<code>JdbcTemplate</code> 及第三方 <code>@ConditionalOnBean(DataSource.class)</code>）也能工作，database 模块会把<strong>默认连接</strong>以 <code>JaravelDataSource</code>（惰性委托）的形式注册为 <code>@Primary</code> 的 Spring Bean：</p>
+
+<li>标记 <code>@RegisterConnection(defaultConnection = true)</code> 的连接即默认连接；</li>
+<li><strong>若一个都没标记，则第一个注册的连接自动成为默认连接</strong>；</li>
+<li>该 Bean 惰性求值，因此不会与 <code>@RegisterConnection</code> 的扫描时机冲突；</li>
+<li>若业务工程自己定义了 <code>DataSource</code> Bean，框架自动让位（<code>@ConditionalOnMissingBean</code>）。</li>
+
+<p>因此业务工程<strong>不再需要手写 <code>@Bean DataSource</code></strong>，只写 <code>@RegisterConnection</code> 即可。</p>
+
 <h6 id="overview-热加载与远程执行独立可用">热加载与远程执行独立可用</h6>
 
 <p>热加载插件系统和远程执行系统都可以<strong>独立于 jaravel 框架使用</strong>，仅依赖 SpringBoot：</p>
@@ -7848,7 +7882,8 @@ java -jar app.jar --jaravel.migration-status
 
 <p><code>com.weacsoft.jaravel.vendor.migration.MigrationAutoConfiguration</code></p>
 
-<p>Spring Boot 自动装配类。当容器中存在 <code>DataSource</code> 且 <code>jaravel.migration.enabled=true</code>（默认）时，注册 <code>MigrationExecutor</code> 和 <code>MigrationRunner</code> Bean。<code>MigrationExecutor</code> 注册为 Bean 后可供 <code>MigrationRunner</code> 和 Artisan 迁移命令共享同一实例。</p>
+<p>Spring Boot 自动装配类。当 <code>jaravel.migration.enabled=true</code>（默认）时，注册 <code>MigrationExecutor</code> 和 <code>MigrationRunner</code> Bean。<code>MigrationExecutor</code> 注册为 Bean 后可供 <code>MigrationRunner</code> 和 Artisan 迁移命令共享同一实例。</p>
+<p>&gt; <strong>不再使用 <code>@ConditionalOnBean(DataSource.class)</code>。</strong> 迁移模块不与 Spring 的 <code>DataSource</code> Bean 强绑定——jaravel 的连接可能只存在于 database 模块的 <code>ConnectionManager</code> 注册表中（由 <code>@RegisterConnection</code> 声明）。因此改为<strong>运行时解析</strong>：先查连接注册表，再回退 Spring 容器。若最终一个连接都没有，仅打印告警并注册空执行器，<strong>不阻断应用启动</strong>。</p>
 
 <p>&gt; <strong>重要变更</strong>：不再注入 <code>List&lt;Migration&gt;</code>，也不再注册 <code>Schema</code>、<code>MigrationRepository</code>、<code>Migrator</code> 为 Bean。迁移文件不再是 Spring 组件，而是通过 <code>MigrationScanner</code> 在运行时加载（DIRECTORY 编译 / DIRECTORY_CLASSES 与 PACKAGED 预编译加载 / JAR 加载 / CLASSPATH 扫描）、反射实例化、执行后自动释放。本类注册 <code>MigrationExecutor</code> 和 <code>MigrationRunner</code> 两个 Bean，<code>MigrationRunner</code> 注入共享的 <code>MigrationExecutor</code>。</p>
 
@@ -8462,7 +8497,7 @@ java -jar app.jar --jaravel.migration-status
 <li><strong>Type</strong>: class</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.migration</code></li>
 <li><strong>Description</strong>: 迁移模块自动装配（SpringBoot 适配层）。通过 @Bean @ConfigurationProperties 绑定配置，注册 MigrationRunner Bean。核心逻辑（MigrationExecutor）已独立于 SpringBoot。</li>
-<li><strong>Annotations</strong>: <code>@AutoConfiguration</code>, <code>@AutoConfigureAfter(DataSourceAutoConfiguration.class)</code>, <code>@ConditionalOnClass(MigrationExecutor.class)</code>, <code>@ConditionalOnBean(DataSource.class)</code>, <code>@ConditionalOnProperty(prefix = &quot;jaravel.migration&quot;, name = &quot;enabled&quot;, havingValue = &quot;true&quot;, matchIfMissing = true)</code></li>
+<li><strong>Annotations</strong>: <code>@AutoConfiguration</code>, <code>@AutoConfigureAfter(DataSourceAutoConfiguration.class)</code>, <code>@ConditionalOnClass(MigrationExecutor.class)</code>, <code>@ConditionalOnProperty(prefix = &quot;jaravel.migration&quot;, name = &quot;enabled&quot;, havingValue = &quot;true&quot;, matchIfMissing = true)</code>。<strong>不再使用 <code>@ConditionalOnBean(DataSource.class)</code></strong>：连接改为运行时解析（先 jaravel <code>ConnectionManager</code> 注册表，后 Spring 容器），无连接时仅告警不阻断启动</li>
 
 <h6 id="migration-bean-methods">Bean Methods</h6>
 
@@ -13361,12 +13396,13 @@ public class SessionRedisProperties {
 <pre><code>
 jaravel:
   session:
+    driver: redis                  # ← 必须显式声明，否则本模块完全不装配
     redis:
       connection: session          # Redis 连接名，对应 jaravel.redis.connections.session
       prefix: laravel_session      # Session 键前缀
       lifetime: 30                 # Session 生命周期（分钟）
       cookie: manage_session       # Cookie 名称
-      auto-register: true          # 是否自动注册 RedisSessionStore 为全局 SessionStore Bean
+      # auto-register: true        # 可选，覆盖开关（true 强制启用 / false 强制关闭）
 
   auth:
     guards:
@@ -13404,7 +13440,10 @@ Auth.guard(&quot;web&quot;).logout();             // 登出，销毁 Redis Sessi
 
 <h5 id="session-redis-自动装配">自动装配</h5>
 
-<p><code>SessionRedisAutoConfiguration</code> 通过 <code>@AutoConfiguration</code> 注册，在 <code>RedisAutoConfiguration</code> 与 <code>AuthAutoConfiguration</code> 之后装配。当 <code>RedisManager</code> 与 <code>AuthManager</code> 均存在，且 <code>jaravel.session.redis.auto-register</code> 为 true（默认）时生效。</p>
+<p><code>SessionRedisAutoConfiguration</code> 通过 <code>@AutoConfiguration</code> 注册，在 <code>RedisAutoConfiguration</code> 与 <code>HttpSessionAutoConfiguration</code> 之后装配。</p>
+<p><strong>装配条件：安装 ≠ 启用（重要）</strong>。本模块遵循 vendor 模块组的统一原则——把依赖放进 classpath 只表示「可用」，不表示「启用」。必须<strong>显式选用</strong> redis 作为 session 驱动（<code>jaravel.session.driver: redis</code>），本模块才会注册与配置。未选用时<strong>不创建任何 Bean、不连接 Redis</strong>，Session 回退到 <code>CookieSessionStore</code>——因此项目即便引入了本依赖，在<strong>没有 Redis 的环境下也能正常启动</strong>。</p>
+<p>&gt; <strong>历史行为变更</strong>：早期版本使用 <code>@ConditionalOnProperty(..., matchIfMissing = true)</code>，只要依赖在 classpath 上就自动装配并注入 <code>RedisManager</code>，导致「装了但没启用」的项目在无 Redis 时启动失败。现已修正为显式选用。</p>
+<p>覆盖开关 <code>jaravel.session.redis.auto-register</code> 优先级最高：<code>true</code> 强制启用、<code>false</code> 强制关闭、不配置则按 <code>jaravel.session.driver</code> 自动判定。此外叠加 <code>@ConditionalOnBean(RedisManager.class)</code> 兜底。</p>
 
 <p>创建的 bean：</p>
 <li><code>RedisSessionStore</code> — Redis Session 存储（实现 <code>SessionStore</code> 契约，<code>@ConditionalOnMissingBean(SessionStore.class)</code>，便于业务方覆盖）。注册为全局 <code>SessionStore</code> Bean 后，<code>SessionGuardDriver</code>（内置 <code>session</code> 驱动）直接注入它创建 <code>SessionGuard</code>。</li>
@@ -13472,17 +13511,18 @@ store.destroy(&quot;sess-abc123&quot;);
 # application.yml
 jaravel:
   session:
+    driver: redis            # ← 必须显式声明，否则本模块完全不装配
     redis:
       connection: session
       prefix: &quot;session:&quot;
       ttl: 7200
-      auto-register: true
+      # auto-register: true  # 可选，覆盖开关
 </code></pre>
 
 <h6 id="session-redis-sessionredisautoconfiguration">SessionRedisAutoConfiguration</h6>
 <li><strong>Type</strong>: class</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.session.redis</code></li>
-<li><strong>Annotations</strong>: <code>@AutoConfiguration</code>, <code>@AutoConfigureAfter({SessionAutoConfiguration, RedisAutoConfiguration})</code>, <code>@ConditionalOnClass({RedisSessionStore, SessionManager, RedisManager})</code>, <code>@ConditionalOnBean({RedisManager, SessionManager})</code>, <code>@ConditionalOnProperty(prefix = &quot;jaravel.session.redis&quot;, name = &quot;auto-register&quot;, havingValue = &quot;true&quot;, matchIfMissing = true)</code></li>
+<li><strong>Annotations</strong>: <code>@AutoConfiguration</code>, <code>@AutoConfigureAfter({RedisAutoConfiguration, HttpSessionAutoConfiguration})</code>, <code>@ConditionalOnWebApplication(type = SERVLET)</code>, <code>@ConditionalOnClass({RedisSessionStore, RedisManager})</code>, <code>@Conditional(OnRedisSessionDriverCondition.class)</code>（<strong>必须显式配置 <code>jaravel.session.driver: redis</code></strong>）, <code>@ConditionalOnBean(RedisManager.class)</code></li>
 <li><strong>Description</strong>: Redis 会话自动装配。当 <code>RedisManager</code> 和 <code>AuthManager</code> 均存在时，创建 <code>RedisSessionStore</code> Bean（实现 auth 模块 <code>SessionStore</code> 契约），注册为全局 <code>SessionStore</code> Bean（<code>@ConditionalOnMissingBean(SessionStore.class)</code>），供内置 <code>session</code> 驱动（<code>SessionGuardDriver</code>）直接注入使用。守卫注册使用 3 参数 <code>registerGuard(&quot;web&quot;, &quot;session&quot;, &quot;users&quot;)</code>。</li>
 
 <h6 id="session-redis-methods">Methods</h6>
@@ -13591,7 +13631,7 @@ Cache（门面，静态 API）
 
 <p>&gt; 运行环境要求：JDK 17+，Spring Boot 3.2.5（Spring 6.x）。</p>
 <p>&gt;</p>
-<p>&gt; <strong>使用 database 驱动</strong>时，应用需自行引入数据源与 <code>spring-jdbc</code>（如 <code>spring-boot-starter-jdbc</code> 或 <code>spring-boot-starter-data-jpa</code>），并配置 <code>DataSource</code>。<code>DatabaseCacheDriver</code> 仅在容器中存在 <code>DataSource</code> bean 时自动装配。</p>
+<p>&gt; <strong>使用 database 驱动</strong>时，应用需自行引入 <code>spring-jdbc</code>（如 <code>spring-boot-starter-jdbc</code>）并准备一个数据库连接。<code>DatabaseCacheDriverFactory</code> 的装配条件是<strong>配置里确实声明了 <code>driver: database</code> 的 store</strong>，而<strong>不是</strong>「容器中存在 <code>DataSource</code> bean」。只用 array/file 驱动时，即便没有任何数据源也不会影响启动。</p>
 
 <p>---</p>
 
@@ -14128,7 +14168,10 @@ public CacheStoreRegistrar cacheStoreRegistrar() {
 }
 </code></pre>
 
-<p><code>DatabaseCacheDriverFactory</code> 依赖可选的 <code>spring-jdbc</code>，因此独立到内部 <code>DatabaseCacheConfiguration</code> 装配（<code>@ConditionalOnClass({DataSource.class, JdbcTemplate.class})</code> + <code>@ConditionalOnBean(DataSource.class)</code>），避免未引入 <code>spring-jdbc</code> 的应用加载该类时抛出 <code>NoClassDefFoundError</code>。</p>
+<h6 id="cache-database-驱动的装配条件">database 驱动的装配条件（重要）</h6>
+<p><code>DatabaseCacheDriverFactory</code> 独立到内部 <code>DatabaseCacheConfiguration</code> 装配：<code>@ConditionalOnClass({DataSource.class, JdbcTemplate.class})</code>（避免未引入 <code>spring-jdbc</code> 时抛出 <code>NoClassDefFoundError</code>）+ <code>@Conditional(OnDatabaseCacheStoreCondition.class)</code>（用上了才装配）。</p>
+<p><strong>1）用上了才装配。</strong> <code>OnDatabaseCacheStoreCondition</code> 直接读取 <code>jaravel.cache.stores.*.driver</code>，只有确实声明了 <code>database</code> 驱动才注册工厂。只用 array/file 时完全不装配，应用无需任何数据源即可启动。</p>
+<p><strong>2）不与 Spring 的 <code>DataSource</code> Bean 绑定。</strong> 早期版本用 <code>@ConditionalOnBean(DataSource.class)</code>，存在两个问题：一是把缓存模块和 Spring 的 Bean 图强绑定，时序脆弱；二是感知不到 jaravel 自己用 <code>@RegisterConnection</code> 注册的连接。现在数据源在<strong>真正创建驱动时</strong>才由 <code>CacheDataSourceResolver</code> 惰性解析，顺序为：① jaravel <code>ConnectionManager</code> 注册表；② Spring 容器中的 <code>DataSource</code> Bean。这与 Model 的连接解析语义一致。store 配置里的 <code>connection</code> 字段可指定别名。</p>
 
 <h6>三种 Store 注册方式</h6>
 <table>
@@ -14532,7 +14575,7 @@ Cache.store(&quot;file&quot;).put(&quot;key&quot;, &quot;value&quot;, 3600);
 <tr><th>Bean</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
 <tr><td>`arrayCacheDriverFactory`</td><td>无</td><td>`ArrayCacheDriverFactory`</td><td>内存缓存驱动工厂（@Bean, @ConditionalOnMissingBean）</td></tr>
 <tr><td>`fileCacheDriverFactory`</td><td>无</td><td>`FileCacheDriverFactory`</td><td>文件缓存驱动工厂（@Bean, @ConditionalOnMissingBean）</td></tr>
-<tr><td>`databaseCacheDriverFactory`</td><td>`DataSource`</td><td>`DatabaseCacheDriverFactory`</td><td>数据库缓存驱动工厂（内部配置类 DatabaseCacheConfiguration，@ConditionalOnClass({DataSource, JdbcTemplate}), @ConditionalOnBean(DataSource), @ConditionalOnMissingBean）</td></tr>
+<tr><td>`databaseCacheDriverFactory`</td><td>`ApplicationContext`</td><td>`DatabaseCacheDriverFactory`</td><td>数据库缓存驱动工厂（内部配置类 DatabaseCacheConfiguration，@ConditionalOnClass({DataSource, JdbcTemplate}), @Conditional(OnDatabaseCacheStoreCondition), @ConditionalOnMissingBean）。仅当配置里声明了 `driver: database` 的 store 才装配；数据源在创建驱动时才惰性解析（先 ConnectionManager 后 Spring）</td></tr>
 <tr><td>`cacheManager`</td><td>`CacheProperties, List<CacheDriverFactory>, ObjectProvider<Map<String, CacheStore>>`</td><td>`CacheManager`</td><td>缓存管理器，注册所有驱动工厂 + 根据 stores 配置按需创建 Store + 收集用户声明的 CacheStore Bean（@Bean, @ConditionalOnMissingBean）</td></tr>
 </table>
 
@@ -16067,10 +16110,10 @@ jaravel:
   cache:
     redis:
       connection: cache          # Redis 连接名，对应 jaravel.redis.connections 中的配置
-      auto-register: true        # 是否自动注册工厂到 CacheManager（默认 true）
+      # auto-register: true      # 可选，覆盖开关（true 强制启用 / false 强制关闭）
     stores:
       redis:
-        driver: redis
+        driver: redis            # ← 本模块的启用开关，不写则完全不装配
         connection: cache        # 可覆盖顶层 jaravel.cache.redis.connection 配置
 </code></pre>
 
@@ -16125,7 +16168,7 @@ Cache.store(&quot;redis-session&quot;).put(&quot;session:123&quot;, sessionData,
 
 <h5 id="redis-cache-自动装配">自动装配</h5>
 
-<p><code>RedisCacheAutoConfiguration</code> 通过 <code>@AutoConfiguration</code> 注册，在 <code>RedisAutoConfiguration</code> 之后装配。当 <code>RedisManager</code> 存在，且 <code>jaravel.cache.redis.auto-register</code> 为 true（默认）时生效。不再直接创建 <code>RedisCacheDriver</code> 或通过 <code>RedisCacheRegistrar</code> 注册 store，而是注册工厂，由 <code>CacheManager</code> 根据配置按需创建（对齐 cache 模块的工厂模式）。</p>
+<p><code>RedisCacheAutoConfiguration</code> 通过 <code>@AutoConfiguration</code> 注册，在 <code>RedisAutoConfiguration</code> 之后装配。<strong>装配原则：用上了才注册</strong>——仅把 <code>jaravel-redis-cache</code> 放进 classpath <strong>不会</strong>触发装配，必须在 <code>jaravel.cache.stores.*.driver</code> 中显式选用 <code>redis</code>。未选用时不创建任何 Bean、不连接 Redis，<strong>无 Redis 环境也能正常启动</strong>。覆盖开关 <code>jaravel.cache.redis.auto-register</code> 优先级最高（<code>true</code> 强制启用 / <code>false</code> 强制关闭）。不再直接创建 <code>RedisCacheDriver</code> 或通过 <code>RedisCacheRegistrar</code> 注册 store，而是注册工厂，由 <code>CacheManager</code> 根据配置按需创建（对齐 cache 模块的工厂模式）。</p>
 
 <p>创建的 bean：</p>
 <li><code>RedisCacheDriverFactory</code> — Redis 缓存驱动工厂（<code>@ConditionalOnMissingBean</code>，便于业务方覆盖），使用 <code>cache</code> 命名连接。注册为 <code>CacheDriverFactory</code>，由 <code>CacheManager</code> 在创建 <code>redis</code> store 时按需调用 <code>factory.create(config)</code> 创建驱动实例</li>
@@ -16225,13 +16268,16 @@ jaravel:
   cache:
     redis:
       connection: cache
-      auto-register: true
+      # auto-register: true    # 可选，覆盖开关
+    stores:
+      redis:
+        driver: redis          # ← 必须声明，否则本模块完全不装配
 </code></pre>
 
 <h6 id="redis-cache-rediscacheautoconfiguration">RedisCacheAutoConfiguration</h6>
 <li><strong>Type</strong>: class</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.redis.cache</code></li>
-<li><strong>Annotations</strong>: <code>@AutoConfiguration</code>, <code>@AutoConfigureAfter(RedisAutoConfiguration.class)</code>, <code>@ConditionalOnClass({RedisCacheDriver, CacheDriverFactory, RedisManager})</code>, <code>@ConditionalOnBean(RedisManager.class)</code>, <code>@ConditionalOnProperty(prefix = &quot;jaravel.cache.redis&quot;, name = &quot;auto-register&quot;, havingValue = &quot;true&quot;, matchIfMissing = true)</code></li>
+<li><strong>Annotations</strong>: <code>@AutoConfiguration</code>, <code>@AutoConfigureAfter(RedisAutoConfiguration.class)</code>, <code>@ConditionalOnClass({RedisCacheDriver, CacheDriverFactory, RedisManager})</code>, <code>@Conditional(OnRedisCacheStoreCondition.class)</code>（<strong>必须存在 <code>driver: redis</code> 的缓存 store</strong>）, <code>@ConditionalOnBean(RedisManager.class)</code>, <code>@EnableConfigurationProperties(RedisCacheProperties.class)</code></li>
 <li><strong>Description</strong>: Redis 缓存自动装配。当 <code>RedisManager</code> 存在时，创建 <code>RedisCacheDriverFactory</code> 并注册为 Spring Bean。<code>CacheAutoConfiguration</code> 会自动收集所有 <code>CacheDriverFactory</code> Bean 并注册到 <code>CacheManager</code>，由 <code>CacheManager</code> 在配置了 <code>redis</code> store 时按需创建驱动。不再直接创建 <code>RedisCacheDriver</code> 或通过注册器注册 store。</li>
 
 <h6 id="redis-cache-methods">Methods</h6>
