@@ -91,7 +91,10 @@ public class AuthRegistrar implements SmartInitializingSingleton, ApplicationCon
         // 4. 配置式守卫注册
         if (properties.getGuards() != null) {
             properties.getGuards().forEach((name, cfg) -> {
-                authManager.registerGuard(name, cfg.getDriver(), cfg.getProvider());
+                // 兜底：写了 guards 但没写 driver，使用最基础的 session 守卫保证功能可用
+                String driver = (cfg.getDriver() == null || cfg.getDriver().isBlank())
+                        ? "session" : cfg.getDriver();
+                authManager.registerGuard(name, driver, cfg.getProvider());
             });
         }
 

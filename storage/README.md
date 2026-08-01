@@ -136,6 +136,21 @@ public class StorageConfig {
 
 **注册优先级**：驱动收集 → 配置式磁盘 → `@RegisterDisk`（覆盖同名）→ 兜底 `local`。
 
+### 驱动按需装配（安装 ≠ 启用，用上了才注册）
+
+两个内置磁盘驱动均通过 core 的 `OnDriverInUseCondition` 判定，**不写配置不进内存**：
+
+- `LocalFilesystemDriver`：受 `@Conditional(OnLocalDiskDriverCondition.class)` 约束。当任一
+  `jaravel.storage.disks.*.driver` 取值为 `local` / `public`，**或用户写了 disks 但没写 driver（兜底回退到 `local`）**，
+  或完全没写任何 disk 配置（模块自动兜底注册 `local` 默认磁盘）时装配。`local` 是 storage 的**兜底默认驱动**，
+  因此本条件调用 `matchIfAbsent()` 认缺省。
+- `DatabaseFilesystemDriver`：受 `@Conditional(OnDatabaseDiskDriverCondition.class)` 约束，仅当
+  任一 `jaravel.storage.disks.*.driver` 显式取值为 `database` 时装配。**`database` 不在兜底**，
+  用户未显式选用时完全不创建，不连数据库。
+
+`StorageAutoConfiguration` 整体仍受 `jaravel.storage.enabled`（默认 true）开关控制（功能型模块），
+但模块一旦启用，只有真正被用到的磁盘驱动才会注册 Bean。
+
 ### 为什么不用 `@Bean`
 
 `@Bean("public")` 的 bean name 全局唯一，与其他模块同名 bean 冲突时会抛

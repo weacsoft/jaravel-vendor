@@ -13,6 +13,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Conditional;
 
 /**
  * JWT 自动装配：注册 JwtConfig、JwtService、JwtGuardDriver Bean。
@@ -86,6 +87,7 @@ public class JwtAutoConfiguration {
      */
     @Bean
     @ConditionalOnMissingBean
+    @Conditional(OnJwtGuardDriverCondition.class)
     public JwtGuardDriver jwtGuardDriver(JwtService jwtService, JwtConfig jwtConfig) {
         return new JwtGuardDriver(jwtService, jwtConfig);
     }

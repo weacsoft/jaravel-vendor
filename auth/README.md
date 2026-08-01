@@ -552,7 +552,9 @@ public class SessionGuardDriver implements AuthGuardDriver {
 }
 ```
 
-由 `AuthAutoConfiguration` 自动注册为 Spring Bean，无需手动配置。
+由 `AuthAutoConfiguration` 自动注册为 Spring Bean。
+
+> **装配条件（重要）**：`SessionGuardDriver` 受 `@Conditional(OnSessionGuardDriverCondition.class)` 约束——当 `jaravel.auth.guards.*.driver` 出现 `session`，**或用户写了 guards 但没写 driver（兜底回退到 session）**，或完全没写任何 guard 配置时装配。`session` 是 auth 模块的**兜底默认驱动**，因此本条件调用 `matchIfAbsent()` 认缺省；与之相对，`jwt` 等额外驱动严格按需、不认缺省（见 jwt/README）。
 
 ---
 
@@ -869,6 +871,9 @@ public class AuthAutoConfiguration implements SmartInitializingSingleton {
 **装配条件**：
 - Servlet Web 应用环境
 - classpath 存在 `AuthManager` 类
+- `sessionGuardDriver` 额外受 `@Conditional(OnSessionGuardDriverCondition.class)` 约束（session 为兜底默认，认缺省；详见「守卫驱动按需装配」）
+
+> **守卫驱动按需装配（安装 ≠ 启用）**：`SessionGuardDriver`（session）与 `JwtGuardDriver`（jwt，由 jwt 模块提供）均通过 core 的 `OnDriverInUseCondition` 判定，仅当用户显式选用（或按兜底默认选用）对应驱动时才装配。用户写了 `guards` 但没写 `driver` 时，由 `AuthRegistrar` 补成默认的 `session` 守卫，保证功能基本可用。
 
 **自动收集机制**：所有 `AuthGuardDriver` 实现（如 auth 模块的 `SessionGuardDriver`、jwt 模块的 `JwtGuardDriver`）注册为 Spring Bean 后，本配置类在所有单例就绪后自动将它们注册到 `AuthManager`，无需各模块手动调用注册方法。
 
@@ -923,8 +928,10 @@ jaravel:
 | 配置项 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
 | `jaravel.auth.default-guard` | String | `web` | 默认守卫名称 |
-| `jaravel.auth.guards.<name>.driver` | String | - | 驱动名称（session / jwt） |
-| `jaravel.auth.guards.<name>.provider` | String | - | 提供者名称 |
+| `jaravel.auth.guards.<name>.driver` | String | `session`（兜底） | 驱动名称（session / jwt 等）；不写时兜底为 `session` |
+| `jaravel.auth.guards.<name>.provider` | String | - | 提供者名称（即 `@RegisterProvider` 的别名；见下「provider 别名」） |
+
+**provider 别名（重要）**：`driver` / `provider` 字段都接受字符串，运行时按 `support()` 匹配对应驱动对象（类似数据库多兼容）。特别注意——**`provider` 不是一种 driver**：同一个 `EloquentUserProvider` 类可对应多个对象（不同 model 类要用不同 provider 实例），此时应把「model 类 + provider」合并看成一个具名实例，称为**别名**，通过 `@RegisterProvider("users")` 声明，`AuthManager` 按别名解析而非按类解析。这样不同守卫可分别绑定到不同 model 的 provider（如 `web→users`、`admin→admins`），互不干扰。
 
 > Session 存储后端不再在守卫配置中指定，改为由 `config/SessionConfig.java` 全局决定。
 

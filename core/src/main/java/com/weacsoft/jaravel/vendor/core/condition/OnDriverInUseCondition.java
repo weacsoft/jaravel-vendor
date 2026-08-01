@@ -42,6 +42,16 @@ public abstract class OnDriverInUseCondition implements Condition {
     private static final org.slf4j.Logger logger =
             org.slf4j.LoggerFactory.getLogger(OnDriverInUseCondition.class);
 
+    /**
+     * 便捷构造器：仅依赖单个单值配置键，无映射式配置。
+     *
+     * @param driverName 驱动名
+     * @param singleKey  单值配置键，如 {@code jaravel.queue.driver}
+     */
+    protected OnDriverInUseCondition(String driverName, String singleKey) {
+        this(driverName, null, null, singleKey);
+    }
+
     /** 本模块提供的驱动名。 */
     private final String driverName;
 
@@ -74,6 +84,9 @@ public abstract class OnDriverInUseCondition implements Condition {
      */
     private String enableKey;
 
+    /** 缺省即命中标志，用于兜底默认驱动。 */
+    private boolean matchIfAbsent = false;
+
     /**
      * 设置显式开关键，例如 {@code jaravel.session.redis.auto-register}。
      * <p>
@@ -85,6 +98,21 @@ public abstract class OnDriverInUseCondition implements Condition {
      */
     protected OnDriverInUseCondition enableKey(String key) {
         this.enableKey = key;
+        return this;
+    }
+
+    /**
+     * 缺省即命中标志。适用于<b>兜底默认驱动</b>（如 session 守卫、local 磁盘）：
+     * 当用户<b>完全没有显式配置</b>本模块的任何驱动键（单值键为空且其映射配置块下无任何键）时，
+     * 视为选用了本默认驱动而装配。
+     * <p>
+     * 一旦用户显式写了任何驱动键（即使是其它驱动名），本条件不再命中，
+     * 由对应驱动的 condition 负责按需装配，从而保证「用上了才注册」。
+     *
+     * @return this，便于链式调用
+     */
+    protected OnDriverInUseCondition matchIfAbsent() {
+        this.matchIfAbsent = true;
         return this;
     }
 
@@ -130,6 +158,31 @@ public abstract class OnDriverInUseCondition implements Condition {
             }
         }
 
+        // 4) 兜底默认驱动：用户完全未显式配置本模块任何驱动键时命中
+        if (matchIfAbsent && !hasAnyExplicitDriverKey(env)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * 判断用户是否显式配置了本模块的任意驱动键。
+     * <p>
+     * 单值键非空，或映射配置块下存在任意键（无论其值是否为本驱动名）均视为已显式配置。
+     *
+     * @param env Spring 环境
+     * @return 存在任意显式驱动键返回 true
+     */
+    private boolean hasAnyExplicitDriverKey(Environment env) {
+        for (String key : singleKeys) {
+            if (env.getProperty(key) != null) {
+                return true;
+            }
+        }
+        if (mapKeyPrefix != null) {
+            return !mapDriverKeys(env).isEmpty();
+        }
         return false;
     }
 

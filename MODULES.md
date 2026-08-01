@@ -120,19 +120,27 @@ public SessionStore mySessionStore() { ... }
 ### 2.2 驱动型模块：安装 ≠ 启用（重要）
 
 对齐 Laravel 的心智模型，**把依赖放进 classpath 只表示"可用"，不表示"启用"**。
-凡是需要**外部资源**的驱动（redis、database 等），一律遵循：
+凡是**驱动型模块**（auth 的 guard、jwt、storage 的 disk、cache 的 store、
+session 的存储、queue 的连接、database 的连接等），一律遵循：
 
-> **只有用户显式选用了该驱动，才进行注册和配置；否则完全静默。**
+> **只有用户显式选用（或按兜底默认选用）了该驱动，才进行注册和配置；否则完全静默。**
 
 "完全静默"意味着：不创建任何 Bean、不连接任何外部服务、不影响应用启动。
 
-| 驱动模块 | 启用条件（满足其一） | 未启用时 |
-|---------|-------------------|---------|
-| **session-redis** | `jaravel.session.driver: redis` | 不装配，Session 回退 `CookieSessionStore` |
-| **redis-cache** | 任一 `jaravel.cache.stores.*.driver: redis` | 不装配，不连接 Redis |
-| **cache 的 database 驱动** | 任一 `jaravel.cache.stores.*.driver: database` | 不装配，无需数据源 |
-| **queue-database** | `jaravel.queue.driver: database` | 不装配，回退 `sync` |
-| **queue-redis** | `jaravel.queue.driver: redis` | 不装配，回退 `sync` |
+以下**所有驱动**统一通过 core 的 `OnDriverInUseCondition`（仅依赖 `spring-context`）
+判定，子类声明"驱动名 + 配置键"即可：
+
+| 驱动模块 | 驱动名 | 启用条件（满足其一） | 未启用时 |
+|---------|-------|-------------------|---------|
+| **session-redis** | `redis` | `jaravel.session.driver: redis` | 不装配，Session 回退 `CookieSessionStore` |
+| **redis-cache** | `redis` | 任一 `jaravel.cache.stores.*.driver: redis` | 不装配，不连接 Redis |
+| **cache 的 database 驱动** | `database` | 任一 `jaravel.cache.stores.*.driver: database` | 不装配，无需数据源 |
+| **queue-database (redis)** | `redis` | `jaravel.queue.driver: redis` | 不装配，回退 `sync` |
+| **queue-database (database)** | `database` | `jaravel.queue.driver: database` | 不装配，回退 `sync` |
+| **auth (session 守卫)** | `session` | 任一 `jaravel.auth.guards.*.driver: session` 或**未写 driver（兜底）** | —（自身即兜底） |
+| **auth (jwt 守卫)** | `jwt` | 任一 `jaravel.auth.guards.*.driver: jwt` | 不装配（**JWT 不在兜底**） |
+| **storage (local 磁盘)** | `local` / `public` | 任一 `jaravel.storage.disks.*.driver: local` 或**未写 driver（兜底）** | —（自身即兜底） |
+| **storage (database 磁盘)** | `database` | 任一 `jaravel.storage.disks.*.driver: database` | 不装配 |
 
 每个驱动模块还提供一个**覆盖开关**（优先级最高，用于特殊场景强制开关）：
 
@@ -146,8 +154,7 @@ jaravel:
       auto-register: false    # 强制关闭
 ```
 
-实现基类是 core 的 `OnDriverInUseCondition`（仅依赖 `spring-context`），
-子类声明"驱动名 + 配置键"即可，例如：
+实现基类是 core 的 `OnDriverInUseCondition`，例如：
 
 ```java
 public class OnRedisSessionDriverCondition extends OnDriverInUseCondition {
@@ -158,11 +165,49 @@ public class OnRedisSessionDriverCondition extends OnDriverInUseCondition {
 }
 ```
 
+**兜底默认驱动**调用 `matchIfAbsent()`，表示"用户完全没有显式配置本模块任何驱动键时即装配"；
+非默认驱动（如 `jwt` / `database` / `redis`）则不认缺省，严格按需。
+
 > **不要用 `@ConditionalOnBean(DataSource.class)` 之类判断驱动是否可用。**
 > 它把模块和 Spring 的 Bean 图强绑定，时序脆弱，且无法感知
 > jaravel 自己的 `@RegisterConnection` 连接注册表。
 > 正确做法是**运行时惰性解析**：先查 jaravel 的注册表，再回退 Spring 容器
 > （见 2.4）。
+
+### 2.2.1 注册式三层优先级：声明 → 配置 → 默认
+
+驱动型模块的"按 driver 选用"并非只有一种手段，框架提供**三级并存**的注册通道，
+按以下顺序回退，越往前优先级越高：
+
+1. **声明（support）**：模块/开发者用 `@RegisterGuard` / `@RegisterProvider` /
+   `@RegisterCacheStore` / `@RegisterDisk` / `@RegisterQueueDriver` /
+   `@RegisterSessionStore` 等注解自我声明"我实现了哪个 driver"（对应 `support(driverName)`）。
+   开发者**不动核心代码**即可在业务工程中注册额外扩展。
+   > 例如：`@RegisterGuard(driver = "jwt")` 把 JWT 守卫接入 auth，即使框架没内置也行。
+2. **配置（yaml）**：用户在 `jaravel.<模块>.guards/disks/stores/...` 里写 `driver` 名选用。
+3. **默认（兜底）**：用户写了该模块的配置块、但没写具体 `driver` 时，由对应 Module 的
+   `Registrar` 填上**模块默认驱动**保证基本可用（见 2.2.2）。
+
+**关于"别名"**：`guard` 的 `driver` / `provider` 参数都接受字符串。传入的字符串在运行时
+按 `support()` 匹配对应驱动对象（类似数据库多兼容）。特别地，**`provider` 不是一种 driver**——
+同一个 `EloquentUserProvider` 类可对应多个对象（不同 model 类要用不同 provider 实例），
+此时把"model 类 + provider"合并看成一个具名实例，称为**别名**（alias），通过
+`@RegisterProvider("users")` 声明，`AuthManager` 按别名解析而非按类解析。
+
+### 2.2.2 兜底默认值（写了模块但没写 driver）
+
+| 模块 | 默认驱动 | 说明 |
+|------|---------|------|
+| **auth** | `session` | 写了 `guards` 没写 `driver` → 用 `session` 守卫 |
+| **cache** | `array` | 内存驱动，重启丢失 |
+| **storage** | `local` | 文件驱动，根目录 `storage/app` |
+| **session** | `cookie` | `CookieSessionStore`（Servlet HttpSession） |
+| **queue** | `array`/`sync` | 同步执行，当前线程立即执行 |
+| **database** | **无兜底，直接报错** | 底层基础设施，没写连接即报错（不静默回退） |
+| **JWT** | **不在兜底** | 额外实现，只有显式 `driver: jwt` 才装配 |
+
+> 兜底发生在 **Registrar 读取配置阶段**（做法 X）：若某 guard/disk 的 `driver` 为空，
+> 补成模块默认值；condition 层据此看到的是已填好的默认值，从而按需装配默认驱动 Bean。
 
 ### 2.3 功能型模块：默认启用
 
@@ -196,7 +241,7 @@ plugin-* 等）默认启用，通过 `jaravel.<模块>.enabled: false` 关闭。
 | **storage** | `database` 磁盘（有连接，自动建表） | **local 文件驱动**，根目录 `storage/app` |
 | **queue** | `driver=redis` + redis / `driver=database` + 数据库连接 | **sync 同步模式**，任务在当前线程立即执行 |
 | **session** | 引入 session-redis **且** `driver=redis` → `RedisSessionStore`（多机同步） | **CookieSessionStore**（Servlet HttpSession） |
-| **auth** | 引入 jwt → `jwt` 守卫驱动可用 | 仅 `session` 守卫驱动 |
+| **auth** | 引入 jwt → `jwt` 守卫驱动可用（严格按需，不在兜底） | 仅 `session` 守卫驱动（写了 guards 但未写 driver 时兜底为 session） |
 | **artisan** | 引入 artisan → 各模块注册各自命令 | **不注册任何命令**，不影响 HTTP 服务 |
 | **migration** | 引入 migration → `migrate` 系列命令可用 | 无连接时仅告警，**不阻断启动** |
 | **schedule** | 引入 redis-config → Redis 分布式锁防多机重复执行 | 单机执行，无锁 |

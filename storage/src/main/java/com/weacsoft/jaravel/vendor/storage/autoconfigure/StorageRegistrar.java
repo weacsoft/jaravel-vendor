@@ -84,8 +84,11 @@ public class StorageRegistrar extends AnnotationDrivenRegistrar<RegisterDisk> {
      */
     private void registerConfiguredDisks() {
         properties.getDisks().forEach((name, config) -> {
-            manager.registerDisk(name, DiskDefinition.of(config.getDriver(), config.toConfig()));
-            log.debug("按配置注册磁盘: {} (driver={})", name, config.getDriver());
+            // 兜底：写了 disks 但没写 driver，使用最基础的 local 磁盘保证功能可用
+            String driver = (config.getDriver() == null || config.getDriver().isBlank())
+                    ? "local" : config.getDriver();
+            manager.registerDisk(name, DiskDefinition.of(driver, config.toConfig()));
+            log.debug("按配置注册磁盘: {} (driver={})", name, driver);
         });
         if (properties.getDefaultDisk() != null && !properties.getDefaultDisk().isBlank()) {
             manager.setDefaultDisk(properties.getDefaultDisk());

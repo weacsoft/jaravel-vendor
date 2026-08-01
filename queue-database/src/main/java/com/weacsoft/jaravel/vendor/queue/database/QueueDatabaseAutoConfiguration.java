@@ -7,28 +7,27 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Conditional;
 
 import javax.sql.DataSource;
 
 /**
  * 队列自动装配（database 驱动 + 通用 worker / dispatcher）。
  * <p>
- * 通过 {@code jaravel.queue.driver} 选择驱动：
+ * 通过 {@code jaravel.queue.driver} 选择驱动（vendor 模块组统一原则：<b>安装 ≠ 启用，用上了才注册</b>）：
  * <ul>
- *   <li>{@code sync}（默认）：内存队列，不创建 QueueDriver Bean，EventDispatcher 使用 QueueManager 内存队列</li>
- *   <li>{@code database}：基于 {@link DataSource} 的 {@link DatabaseQueueDriver}</li>
+ *   <li>{@code sync}（默认）：内存队列，不创建任何 QueueDriver Bean，EventDispatcher 使用 QueueManager 内存队列</li>
+ *   <li>{@code database}：基于 {@link DataSource} 的 {@link DatabaseQueueDriver}（由
+ *       {@link OnDatabaseQueueDriverCondition} 条件装配，仅显式 {@code driver=database} 时启用）</li>
  *   <li>{@code redis}：基于 {@link RedisManager} 的 {@link RedisQueueDriver}（由
- *       {@link RedisQueueAutoConfiguration} 注册，先于本类处理）</li>
+ *       {@link RedisQueueAutoConfiguration} 注册，先于本类处理，仅显式 {@code driver=redis} 时启用）</li>
  * </ul>
- * <b>自动回退</b>：当 {@code driver=redis} 但 {@code redis-config} 未引入或无 {@link RedisManager}
- * 时，本类的 database bean 会因 {@code @ConditionalOnMissingBean(QueueDriver.class)} 兜底创建，
- * 并打印回退告警，确保不硬依赖 redis。
+ * 不再存在「redis 不可用回退 database」逻辑：redis 与 database 各自独立按需装配，
+ * sync 始终作为无驱动时的内存兜底。
  * <p>
  * <b>sync 模式</b>：当 {@code driver=sync}（默认）时，不创建任何 QueueDriver Bean，
  * EventDispatcher 自动降级为内存队列（{@link com.weacsoft.jaravel.vendor.event.QueueManager}），
@@ -76,16 +75,11 @@ public class QueueDatabaseAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean(QueueDriver.class)
     @ConditionalOnBean(DataSource.class)
-    @ConditionalOnExpression("'${jaravel.queue.driver:sync}' != 'sync'")
-    @ConditionalOnProperty(prefix = "jaravel.queue.database", name = "enabled", havingValue = "true", matchIfMissing = true)
+    @Conditional(OnDatabaseQueueDriverCondition.class)
     public DatabaseQueueDriver databaseQueueDriver(DataSource dataSource,
                                                    QueueDatabaseProperties dbProps,
                                                    QueueProperties props) {
-        if ("redis".equalsIgnoreCase(props.getDriver())) {
-            logger.warn("[queue] 配置了 jaravel.queue.driver=redis 但 RedisManager 不可用，回退到 database 驱动");
-        } else {
-            logger.info("[queue] 使用 database 驱动");
-        }
+        logger.info("[queue] 使用 database 驱动: table={}", dbProps.getTable());
         return new DatabaseQueueDriver(dataSource, dbProps.getTable(),
                 dbProps.getRetryAfter(), props.getFailedJobRetentionDays());
     }

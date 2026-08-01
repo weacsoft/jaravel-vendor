@@ -10,7 +10,7 @@
 - `spring-jdbc` — `JdbcTemplate` 数据库操作
 - `jackson-databind` — 任务负载 JSON 序列化
 - `slf4j-api` — 日志
-- `redis-config`（**optional**）— Redis 驱动按需依赖，未引入时自动回退到 database 驱动
+- `redis-config`（**optional**）— Redis 驱动按需依赖，未引入时 `RedisQueueDriver` 根本不装配（严格按需，不回退到 database）
 
 ## 驱动选择
 
@@ -22,9 +22,12 @@
 | `database` | `DatabaseQueueDriver` | `DataSource` | `failed_jobs` 表 |
 | `redis` | `RedisQueueDriver` | `RedisManager`（redis-config） | `jaravel:queue:failed` List |
 
-**sync 模式（默认）**：当 `driver=sync` 时，不创建任何 `QueueDriver` Bean，`EventDispatcher` 自动降级为内存队列（`QueueManager`），不会创建数据库表，无需额外配置。对齐 Laravel 的 `sync` 队列驱动。
+**sync 模式（默认）**：当 `driver=sync`（或完全不配置 `jaravel.queue.driver`）时，不创建任何 `QueueDriver` Bean，`EventDispatcher` 自动降级为内存队列（`QueueManager`），不会创建数据库表，无需额外配置。对齐 Laravel 的 `sync` 队列驱动。
 
-**自动回退**：当 `driver=redis` 但未引入 `redis-config` 或容器中无 `RedisManager` 时，自动回退到 database 驱动并打印告警，确保不硬依赖 redis。
+**用上了才注册（安装 ≠ 启用）**：`redis` 与 `database` 两种持久化驱动均通过 core 的 `OnDriverInUseCondition`
+**严格按需**装配——仅当 `jaravel.queue.driver` 显式取值为 `redis` / `database` 时才创建对应 `QueueDriver` Bean，
+且依然受 `@ConditionalOnBean(RedisManager.class)` / `@ConditionalOnBean(DataSource.class)` 约束。
+不存在「redis 不可用回退 database」逻辑：redis 与 database 各自独立按需装配，sync 始终作为无驱动时的内存兜底。
 
 ## 核心接口
 
@@ -150,6 +153,8 @@ jaravel:
     database:
       enabled: true                 # 是否启用 database 驱动（默认 true）
       table: jobs                   # 任务表名
+      # 说明：database 驱动的实际启用由 jaravel.queue.driver=database 决定（见下文自动装配），
+      # 此 enabled 仅作兼容占位，不再控制装配。
       retry-after: 1800             # 重试超时秒数（30 分钟）
       max-attempts: 3               # 最大重试次数
       retry-delay-ms: 1000          # 重试延迟毫秒
@@ -262,9 +267,12 @@ public void dispatchAsync(String queueName, Object listener, Object event) {
 
 通过 `@AutoConfiguration` 注册，自动配置类在 `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` 中声明：
 
-- `RedisQueueAutoConfiguration`（先处理）：当 `redis-config` 在类路径、存在 `RedisManager` bean、`driver=redis` 时注册 `RedisQueueDriver`
-- `QueueDatabaseAutoConfiguration`：注册 `DatabaseQueueDriver`（默认 / 回退驱动）、`DatabaseQueueWorker`、`DatabaseQueueDispatcher`
-- 当 `driver=sync`（默认）时，不创建 `QueueDriver` Bean，`EventDispatcher` 使用内存队列（`QueueManager`），不会创建数据库表
+- `RedisQueueAutoConfiguration`（先处理）：受 `@Conditional(OnRedisQueueDriverCondition.class)` 约束，仅当
+  `redis-config` 在类路径、存在 `RedisManager` bean、且 `jaravel.queue.driver=redis` 时注册 `RedisQueueDriver`
+- `QueueDatabaseAutoConfiguration`：受 `@Conditional(OnDatabaseQueueDriverCondition.class)` 约束，仅当
+  `jaravel.queue.driver=database` 且存在 `DataSource` bean 时注册 `DatabaseQueueDriver`、`DatabaseQueueWorker`、`DatabaseQueueDispatcher`
+- 当 `jaravel.queue.driver` 为 `sync`（默认）或完全未配置时，两个驱动条件都不命中，不创建 `QueueDriver` Bean，
+  `EventDispatcher` 使用内存队列（`QueueManager`），不会创建数据库表
 
 创建的 bean：
 - `QueueDriver`（`DatabaseQueueDriver` 或 `RedisQueueDriver`）— 队列驱动（`@ConditionalOnMissingBean`）

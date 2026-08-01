@@ -13,6 +13,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Conditional;
 
 import java.util.List;
 
@@ -96,6 +97,7 @@ public class AuthAutoConfiguration {
      */
     @Bean
     @ConditionalOnMissingBean
+    @Conditional(OnSessionGuardDriverCondition.class)
     public SessionGuardDriver sessionGuardDriver() {
         SessionStoreHolder holder = (sessionStoreHolder != null) ? sessionStoreHolder : new SessionStoreHolder();
         return new SessionGuardDriver(holder);

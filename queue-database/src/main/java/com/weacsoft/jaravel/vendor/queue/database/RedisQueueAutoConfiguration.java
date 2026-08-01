@@ -7,8 +7,8 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Conditional;
 
 /**
  * Redis 队列驱动自动装配。
@@ -32,7 +32,7 @@ import org.springframework.context.annotation.Bean;
 @AutoConfiguration(before = QueueDatabaseAutoConfiguration.class)
 @ConditionalOnClass(RedisManager.class)
 @ConditionalOnBean(RedisManager.class)
-@ConditionalOnProperty(prefix = "jaravel.queue", name = "driver", havingValue = "redis")
+@Conditional(OnRedisQueueDriverCondition.class)
 public class RedisQueueAutoConfiguration {
 
     private static final Logger logger = LoggerFactory.getLogger(RedisQueueAutoConfiguration.class);

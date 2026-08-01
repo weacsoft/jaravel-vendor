@@ -34,7 +34,7 @@ JWT 模块是 Jaravel 框架的 JWT 认证插件，对齐 Laravel 的 `tymon/jwt
 - **登出黑名单**：开启黑名单后，登出时将 token 加入缓存黑名单，即使 token 仍在有效期内也无法再次通过校验。
 - **宽限期续期**：开启黑名单并设置宽限期后，过期 token 在宽限期内仍可请求一次，响应 header 自动携带新 token，旧 token 被加入黑名单。
 - **Refresh Token 换取**：使用 refresh token 换取新的 access token。
-- **插件式集成**：引入 `jwt` 模块即自动启用 JWT 认证能力；未引入时 `AuthManager` 不会识别 `"jwt"` 驱动。
+- **插件式集成**：引入 `jwt` 模块后，**仅当用户显式把某个 guard 的 `driver` 设为 `jwt` 时**才装配 `JwtGuardDriver` 启用 JWT 认证能力（遵循 vendor「安装 ≠ 启用，用上了才注册」原则，`jwt` **不在任何兜底列表**中，不会因缺省而误启用）；未引入或没有 guard 选用 `jwt` 时，`AuthManager` 不会识别 `"jwt"` 驱动，且完全不连接任何资源。
 
 ### 与 auth 模块的关系
 
@@ -674,7 +674,9 @@ public String getName()
 
 JWT 守卫驱动，实现 `AuthGuardDriver` 接口，采用工厂模式 + `support` 方法匹配。`support("jwt")` 返回 `true`，`create()` 方法创建 `JwtGuard` 实例。
 
-本驱动由 `JwtAutoConfiguration` 注册为 Spring Bean，再由 auth 模块的 `AuthAutoConfiguration` 自动收集并注册到 `AuthManager`。引入 `jwt` 模块即自动启用 JWT 认证能力；未引入时 `AuthManager` 不会识别 `"jwt"` 驱动。
+本驱动由 `JwtAutoConfiguration` 注册为 Spring Bean，再由 auth 模块的 `AuthAutoConfiguration` 自动收集并注册到 `AuthManager`。
+
+> **装配条件（重要）**：`JwtGuardDriver` 受 `@Conditional(OnJwtGuardDriverCondition.class)` 约束——只有当 `jaravel.auth.guards.*.driver` 取值为 `jwt` 时才装配。**JWT 不在任何兜底列表**，用户写了 guards 但没写 driver 时会回退到 `session` 而非 jwt，因此不会因缺省而误启用。`引入 jwt 模块但没有任何 guard 选用 jwt` 时，本驱动完全不创建，不连接任何资源。
 
 ### 构造器
 
@@ -823,6 +825,12 @@ public class JwtAutoConfiguration {
 
 - Servlet Web 应用环境
 - classpath 同时存在 `AuthManager` 与 `JwtService` 类
+- **驱动条件**：`jwtGuardDriver` 受 `@Conditional(OnJwtGuardDriverCondition.class)` 约束，仅当
+  `jaravel.auth.guards.*.driver` 出现 `jwt` 时装配（严格按需，不认缺省）
+- 其余 Bean（`jwtConfig` / `jwtService` / `jwtTokenResponseFilter`）保持 `@ConditionalOnMissingBean` 注册
+
+> 注意区分：`JwtService` / `JwtConfig` 等 Bean 与「JWT 守卫驱动是否启用」解耦。驱动是否装配
+> 完全由 guard 的 `driver` 配置决定，遵循 vendor 模块组统一的「安装 ≠ 启用」原则。
 
 ### 关键设计
 

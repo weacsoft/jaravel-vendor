@@ -793,19 +793,22 @@ database 缓存、redis/database 队列……），只有在用户**显式选用
 
 1. **覆盖开关**（`enableKey`）—— `true` 强制启用，`false` 强制关闭；
 2. **单值配置键**（`singleKeys`）—— 如 `jaravel.session.driver`；
-3. **映射式配置键**（`mapKeyPrefix` + `mapKeySuffix`）—— 如 `jaravel.cache.stores.*.driver`。
+3. **映射式配置键**（`mapKeyPrefix` + `mapKeySuffix`）—— 如 `jaravel.cache.stores.*.driver`；
+4. **兜底默认驱动**（`matchIfAbsent`）—— 仅兜底默认驱动调用；当本模块的任意驱动键都未被用户显式配置时命中。
 
-任意一处的值等于驱动名（忽略大小写）即判定为"被用上"。
+任意一处（含兜底）命中即判定为"被用上"。
 
 ### 构造器
 
 | 构造器签名 | 说明 |
 | --- | --- |
 | `OnDriverInUseCondition(String driverName, String mapKeyPrefix, String mapKeySuffix, String... singleKeys)` | `driverName` 为本模块驱动名；`mapKeyPrefix`/`mapKeySuffix` 描述映射式配置（无则传 `null`）；`singleKeys` 为单值配置键 |
+| `OnDriverInUseCondition(String driverName, String singleKey)` | 便捷构造器，仅依赖一个单值配置键，无映射式配置（如 `jaravel.queue.driver`） |
 
 | 方法签名 | 说明 |
 | --- | --- |
 | `protected OnDriverInUseCondition enableKey(String key)` | 设置覆盖开关键，优先级最高，返回 `this` 便于链式调用 |
+| `protected OnDriverInUseCondition matchIfAbsent()` | 标记为兜底默认驱动：用户完全未显式配置本模块任何驱动键时即命中（如 `session` 守卫、`local` 磁盘）；非默认驱动（如 `jwt` / `database` / `redis`）**不调用**，严格按需 |
 
 > 本类只实现 `spring-context` 的 `Condition` 接口，**不引入 `spring-boot-autoconfigure`**，
 > 以保持 core 模块的依赖足迹不变。
@@ -817,6 +820,41 @@ public class OnRedisSessionDriverCondition extends OnDriverInUseCondition {
     public OnRedisSessionDriverCondition() {
         super("redis", "jaravel.session.stores.", ".driver", "jaravel.session.driver");
         enableKey("jaravel.session.redis.auto-register");
+    }
+}
+```
+
+**兜底默认驱动**（认缺省，用户没写任何 driver 也装配）：
+
+```java
+// session 守卫：写了 guards 但没写 driver 时回退到 session，或完全没写 guards 时也装配
+public class OnSessionGuardDriverCondition extends OnDriverInUseCondition {
+    public OnSessionGuardDriverCondition() {
+        super("session", "jaravel.auth.guards.", ".driver");
+        matchIfAbsent();   // 兜底默认，认缺省
+    }
+}
+```
+
+**严格按需驱动**（不认缺省，只有显式选用才装配）：
+
+```java
+// jwt 守卫：仅当显式 jaravel.auth.guards.*.driver=jwt 才装配，缺省回退 session 而非 jwt
+public class OnJwtGuardDriverCondition extends OnDriverInUseCondition {
+    public OnJwtGuardDriverCondition() {
+        super("jwt", "jaravel.auth.guards.", ".driver");
+        // 不调用 matchIfAbsent —— jwt 不在兜底列表
+    }
+}
+```
+
+**仅依赖单值键**（便捷构造器）：
+
+```java
+// 队列：jaravel.queue.driver=redis / database
+public class OnRedisQueueDriverCondition extends OnDriverInUseCondition {
+    public OnRedisQueueDriverCondition() {
+        super("redis", "jaravel.queue.driver");
     }
 }
 ```
