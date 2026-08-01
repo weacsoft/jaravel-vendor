@@ -3,6 +3,7 @@ package com.weacsoft.jaravel.vendor.database;
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.weacsoft.jaravel.vendor.core.SpringContext;
+import com.weacsoft.jaravel.vendor.jblade.pagination.Paginator;
 import gaarason.database.annotation.Column;
 import gaarason.database.annotation.Primary;
 import gaarason.database.contract.connection.GaarasonDataSource;
@@ -301,6 +302,81 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
     }
 
     // ==================== 实例方法 ====================
+
+    /**
+     * 返回具备安全 count/aggregate 的查询构造器（兼容 SQLite 等驱动返回的 Integer 型 COUNT 结果）。
+     * <p>
+     * gaarason 的 {@code paginate()} 通过 {@code clone()} 复制当前 builder（保留运行时类型），
+     * 因此分页内部使用的 {@code count()} 同样为本类重写的安全版本，业务代码无需改动。
+     */
+    @Override
+    public QueryBuilder<T, K> newQuery() {
+        return JaravelQueryBuilder.wrap(super.newQuery());
+    }
+
+    /**
+     * 同上，用于不追加默认作用域的查询入口。
+     */
+    @Override
+    public QueryBuilder<T, K> newQueryWithoutApply() {
+        return JaravelQueryBuilder.wrap(super.newQueryWithoutApply());
+    }
+
+    // ==================== 分页快捷方法 ====================
+
+    /**
+     * 分页查询，对齐 Laravel Eloquent 的 {@code Model::paginate($perPage)}。
+     * <p>
+     * 返回的 {@link Paginator} 可直接在 Blade 模板中一行生成分页器：
+     * <pre>
+     * // 控制器
+     * Paginator&lt;User&gt; list = User.self().paginate(1, 15);
+     *
+     * // 模板
+     * &#64;foreach($list as $u) ... &#64;endforeach
+     * {{ $list-&gt;links('layouts.mdui.pageinator') }}
+     * </pre>
+     * 若总页数不足 2 页或分页模板不存在，{@code links()} 会返回空串，等同于「没执行」。
+     *
+     * @param currentPage 当前页码（从 1 开始，小于 1 时按 1 处理）
+     * @param perPage     每页条数（小于 1 时按 15 处理）
+     * @return 分页结果
+     */
+    public Paginator<T> paginate(int currentPage, int perPage) {
+        return paginate(newQuery(), currentPage, perPage);
+    }
+
+    /**
+     * 分页查询，使用默认每页 15 条。
+     *
+     * @param currentPage 当前页码
+     * @return 分页结果
+     */
+    public Paginator<T> paginate(int currentPage) {
+        return paginate(currentPage, 15);
+    }
+
+    /**
+     * 对指定查询构造器分页，便于附加 where 条件后再分页。
+     * <pre>
+     * Paginator&lt;User&gt; list = User.self().paginate(
+     *         User.self().newQuery().where("status", "1"), 1, 15);
+     * </pre>
+     *
+     * @param builder     查询构造器
+     * @param currentPage 当前页码（从 1 开始）
+     * @param perPage     每页条数
+     * @return 分页结果
+     */
+    public Paginator<T> paginate(Builder<?, T, K> builder, int currentPage, int perPage) {
+        int page = currentPage <= 0 ? 1 : currentPage;
+        int size = perPage <= 0 ? 15 : perPage;
+        gaarason.database.appointment.Paginate<T> paginate =
+                builder.paginate(page, size);
+        List<T> items = paginate.getItemList();
+        Long total = paginate.getTotal();
+        return new Paginator<>(items, total == null ? 0L : total, size, page);
+    }
 
     /**
      * 持久化当前实体（新增或更新），对齐 Laravel Eloquent 的 {@code $model->save()}。

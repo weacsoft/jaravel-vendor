@@ -1052,3 +1052,24 @@ gaarason 的 `QueryBuilder` 为每次查询创建新实例（非共享），线�
 | `GaarasonDataSource` | 单例 | Druid 数据源自身线程安全 |
 
 > **注意**：`BaseModel` 的实例方法（`save()`、`replicate()`）可在 `new` 创建的普通实例上调用，这些实例为线程局部对象，不应跨线程共享。所有实际的数据库操作均委托给 Spring 单例完成，单例本身线程安全。
+
+---
+
+## 已知问题与兼容说明
+
+### SQLite 分页 `count()` 强转异常（已内置兼容）
+
+**现象**：使用 SQLite（或其他将 `COUNT()` 以 `Integer` 返回的 JDBC 驱动）时，调用模型的 `paginate()` 触发如下异常：
+
+```
+java.lang.ClassCastException: class java.lang.Integer cannot be cast to class java.lang.Long
+	at gaarason.database.contract.builder.Aggregates.count(Aggregates.java:36)
+	at gaarason.database.query.ExecuteLevel3Builder.paginate(ExecuteLevel3Builder.java:139)
+```
+
+**根因**：gaarason 的 `Aggregates.count()` 内部通过 `ObjectUtils.typeCast` 把聚合结果直接强转为 `Long`。SQLite JDBC 驱动对 `COUNT()` 返回 `Integer`，强转失败。`count()` 的声明返回类型为 `Long`，但底层结果类型取决于数据库驱动。
+
+**处理**：jaravel 的 `BaseModel.newQuery()` 已返回 `JaravelQueryBuilder`（对 gaarason `QueryBuilder` 的安全包装）。它在 `count()` 中捕获 `ClassCastException` 并回退到数值兼容的结果转换（`Number.longValue()` 兜底），对业务代码完全透明——`list.paginate(page, size)` 无需任何改动即可在 SQLite 下正常工作。
+
+> 该兼容为临时兜底方案。彻底的修复应在 gaarason `database-all` 的 `AbstractBuilder.aggregate` 中对聚合结果统一做 `Number` 兼容转换（而非裸强转），届时 jaravel 可移除该包装。
+
