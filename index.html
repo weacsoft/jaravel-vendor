@@ -280,13 +280,21 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
 <tr><td>cache 的 database 驱动</td><td><code>jaravel.cache.stores.*.driver: database</code></td><td>不装配，无需数据源</td></tr>
 <tr><td>queue-database</td><td><code>jaravel.queue.driver: database</code></td><td>不装配，回退 <code>sync</code></td></tr>
 <tr><td>queue-redis</td><td><code>jaravel.queue.driver: redis</code></td><td>不装配，回退 <code>sync</code></td></tr>
+<tr><td>auth — session 守卫</td><td><code>jaravel.auth.guards.*.driver: session</code> 或<strong>未写 driver（兜底）</strong></td><td>—（自身即兜底默认驱动）</td></tr>
+<tr><td>auth — jwt 守卫</td><td><code>jaravel.auth.guards.*.driver: jwt</code></td><td>不装配（<strong>JWT 不在兜底</strong>）</td></tr>
+<tr><td>storage — local 磁盘</td><td><code>jaravel.storage.disks.*.driver: local</code> / <code>public</code> 或<strong>未写 driver（兜底）</strong></td><td>—（自身即兜底默认驱动）</td></tr>
+<tr><td>storage — database 磁盘</td><td><code>jaravel.storage.disks.*.driver: database</code></td><td>不装配</td></tr>
 </table>
 
-<p>实现基类是 core 的 <code>OnDriverInUseCondition</code>（仅依赖 <code>spring-context</code>），子类声明「驱动名 + 配置键」即可。每个驱动模块还提供 <code>auto-register</code> 覆盖开关（优先级最高，<code>true</code> 强制启用 / <code>false</code> 强制关闭）。</p>
+<p>以上<strong>所有驱动</strong>统一通过 core 的 <code>OnDriverInUseCondition</code>（仅依赖 <code>spring-context</code>）判定，子类声明「驱动名 + 配置键」即可。每个驱动模块还提供 <code>auto-register</code> 覆盖开关（优先级最高，<code>true</code> 强制启用 / <code>false</code> 强制关闭）。</p>
+
+<p><strong>兜底默认驱动</strong>：用户写了模块配置块但没写具体 driver 时，由对应模块的 <code>Registrar</code> 填上模块默认值保证基本可用——<code>auth</code>→<code>session</code>、<code>cache</code>→<code>array</code>、<code>storage</code>→<code>local</code>、<code>session</code>→<code>cookie</code>、<code>queue</code>→<code>sync</code>；<code>database</code> 无兜底、没写连接直接报错；<strong>JWT 不在任何兜底列表中</strong>，只有显式 <code>driver: jwt</code> 才装配。兜底默认驱动的条件类调用 <code>matchIfAbsent()</code> 认缺省，非默认驱动（jwt / database / redis）<strong>严格按需、不认缺省</strong>。</p>
 
 <p>&gt; <strong>不要用 <code>@ConditionalOnBean(DataSource.class)</code> 之类判断驱动是否可用。</strong> 它把模块和 Spring 的 Bean 图强绑定，时序脆弱，且无法感知 jaravel 自己的 <code>@RegisterConnection</code> 连接注册表。正确做法是<strong>运行时惰性解析</strong>：先查 jaravel 的注册表，再回退 Spring 容器。</p>
 
-<p><strong>功能型模块</strong>（wire、storage 的 local、schedule、captcha、plugin-* 等）不需要外部资源，默认启用，通过 <code>jaravel.&lt;模块&gt;.enabled: false</code> 关闭，不适用本原则。</p>
+<p><strong>注册式三层优先级：声明 → 配置 → 默认</strong>。驱动型模块并非只有一种注册手段：① <strong>声明（support）</strong>——模块/开发者用 <code>@RegisterGuard</code> / <code>@RegisterProvider</code> / <code>@RegisterDisk</code> 等注解自我声明「我实现了哪个 driver」，开发者不动核心即可在业务工程注册额外扩展（如用 JWT 替换 session 守卫）；② <strong>配置（yaml）</strong>——用户在 <code>jaravel.&lt;模块&gt;.guards/disks/stores</code> 里写 driver 名选用；③ <strong>默认（兜底）</strong>——见上。另需注意：<code>provider</code> 不是一种 driver——同一 provider 类可对应多个对象（不同 model 类），此时把「model 类 + provider」合并看作具名<strong>别名</strong>，通过 <code>@RegisterProvider("users")</code> 声明、按别名解析。</p>
+
+<p><strong>功能型模块</strong>（wire、schedule、captcha、plugin-* 等）不需要外部资源，默认启用，通过 <code>jaravel.&lt;模块&gt;.enabled: false</code> 关闭，不适用本原则。但其中带「驱动」的模块（storage 的磁盘、auth 的 guard、cache 的 store 等）<strong>即便模块本身启用，其内部具体驱动仍按「用上了才装配」</strong>：本地磁盘 / session 守卫作为兜底默认始终存在，redis / database / jwt 等外部资源驱动则严格按需。</p>
 
 <h6 id="overview-数据源解析顺序">数据源解析顺序：先框架，后 Spring</h6>
 
@@ -9586,8 +9594,8 @@ public void dispatchAsync(String queueName, Object listener, Object event) {
 
 <p>通过 <code>@AutoConfiguration</code> 注册，自动配置类在 <code>META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports</code> 中声明：</p>
 
-<li><code>RedisQueueAutoConfiguration</code>（先处理）：当 <code>redis-config</code> 在类路径、存在 <code>RedisManager</code> bean、<code>driver=redis</code> 时注册 <code>RedisQueueDriver</code></li>
-<li><code>QueueDatabaseAutoConfiguration</code>：注册 <code>DatabaseQueueDriver</code>（默认 / 回退驱动）、<code>DatabaseQueueWorker</code>、<code>DatabaseQueueDispatcher</code></li>
+<li><code>RedisQueueAutoConfiguration</code>（先处理）：受 <code>@Conditional(OnRedisQueueDriverCondition.class)</code> 约束，仅当 <code>redis-config</code> 在类路径、存在 <code>RedisManager</code> bean 且 <code>jaravel.queue.driver=redis</code> 时注册 <code>RedisQueueDriver</code></li>
+<li><code>QueueDatabaseAutoConfiguration</code>：受 <code>@Conditional(OnDatabaseQueueDriverCondition.class)</code> 约束，仅当 <code>jaravel.queue.driver=database</code> 且存在 <code>DataSource</code> bean 时注册 <code>DatabaseQueueDriver</code>、<code>DatabaseQueueWorker</code>、<code>DatabaseQueueDispatcher</code></li>
 
 <p>创建的 bean：</p>
 <li><code>QueueDriver</code>（<code>DatabaseQueueDriver</code> 或 <code>RedisQueueDriver</code>）— 队列驱动（<code>@ConditionalOnMissingBean</code>）</li>
@@ -9865,8 +9873,8 @@ worker.stop();
 <h6 id="queue-database-redisqueueautoconfiguration">RedisQueueAutoConfiguration</h6>
 <li><strong>Type</strong>: class</li>
 <li><strong>Package</strong>: <code>com.weacsoft.jaravel.vendor.queue.database</code></li>
-<li><strong>Annotations</strong>: <code>@AutoConfiguration(before = QueueDatabaseAutoConfiguration.class)</code>, <code>@ConditionalOnClass(RedisManager.class)</code>, <code>@ConditionalOnBean(RedisManager.class)</code>, <code>@ConditionalOnProperty(prefix = &quot;jaravel.queue&quot;, name = &quot;driver&quot;, havingValue = &quot;redis&quot;)</code></li>
-<li><strong>Description</strong>: Redis 队列驱动自动装配。仅当 <code>redis-config</code> 在类路径、存在 <code>RedisManager</code> bean 且 <code>driver=redis</code> 时启用，先于 database 装配处理。</li>
+<li><strong>Annotations</strong>: <code>@AutoConfiguration(before = QueueDatabaseAutoConfiguration.class)</code>, <code>@ConditionalOnClass(RedisManager.class)</code>, <code>@ConditionalOnBean(RedisManager.class)</code>, <code>@Conditional(OnRedisQueueDriverCondition.class)</code></li>
+<li><strong>Description</strong>: Redis 队列驱动自动装配。受 <code>OnRedisQueueDriverCondition</code> 约束，仅当 <code>redis-config</code> 在类路径、存在 <code>RedisManager</code> bean 且 <code>jaravel.queue.driver=redis</code> 时启用，先于 database 装配处理。遵循「安装 ≠ 启用，用上了才注册」原则，<code>redis</code> 不在兜底列表，缺省回退 <code>sync</code> 内存队列。</li>
 
 <h6 id="queue-database-beans">Beans</h6>
 
@@ -11462,7 +11470,7 @@ router.get(&quot;/api/profile&quot;, handler).middleware(new Authenticate(&quot;
 <tr><td>`authManager`</td><td>`AuthManager`</td><td>创建 AuthManager，注册配置式守卫（@Bean, @ConditionalOnMissingBean）</td></tr>
 <tr><td>`authLifecycleFilter`</td><td>`AuthLifecycleFilter`</td><td>创建认证生命周期过滤器（@Bean, @ConditionalOnMissingBean）</td></tr>
 <tr><td>`cookieSessionStore`</td><td>`CookieSessionStore`</td><td>创建内置 Cookie 会话存储，作为全局 SessionStore 默认实现（@Bean, @ConditionalOnMissingBean(SessionStore.class)）</td></tr>
-<tr><td>`sessionGuardDriver`</td><td>`SessionGuardDriver`</td><td>创建内置 session 驱动（工厂模式），注入全局 SessionStore（@Bean, @ConditionalOnMissingBean）</td></tr>
+<tr><td>`sessionGuardDriver`</td><td>`SessionGuardDriver`</td><td>创建内置 session 驱动（工厂模式），注入全局 SessionStore（@Bean, @ConditionalOnMissingBean, <code>@Conditional(OnSessionGuardDriverCondition.class)</code>）。session 是 auth 的<strong>兜底默认驱动</strong>，条件调用 <code>matchIfAbsent()</code> 认缺省：用户未写任何 driver 或完全无 guards 配置时也装配</td></tr>
 </table>
 
 <h6 id="auth-lifecycle-callback">Lifecycle Callback</h6>
@@ -12262,6 +12270,8 @@ public class JwtProperties {
 
 <p>JWT 自动装配类，注册 <code>JwtConfig</code>、<code>JwtService</code>、<code>JwtTokenResponseFilter</code> Bean，并注册 <code>JwtGuardDriver</code> Bean（实现 <code>AuthGuardDriver</code>）。jwt 驱动不再由本类手动注册，而是由 auth 模块的 <code>AuthRegistrar</code> 自动收集容器中的 <code>AuthGuardDriver</code> Bean 注册到 <code>AuthManager</code>。</p>
 
+<blockquote><p><strong>装配条件（重要）</strong>：<code>JwtGuardDriver</code> 受 <code>@Conditional(OnJwtGuardDriverCondition.class)</code> 约束——仅当 <code>jaravel.auth.guards.*.driver</code> 取值为 <code>jwt</code> 时才装配。JWT <strong>不在任何兜底列表</strong>，用户写了 guards 但没写 driver 时会回退到 <code>session</code> 而非 jwt，因此「引入 jwt 模块但没有任何 guard 选用 jwt」时本驱动完全不创建、不连接任何资源。其余 Bean（<code>jwtConfig</code> / <code>jwtService</code> / <code>jwtTokenResponseFilter</code>）保持 <code>@ConditionalOnMissingBean</code> 注册，与「JWT 守卫驱动是否启用」解耦。</p></blockquote>
+
 <pre><code>
 @AutoConfiguration
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
@@ -12284,6 +12294,7 @@ public class JwtAutoConfiguration {
     /** 注册 JwtGuardDriver Bean，由 AuthAutoConfiguration 自动收集并注册到 AuthManager */
     @Bean
     @ConditionalOnMissingBean
+    @Conditional(OnJwtGuardDriverCondition.class)
     public AuthGuardDriver jwtGuardDriver(JwtService jwtService, JwtConfig jwtConfig) {
         return new JwtGuardDriver(jwtService, jwtConfig);
     }
