@@ -25,11 +25,12 @@
 引入 `jaravel-starter` 后，框架自动完成以下工作：
 
 1. **注册核心基础设施**：`ConfigRepository`（配置仓库）、`SpringContext`（上下文持有器）、`ConfigDefinitionRegistrar`（代码级配置注册器）、`ProviderRegistry`（服务提供者注册器）。
-2. **聚合基础必选模块自动装配**：通过传递依赖引入 `core`、`http`、`springboot`、`auth`、`database`、`migration`、`cache`、`jblade`、`event`、`artisan`、`schedule` 共 11 个基础模块，各模块的 `@AutoConfiguration` 类由 Spring Boot 自动加载。
+2. **聚合基础必选模块自动装配**：通过传递依赖引入 `core`、`http`、`springboot`、`auth`、`database`、`migration`、`cache`、`storage`、`jblade`、`event`、`artisan`、`schedule` 共 12 个基础模块，各模块的 `@AutoConfiguration` 类由 Spring Boot 自动加载。
 3. **启用 Laravel 风格基础开发**：中间件管道、路由系统、Form Request 校验、门面（Facade）、配置仓库、Eloquent ORM、数据库迁移、缓存、事件分发、Blade 模板渲染全部就绪。
 
 > 设计对齐 Laravel：**starter 只聚合基础必选组件，不假设用户一定有 Redis 或一定使用微信/队列**。Redis、微信、Wire、数据库队列、JWT 等均为**可选扩展模块**，由用户按需单独引入。
 >
+> - **`storage`（文件存储）**：Laravel 的 `Storage` 门面（local/public/framework 磁盘）属于框架基础能力，已默认聚合进 starter，无需单独引入。
 > - **Redis 相关**（`redis-config` / `redis-cache` / `session-redis`）：Laravel 中 Redis 同样属于额外驱动，本框架不内建，需用户显式引入并选用驱动。
 > - **`wechat-sdk`**：对齐 `overtrue/laravel-wechat`，属于业务扩展，非框架基础。
 > - **`wire`**：对齐 `laravel-livewire`，属于 UI 部分更新扩展，非框架基础。
@@ -63,6 +64,7 @@
 | 数据库 | `database` | Eloquent ORM（基于 gaarason/database）、BaseModel、DataSource | ✅ 是 |
 | 迁移 | `migration` | 数据库迁移（运行时编译，3 种源模式）、Schema 构建器、Blueprint | ✅ 是 |
 | 缓存 | `cache` | 缓存管理器、Array/File 驱动 | ✅ 是 |
+| 文件存储 | `storage` | Storage 门面、local/public/framework 磁盘驱动 | ✅ 是 |
 | 模板引擎 | `jblade` | Blade 模板编译与渲染（表达式编译） | ✅ 是 |
 | 事件 | `event` | 事件分发器、监听器注册、队列支持 | ✅ 是 |
 | 命令行工具 | `artisan` | Artisan CLI 命令框架 | ✅ 是 |
@@ -264,6 +266,7 @@ router.post("/users", request -> {
 | database | DataSource、Eloquent ORM（gaarason/database） |
 | migration | MigrationRunner、MigrationRepository、Schema（3 种源模式） |
 | cache | CacheManager、Cache 驱动（Array/File） |
+| storage | StorageManager、Disk 驱动（local/public/framework）、StorageConfig 发布 |
 | event | EventDispatcher、EventListenerRegistrar、QueueManager |
 | jblade | BladeEngine、BladeCompiler（模板渲染，表达式编译） |
 | artisan | Artisan CLI 命令注册与调度 |

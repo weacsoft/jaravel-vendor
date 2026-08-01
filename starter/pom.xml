@@ -45,6 +45,11 @@
             <groupId>io.github.lijialong1313</groupId>
             <artifactId>cache</artifactId>
         </dependency>
+        <!-- 文件存储（Laravel Storage 风格：local/public/framework 磁盘，基础必选） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>storage</artifactId>
+        </dependency>
         <!-- JBlade 模板引擎（依赖 cache） -->
         <dependency>
             <groupId>io.github.lijialong1313</groupId>
@@ -73,6 +78,7 @@
              wire              Laravel Livewire 风格的部分更新模块
              queue-database    数据库队列驱动（Java 有原生多线程，队列非强制，按需启用）
              jwt               JWT 认证（auth 的可选 Guard 扩展）
+             注：storage 已升级为基础必选模块（见上方），不再列为可选。
         -->
 
         <dependency>
