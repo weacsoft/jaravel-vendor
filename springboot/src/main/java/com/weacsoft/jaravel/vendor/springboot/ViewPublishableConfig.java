@@ -36,6 +36,7 @@ public class ViewPublishableConfig implements PublishableConfig {
                 + "import com.weacsoft.jaravel.vendor.jblade.RegisterDirective;\n"
                 + "import org.slf4j.Logger;\n"
                 + "import org.slf4j.LoggerFactory;\n"
+                + "import org.springframework.context.annotation.Bean;\n"
                 + "import org.springframework.context.annotation.Configuration;\n"
                 + "import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;\n"
                 + "import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;\n"
