@@ -1,4 +1,4 @@
-package com.weacsoft.jaravel.vendor.queue.database;
+package com.weacsoft.jaravel.vendor.event;
 
 import com.weacsoft.jaravel.vendor.core.publish.PublishableConfig;
 
@@ -7,6 +7,9 @@ import com.weacsoft.jaravel.vendor.core.publish.PublishableConfig;
  * <p>
  * 发布后在业务工程生成 {@code config/QueueConfig.java}，
  * 内含 {@code @RegisterQueueDriver} 示例，对齐 Laravel {@code config/queue.php}。
+ * <p>
+ * 置于 {@code event} 基础模块（队列原始功能所在），不依赖 {@code queue-database}，
+ * 因此只要引入框架基础（starter）即可发布队列配置，无需引入额外的数据库驱动模块。
  */
 public class QueuePublishableConfig implements PublishableConfig {
 

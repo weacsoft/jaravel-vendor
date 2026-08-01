@@ -72,4 +72,19 @@ public class EventAutoConfiguration {
     public EventListenerRegistrar eventListenerRegistrar(Dispatcher dispatcher, ApplicationContext applicationContext) {
         return new EventListenerRegistrar(dispatcher, applicationContext);
     }
+
+    /**
+     * 声明 queue 模块的可发布配置类，供 {@code artisan vendor:publish --tag=queue} 使用。
+     * <p>
+     * 置于 event 基础模块（队列原始功能所在），不依赖 queue-database，
+     * 因此只要引入框架基础即可发布队列配置。仅声明元数据，不依赖 artisan 模块；
+     * 未引入 artisan 时该 Bean 无人消费，无副作用。
+     *
+     * @return 可发布配置
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public QueuePublishableConfig queuePublishableConfig() {
+        return new QueuePublishableConfig();
+    }
 }
