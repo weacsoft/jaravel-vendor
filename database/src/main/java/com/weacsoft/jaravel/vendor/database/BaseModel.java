@@ -227,7 +227,9 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
      * 返回的别名对应 Spring 容器中 {@code GaarasonDataSource} 的 bean 名称（例如
      * {@code gaarasonDataSource}、{@code mysql}、{@code sqlite}、{@code oracle}、{@code pg} 等）。
      * 默认优先级：若类上标注了 {@link DataSource @DataSource} 注解则返回其 {@code value()}，
-     * 否则返回 {@code "primary"}（主数据源）。
+     * 否则返回 {@link ConnectionManager#defaultConnectionName()}（即被
+     * {@code @RegisterConnection(defaultConnection = true)} 设为默认的别名，
+     * 默认值是 {@code "primary"}，但业务可改为 {@code sqlite} 等任意名称）。
      * <p>
      * 业务 Model 可重写本方法以切换到其它数据库，例如：
      * <pre>
@@ -246,7 +248,7 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
         if (dsAnnotation != null) {
             return dsAnnotation.value();
         }
-        return "primary";
+        return ConnectionManager.defaultConnectionName();
     }
 
     // ==================== getSelf / self ====================

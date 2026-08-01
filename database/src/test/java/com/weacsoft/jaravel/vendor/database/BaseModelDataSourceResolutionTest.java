@@ -96,4 +96,16 @@ class BaseModelDataSourceResolutionTest {
         // 无注解、字段未注入 -> 回退 SpringContext.bean(GaarasonDataSource.class)
         assertSame(def, model.getGaarasonDataSource());
     }
+
+    @Test
+    void resolvesDefaultConnectionByActualAlias_notHardcodedPrimary() {
+        // 业务将默认连接命名为 "sqlite"（而非硬编码的 primary），验证模型能正确解析
+        GaarasonDataSource sqlite = mock(GaarasonDataSource.class);
+        ConnectionManager.addConnection("sqlite", sqlite);
+        ConnectionManager.setDefaultConnection("sqlite");
+
+        PlainModel model = new PlainModel();
+        // 无 @DataSource 注解 -> 应使用 ConnectionManager 的实际默认连接名 "sqlite"
+        assertSame(sqlite, model.getGaarasonDataSource());
+    }
 }
