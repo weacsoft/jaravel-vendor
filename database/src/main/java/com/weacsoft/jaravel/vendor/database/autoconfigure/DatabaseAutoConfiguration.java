@@ -1,7 +1,5 @@
 package com.weacsoft.jaravel.vendor.database.autoconfigure;
 
-import com.weacsoft.jaravel.vendor.auth.contract.UserProviderDriver;
-import com.weacsoft.jaravel.vendor.database.EloquentUserProviderDriver;
 import com.weacsoft.jaravel.vendor.database.JaravelDataSource;
 import gaarason.database.contract.eloquent.Model;
 import gaarason.database.provider.ModelShadowProvider;
@@ -15,19 +13,21 @@ import org.springframework.context.annotation.Primary;
 import java.util.Map;
 
 /**
- * 数据库模块自动装配。
+ * 数据库模块核心自动装配（不依赖 auth）。
  * <p>
- * 注册 {@link EloquentUserProviderDriver}，使 auth 模块能通过配置式（{@code jaravel.auth.providers}
- * 中 {@code driver: eloquent}）自动创建 {@link com.weacsoft.jaravel.vendor.database.EloquentUserProvider}。
+ * 只要引入 {@code database} 模块即生效，负责注册：
+ * <ul>
+ *   <li>{@code @RegisterConnection} 扫描器（{@link com.weacsoft.jaravel.vendor.database.ConnectionRegistrar}）</li>
+ *   <li>默认连接的惰性委托数据源 {@link JaravelDataSource}（暴露为 {@link javax.sql.DataSource}）</li>
+ *   <li>可发布配置 {@code DatabasePublishableConfig}（{@code vendor:publish --tag=database}）</li>
+ *   <li>{@code ModelShadow} 修复器</li>
+ * </ul>
  * <p>
- * 同时注册 {@link ModelShadowPatcher}，修复 gaarason ORM 的 {@code model_shadow} 字段扫描 bug，
- * 使数据库表无需添加 {@code model_shadow} 列。
- * <p>
- * auth 模块的 {@code AuthAutoConfiguration} 会自动收集所有 {@link UserProviderDriver} Bean，
- * 无需手动注册。
+ * <b>不再依赖 auth 模块</b>：auth 的 {@code EloquentUserProviderDriver} 由独立的
+ * {@link com.weacsoft.jaravel.vendor.database.autoconfigure.EloquentUserProviderAutoConfiguration}
+ * 在检测到 auth 存在时才注册，避免「未引入 auth 却用数据库」时整个数据库装配被禁用。
  */
 @AutoConfiguration
-@ConditionalOnClass({UserProviderDriver.class, EloquentUserProviderDriver.class})
 public class DatabaseAutoConfiguration {
 
     /**
@@ -85,18 +85,6 @@ public class DatabaseAutoConfiguration {
     @ConditionalOnMissingBean(DatabasePublishableConfig.class)
     public DatabasePublishableConfig databasePublishableConfig() {
         return new DatabasePublishableConfig();
-    }
-
-    /**
-     * 注册 Eloquent 用户提供者驱动。
-     *
-     * @param applicationContext Spring 上下文（用于获取 Model Bean）
-     * @return 驱动实例
-     */
-    @Bean
-    @ConditionalOnMissingBean
-    public EloquentUserProviderDriver eloquentUserProviderDriver(ApplicationContext applicationContext) {
-        return new EloquentUserProviderDriver(applicationContext);
     }
 
     /**
