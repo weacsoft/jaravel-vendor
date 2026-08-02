@@ -2,9 +2,9 @@ package com.weacsoft.jaravel.vendor.jblade.autoconfigure;
 
 import com.weacsoft.jaravel.vendor.cache.CacheManager;
 import com.weacsoft.jaravel.vendor.cache.CacheStore;
+import com.weacsoft.jaravel.vendor.core.view.View;
 import com.weacsoft.jaravel.vendor.jblade.view.BladeView;
 import com.weacsoft.jaravel.vendor.jblade.view.RegisterView;
-import com.weacsoft.jaravel.vendor.jblade.view.View;
 import com.weacsoft.jaravel.vendor.jblade.view.ViewFacade;
 import com.weacsoft.jaravel.vendor.jblade.view.ViewManager;
 
@@ -88,8 +88,9 @@ public class ViewAutoConfiguration {
 
         // 绑定静态门面
         ViewFacade.bind(manager);
+        View defaultView = manager.defaultView();
         log.info("[view] 默认 View 实现: {}",
-                manager.defaultView().map(View::name).orElse("<none>"));
+                defaultView == null ? "<none>" : defaultView.name());
         return manager;
     }
 

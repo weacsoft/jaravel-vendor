@@ -1,5 +1,7 @@
 package com.weacsoft.jaravel.vendor.jblade;
 
+import com.weacsoft.jaravel.vendor.core.view.Htmlable;
+
 import java.io.StringWriter;
 import java.io.Writer;
 import java.util.Arrays;

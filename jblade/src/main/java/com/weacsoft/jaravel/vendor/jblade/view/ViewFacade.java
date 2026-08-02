@@ -1,12 +1,18 @@
 package com.weacsoft.jaravel.vendor.jblade.view;
 
-import java.util.Optional;
+import com.weacsoft.jaravel.vendor.core.pagination.Paginator;
+import com.weacsoft.jaravel.vendor.core.view.View;
+import com.weacsoft.jaravel.vendor.core.view.ViewManager;
+import com.weacsoft.jaravel.vendor.core.view.ViewProvider;
 
 /**
  * 视图渲染静态门面（对齐 {@code ResponseBuilder} / {@code Auth} 等门面设计）。
  * <p>
  * 业务侧不再手动 {@code setBladeEngine}，而是直接 {@code ViewFacade.getView().render(...)}。
  * 当前激活的 {@link View} 由 {@link ViewManager} 解析（声明 → 配置 → 默认）。
+ * 门面在 {@link #bind(ViewManager)} 时，会同时把默认视图注入到 core 标准层的
+ * {@link Paginator}，使非模板模块（database）也能借助 core 的 {@link Paginator}
+ * 渲染分页，而无须直接依赖 jblade。
  * </p>
  */
 public final class ViewFacade {
@@ -18,6 +24,8 @@ public final class ViewFacade {
 
     public static void bind(ViewManager manager) {
         ViewFacade.manager = manager;
+        // 把默认视图注入 core 标准层的 Paginator，实现解耦的分页渲染。
+        Paginator.setDefaultViewProvider(() -> manager.defaultView());
     }
 
     /**
@@ -30,12 +38,12 @@ public final class ViewFacade {
         if (manager == null) {
             throw new IllegalStateException("[view] ViewManager 尚未初始化，无法获取 View 实现");
         }
-        Optional<View> view = manager.defaultView();
-        if (!view.isPresent()) {
+        View view = manager.defaultView();
+        if (view == null) {
             throw new IllegalStateException(
                     "[view] 未注册任何 View 实现（应至少有 Blade 兜底），请检查 @RegisterView 或 jblade 依赖");
         }
-        return view.get();
+        return view;
     }
 
     /**
@@ -44,11 +52,11 @@ public final class ViewFacade {
      * @param name 实现名
      * @return View 实现，可能为空
      */
-    public static Optional<View> getView(String name) {
+    public static View getView(String name) {
         if (manager == null) {
-            return Optional.empty();
+            return null;
         }
-        return Optional.ofNullable(manager.get(name));
+        return manager.get(name);
     }
 
     public static ViewManager manager() {

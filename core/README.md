@@ -19,6 +19,7 @@
 - [11. 异常类（ValidationException / UnauthorizedException）](#11-异常类validationexception--unauthorizedexception)
 - [12. OnDriverInUseCondition —— 驱动按需装配条件](#12-ondriverinusecondition--驱动按需装配条件)
 - [13. 线程安全说明](#13-线程安全说明)
+- [14. 视图与分页标准层（view / pagination）](#14-视图与分页标准层view--pagination)
 
 ---
 
@@ -892,3 +893,43 @@ public class SessionRedisAutoConfiguration { ... }
 | `Rules` 内部规则 | 线程安全 | 所有规则实现为无状态对象（`EmailRule` 的 `Pattern` 为静态 final），可安全跨线程复用 |
 | `Str` / `Arr` / `Facade` / `Config` | 线程安全 | 均为无状态静态方法，可安全并发调用 |
 | `FormRequest` | 单线程使用 | 子类通常为每次请求新建实例，不应跨请求共享 |
+
+---
+
+## 14. 视图与分页标准层（view / pagination）
+
+为使「使用 `database` 模块的 ORM/分页不必依赖具体模板引擎」，core 定义了**视图渲染契约**与
+**Laravel 风格分页器**的标准层。模板引擎（如 `jblade`）作为实现方接入，框架其余部分只依赖以下抽象。
+
+### 14.1 核心类型
+
+| 类型 | 包 | 说明 |
+| --- | --- | --- |
+| `Htmlable` | `core.view` | 标记接口：`toHtml()` 返回免转义 HTML 字符串（`{{ }}` 输出时识别，不再二次转义） |
+| `HtmlString` | `core.view` | 不可变 HTML 值对象，实现 `Htmlable`；`raw(value)` / `of(value)` 工厂 |
+| `View` | `core.view` | 视图渲染标准接口：`render(name, data)` / `exists(name)` / `name()` |
+| `ViewManager` | `core.view` | 视图管理者标准接口：`register` / `get` / `defaultView()` / `names()` 等 |
+| `ViewProvider` | `core.view` | 函数式接口：提供默认 `View`，由模板引擎注入到 `Paginator` |
+| `Paginator<T>` | `core.pagination` | Laravel 风格分页器，实现 `Iterable<T>` 与 `Htmlable`，**不依赖任何模板引擎** |
+
+### 14.2 Paginator 设计要点
+
+- `BaseModel.paginate()`（database 模块）返回 `core.pagination.Paginator`。
+- 提供 `hasPages()` / `onFirstPage()` / `hasMorePages()` / `previousPageUrl()` / `nextPageUrl()` /
+  `firstPageUrl()` / `lastPageUrl()` / `url(n)` / `appends()` / `elements()` / `setPath()` /
+  `getLastPage()` / `onLastPage()` / `firstItem()` / `lastItem()` 等 Laravel 风格方法。
+- `links(viewName)`：通过 `ViewProvider` 注入的默认 `View` 渲染分页模板；**三级降级**
+  （仅一页 / 视图未就绪或模板不存在 / 渲染异常）均返回空 `HtmlString`，即「无分页视图时等同于未执行」。
+- 实现 `Iterable`：模板中可直接 `@foreach($list as $item)`。
+- 实现 `Htmlable`：`{{ $list }}` 输出分页 HTML 时免转义。
+
+### 14.3 接入方式（模板引擎侧）
+
+模板引擎在启动时把默认 `View` 注入 `Paginator` 的 `ViewProvider` 即可：
+
+```java
+// jblade 的 ViewFacade.bind()
+Paginator.setDefaultViewProvider(() -> viewManager.defaultView());
+```
+
+未引入任何模板引擎时，`Paginator.links()` 安全降级为空串，不影响分页数据本身的使用。

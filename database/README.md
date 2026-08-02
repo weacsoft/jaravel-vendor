@@ -1073,3 +1073,29 @@ java.lang.ClassCastException: class java.lang.Integer cannot be cast to class ja
 
 > 该兼容为临时兜底方案。彻底的修复应在 gaarason `database-all` 的 `AbstractBuilder.aggregate` 中对聚合结果统一做 `Number` 兼容转换（而非裸强转），届时 jaravel 可移除该包装。
 
+---
+
+## 分页标准层与模块解耦
+
+`BaseModel.paginate(page, size)` 及其重载返回的是 **`core.pagination.Paginator`**（位于 `core` 标准层），
+而非 `jblade` 的实现。这意味着：
+
+- **`database` 不再硬依赖 `jblade`**：仅使用 ORM 与分页、不想引入模板引擎的项目可单独依赖 `database`。
+- 分页器提供 Laravel 风格 API：`hasPages()` / `onFirstPage()` / `hasMorePages()` / `previousPageUrl()` /
+  `nextPageUrl()` / `url(n)` / `appends()` / `elements()` / `links()`，并实现 `Iterable`
+  （模板中可直接 `@foreach($list as $item)`）与 `Htmlable`（实现后 `{{ $list }}` 免转义输出 HTML）。
+- **`links(viewName)` 的渲染解耦**：`Paginator` 仅依赖 `core.view.View`（标准接口）。视图引擎（jblade）
+  在启动时通过 `ViewFacade.bind()` 注入默认 `View`；若未引入 jblade（无默认视图），
+  `links()` 安全降级为空串——即「没有分页视图时该方法等同于未执行」。
+
+```java
+// 返回 core.pagination.Paginator，不耦合模板引擎
+Paginator<User> list = User.self().paginate(page, 15).setPath("/users");
+// 模板中：
+//   @foreach($list as $u) ... @endforeach
+//   {{ $list->links('layouts.mdui.pageinator') }}
+```
+
+> 历史上 `Paginator` / `Htmlable` / `HtmlString` / `View` 曾位于 `jblade` 包内；现已统一上提到
+> `core` 标准层，`jblade` 仅作为 `core.view.View` 的实现方（`BladeView` 实现 `core.view.View`）。
+

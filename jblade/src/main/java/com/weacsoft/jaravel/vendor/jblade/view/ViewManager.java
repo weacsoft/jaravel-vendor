@@ -1,8 +1,11 @@
 package com.weacsoft.jaravel.vendor.jblade.view;
 
+import com.weacsoft.jaravel.vendor.core.view.View;
+
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,6 +13,8 @@ import org.slf4j.LoggerFactory;
 /**
  * 持有所有被 {@link RegisterView} 声明的 {@link View} 实现，并决定默认激活哪一个。
  * <p>
+ * 实现 core 标准层 {@link ViewManager}，使得框架（如 database 的 {@code Paginator}）仅依赖
+ * core 抽象即可渲染视图，而无需直接耦合 jblade。
  * 默认选择优先级（与模块兜底规则一致：声明 → 配置 → 默认）：
  * <ol>
  *   <li>若设置了配置指定的默认名（{@link #setConfiguredDefault}），优先用它；</li>
@@ -19,7 +24,7 @@ import org.slf4j.LoggerFactory;
  *   <li>都无则返回空（由 {@code ViewAutoConfiguration} 兜底注册 Blade）。</li>
  * </ol>
  */
-public class ViewManager {
+public class ViewManager implements com.weacsoft.jaravel.vendor.core.view.ViewManager {
 
     private static final Logger log = LoggerFactory.getLogger(ViewManager.class);
 
@@ -43,6 +48,11 @@ public class ViewManager {
         return views;
     }
 
+    @Override
+    public List<String> names() {
+        return new ArrayList<>(views.keySet());
+    }
+
     public void setConfiguredDefault(String name) {
         this.configuredDefault = name;
     }
@@ -54,21 +64,22 @@ public class ViewManager {
     /**
      * 解析当前应激活的默认 View 实现。
      *
-     * @return 默认 View，可能为空（尚未声明任何实现）
+     * @return 默认 View，未配置返回 null（由 {@code ViewAutoConfiguration} 兜底注册 Blade）
      */
-    public Optional<View> defaultView() {
+    @Override
+    public View defaultView() {
         if (configuredDefault != null && views.containsKey(configuredDefault)) {
-            return Optional.of(views.get(configuredDefault));
+            return views.get(configuredDefault);
         }
         if (annotatedDefault != null && views.containsKey(annotatedDefault)) {
-            return Optional.of(views.get(annotatedDefault));
+            return views.get(annotatedDefault);
         }
         if (views.containsKey("blade")) {
-            return Optional.of(views.get("blade"));
+            return views.get("blade");
         }
         if (!views.isEmpty()) {
-            return Optional.of(views.values().iterator().next());
+            return views.values().iterator().next();
         }
-        return Optional.empty();
+        return null;
     }
 }

@@ -178,6 +178,18 @@ com.weacsoft.jaravel.vendor
 
 模板引擎入口，负责加载、缓存、渲染模板。支持模板继承（`@extends`）与组件（`@component`）。采用两级缓存（一级内存 `ConcurrentHashMap` + 二级 `CacheStore`），仅在一二级缓存均未命中时才执行编译，避免重复编译开销。
 
+### 4.0 视图标准层（View / Htmlable / Paginator 上提到 core）
+
+为保证「用 database 不必依赖模板引擎」，`jblade` **仅作为 `core` 标准层的实现方**，而非契约提供方：
+
+- `core.view.Htmlable` / `core.view.HtmlString`：免转义 HTML 值对象契约（`jblade` 不再重复定义）。
+- `core.view.View`：视图渲染标准接口（`render` / `exists` / `name`）。**`BladeView` 实现的是 `core.view.View`**，框架（如 `Paginator.links()`）只依赖该标准接口，不依赖 `jblade`。
+- `core.view.ViewManager`：视图管理者标准接口；`jblade.view.ViewManager` 实现它。
+- `core.pagination.Paginator`：Laravel 风格分页器（标准层，不依赖 `jblade`）。
+
+`jblade` 启动时通过 `ViewFacade.bind(manager)` 把默认 `View` 注入 `Paginator` 的 `ViewProvider`，
+使 `database` 返回的 `core.pagination.Paginator` 能渲染分页模板；未引入 `jblade` 时 `links()` 降级为空串。
+
 ### 构造器
 
 提供多种重载，最终委托到全参构造器：

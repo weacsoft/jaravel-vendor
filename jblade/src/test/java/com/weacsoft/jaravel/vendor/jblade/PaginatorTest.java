@@ -1,6 +1,7 @@
 package com.weacsoft.jaravel.vendor.jblade;
 
-import com.weacsoft.jaravel.vendor.jblade.pagination.Paginator;
+import com.weacsoft.jaravel.vendor.core.pagination.Paginator;
+import com.weacsoft.jaravel.vendor.core.view.HtmlString;
 import com.weacsoft.jaravel.vendor.jblade.view.BladeView;
 import com.weacsoft.jaravel.vendor.jblade.view.ViewFacade;
 import com.weacsoft.jaravel.vendor.jblade.view.ViewManager;

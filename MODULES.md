@@ -113,6 +113,23 @@ public SessionStore mySessionStore() { ... }
 **core 是唯一强依赖**，其余模块之间遵循"**有则使用，无则回退默认**"。
 默认实现通常采用**内存方式**（如 queue 的 sync）或**文件方式**（如 storage 的 local）。
 
+#### 2.1.1 视图与分页标准层（database 与 jblade 解耦）
+
+为避免「用 database 就一定得依赖模板引擎」的过度耦合，框架把**视图渲染契约**与
+**分页标准**上提到 `core` 标准层，由 `jblade` 作为实现方：
+
+- `core.view.Htmlable` / `HtmlString`：免转义 HTML 值对象标记（`{{ }}` 输出时识别）。
+- `core.view.View`：视图渲染标准接口（`render` / `exists` / `name`）。
+- `core.view.ViewManager`：视图管理者标准接口；`jblade` 的 `ViewManager` 实现它。
+- `core.pagination.Paginator`：Laravel 风格分页器（实现 `Iterable` 与 `Htmlable`），
+  仅依赖 `core.view.*`，**不依赖任何具体模板引擎**。
+
+`database` 模块的 `BaseModel.paginate()` 返回的即是 `core.pagination.Paginator`，
+因此 **`database` 不再硬依赖 `jblade`**——只用数据库、不想引入模板引擎的项目可单独使用
+`database`。分页 HTML 渲染通过 `Paginator.links(viewName)` 完成：视图引擎（jblade）在启动时
+通过 `ViewFacade.bind()` 把默认 `View` 注入到 `Paginator` 的 `ViewProvider`，
+若未引入 jblade（无默认视图），`links()` 安全降级为空串（等价于「无分页视图时未执行」）。
+
 实现手段是 Maven `<optional>true</optional>` + Spring 的
 `@ConditionalOnClass` / `@ConditionalOnMissingBean` / `@ConditionalOnProperty`
 以及框架自带的 `OnDriverInUseCondition`。

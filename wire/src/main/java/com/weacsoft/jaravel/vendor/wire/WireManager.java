@@ -1,9 +1,9 @@
 package com.weacsoft.jaravel.vendor.wire;
 
+import com.weacsoft.jaravel.vendor.core.view.View;
 import com.weacsoft.jaravel.vendor.json.Json;
 import com.weacsoft.jaravel.vendor.jblade.BladeEngine;
 import com.weacsoft.jaravel.vendor.jblade.view.BladeView;
-import com.weacsoft.jaravel.vendor.jblade.view.View;
 import com.weacsoft.jaravel.vendor.jblade.view.ViewFacade;
 
 import java.io.InputStream;

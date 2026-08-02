@@ -3,7 +3,7 @@ package com.weacsoft.jaravel.vendor.database;
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.weacsoft.jaravel.vendor.core.SpringContext;
-import com.weacsoft.jaravel.vendor.jblade.pagination.Paginator;
+import com.weacsoft.jaravel.vendor.core.pagination.Paginator;
 import gaarason.database.annotation.Column;
 import gaarason.database.annotation.Primary;
 import gaarason.database.contract.connection.GaarasonDataSource;

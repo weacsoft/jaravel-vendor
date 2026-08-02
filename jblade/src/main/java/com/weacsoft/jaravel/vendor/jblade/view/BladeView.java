@@ -1,14 +1,16 @@
 package com.weacsoft.jaravel.vendor.jblade.view;
 
+import com.weacsoft.jaravel.vendor.core.view.View;
 import com.weacsoft.jaravel.vendor.jblade.BladeAssetHelper;
 import com.weacsoft.jaravel.vendor.jblade.BladeEngine;
 
 import java.util.Map;
 
 /**
- * Blade 模板引擎的 {@link View} 实现。
+ * Blade 模板引擎的 {@link View} 实现（core 标准层）。
  * <p>
- * 包装 {@link BladeEngine}，使框架只依赖 {@link View} 抽象即可渲染 Blade 模板。
+ * 包装 {@link BladeEngine}，使框架只依赖 {@link View} 抽象即可渲染 Blade 模板，
+ * 而无需让非模板模块直接耦合 jblade。
  * 同时保留 {@link #getEngine()} 以便 {@code wire} 模块在组件渲染等场景直接使用底层引擎能力。
  * </p>
  */
