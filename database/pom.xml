@@ -23,6 +23,11 @@
             <groupId>io.github.lijialong1313</groupId>
             <artifactId>auth</artifactId>
         </dependency>
+        <!-- 分页器：BaseModel.paginate() 返回 Paginator，其 links() 依赖视图层渲染分页模板 -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>jblade</artifactId>
+        </dependency>
 
         <!-- Laravel 风格 ORM 核心（不含 SpringBoot 自动配置，需手动 @Bean 创建 GaarasonDataSource） -->
         <!-- database-query 依赖 database-core，提供 QueryBuilder；database-core 依赖 druid -->

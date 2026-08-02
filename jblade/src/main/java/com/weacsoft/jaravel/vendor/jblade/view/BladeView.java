@@ -28,6 +28,11 @@ public class BladeView implements View {
     }
 
     @Override
+    public boolean exists(String templateName) {
+        return engine.templateExists(templateName);
+    }
+
+    @Override
     public String name() {
         return name;
     }

@@ -758,10 +758,16 @@ public abstract class BladeTemplate {
 
     /**
      * HTML 转义（对齐 Laravel e() / {{ }}）。
+     * <p>
+     * 与 Laravel 一致：若对象实现了 {@link Htmlable}（例如分页器 {@code links()} 的返回值），
+     * 则认为其本身就是 HTML，直接原样返回，不做转义。
      */
     protected String e(Object value) {
         if (value == null) {
             return "";
+        }
+        if (value instanceof Htmlable) {
+            return ((Htmlable) value).toHtml();
         }
         String s = value.toString();
         StringBuilder sb = new StringBuilder(s.length() + 16);

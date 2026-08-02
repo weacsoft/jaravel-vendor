@@ -43,6 +43,20 @@ public interface View {
     }
 
     /**
+     * 判断模板是否存在。
+     * <p>
+     * 用于「有则渲染、无则跳过」的场景（例如分页器在没有自定义模板时优雅降级）。
+     * 默认返回 {@code false}，由具体实现按自身查找规则覆写。
+     * </p>
+     *
+     * @param name 模板名（不含后缀，支持点号分隔）
+     * @return 存在返回 true
+     */
+    default boolean exists(String name) {
+        return false;
+    }
+
+    /**
      * 该实现对外暴露的名字（对应 {@link RegisterView#name()}）。
      *
      * @return 实现名
