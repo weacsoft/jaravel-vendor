@@ -1683,6 +1683,9 @@ com.weacsoft.jaravel.vendor.utils.memory
 ├── SourceCodeJavaFileObject    // 包装源代码字符串的 JavaFileObject（编译输入）
 ├── MemoryFileManager           // 拦截编译器输出到内存的 JavaFileManager（编译输出）
 └── MemoryClassLoader           // 从内存字节码加载类的 ClassLoader（类加载）
+
+com.weacsoft.jaravel.vendor.utils
+└── Maps                        // 不可变 Map 便捷构造器（替代 Map.of，支持空键值）
 </code></pre>
 
 <h6 id="utils-三类协作关系">三类协作关系</h6>
@@ -1972,6 +1975,23 @@ public class MemoryCompileExample {
 </table>
 <h4>类和方法</h4>
 <p>&gt; Module: <code>utils</code> | Package: <code>com.weacsoft.jaravel.vendor.utils</code> | Version: 0.1.2</p>
+
+<h5 id="utils-maps">Maps —— 不可变 Map 便捷构造器</h5>
+<p><code>com.weacsoft.jaravel.vendor.utils.Maps</code></p>
+<p>替代 <code>Map.of(...)</code> 的不可变 Map 构造工具，区别在于<strong>允许为空键值而不抛异常</strong>，适用于「部分字段可能缺失/为空」的场景（模板数据、配置解析、响应构建等）。</p>
+<table>
+<tr><th>输入</th><th>处理</th></tr>
+<tr><td>键为 <code>null</code> 或空字符串</td><td>跳过该条目（视为「没有这条数据」）</td></tr>
+<tr><td>值为 <code>null</code> 或空字符串</td><td>保留该条目（<code>{{ $x }}</code> 渲染为空、<code>@if($x)</code> 判空为假）</td></tr>
+<tr><td>成对参数（奇数个）</td><td>末位孤立 key 被忽略</td></tr>
+<tr><td>返回结果</td><td><code>LinkedHashMap</code> 包装为不可变 Map，保持插入顺序</td></tr>
+</table>
+<blockquote><p>该语义与 jblade 模板引擎的空值处理对齐：模板内空值不报错、可做判空条件渲染。底层被 <code>ResponseBuilder.map(...)</code> 复用。</p></blockquote>
+<pre><code>
+// 替代 Map.of，且允许空键值
+Map&lt;String, Object&gt; data = Maps.of(&quot;name&quot;, &quot;alice&quot;, &quot;age&quot;, null, &quot;&quot;, &quot;ignored&quot;);
+// 结果: { &quot;name&quot; -&gt; &quot;alice&quot;, &quot;age&quot; -&gt; null }（空键条目被跳过）
+</code></pre>
 
 <h5 id="utils-overview">Overview</h5>
 <p>utils 模块提供通用的内存编译工具，包含 MemoryClassLoader、MemoryFileManager 和 SourceCodeJavaFileObject 三个核心类。它们协同工作，将 Java 源代码字符串在内存中编译为 class 字节码并直接加载，无需写入磁盘文件。这套机制被 jblade 模板引擎和 migration 迁移系统等用于动态编译和加载 Java 代码。</p>
@@ -2663,6 +2683,7 @@ Request current = RequestFactory.getCurrentRequest();
 <tr><td>`static Response forbidden(String message)`</td><td>403 禁止访问</td></tr>
 <tr><td>`static Response error(int status, String message)`</td><td>自定义错误状态，JSON 格式 `{"message": "..."}`</td></tr>
 <tr><td>`static String toJson(Object data)`</td><td>将对象序列化为 JSON 字符串</td></tr>
+<tr><td>`static Map&lt;String, Object&gt; map(Object... kvs)`</td><td>便捷构造不可变 Map，替代 <code>Map.of</code>；支持空键值（键为 null/空字符串跳过，值原样保留），底层委托 <code>com.weacsoft.jaravel.vendor.utils.Maps</code></td></tr>
 </table>
 
 <pre><code>
@@ -2681,6 +2702,9 @@ Response r4 = ResponseBuilder.redirect(&quot;/login&quot;);
 // 错误响应
 Response r5 = ResponseBuilder.error(404, &quot;资源不存在&quot;);
 Response r6 = ResponseBuilder.unauthorized(&quot;请先登录&quot;);
+
+// 便捷构造模板数据：替代 Map.of，允许空键值（键为空跳过，值保留以便模板判空）
+return ResponseBuilder.view(&quot;mdui.admin.item&quot;, ResponseBuilder.map(&quot;setting&quot;, item));
 </code></pre>
 
 <p>&gt; <code>view</code> 方法依赖 jblade 模块。引擎由 <code>ViewFacade</code> 在启动阶段自动绑定（通过 <code>ViewAutoConfiguration</code> 收集 <code>@RegisterView</code> 声明的 <code>BladeView</code>），调用时若未引入 jblade 会抛 <code>RuntimeException(&quot;jblade 模块未引入&quot;)</code>。</p>
@@ -5761,6 +5785,38 @@ copy.setName(&quot;alice_copy&quot;);
 User saved = copy.save();          // 作为新记录保存
 </code></pre>
 
+<h6 id="database-fill">fill()</h6>
+
+<p>简易填充：将 <code>Map</code> 中的值按属性名调用 <code>setter</code> 写入当前对象，对齐 Laravel 对请求/表单数据的快速赋值。</p>
+
+<pre><code>
+/**
+ * 简易填充：按属性名调用 setter 写入当前对象。
+ * - 键为 null 或无对应 setter（多余属性）→ 忽略
+ * - 值为 null 或空字符串（长度为 0）→ 不做任何操作
+ * - setter 参数类型不一定是 String，会对字符串做常见类型转换
+ *   （数值、布尔、BigDecimal、LocalDate/LocalDateTime/LocalTime、Date、字符等）
+ *
+ * @param data 待填充的键值数据（值统一视为 String 处理）
+ * @return this，便于链式调用
+ */
+public T fill(Map&lt;String, Object&gt; data)
+</code></pre>
+
+<pre><code>
+User user = new User();
+// Map 值统一视为字符串，自动转换为对应类型
+user.fill(Map.of(&quot;username&quot;, &quot;alice&quot;, &quot;age&quot;, &quot;18&quot;, &quot;active&quot;, &quot;true&quot;));
+user.fill(ResponseBuilder.map(&quot;username&quot;, &quot;bob&quot;, &quot;age&quot;, null)); // 空值字段不覆盖原值
+
+// 链式
+user.fill(params).save();
+</code></pre>
+
+<blockquote>
+<p><strong>填充规则</strong>：键为 <code>null</code> 或对象无对应 setter 的条目直接忽略（视为多余属性）；值为 <code>null</code> 或空字符串视为「不做任何操作」跳过；其余按 <code>set&lt;属性名&gt;</code> 反射调用，并在写入前将字符串转换为 setter 声明的参数类型。</p>
+</blockquote>
+
 <h6 id="database-静态工具方法">静态工具方法</h6>
 
 <p>&gt; Java 静态方法不可被子类继承，故业务 Model 需自行声明静态方法并委托给 <code>BaseModel</code> 的静态方法。</p>
@@ -6373,6 +6429,7 @@ public Response login(@RequestBody LoginRequest req, UserProvider provider) {
 <tr><th>Method</th><th>Parameters</th><th>Return</th><th>Description</th></tr>
 <tr><td>`save`</td><td>无</td><td>`T`</td><td>持久化当前实体（主键为 null 时 INSERT 新增，主键有值时 UPDATE 更新），INSERT 返回含生成主键的实体，UPDATE 返回当前实体</td></tr>
 <tr><td>`replicate`</td><td>无</td><td>`T`</td><td>复制当前实体（排除主键），可作为新记录再次 save()</td></tr>
+<tr><td>`fill`</td><td>`Map&lt;String, Object&gt; data`</td><td>`T`</td><td>按属性名反射调用 setter 写入当前对象；键为 null/无 setter 则忽略，值为 null/空串则跳过，字符串值自动转换为 setter 参数类型</td></tr>
 <tr><td>`getGaarasonDataSource`</td><td>无</td><td>`GaarasonDataSource`</td><td>获取数据源（优先检查 @DataSource 注解，否则使用注入的默认数据源）</td></tr>
 </table>
 
@@ -27142,6 +27199,8 @@ jaravel:
 <p>权威文档见各模块 README：<code>core/README.md</code> 第 14 章、<code>database/README.md</code> 「分页标准层与模块解耦」、
 <code>jblade/README.md</code> 第 4.0 节、<code>MODULES.md</code> 第 2.1.1 节。</p>
 <p><strong>jblade 组件插槽转义修复</strong>：插槽内容已是渲染好的 HTML，现统一包装为 <code>core.view.HtmlString</code>（<code>Htmlable</code>）注入组件，使 <code>{{ $slot }}</code> 原样输出、不再二次 HTML 转义；而用户通过 <code>@component</code> 显式传入的数据变量仍按 <code>{{ }}</code> 正常转义（防 XSS）。同时明确支持 <code>{!! $html !!}</code> 原样输出与 <code>{{-- --}}</code> 注释（均已覆盖于 jblade 文档 10/11.4 节）。</p>
+<p><strong>utils.Maps / ResponseBuilder.map（不可变 Map 便捷构造）</strong>：新增 <code>com.weacsoft.jaravel.vendor.utils.Maps.of(...)</code> 替代 <code>Map.of</code>，允许空键值而不抛异常——键为 null/空字符串视为「没有这条数据」跳过，值为 null/空字符串则保留以便模板判空/条件渲染；返回保持插入顺序的不可变 Map。该工具已下沉到 <code>utils</code> 模块，<code>ResponseBuilder.map(...)</code> 静态方法直接复用。见 utils 文档「Maps」小节与 http 文档 6.2。</p>
+<p><strong>BaseModel.fill(Map) 简易填充</strong>：新增 <code>BaseModel.fill(Map&lt;String,Object&gt;)</code>，按属性名反射调用 setter 写入当前对象；键为 null/无对应 setter 的条目忽略（多余属性），值为 null/空串视为「不做任何操作」跳过，字符串值自动转换为 setter 声明的参数类型（数值、布尔、BigDecimal、LocalDate/LocalDateTime/LocalTime、Date、字符等）。常用于把请求/表单参数快速填充到模型后链式 <code>save()</code>。见 database 文档「fill()」小节。</p>
 <p style="color:var(--muted)">注：本快照站为历史预生成版本，详细内容以仓库内 Markdown 为准。</p>
 </section>
 </div>
