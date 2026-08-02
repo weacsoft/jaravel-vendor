@@ -4196,6 +4196,17 @@ public class Blade_users_list extends BladeTemplate {
 <li>调用组件模板的 <code>render()</code></li>
 <li>恢复上下文状态</li>
 
+</ul>
+
+<blockquote>
+<p><strong>插槽转义语义（对齐 PHP Blade）</strong>：</p>
+<ul>
+<li>插槽内容是「已经渲染好的 HTML 片段」，jblade 会将其包装为 <code>HtmlString</code>（<code>Htmlable</code>）注入组件。组件内用 <code>{{ $slot }}</code> 输出时，<code>e()</code> 命中 <code>Htmlable</code> 分支<strong>原样输出，不再二次 HTML 转义</strong>（避免插槽内容被双重编码）。</li>
+<li>用户通过 <code>@component('x', ['foo' =&gt; $bar])</code> 显式传入的<strong>数据</strong>（如 <code>$foo</code>）仍然是普通值，组件内 <code>{{ $foo }}</code> 会<strong>正常 HTML 转义</strong>（防 XSS），不受插槽语义影响。</li>
+<li>若需主动输出已渲染 HTML 且不受转义约束，可直接使用 <code>{!! $html !!}</code> 原样输出（见上方输出指令表）。</li>
+</ul>
+</blockquote>
+
 <h6 id="jblade-61-php-辅助函数">6.1 PHP 辅助函数</h6>
 
 <p><code>BladeTemplate</code> 内置了一系列 PHP 辅助方法，对齐 Laravel Blade 模板中常用的 PHP 函数与 Laravel 辅助函数。这些方法由表达式编译引擎在编译时自动调用，使模板中可以直接使用 PHP 风格的语法。</p>
@@ -4424,6 +4435,8 @@ MemoryClassLoader.getCompiledClasses().put(name, bytes)  -- 存入类加载器
 <tr><td>输出拼接</td><td>`{{ 'Hello, ' . $name }}`</td><td>字符串拼接，编译为 Java `+`</td></tr>
 <tr><td>输出空合并</td><td>`{{ $title ?? 'Default' }}`</td><td>空合并运算符，编译为 `nullCoalescing(...)`</td></tr>
 <tr><td>输出辅助函数</td><td>`{{ asset('css/app.css') }}`</td><td>调用 PHP 辅助函数</td></tr>
+<tr><td>原样输出（不转义）</td><td>`{!! $html !!}`</td><td>原样输出，<strong>不做 HTML 转义</strong>（对齐 PHP Blade 的 <code>{!! !!}</code>）。用于输出已确保安全的 HTML。注意：直接拼接用户输入存在 XSS 风险</td></tr>
+<tr><td>转义输出（原生）</td><td>`{{ $name }}`</td><td>输出变量值，<strong>自动 HTML 转义</strong>（防 XSS）。等价于 PHP Blade 的 <code>e()</code></td></tr>
 <tr><td>注释</td><td>`{{-- 注释内容 --}}`</td><td>注释，编译时移除</td></tr>
 </table>
 
@@ -27128,6 +27141,7 @@ jaravel:
 安全降级为空串（即「没有分页视图时该方法等同于未执行」）。</p>
 <p>权威文档见各模块 README：<code>core/README.md</code> 第 14 章、<code>database/README.md</code> 「分页标准层与模块解耦」、
 <code>jblade/README.md</code> 第 4.0 节、<code>MODULES.md</code> 第 2.1.1 节。</p>
+<p><strong>jblade 组件插槽转义修复</strong>：插槽内容已是渲染好的 HTML，现统一包装为 <code>core.view.HtmlString</code>（<code>Htmlable</code>）注入组件，使 <code>{{ $slot }}</code> 原样输出、不再二次 HTML 转义；而用户通过 <code>@component</code> 显式传入的数据变量仍按 <code>{{ }}</code> 正常转义（防 XSS）。同时明确支持 <code>{!! $html !!}</code> 原样输出与 <code>{{-- --}}</code> 注释（均已覆盖于 jblade 文档 10/11.4 节）。</p>
 <p style="color:var(--muted)">注：本快照站为历史预生成版本，详细内容以仓库内 Markdown 为准。</p>
 </section>
 </div>
