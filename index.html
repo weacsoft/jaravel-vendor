@@ -27111,6 +27111,25 @@ jaravel:
 
 <p>&gt; 集群部署时，所有有状态的中间件（Session、Cache、认证黑名单、限流计数等）都应切换到 Redis 后端，确保状态全局一致。仅无状态的处理逻辑（路由分发、中间件管道、响应构建等）可安全地在各节点独立运行。</p>
 </section>
+
+<section id="arch-update-2026-08" style="margin-top:3rem;padding:1.5rem;border:1px solid var(--rule);border-radius:8px;background:var(--bg2)">
+<h2>架构更新说明（2026-08）：database 与 jblade 解耦</h2>
+<p>为避免过度耦合（用 database 的 ORM/分页不必依赖模板引擎），框架把<strong>视图渲染契约</strong>与
+<strong>分页标准</strong>上提到 <code>core</code> 标准层，由 <code>jblade</code> 作为实现方：</p>
+<ul>
+  <li><code>core.view.Htmlable</code> / <code>core.view.HtmlString</code>：免转义 HTML 值对象契约（原位于 jblade，已上移）。</li>
+  <li><code>core.view.View</code>：视图渲染标准接口（<code>render</code> / <code>exists</code> / <code>name</code>）。<code>BladeView</code> 实现的是 <code>core.view.View</code>。</li>
+  <li><code>core.view.ViewManager</code>：视图管理者标准接口；<code>jblade.view.ViewManager</code> 实现它。</li>
+  <li><code>core.pagination.Paginator</code>：Laravel 风格分页器（实现 <code>Iterable</code> 与 <code>Htmlable</code>），<strong>不依赖任何具体模板引擎</strong>。</li>
+</ul>
+<p><code>database</code> 模块的 <code>BaseModel.paginate()</code> 返回的即是 <code>core.pagination.Paginator</code>，因此
+<strong>database 不再硬依赖 jblade</strong>。分页 HTML 通过 <code>Paginator.links(viewName)</code> 渲染：视图引擎（jblade）
+启动时经 <code>ViewFacade.bind()</code> 注入默认 <code>View</code>；若未引入 jblade（无默认视图），<code>links()</code>
+安全降级为空串（即「没有分页视图时该方法等同于未执行」）。</p>
+<p>权威文档见各模块 README：<code>core/README.md</code> 第 14 章、<code>database/README.md</code> 「分页标准层与模块解耦」、
+<code>jblade/README.md</code> 第 4.0 节、<code>MODULES.md</code> 第 2.1.1 节。</p>
+<p style="color:var(--muted)">注：本快照站为历史预生成版本，详细内容以仓库内 Markdown 为准。</p>
+</section>
 </div>
 </div>
 </body>
