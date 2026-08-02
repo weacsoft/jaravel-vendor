@@ -576,6 +576,11 @@ jblade 的 `BladeCompiler` 原生支持 Blade 模板表达式语法，将其编�
 4. 调用组件模板的 `render()`
 5. 恢复上下文状态
 
+> **插槽转义语义（对齐 PHP Blade）**：
+> - 插槽内容是「已经渲染好的 HTML 片段」，jblade 会将其包装为 `HtmlString`（`Htmlable`）注入组件。组件内用 `{{ $slot }}` 输出时，`e()` 命中 `Htmlable` 分支**原样输出，不会二次 HTML 转义**（避免你之前遇到的双重编码问题）。
+> - 用户通过 `@component('x', ['foo' => $bar])` 显式传入的**数据**（如 `$foo`）仍然是普通值，组件内 `{{ $foo }}` 会**正常 HTML 转义**（防 XSS），不受插槽语义影响。
+> - 若需主动输出已渲染 HTML 且不受转义约束，也可用 `{!! $html !!}` 原样输出（见下方输出指令表）。
+
 ### 6.1 PHP 辅助函数
 
 `BladeTemplate` 内置了一系列 PHP 辅助方法，对齐 Laravel Blade 模板中常用的 PHP 函数与 Laravel 辅助函数。这些方法由表达式编译引擎在编译时自动调用，使模板中可以直接使用 PHP 风格的语法。

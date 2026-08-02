@@ -1,6 +1,7 @@
 package com.weacsoft.jaravel.vendor.jblade;
 
 import com.weacsoft.jaravel.vendor.core.view.Htmlable;
+import com.weacsoft.jaravel.vendor.core.view.HtmlString;
 
 import java.io.StringWriter;
 import java.io.Writer;
@@ -707,12 +708,16 @@ public abstract class BladeTemplate {
         for (Map.Entry<String, Object> varEntry : context.getVariables().entrySet()) {
             componentCtx.setVariable(varEntry.getKey(), varEntry.getValue());
         }
+        // 插槽内容是已经渲染好的 HTML 片段，按 PHP Blade 语义包装为 HtmlString（Htmlable），
+        // 使组件内 {{ $slot }} 走 e() 的 Htmlable 分支原样输出，避免对已渲染 HTML 二次转义（双重编码）。
+        // 用户显式传入组件的数据（dataEntry）仍是普通值，组件内 {{ $foo }} 仍会正常转义——与 PHP 行为一致。
         String defaultSlot = context.getSlot("default");
-        componentCtx.setVariable("slot", defaultSlot);
-        componentCtx.setVariable("$slot", defaultSlot); // 兼容旧版编译产物
+        componentCtx.setVariable("slot", new HtmlString(defaultSlot == null ? "" : defaultSlot));
+        componentCtx.setVariable("$slot", new HtmlString(defaultSlot == null ? "" : defaultSlot)); // 兼容旧版编译产物
         for (Map.Entry<String, String> slotEntry : context.getComponentSlots().entrySet()) {
-            componentCtx.setVariable(slotEntry.getKey(), slotEntry.getValue());
-            componentCtx.setVariable("$" + slotEntry.getKey(), slotEntry.getValue());
+            HtmlString htmlSlot = new HtmlString(slotEntry.getValue() == null ? "" : slotEntry.getValue());
+            componentCtx.setVariable(slotEntry.getKey(), htmlSlot);
+            componentCtx.setVariable("$" + slotEntry.getKey(), htmlSlot);
         }
         for (Map.Entry<String, Object> dataEntry : context.getComponentData().entrySet()) {
             componentCtx.setVariable(dataEntry.getKey(), dataEntry.getValue());

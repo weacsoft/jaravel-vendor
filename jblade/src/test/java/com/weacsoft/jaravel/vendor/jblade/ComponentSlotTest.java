@@ -78,4 +78,22 @@ class ComponentSlotTest {
         String out = render("comp-usage", data);
         assertTrue(out.contains("USER:Alice-30;"));
     }
+
+    /**
+     * 回归：插槽内容是“已经渲染好的 HTML 片段”，组件内 {{ $slot }} 不应再次 HTML 转义（双重编码）。
+     * 同时验证：用户通过 @component 显式传入的数据（如 $data）仍是普通值，{{ $data }} 必须被正常转义。
+     * 这与 PHP Blade 语义一致：插槽为 HtmlString（Htmlable），数据为非 Htmlable 原值。
+     */
+    @Test
+    void testSlotIsNotDoubleEscapedButDataIsEscaped() throws Exception {
+        String html = render("comp-raw-usage", Map.of());
+
+        assertTrue(html.contains("<p>slot html</p>"),
+                "插槽内 HTML 应原样输出，不得二次编码: " + html);
+        assertFalse(html.contains("&lt;p&gt;slot html&lt;/p&gt;"),
+                "插槽内 HTML 不应被双重转义: " + html);
+
+        assertTrue(html.contains("DATA:[&lt;b&gt;data&lt;/b&gt;]"),
+                "用户显式传入的数据应被正常 HTML 转义: " + html);
+    }
 }
