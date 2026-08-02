@@ -95,6 +95,34 @@
         for (var i = 0; i < configs.length; i++) {
             initComponent(configs[i]);
         }
+
+        // 第4点：声明式懒加载 wire:lazy —— 页面 load 后自动拉取标记了 lazy 的 section，
+        // 无需在模板里手写 if/else 或额外的 <script>。
+        initLazy();
+    }
+
+    /**
+     * 声明式懒加载（Laravel Livewire lazy 风格）：
+     * 模板用 <div wire:section="x" wire:lazy> 标记后，首次渲染由后端给出占位（如 spinner），
+     * 前端在页面 load 后对该 section 发一次 $refresh（等价于 Wire.refresh(['x'])），
+     * 后端从权威数据源（DB/慢接口）取真实数据返回。全程后端无需 if/else 分支。
+     */
+    function initLazy() {
+        var lazyEls = document.querySelectorAll('[wire\\:lazy]');
+        if (!lazyEls.length) return;
+        function fire() {
+            for (var i = 0; i < lazyEls.length; i++) {
+                var name = lazyEls[i].getAttribute('wire:section');
+                if (name) {
+                    Wire.refresh([name]);
+                }
+            }
+        }
+        if (document.readyState === 'complete') {
+            fire();
+        } else {
+            window.addEventListener('load', fire);
+        }
     }
 
     /**
@@ -145,6 +173,39 @@
                 }
             }
         }
+    }
+
+    /**
+     * 向上查找最近的、带有指定 wire: 属性的祖先（含自身）。
+     */
+    function closestAttr(el, attrName) {
+        var node = el;
+        while (node && node !== document) {
+            if (node.getAttribute && node.getAttribute(attrName) !== null) {
+                return node;
+            }
+            node = node.parentNode;
+        }
+        return null;
+    }
+
+    /** 读取 cookie 值（用于 CSRF token 自动注入）。 */
+    function getCookie(name) {
+        var match = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/([.$?*|{}()\[\]\\/+^])/g, '\\$1') + '=([^;]*)'));
+        return match ? match[1] : null;
+    }
+
+    /** SPA 导航：高亮当前菜单项（移除同组其它项的 active 类，给当前项加 active）。 */
+    function highlightNav(el) {
+        try {
+            var group = closestAttr(el, 'wire:nav-menu') || el.parentNode;
+            if (!group) return;
+            var items = group.querySelectorAll('[wire\\:nav]');
+            for (var i = 0; i < items.length; i++) {
+                items[i].classList.remove('wire-nav-active');
+            }
+            el.classList.add('wire-nav-active');
+        } catch (e) { /* 忽略高亮异常，不影响功能 */ }
     }
 
     function initComponent(configEl) {
@@ -211,6 +272,39 @@
             (function (el) {
                 if (!markBound(component, el)) return;
                 el.addEventListener('click', function (e) {
+                    // SPA 导航拦截（第3点）：wire:nav="pageKey" 菜单项，只刷新右侧内容 section，不整页跳转。
+                    var navKey = el.getAttribute('wire:nav');
+                    if (navKey) {
+                        e.preventDefault();
+                        // 找到本组件内承载内容的 section（默认 content），只刷新它
+                        var navTarget = closestAttr(el, 'wire:nav-content');
+                        var targetName = navTarget
+                            ? (navTarget.getAttribute('wire:section') || 'content')
+                            : 'content';
+                        // 约定动作 $nav，参数 page=目标页；复用统一请求通道
+                        sendRequest(component, '$nav', { page: navKey }, el, [targetName]);
+                        // 高亮当前菜单项
+                        highlightNav(el);
+                        return;
+                    }
+
+                    // 分页器拦截：命中 wire:pagination 容器内的 ?page=N 链接
+                    var pager = closestAttr(el, 'wire:pagination');
+                    if (pager && el.tagName === 'A') {
+                        var href = el.getAttribute('href') || '';
+                        var m = href.match(/[?&]page=(\d+)/);
+                        if (m) {
+                            e.preventDefault();
+                            var target = pager.getAttribute('wire:target') || '';
+                            // 分页字段统一用 pageNum（与导航字段 page 解耦，避免冲突）
+                            var pparams = { pageNum: parseInt(m[1], 10) };
+                            var perMatch = href.match(/[?&]perPage=(\d+)/);
+                            if (perMatch) pparams.perPage = parseInt(perMatch[1], 10);
+                            // 复用统一请求通道：约定动作 $paginate（后端仅读取 pageNum/perPage 并重渲染）
+                            sendRequest(component, '$paginate', pparams, el, target ? [target] : null);
+                            return;
+                        }
+                    }
                     e.preventDefault();
                     var action = el.getAttribute('wire:click');
                     var params = collectParams(el);
@@ -338,7 +432,7 @@
     // 防止并发请求：记录正在进行的请求
     var pendingRequests = {};
 
-    function sendRequest(component, action, params, triggerEl) {
+    function sendRequest(component, action, params, triggerEl, targetSections) {
         var isSync = action === '$sync';
 
         // 解析 update URL：优先使用元素上的 wire:update 覆盖
@@ -352,10 +446,15 @@
             el = el.parentElement;
         }
 
-        // 收集要更新的 section 列表
-        var sections = getTargetSections(component, triggerEl);
-        if (sections.length === 0) {
-            sections = getAllSections(component);
+        // 收集要更新的 section 列表（允许调用方显式覆盖，用于 Wire.refresh / 分页器精准刷新）
+        var sections;
+        if (targetSections && targetSections.length) {
+            sections = targetSections;
+        } else {
+            sections = getTargetSections(component, triggerEl);
+            if (sections.length === 0) {
+                sections = getAllSections(component);
+            }
         }
 
         // 对于 $sync 请求，在发送前保存输入框状态（DOM 替换后需要恢复）
@@ -387,12 +486,18 @@
         var body = 'wire_body=' + encodeURIComponent(wireData);
 
         // 发送请求
+        var headers = {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-Wire-Request': 'true'
+        };
+        // CSRF：从 XSRF-TOKEN cookie 读取并放入 X-XSRF-TOKEN header（Laravel/Axios 标准做法）
+        var csrf = getCookie('XSRF-TOKEN');
+        if (csrf) {
+            headers['X-XSRF-TOKEN'] = decodeURIComponent(csrf);
+        }
         fetch(updateUrl, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'X-Wire-Request': 'true'
-            },
+            headers: headers,
             body: body,
             redirect: 'manual' // 不自动跟随重定向，由我们手动处理（用于检测 302 登录跳转）
         }).then(function (response) {
@@ -618,6 +723,15 @@
         // 方式1: [wire:section] 元素属性（搜索整个文档）
         var sectionEl = document.documentElement.querySelector('[wire\\:section="' + sectionName + '"]');
         if (sectionEl) {
+            // 列表交互稳定性（第2点）：若子节点带 data-wire-key，做基于 key 的最小化 diff，
+            // 复用 DOM 以保留输入框/勾选框等交互状态，避免整段 innerHTML 替换丢失状态。
+            if (hasKeyedChildren(sectionEl, html)) {
+                var focusInfoK = saveFocus(sectionEl);
+                replaceSectionKeyed(sectionEl, html);
+                restoreFocus(focusInfoK);
+                rebindSection(component, sectionEl);
+                return;
+            }
             var focusInfo = saveFocus(sectionEl);
             sectionEl.innerHTML = html;
             restoreFocus(focusInfo);
@@ -690,8 +804,107 @@
         }
     }
 
-    function findComment(root, text) {
-        var walker = document.createTreeWalker(root, NodeFilter.SHOW_COMMENT, null, null);
+    /**
+     * 判断 section 容器是否应使用 keyed diff：新内容里存在带 data-wire-key 的元素，
+     * 且容器内也有带 data-wire-key 的直接子节点（说明是带交互状态的列表）。
+     */
+    function hasKeyedChildren(sectionEl, html) {
+        var tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        return tmp.querySelector('[data-wire-key]') !== null
+            && sectionEl.querySelector(':scope > [data-wire-key], [data-wire-key]') !== null;
+    }
+
+    /**
+     * 基于 data-wire-key 的精确 diff 替换：
+     * - key 相同的节点：复用旧 DOM（保留交互状态），仅更新其属性与子文本
+     * - 新内容里多出的 key：新增到正确位置
+     * - 旧内容里消失的 key：删除节点
+     */
+    function replaceSectionKeyed(sectionEl, html) {
+        var tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        var newEls = Array.prototype.slice.call(tmp.children);
+
+        var oldMap = {};
+        var oldChildren = Array.prototype.slice.call(sectionEl.children);
+        for (var i = 0; i < oldChildren.length; i++) {
+            var k = oldChildren[i].getAttribute && oldChildren[i].getAttribute('data-wire-key');
+            if (k !== null && k !== undefined && k !== '') oldMap[k] = oldChildren[i];
+        }
+
+        var newMap = {};
+        for (var j = 0; j < newEls.length; j++) {
+            var nk = newEls[j].getAttribute && newEls[j].getAttribute('data-wire-key');
+            if (nk !== null && nk !== undefined) newMap[nk] = newEls[j];
+        }
+
+        // 删除已不存在的 key
+        for (var d = 0; d < oldChildren.length; d++) {
+            var ok = oldChildren[d].getAttribute && oldChildren[d].getAttribute('data-wire-key');
+            if (ok && !newMap[ok]) {
+                sectionEl.removeChild(oldChildren[d]);
+            }
+        }
+
+        // 按顺序复用/新增
+        var refNode = null; // 用作 insertBefore 的参考点（每张卡片插入到上一张之后）
+        var prevEl = null;
+        for (var p = 0; p < newEls.length; p++) {
+            var nkey = newEls[p].getAttribute && newEls[p].getAttribute('data-wire-key');
+            var target;
+            if (nkey && oldMap[nkey]) {
+                target = oldMap[nkey];
+                // 更新可交互属性与内容（保留用户输入状态外的差异）
+                syncAttributes(target, newEls[p]);
+                syncTextNodes(target, newEls[p]);
+            } else {
+                target = newEls[p];
+                sectionEl.appendChild(target);
+            }
+            prevEl = target;
+            refNode = target;
+        }
+        // 确保顺序正确：以 newEls 顺序重排
+        for (var q = 0; q < newEls.length; q++) {
+            var nk2 = newEls[q].getAttribute && newEls[q].getAttribute('data-wire-key');
+            var node = (nk2 && oldMap[nk2]) ? oldMap[nk2] : newEls[q];
+            var current = sectionEl.children[q];
+            if (current !== node) {
+                sectionEl.insertBefore(node, current);
+            }
+        }
+    }
+
+    function syncAttributes(oldEl, newEl) {
+        // 移除旧的有、新没有的属性（保留 data-wire-key）
+        for (var i = 0; i < oldEl.attributes.length; i++) {
+            var a = oldEl.attributes[i].name;
+            if (a === 'data-wire-key') continue;
+            if (newEl.getAttribute(a) === null) oldEl.removeAttribute(a);
+        }
+        // 设置/更新新的属性值
+        for (var j = 0; j < newEl.attributes.length; j++) {
+            var name = newEl.attributes[j].name;
+            if (name === 'data-wire-key') continue;
+            oldEl.setAttribute(name, newEl.attributes[j].value);
+        }
+    }
+
+    function syncTextNodes(oldEl, newEl) {
+        // 仅当子节点结构都为纯文本时同步文本，避免破坏交互子元素
+        if (oldEl.childNodes.length === newEl.childNodes.length) {
+            for (var i = 0; i < oldEl.childNodes.length; i++) {
+                if (oldEl.childNodes[i].nodeType === 3 && newEl.childNodes[i].nodeType === 3) {
+                    if (oldEl.childNodes[i].textContent !== newEl.childNodes[i].textContent) {
+                        oldEl.childNodes[i].textContent = newEl.childNodes[i].textContent;
+                    }
+                }
+            }
+        }
+    }
+
+    function findComment(root, text) {        var walker = document.createTreeWalker(root, NodeFilter.SHOW_COMMENT, null, null);
         var comment;
         while (comment = walker.nextNode()) {
             if (comment.nodeValue === text) {
@@ -827,6 +1040,29 @@
     } else {
         init();
     }
+
+    // ===== 公开 API：精准刷新（第1点 / 第7点懒加载扩展）=====
+    /**
+     * 手动刷新一个或多个 section。
+     * @param {string[]|string} sections  要刷新的 section 名；为空/省略=全部；传 'list' 等=只刷该组件
+     * @param {string} [action]           后端 action，默认 '$refresh'（不改动数据，仅重渲染）
+     * @param {object} [params]           附加参数（如 {page:2}）
+     *
+     * 说明：后端不需要为"全页刷新"单独写代码。无论传哪些 section，后端都走同一个
+     * update 通道：基于当前快照执行 action，再把指定 section 渲染返回。
+     * 使用者已知某组件（如 list）在后端被别人更新时，调用 Wire.refresh(['list']) 即可精准拉取。
+     */
+    Wire.refresh = function (sections, action, params) {
+        var comp = Wire.components[0];
+        if (!comp) return;
+        var targetSections = null;
+        if (typeof sections === 'string') {
+            targetSections = sections ? [sections] : null;
+        } else if (Array.isArray(sections)) {
+            targetSections = sections.length ? sections : null;
+        }
+        sendRequest(comp, action || '$refresh', params || {}, null, targetSections);
+    };
 
     window.Wire = Wire;
 })();

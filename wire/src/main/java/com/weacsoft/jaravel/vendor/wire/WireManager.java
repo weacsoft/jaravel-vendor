@@ -12,6 +12,8 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Wire 管理器：核心工具类，负责 Wire 模式的渲染、section 提取和快照编解码。
@@ -275,15 +277,34 @@ public class WireManager {
 
     /**
      * 批量渲染多个 section（高效：只加载和初始化模板一次）。
+     * <p>
+     * 支持两种 section 来源，<b>不改动 jblade 的 @section 语义</b>：
+     * <ol>
+     *   <li>已注册的 {@code @section} 名（如 {@code content}）：直接渲染对应区块。</li>
+     *   <li>非 {@code @section} 名（如内联在 content 中的 {@code wire:section="list"}）：
+     *       回退渲染 {@code content}，再按 {@code wire:section} 属性截取子区域返回。</li>
+     * </ol>
+     * 这样前端 {@code Wire.refresh(['list'])} 能精准刷新内联区块，而无需模板额外声明 {@code @section('list')}。
      *
      * @param templateName 模板名
-     * @param sectionNames 需要渲染的 section 名列表
+     * @param sectionNames 需要渲染的 section 名列表（可混用 @section 名与 wire:section 属性名）
      * @param data         模板数据
      * @return section 名 → HTML 内容
      */
     public static Map<String, String> renderSections(String templateName, List<String> sectionNames, Map<String, Object> data) {
         try {
-            return getEngine().renderSections(templateName, sectionNames, data);
+            List<String> registered = getEngine().getSectionNames(templateName);
+            Map<String, String> result = new LinkedHashMap<>();
+            for (String name : sectionNames) {
+                if (registered.contains(name)) {
+                    result.put(name, getEngine().renderSection(templateName, name, data));
+                } else {
+                    // 非 @section：渲染 content 后按 wire:section 属性截取
+                    String contentHtml = getEngine().renderSection(templateName, "content", data);
+                    result.put(name, extractWireSection(contentHtml, name));
+                }
+            }
+            return result;
         } catch (Exception e) {
             throw new RuntimeException("Wire sections 渲染失败: " + templateName, e);
         }
@@ -433,5 +454,31 @@ public class WireManager {
                 .replace(">", "&gt;")
                 .replace("\"", "&quot;")
                 .replace("'", "&#39;");
+    }
+
+    /**
+     * 从已渲染的 HTML 中按 {@code wire:section="name"} 属性提取对应块的内部 HTML。
+     * <p>
+     * 用于支持「不引入第二个 @section」的场景：列表等内容通过
+     * {@code <div wire:section="list">...</div>} 直接内联在 content 里，
+     * 前端 {@code Wire.refresh(['list'])} 只请求这一块。后端渲染 content 后，
+     * 用本方法按属性截取该块返回，<b>全程不改动 jblade 的 @section 语义</b>。
+     *
+     * @param html 已渲染（含 wire:section 标记）的 HTML
+     * @param name wire:section 属性值
+     * @return 该 wire:section 块的内部 HTML；若找不到返回空串
+     */
+    public static String extractWireSection(String html, String name) {
+        if (html == null || name == null || name.isEmpty()) {
+            return "";
+        }
+        // 匹配 <tag ... wire:section="name" ...>...</tag>（含嵌套同标签）
+        String regex = "(?s)<([a-zA-Z][a-zA-Z0-9]*)\\b([^>]*?\\bwire:section\\s*=\\s*[\"']"
+                + Pattern.quote(name) + "[\"'][^>]*)>(.*?)</\\1>";
+        Matcher m = Pattern.compile(regex).matcher(html);
+        if (m.find()) {
+            return m.group(3);
+        }
+        return "";
     }
 }
