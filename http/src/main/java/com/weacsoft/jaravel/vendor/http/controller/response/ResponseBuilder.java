@@ -2,6 +2,7 @@ package com.weacsoft.jaravel.vendor.http.controller.response;
 
 import com.weacsoft.jaravel.vendor.jblade.view.ViewFacade;
 import com.weacsoft.jaravel.vendor.json.Json;
+import com.weacsoft.jaravel.vendor.utils.Maps;
 import jakarta.servlet.http.Cookie;
 
 import java.util.ArrayList;
@@ -11,6 +12,30 @@ import java.util.List;
 import java.util.Map;
 
 public class ResponseBuilder {
+
+    /**
+     * 便捷构造不可变 Map，用于替代 {@code Map.of(...)}。
+     *
+     * <p>与 {@code Map.of} 不同，本方法允许传入 {@code null} / 空字符串键值而不会抛异常：</p>
+     * <ul>
+     *     <li>键为 {@code null} 或空字符串 → 跳过该条目（视为没有这条数据）。</li>
+     *     <li>值为 {@code null} 或空字符串 → 保留该条目（模板中渲染为空、{@code @if} 判空为假）。</li>
+     * </ul>
+     *
+     * <p>参数按 (key, value) 成对传入，保持插入顺序，返回不可变 Map。底层委托 {@link Maps#of(Object...)}。</p>
+     *
+     * <p>示例：</p>
+     * <pre>{@code
+     * return ResponseBuilder.view("mdui.admin.item", ResponseBuilder.map("setting", item));
+     * }</pre>
+     *
+     * @param kvs 交替出现的 key/value
+     * @return 不可变 Map<String, Object>
+     */
+    public static Map<String, Object> map(Object... kvs) {
+        return Maps.of(kvs);
+    }
+
     public static Response ok() {
         return new AbstractResponse() {
             @Override

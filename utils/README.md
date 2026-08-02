@@ -69,6 +69,9 @@ com.weacsoft.jaravel.vendor.utils.memory
 ├── SourceCodeJavaFileObject    // 包装源代码字符串的 JavaFileObject（编译输入）
 ├── MemoryFileManager           // 拦截编译器输出到内存的 JavaFileManager（编译输出）
 └── MemoryClassLoader           // 从内存字节码加载类的 ClassLoader（类加载）
+
+com.weacsoft.jaravel.vendor.utils
+└── Maps                        // 不可变 Map 便捷构造器（替代 Map.of，支持空键值）
 ```
 
 ### 三类协作关系
@@ -348,3 +351,40 @@ public class MemoryCompileExample {
 | `MemoryFileManager` | 非线程安全 | 内部使用 `ConcurrentHashMap` 存储生成的类，但 `getJavaFileForOutput()` 在并发编译时可能产生竞态。设计为单次编译生命周期内使用，非线程安全 |
 | `MemoryFileManager.ClassFileJavaFileObject` | 非线程安全 | 内部 `ByteArrayOutputStream` 非线程安全，由编译器在单线程内写入。编译完成后 `getBytes()` 可安全读取 |
 | `MemoryClassLoader` | 需外部同步 | `findClass()` 读取 `Map`（若为 `ConcurrentHashMap` 则读取线程安全），但 `defineClass()` 对同一类名重复调用会抛出异常。应在单线程内加载，加载后的 `Class` 对象可安全并发使用 |
+
+---
+
+## 10. Maps —— 不可变 Map 便捷构造器
+
+`com.weacsoft.jaravel.vendor.utils.Maps`
+
+替代 `Map.of(...)` 的不可变 Map 构造工具，区别在于**允许为空键值而不抛异常**，适用于「部分字段可能缺失/为空」的场景（模板数据、配置解析、响应构建等）。
+
+### 行为约定
+
+| 输入 | 处理 |
+| --- | --- |
+| 键为 `null` 或空字符串 | 跳过该条目（视为「没有这条数据」） |
+| 值为 `null` 或空字符串 | 保留该条目（`{{ $x }}` 渲染为空、`@if($x)` 判空为假） |
+| 成对参数（奇数个） | 末位孤立 key 被忽略 |
+| 返回结果 | `LinkedHashMap` 包装为不可变 Map，保持插入顺序 |
+
+> 该语义与 PHP Blade / jblade 的空值处理对齐：模板内空值不报错、可做判空条件渲染。
+
+### 方法
+
+| 方法签名 | 说明 |
+| --- | --- |
+| `static Map<String, Object> of(Object... kvs)` | 按 (key, value) 成对构造不可变 Map。`null`/空键跳过，空值保留 |
+| `static Map<String, Object> ofEntries(Object... entries)` | 同 `of(Object...)`，语义一致 |
+
+### 使用示例
+
+```java
+// 替代 Map.of，且允许空键值
+Map<String, Object> data = Maps.of("name", "alice", "age", null, "", "ignored");
+// 结果: { "name" -> "alice", "age" -> null }（空键条目被跳过）
+
+// 在 ResponseBuilder 中可直接用 ResponseBuilder.map(...) 便捷构造（内部委托 Maps.of）
+return ResponseBuilder.view("mdui.admin.item", ResponseBuilder.map("setting", item));
+```

@@ -18,8 +18,16 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Date;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Eloquent Model 基类，对齐 Laravel 的 {@code Illuminate\Database\Eloquent\Model}。
@@ -651,6 +659,183 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
      */
     public TrashedScope withTrashScope() {
         return new TrashedScope(TrashScope.WITH_TRASHED);
+    }
+
+    /**
+     * 简易填充：将 Map 中的值按属性名调用 setter 写入当前对象。
+     *
+     * <p>行为约定：</p>
+     * <ul>
+     *     <li>Map 的键视为属性名（对应 {@code setXxx}），值按字符串处理。</li>
+     *     <li><b>键为 {@code null}</b> 或当前对象<b>没有对应 setter</b> 的条目 → 直接忽略（视为多余属性）。</li>
+     *     <li><b>值为 {@code null}</b> 或<b>空字符串</b>（长度为 0）→ 视为不做任何操作（跳过，不调用 setter）。</li>
+     *     <li>setter 参数类型不一定是 {@code String}，会对字符串做常见类型转换
+     *         （数值、布尔、BigDecimal、LocalDate/LocalDateTime/LocalTime、Date、字符等）。</li>
+     * </ul>
+     *
+     * <p>示例：</p>
+     * <pre>{@code
+     * user.fill(Map.of("username", "alice", "age", "18", "active", "true"));
+     * }</pre>
+     *
+     * @param data 待填充的键值数据（值统一视为 String 处理）；为 {@code null} 时直接返回当前对象
+     * @return this，便于链式调用
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public T fill(Map<String, Object> data) {
+        if (data == null || data.isEmpty()) {
+            return (T) this;
+        }
+        Class<?> entityClass = this.getClass();
+        if (entityClass == null) {
+            return (T) this;
+        }
+        for (Map.Entry<String, Object> entry : data.entrySet()) {
+            String key = entry.getKey();
+            Object value = entry.getValue();
+            // 1. 键为 null → 忽略
+            if (key == null) {
+                continue;
+            }
+            // 2. 值为 null 或空字符串 → 不做任何操作
+            if (value == null || (value instanceof String && ((String) value).isEmpty())) {
+                continue;
+            }
+            // 3. 查找对应 setter（set<Key>）
+            Method setter = findSetter(entityClass, key);
+            if (setter == null) {
+                // 多余属性 → 忽略
+                continue;
+            }
+            // 4. 类型转换并写入
+            try {
+                Class<?> paramType = setter.getParameterTypes()[0];
+                Object converted = convertValue(value, paramType);
+                if (converted == SKIP) {
+                    continue;
+                }
+                setter.invoke(this, converted);
+            } catch (Exception ignored) {
+                // 转换或写入失败 → 忽略该字段，不中断整体填充
+            }
+        }
+        return (T) this;
+    }
+
+    /** 内部哨兵：表示因转换失败而跳过该字段。 */
+    private static final Object SKIP = new Object();
+
+    /**
+     * 在实体类及其父类上查找 {@code set<Property>} 单参 setter。
+     */
+    private Method findSetter(Class<?> clazz, String property) {
+        if (property == null || property.isEmpty()) {
+            return null;
+        }
+        String setterName = "set" + Character.toUpperCase(property.charAt(0)) + property.substring(1);
+        Class<?> current = clazz;
+        while (current != null && current != Object.class) {
+            for (Method m : current.getDeclaredMethods()) {
+                if (m.getName().equals(setterName)
+                        && m.getParameterCount() == 1
+                        && !Modifier.isStatic(m.getModifiers())) {
+                    return m;
+                }
+            }
+            current = current.getSuperclass();
+        }
+        return null;
+    }
+
+    /**
+     * 将 value（统一按字符串看待）转换为 targetType。转换失败返回 {@link #SKIP}。
+     */
+    private Object convertValue(Object value, Class<?> targetType) {
+        if (value == null) {
+            return SKIP;
+        }
+        // 已经是目标类型（或目标为 Object）→ 直接返回
+        if (targetType.isInstance(value) || targetType == Object.class) {
+            return value;
+        }
+        String str = value.toString().trim();
+        if (str.isEmpty()) {
+            return SKIP;
+        }
+        try {
+            if (targetType == String.class) {
+                return str;
+            }
+            if (targetType == char.class || targetType == Character.class) {
+                return str.charAt(0);
+            }
+            if (targetType == boolean.class || targetType == Boolean.class) {
+                return parseBoolean(str);
+            }
+            if (targetType == int.class || targetType == Integer.class) {
+                return Integer.parseInt(str);
+            }
+            if (targetType == long.class || targetType == Long.class) {
+                return Long.parseLong(str);
+            }
+            if (targetType == double.class || targetType == Double.class) {
+                return Double.parseDouble(str);
+            }
+            if (targetType == float.class || targetType == Float.class) {
+                return Float.parseFloat(str);
+            }
+            if (targetType == short.class || targetType == Short.class) {
+                return Short.parseShort(str);
+            }
+            if (targetType == byte.class || targetType == Byte.class) {
+                return Byte.parseByte(str);
+            }
+            if (targetType == BigDecimal.class) {
+                return new BigDecimal(str);
+            }
+            if (targetType == LocalDate.class) {
+                return LocalDate.parse(str);
+            }
+            if (targetType == LocalDateTime.class) {
+                return parseDateTime(str);
+            }
+            if (targetType == LocalTime.class) {
+                return LocalTime.parse(str);
+            }
+            if (targetType == Date.class) {
+                return java.sql.Timestamp.valueOf(parseDateTime(str));
+            }
+            // 兜底：尝试 valueOf(String) 或单参 String 构造函数
+            try {
+                Method valueOf = targetType.getMethod("valueOf", String.class);
+                return valueOf.invoke(null, str);
+            } catch (NoSuchMethodException e) {
+                return targetType.getConstructor(String.class).newInstance(str);
+            }
+        } catch (Exception e) {
+            return SKIP;
+        }
+    }
+
+    private static boolean parseBoolean(String str) {
+        if ("1".equals(str) || "true".equalsIgnoreCase(str) || "yes".equalsIgnoreCase(str) || "y".equalsIgnoreCase(str)) {
+            return true;
+        }
+        if ("0".equals(str) || "false".equalsIgnoreCase(str) || "no".equalsIgnoreCase(str) || "n".equalsIgnoreCase(str)) {
+            return false;
+        }
+        return Boolean.parseBoolean(str);
+    }
+
+    private static LocalDateTime parseDateTime(String str) {
+        // 兼容常见格式：带 T 的 ISO、带空格的 "yyyy-MM-dd HH:mm:ss"、纯日期
+        String normalized = str.contains("T") ? str : str.replace(' ', 'T');
+        try {
+            return LocalDateTime.parse(normalized);
+        } catch (Exception e) {
+            // 退化为日期（时间补 00:00）
+            return LocalDate.parse(str).atStartOfDay();
+        }
     }
 
     /**

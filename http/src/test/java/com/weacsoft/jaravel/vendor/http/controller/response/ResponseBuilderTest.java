@@ -255,4 +255,38 @@ class ResponseBuilderTest {
         assertFalse(values.isEmpty());
         return values.get(0);
     }
+
+    // ===== static map() 便捷构造不可变 Map（替代 Map.of，支持空键值）=====
+
+    @Test
+    void testMapSupportsNormalPairs() {
+        Map<String, Object> m = ResponseBuilder.map("name", "alice", "age", 18);
+        assertEquals(2, m.size());
+        assertEquals("alice", m.get("name"));
+        assertEquals(18, m.get("age"));
+    }
+
+    @Test
+    void testMapSkipsNullAndEmptyKeys() {
+        // 键为 null 或空字符串 → 当作没有这条数据，跳过
+        Map<String, Object> m = ResponseBuilder.map("a", 1, null, "ignored", "", "ignored");
+        assertEquals(1, m.size());
+        assertEquals(1, m.get("a"));
+        assertNull(m.get(""));
+    }
+
+    @Test
+    void testMapKeepsNullAndEmptyValues() {
+        // 值为 null 或空字符串 → 保留（模板判空/条件渲染可用）
+        Map<String, Object> m = ResponseBuilder.map("x", null, "y", "");
+        assertEquals(2, m.size());
+        assertNull(m.get("x"));
+        assertEquals("", m.get("y"));
+    }
+
+    @Test
+    void testMapReturnsImmutable() {
+        Map<String, Object> m = ResponseBuilder.map("k", "v");
+        assertThrows(UnsupportedOperationException.class, () -> m.put("z", 1));
+    }
 }

@@ -789,6 +789,7 @@ Request current = RequestFactory.getCurrentRequest();
 | `static RawResponse raw()` | 创建空的 `RawResponse` 构建器，不预设任何 header / status，开发者自由组织（见 6.3） |
 | `static String toJson(Object data)` | 将对象序列化为 JSON 字符串 |
 | `static void setBladeEngine(Object engine)` | 注入 Blade 模板引擎实例（用于 `view`） |
+| `static Map<String, Object> map(Object... kvs)` | 便捷构造不可变 Map，替代 `Map.of`；支持空键值（键为 null/空字符串跳过，值原样保留），底层委托 `com.weacsoft.jaravel.vendor.utils.Maps` |
 
 ```java
 // JSON 响应
@@ -809,6 +810,10 @@ Response r5 = ResponseBuilder.redirect("/login");
 // 错误响应
 Response r6 = ResponseBuilder.error(404, "资源不存在");
 Response r7 = ResponseBuilder.unauthorized("请先登录");
+
+// 便捷构造模板数据：替代 Map.of，允许空键值（键为空跳过，值保留以便模板判空）
+return ResponseBuilder.view("mdui.admin.item", ResponseBuilder.map("setting", item));
+// 等价：ResponseBuilder.view("mdui.admin.item", Maps.of("setting", item));
 
 // Raw 模式：自定义 XML 响应
 Response r8 = ResponseBuilder.raw()

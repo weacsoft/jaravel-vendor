@@ -246,6 +246,36 @@ copy.setName("alice_copy");
 User saved = copy.save();          // 作为新记录保存
 ```
 
+#### fill()
+
+简易填充：将 `Map` 中的值按属性名调用 `setter` 写入当前对象，对齐 Laravel 对请求/表单数据的快速赋值。
+
+```java
+/**
+ * 简易填充：按属性名调用 setter 写入当前对象。
+ * - 键为 null 或无对应 setter（多余属性）→ 忽略
+ * - 值为 null 或空字符串（长度为 0）→ 不做任何操作
+ * - setter 参数类型不一定是 String，会对字符串做常见类型转换
+ *   （数值、布尔、BigDecimal、LocalDate/LocalDateTime/LocalTime、Date、字符等）
+ *
+ * @param data 待填充的键值数据（值统一视为 String 处理）
+ * @return this，便于链式调用
+ */
+public T fill(Map<String, Object> data)
+```
+
+```java
+User user = new User();
+// Map 值统一视为字符串，自动转换为对应类型
+user.fill(Map.of("username", "alice", "age", "18", "active", "true"));
+user.fill(ResponseBuilder.map("username", "bob", "age", null)); // 空值字段不覆盖原值
+
+// 链式
+user.fill(params).save();
+```
+
+> **填充规则**：键为 `null` 或对象无对应 setter 的条目直接忽略（视为多余属性）；值为 `null` 或空字符串视为「不做任何操作」跳过；其余按 `set<属性名>` 反射调用，并在写入前将字符串转换为 setter 声明的参数类型。
+
 ### 软删除
 
 `BaseModel` 覆盖了 gaarason 内置的软删除作用域方法，使用 `deleted_at`（可空 `LocalDateTime`）列实现软删除，对齐 Laravel 的 `SoftDeletes` trait。开启后，普通查询会自动排除已软删除的记录，删除操作变为「设置 `deleted_at`」而非物理删除。
