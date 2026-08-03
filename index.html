@@ -2629,7 +2629,7 @@ public Response store(Request request) {
 
 <li><code>buildFromServerRequest</code> 会同时调用 <code>setCurrentRequest</code> 设置线程局部变量。</li>
 <li>multipart 解析通过 <code>submittedFileName</code> 是否为 null 区分文件字段与文本字段。</li>
-<li>form-urlencoded 优先使用 Servlet API 的 <code>getParameterMap</code>（更可靠），失败时回退到手动读取 body。</li>
+<li>form-urlencoded 统一使用 <code>HttpServletRequest.getInputStream()</code> 缓存式读取 body（一次性读取后写入 <code>request.input</code>），避免 <code>getReader()</code> / <code>getParameterMap()</code> 与 inputStream 的竞态导致 body 被消费后无法再读；仅当 <code>getInputStream()</code> 真正抛异常时回退到 <code>getParameterMap()</code>。已删除原先基于 <code>getReader()</code> 的危险 <code>generateUrlencode(Request)</code> 方法，Wire 请求的 <code>wire_body</code> 字段因此可稳定解析（翻页、改名等携带的参数不再丢失）。</li>
 <li><strong>URL 自动解码</strong>：默认对 query string 和 form 参数自动进行 URL 解码（<code>URLDecoder.decode</code>，UTF-8）。可通过配置 <code>jaravel.http.url-decode-auto: false</code> 关闭。由 <code>HttpProperties</code> 绑定配置，<code>SpringBootRouteAutoConfiguration</code> 在初始化时同步到 <code>RequestFactory.setUrlDecodeAuto()</code>。</li>
 
 <pre><code>
