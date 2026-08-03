@@ -373,6 +373,15 @@
                 input.setAttribute('data-wire-field', field);
                 input.setAttribute('data-wire-model-attr', modelAttr);
 
+                // 行内输入框（位于 [data-wire-key] 行内）属于「每行独立数据」，
+                // 不能把值同步到组件级同名字段（否则会污染新增表单的同名字段、
+                // 并导致 restoreFocus 把焦点跳到页面上第一个同名输入框）。
+                // 这类输入框只做「就地编辑」，值由 collectParams 在点击行内按钮时按行收集。
+                if (closestAttr(input, 'data-wire-key') || closestAttr(input, 'wire:key')) {
+                    input.setAttribute('data-wire-row-scoped', '1');
+                    return;
+                }
+
                 if (isLazy) {
                     input.addEventListener('change', function () {
                         var params = {};
@@ -1035,8 +1044,12 @@
         var el = active;
         while (el && el !== container) {
             var selector = el.tagName.toLowerCase();
+            var rowKey = el.getAttribute('data-wire-key');
             if (el.id) {
                 selector += '#' + el.id;
+            } else if (rowKey) {
+                // 行节点用 key 定位，保证同名字段能定位到「本行」而不是页面第一个同名输入框
+                selector += '[data-wire-key="' + rowKey + '"]';
             } else if (el.getAttribute('data-wire-field')) {
                 selector += '[data-wire-field="' + el.getAttribute('data-wire-field') + '"]';
             } else if (el.name) {
@@ -1058,13 +1071,18 @@
             selectionStart = active.selectionStart;
             selectionEnd = active.selectionEnd;
         }
-        return { path: path, selectionStart: selectionStart, selectionEnd: selectionEnd };
+        return { path: path, container: container, selectionStart: selectionStart, selectionEnd: selectionEnd };
     }
 
     function restoreFocus(focusInfo) {
         if (!focusInfo || !focusInfo.path) return;
         try {
-            var el = document.querySelector(focusInfo.path);
+            // path 是相对 container 生成的，必须在 container 内查找。
+            // 否则同名字段（如列表行和新增表单都用 wire:model="name"）会命中文档里第一个，导致焦点乱跳。
+            var scope = (focusInfo.container && focusInfo.container.querySelector)
+                ? focusInfo.container
+                : document;
+            var el = scope.querySelector(focusInfo.path);
             if (el && el.focus) {
                 el.focus();
                 if (focusInfo.selectionStart !== null && el.setSelectionRange) {
@@ -1081,6 +1099,8 @@
         bindModel(component);
         bindChange(component);
         bindKeydown(component);
+        // 必须重绑分页：section 更新后分页器 <a> 是全新 DOM，未绑定则会走浏览器默认跳转（整页刷新）
+        bindPagination(component);
     }
 
     // ===== 认证过期处理 =====

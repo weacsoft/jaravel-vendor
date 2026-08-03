@@ -472,13 +472,52 @@ public class WireManager {
         if (html == null || name == null || name.isEmpty()) {
             return "";
         }
-        // 匹配 <tag ... wire:section="name" ...>...</tag>（含嵌套同标签）
-        String regex = "(?s)<([a-zA-Z][a-zA-Z0-9]*)\\b([^>]*?\\bwire:section\\s*=\\s*[\"']"
-                + Pattern.quote(name) + "[\"'][^>]*)>(.*?)</\\1>";
-        Matcher m = Pattern.compile(regex).matcher(html);
-        if (m.find()) {
-            return m.group(3);
+        // 1) 先定位带 wire:section="name" 的开始标签，拿到标签名与标签结束位置。
+        //    注意：这里只匹配开始标签，绝不能用 (.*?)</tag> 去「顺手」匹配结束标签，
+        //    因为 section 内部几乎必然存在同名嵌套标签（如 div 里套很多 div），
+        //    非贪婪匹配会停在第一个 </div>，导致返回的 HTML 被截断（分页器、列表行全部丢失）。
+        String openRegex = "(?s)<([a-zA-Z][a-zA-Z0-9]*)\\b[^>]*?\\bwire:section\\s*=\\s*[\"']"
+                + Pattern.quote(name) + "[\"'][^>]*?>";
+        Matcher m = Pattern.compile(openRegex).matcher(html);
+        if (!m.find()) {
+            return "";
         }
-        return "";
+
+        String tag = m.group(1);
+        int contentStart = m.end();
+
+        // 自闭合标签（<div ... />）没有内容
+        String openTag = html.substring(m.start(), m.end());
+        if (openTag.endsWith("/>")) {
+            return "";
+        }
+
+        // 2) 从内容起点开始做深度计数，找到与开始标签配对的结束标签。
+        Pattern tagPattern = Pattern.compile(
+                "(?s)<(/?)" + Pattern.quote(tag) + "\\b[^>]*?>",
+                Pattern.CASE_INSENSITIVE);
+        Matcher tm = tagPattern.matcher(html);
+
+        int depth = 1;
+        int pos = contentStart;
+        while (tm.find(pos)) {
+            boolean isClosing = "/".equals(tm.group(1));
+            String full = tm.group();
+
+            if (isClosing) {
+                depth--;
+                if (depth == 0) {
+                    return html.substring(contentStart, tm.start());
+                }
+            } else if (!full.endsWith("/>")) {
+                // 自闭合的同名标签不增加深度
+                depth++;
+            }
+            pos = tm.end();
+        }
+
+        // 3) 结构不闭合（模板异常）时，退化为返回剩余全部内容，
+        //    这比返回被截断的片段或空串更安全。
+        return html.substring(contentStart);
     }
 }
