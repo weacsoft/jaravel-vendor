@@ -234,6 +234,7 @@
         bindModel(component);
         bindChange(component);
         bindKeydown(component);
+        bindPagination(component);
     }
 
     /**
@@ -288,29 +289,45 @@
                         return;
                     }
 
-                    // 分页器拦截：命中 wire:pagination 容器内的 ?page=N 链接
-                    var pager = closestAttr(el, 'wire:pagination');
-                    if (pager && el.tagName === 'A') {
-                        var href = el.getAttribute('href') || '';
-                        var m = href.match(/[?&]page=(\d+)/);
-                        if (m) {
-                            e.preventDefault();
-                            var target = pager.getAttribute('wire:target') || '';
-                            // 分页字段统一用 pageNum（与导航字段 page 解耦，避免冲突）
-                            var pparams = { pageNum: parseInt(m[1], 10) };
-                            var perMatch = href.match(/[?&]perPage=(\d+)/);
-                            if (perMatch) pparams.perPage = parseInt(perMatch[1], 10);
-                            // 复用统一请求通道：约定动作 $paginate（后端仅读取 pageNum/perPage 并重渲染）
-                            sendRequest(component, '$paginate', pparams, el, target ? [target] : null);
-                            return;
-                        }
-                    }
                     e.preventDefault();
                     var action = el.getAttribute('wire:click');
                     var params = collectParams(el);
                     sendRequest(component, action, params, el);
                 });
             })(elements[i]);
+        }
+    }
+
+    /**
+     * 分页器拦截：为 [wire:pagination] 容器内的 a[href*="?page=N"] 绑定点击拦截，
+     * 阻止浏览器整页跳转，改为发 $paginate 请求并只精准刷新目标 section。
+     * 注意：分页链接是 <a> 标签、不带 wire:click/wire:nav，因此必须由本函数单独绑定，
+     * 不能放进 bindClick（bindClick 只处理 wire:click/wire:nav 元素）。
+     */
+    function bindPagination(component) {
+        var containers = component.element.querySelectorAll('[wire\\:pagination]');
+        for (var c = 0; c < containers.length; c++) {
+            (function (container) {
+                var links = container.querySelectorAll('a[href]');
+                for (var i = 0; i < links.length; i++) {
+                    (function (el) {
+                        if (!markBound(component, el)) return;
+                        el.addEventListener('click', function (e) {
+                            var href = el.getAttribute('href') || '';
+                            var m = href.match(/[?&]page=(\d+)/);
+                            if (!m) return; // 非分页链接，放行默认行为
+                            e.preventDefault();
+                            var target = container.getAttribute('wire:target') || '';
+                            // 分页字段统一用 pageNum（与导航字段 page 解耦，避免冲突）
+                            var pparams = { pageNum: parseInt(m[1], 10) };
+                            var perMatch = href.match(/[?&]perPage=(\d+)/);
+                            if (perMatch) pparams.perPage = parseInt(perMatch[1], 10);
+                            // 复用统一请求通道：约定动作 $paginate（后端仅读取 pageNum/perPage 并重渲染）
+                            sendRequest(component, '$paginate', pparams, el, target ? [target] : null);
+                        });
+                    })(links[i]);
+                }
+            })(containers[c]);
         }
     }
 
