@@ -91,9 +91,26 @@
         // 清理 <head> 中原始文本元素（title/style/script）的 wire 标记
         cleanHeadWireMarkers();
 
-        var configs = document.querySelectorAll('[wire\\:config]');
-        for (var i = 0; i < configs.length; i++) {
-            initComponent(configs[i]);
+        // 收集所有 wire:config / wire:snapshot 标记的配置节点。
+        // 注意：用属性选择器 [wire\:config] 查询 <script> 标签在部分浏览器/解析引擎下
+        // 不可靠（<script> 尤其 type="application/json" 时），因此这里优先尝试选择器，
+        // 失败（或为空）时退化为遍历所有 <script> 标签按属性判定，确保组件一定能初始化。
+        var configs = [];
+        try {
+            var bySelector = document.querySelectorAll('[wire\\:config]');
+            for (var s = 0; s < bySelector.length; s++) configs.push(bySelector[s]);
+        } catch (e) { /* 选择器不被支持时忽略 */ }
+        if (configs.length === 0) {
+            var scripts = document.querySelectorAll('script');
+            for (var i = 0; i < scripts.length; i++) {
+                var sc = scripts[i];
+                if (sc.hasAttribute('wire:config') || sc.hasAttribute('wire:snapshot')) {
+                    configs.push(sc);
+                }
+            }
+        }
+        for (var j = 0; j < configs.length; j++) {
+            initComponent(configs[j]);
         }
 
         // 第4点：声明式懒加载 wire:lazy —— 页面 load 后自动拉取标记了 lazy 的 section，
