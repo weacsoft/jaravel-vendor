@@ -41,13 +41,14 @@ public class WireRequest {
     @SuppressWarnings("unchecked")
     public static WireRequest from(Request request) {
         try {
+            // wire_body 由 HTTP 层（RequestFactory.handleFormUrlEncodedRequest）
+            // 统一解析并写入 request.input，这里只信任该字段，不做额外兜底。
             String body = request.input("wire_body");
             if (body == null || body.isEmpty()) {
                 body = request.get("wire_body", "");
             }
             if (body == null || body.isEmpty()) {
-                Map<String, Object> all = request.all();
-                body = Json.stringify(all);
+                throw new IllegalStateException("缺少 wire_body 参数");
             }
             Map<String, Object> data = Json.parseToMap(body);
 

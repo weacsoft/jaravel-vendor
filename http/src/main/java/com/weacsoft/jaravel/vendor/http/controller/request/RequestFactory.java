@@ -2,6 +2,7 @@ package com.weacsoft.jaravel.vendor.http.controller.request;
 
 import com.weacsoft.jaravel.vendor.json.Json;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.ServletInputStream;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.MediaType;
 import org.springframework.web.multipart.MultipartFile;
@@ -10,6 +11,7 @@ import org.springframework.web.multipart.support.StandardMultipartHttpServletReq
 import org.springframework.web.servlet.function.ServerRequest;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.io.BufferedReader;
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -178,45 +180,44 @@ public class RequestFactory {
 
     private static void handleFormUrlEncodedRequest(Request request) {
         HttpServletRequest httpServletRequest = request.getRequest();
-        if (httpServletRequest != null) {
-            // 优先使用 Servlet API 的 getParameterMap，Spring 已解析 form 参数
-            // 这比手动读取 body 更可靠，因为 Spring 可能已消费 body
+        if (httpServletRequest == null) {
+            return;
+        }
+        // 统一从 inputStream 一次性读取并缓存 body，避免被 getReader()/getParameterMap()
+        // 消费后无法再读（这是 wire_body 丢失、翻页/改名失效的根因）。
+        // 读取后立即写入 request.input，使 body 中的字段（含 wire_body）可被上层直接读取。
+        try {
+            String raw = readBodyRaw(httpServletRequest);
+            if (raw != null && !raw.isEmpty()) {
+                Map<String, List<String>> result = new LinkedHashMap<>();
+                String[] pairs = raw.split("&");
+                generateParam(result, pairs);
+                result.forEach((name, values) -> values.forEach(v -> request.addInput(name, v)));
+            }
+        } catch (Exception ignored) {
+            // 读取失败时退回 Servlet 容器已解析的参数，作为兜底
             Map<String, String[]> paramMap = httpServletRequest.getParameterMap();
-            if (paramMap != null && !paramMap.isEmpty()) {
+            if (paramMap != null) {
                 paramMap.forEach((name, values) -> {
                     for (String value : values) {
                         request.addInput(name, value);
                     }
                 });
-                return;
-            }
-            // 回退：手动读取 body（适用于未被 Spring 消费的情况）
-            try {
-                generateUrlencode(request);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
             }
         }
     }
 
-    private static void generateUrlencode(Request request) throws IOException {
-        HttpServletRequest httpServletRequest = request.getRequest();
-        if (httpServletRequest != null) {
-            BufferedReader reader = httpServletRequest.getReader();
-            if (reader != null) {
-                String body = reader
-                        .lines()
-                        .collect(Collectors.joining());
-                if (body.isEmpty()) {
-                    return;
-                }
-                Map<String, List<String>> result = new LinkedHashMap<>();
-                String[] pairs = body.split("&");
-                generateParam(result, pairs);
-                result.forEach((name, values) -> {
-                    values.forEach(v -> request.addInput(name, v));
-                });
+    private static String readBodyRaw(HttpServletRequest request) throws IOException {
+        // 使用 inputStream 读取；注意：本方法只应被调用一次，读取后即视为 body 已被本框架消费。
+        // 如需在后续再次读取原始 body，应通过 request.input(...) 获取已解析字段，而非再次读取流。
+        try (ServletInputStream in = request.getInputStream()) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int n;
+            while ((n = in.read(buf)) != -1) {
+                out.write(buf, 0, n);
             }
+            return new String(out.toByteArray(), StandardCharsets.UTF_8);
         }
     }
 

@@ -427,7 +427,7 @@ Wire 更新请求，从前端 POST 的 JSON 中解析。请求格式：
 
 | 方法 | 参数 | 返回 | 说明 |
 | --- | --- | --- | --- |
-| `from` (static) | `Request request` | `WireRequest` | 从 Jaravel Request 解析 Wire 请求体。依次尝试 `request.input("wire_body")` → `request.get("wire_body")` → 序列化 `request.all()` |
+| `from` (static) | `Request request` | `WireRequest` | 从 Jaravel Request 解析 Wire 请求体。仅信任 HTTP 层已解析写入的 `request.input("wire_body")` / `request.get("wire_body")`；读不到直接抛 `IllegalStateException`（不做兜底序列化） |
 | `fromJson` (static) | `String json` | `WireRequest` | 直接从 JSON 字符串解析 |
 | `getSnapshot` | 无 | `String` | 获取 snapshot（Base64 编码） |
 | `getAction` | 无 | `String` | 获取 action 名称 |
@@ -436,7 +436,7 @@ Wire 更新请求，从前端 POST 的 JSON 中解析。请求格式：
 | `getData` | 无 | `Map<String,Object>` | 从 snapshot 解码出原始数据 Map |
 | `getMergedData` | 无 | `Map<String,Object>` | 将 params 合并到 snapshot 数据中（用于 wire:model 的属性更新） |
 
-`from` 解析顺序说明：前端 wire.js 以 `wire_body=<JSON>` 的 form-urlencoded 形式 POST，因此优先读取 `wire_body` 字段；若不存在（如直接 JSON 请求），则将 `request.all()` 序列化为 JSON 再解析。解析失败抛 `RuntimeException("解析 Wire 请求失败")`。
+`from` 解析顺序说明：前端 wire.js 以 `wire_body=<JSON>` 的 form-urlencoded 形式 POST，HTTP 层（`RequestFactory.handleFormUrlEncodedRequest`）统一用 `getInputStream()` 缓存式读取 body 并写入 `request.input("wire_body")`。`from` 只信任该字段，读不到即抛 `IllegalStateException`（由 HTTP 层保证解析，Wire 层不做兜底序列化）。解析失败抛 `RuntimeException("解析 Wire 请求失败")`。
 
 ```java
 WireRequest wireReq = WireRequest.from(request);

@@ -732,7 +732,7 @@ public Response store(Request request) {
 
 - `buildFromServerRequest` 会同时调用 `setCurrentRequest` 设置线程局部变量。
 - multipart 解析通过 `submittedFileName` 是否为 null 区分文件字段与文本字段。
-- form-urlencoded 优先使用 Servlet API 的 `getParameterMap`（更可靠），失败时回退到手动读取 body。
+- form-urlencoded 统一使用 `HttpServletRequest.getInputStream()` **缓存式读取** body（一次性读取后写入 `request.input`），避免 `getReader()` / `getParameterMap()` 与 inputStream 的竞态导致 body 被消费后无法再读。仅当 `getInputStream()` 真正抛异常时，才回退到 `getParameterMap()`。这样 Wire 请求的 `wire_body` 字段能被稳定解析（翻页、改名等携带的参数不再丢失）。已删除原先基于 `getReader()` 的危险 `generateUrlencode(Request)` 方法。
 
 ```java
 // 通常由框架自动调用，无需手动构建

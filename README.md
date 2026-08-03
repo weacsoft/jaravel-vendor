@@ -409,6 +409,11 @@ jaravel:
 - redis-config：RedisLockProvider 接口从 schedule 模块移至 redis-config 模块，修正依赖方向
 - plugin-jar-core/plugin-java-core：提取公共 invokeAndSetResult 方法到 PluginExecutionHelper
 
+### 0.1.3（未发布）
+
+- http：修复 `RequestFactory.handleFormUrlEncodedRequest` 解析 form-urlencoded body 时因 `getReader()` / `getParameterMap()` 与 inputStream 的竞态导致 body 被消费、`wire_body` 字段丢失的问题。改为统一使用 `getInputStream()` 缓存式读取 body 并写入 `request.input`，删除危险的基于 `getReader()` 的 `generateUrlencode(Request)` 方法；仅在 inputStream 真正抛异常时回退到 `getParameterMap()`。该问题会导致 Wire 组件翻页（`pageNum`）、改名等携带的参数被忽略。
+- wire：撤销 `WireRequest.from` 中对 `request.all()` 的兜底序列化逻辑，仅信任 HTTP 层已解析写入的 `request.input("wire_body")` / `request.get("wire_body")`，读不到即抛 `IllegalStateException`。职责收敛为「HTTP 层负责解析 body，Wire 层负责消费」。
+
 遵循语义化版本规范（SemVer）：
 - `0.x.x`：初始开发阶段，API 可能变化
 - `1.0.0`：首个稳定版本
