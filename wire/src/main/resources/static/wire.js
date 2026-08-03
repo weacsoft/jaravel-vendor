@@ -267,7 +267,7 @@
     }
 
     function bindClick(component) {
-        var elements = component.element.querySelectorAll('[wire\\:click]');
+        var elements = component.element.querySelectorAll('[wire\\:click], [wire\\:nav]');
         for (var i = 0; i < elements.length; i++) {
             (function (el) {
                 if (!markBound(component, el)) return;
@@ -607,13 +607,48 @@
 
     // ===== 工具方法 =====
 
+    /** 读取单个 wire:model / wire:model.* 输入元素的当前值。 */
+    function getInputValue(input) {
+        var tag = input.tagName ? input.tagName.toLowerCase() : '';
+        if (tag === 'input') {
+            var type = (input.getAttribute('type') || '').toLowerCase();
+            if (type === 'checkbox') return input.checked;
+            if (type === 'radio') return input.checked ? input.value : '';
+            return input.value;
+        }
+        if (tag === 'select' || tag === 'textarea') return input.value;
+        return input.value;
+    }
+
+    /**
+     * 收集元素的 wire:param-* 字面量参数。
+     * 此外：若触发元素位于某个 [data-wire-key] 行内（列表场景），则额外收集该行内
+     * 所有 wire:model.* 输入框的【当前值】，作为同名参数传入。
+     * 这样列表内的「改名/勾选」按钮点击时，能拿到用户实时输入，而不是服务端旧值。
+     */
     function collectParams(el) {
         var params = {};
+        if (!el || !el.attributes) return params;
         for (var i = 0; i < el.attributes.length; i++) {
             var attr = el.attributes[i];
             if (attr.name.indexOf('wire:param-') === 0) {
                 var key = attr.name.substring(12);
-                params[key] = attr.value;
+                var raw = attr.value;
+                if (raw === '') raw = '1';
+                else if (raw === 'true') raw = true;
+                else if (raw === 'false') raw = false;
+                params[key] = raw;
+            }
+        }
+        // 行级收集：找到触发元素所在的数据行，把行内 wire:model 的当前值收集进来
+        var row = closestAttr(el, 'data-wire-key') || closestAttr(el, 'wire:key');
+        if (row) {
+            var models = row.querySelectorAll('[wire\\:model]');
+            for (var j = 0; j < models.length; j++) {
+                var mk = (models[j].getAttribute('wire:model') || '').split('.')[0];
+                if (mk && !(mk in params)) {
+                    params[mk] = getInputValue(models[j]);
+                }
             }
         }
         return params;
@@ -888,6 +923,19 @@
             var name = newEl.attributes[j].name;
             if (name === 'data-wire-key') continue;
             oldEl.setAttribute(name, newEl.attributes[j].value);
+        }
+        // 表单控件：同步 value/checked 这种 property（attribute 不能反映输入框实时值）。
+        // 否则 keyed diff 复用旧节点时，改名/勾选后输入框会显示旧值（还原问题）。
+        var tag = oldEl.tagName ? oldEl.tagName.toLowerCase() : '';
+        if (tag === 'input') {
+            var type = (oldEl.getAttribute('type') || '').toLowerCase();
+            if (type === 'checkbox' || type === 'radio') {
+                oldEl.checked = !!newEl.checked;
+            } else if (type !== 'file') {
+                oldEl.value = newEl.value;
+            }
+        } else if (tag === 'textarea' || tag === 'select') {
+            oldEl.value = newEl.value;
         }
     }
 
