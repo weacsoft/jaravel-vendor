@@ -870,10 +870,63 @@
      * 且容器内也有带 data-wire-key 的直接子节点（说明是带交互状态的列表）。
      */
     function hasKeyedChildren(sectionEl, html) {
+        // 只有当「新旧内容里 data-wire-key 元素的父容器路径一致」时才可做 keyed diff。
+        // 注意：绝不能用 `[data-wire-key]`（任意层级）来判断，
+        // 因为 keyed diff 只处理 direct children；若 key 元素其实深藏在
+        // div > table > tbody > tr 里，section 的直接子节点全都没有 key，
+        // 就会全部走 appendChild 分支 —— 表现为「原内容没被替换，又多出一份新的」。
+        return findKeyedContainerPair(sectionEl, html) !== null;
+    }
+
+    /**
+     * 找到「承载 data-wire-key 直接子节点」的容器在新旧 DOM 中的对应关系。
+     * 返回 { oldContainer, newContainer, newRoot } 或 null（表示不适合 keyed diff）。
+     */
+    function findKeyedContainerPair(sectionEl, html) {
         var tmp = document.createElement('div');
         tmp.innerHTML = html;
-        return tmp.querySelector('[data-wire-key]') !== null
-            && sectionEl.querySelector(':scope > [data-wire-key], [data-wire-key]') !== null;
+
+        var newKeyed = tmp.querySelector('[data-wire-key]');
+        if (!newKeyed || !newKeyed.parentNode) return null;
+
+        var newContainer = newKeyed.parentNode;
+
+        // 计算 newContainer 相对 tmp 根的索引路径
+        var path = [];
+        var cur = newContainer;
+        while (cur && cur !== tmp) {
+            var parent = cur.parentNode;
+            if (!parent) return null;
+            path.unshift(Array.prototype.indexOf.call(parent.children, cur));
+            cur = parent;
+        }
+        if (cur !== tmp) return null;
+
+        // 用同样的路径在旧 DOM（sectionEl）里定位容器
+        var oldContainer = sectionEl;
+        for (var i = 0; i < path.length; i++) {
+            var idx = path[i];
+            if (!oldContainer.children || idx >= oldContainer.children.length) return null;
+            oldContainer = oldContainer.children[idx];
+        }
+
+        // 旧容器必须确实含有带 key 的直接子节点，否则没有可复用的状态，
+        // 直接走 innerHTML 整体替换更安全。
+        if (!oldContainer.querySelector) return null;
+        var hasOldKeyedChild = false;
+        for (var c = 0; c < oldContainer.children.length; c++) {
+            if (oldContainer.children[c].getAttribute &&
+                oldContainer.children[c].getAttribute('data-wire-key')) {
+                hasOldKeyedChild = true;
+                break;
+            }
+        }
+        if (!hasOldKeyedChild) return null;
+
+        // 标签名一致才认为是同一个容器
+        if (oldContainer.tagName !== newContainer.tagName) return null;
+
+        return { oldContainer: oldContainer, newContainer: newContainer, newRoot: tmp };
     }
 
     /**
@@ -883,56 +936,94 @@
      * - 旧内容里消失的 key：删除节点
      */
     function replaceSectionKeyed(sectionEl, html) {
-        var tmp = document.createElement('div');
-        tmp.innerHTML = html;
-        var newEls = Array.prototype.slice.call(tmp.children);
-
-        var oldMap = {};
-        var oldChildren = Array.prototype.slice.call(sectionEl.children);
-        for (var i = 0; i < oldChildren.length; i++) {
-            var k = oldChildren[i].getAttribute && oldChildren[i].getAttribute('data-wire-key');
-            if (k !== null && k !== undefined && k !== '') oldMap[k] = oldChildren[i];
+        var pair = findKeyedContainerPair(sectionEl, html);
+        if (!pair) {
+            // 兜底：结构对不上就整体替换，绝不能走「逐个 append」，否则会重复出现旧内容。
+            sectionEl.innerHTML = html;
+            return;
         }
 
-        var newMap = {};
-        for (var j = 0; j < newEls.length; j++) {
-            var nk = newEls[j].getAttribute && newEls[j].getAttribute('data-wire-key');
-            if (nk !== null && nk !== undefined) newMap[nk] = newEls[j];
+        var oldContainer = pair.oldContainer;
+        var newContainer = pair.newContainer;
+
+        // 1) 先把 keyed 行从新内容中「摘出来」，把 section 里除行容器以外的部分整体更新。
+        //    这样分页器、标题（共 N 项 / 第几页）等非 keyed 内容才会真正刷新，
+        //    而不是保持旧值或被追加一份。
+        var keptRows = {};
+        var oldRows = Array.prototype.slice.call(oldContainer.children);
+        for (var i = 0; i < oldRows.length; i++) {
+            var k = oldRows[i].getAttribute && oldRows[i].getAttribute('data-wire-key');
+            if (k) keptRows[k] = oldRows[i];
         }
 
-        // 删除已不存在的 key
-        for (var d = 0; d < oldChildren.length; d++) {
-            var ok = oldChildren[d].getAttribute && oldChildren[d].getAttribute('data-wire-key');
-            if (ok && !newMap[ok]) {
-                sectionEl.removeChild(oldChildren[d]);
+        // 记录行容器在 section 中的位置路径，替换后重新定位
+        var pathFromSection = [];
+        var cur = oldContainer;
+        while (cur && cur !== sectionEl) {
+            var p = cur.parentNode;
+            if (!p) break;
+            pathFromSection.unshift(Array.prototype.indexOf.call(p.children, cur));
+            cur = p;
+        }
+
+        // 用新 HTML 整体替换 section（非 keyed 部分随之刷新）
+        sectionEl.innerHTML = html;
+
+        // 重新定位到新的行容器
+        var freshContainer = sectionEl;
+        for (var s = 0; s < pathFromSection.length; s++) {
+            if (!freshContainer.children || pathFromSection[s] >= freshContainer.children.length) {
+                freshContainer = null;
+                break;
+            }
+            freshContainer = freshContainer.children[pathFromSection[s]];
+        }
+        if (!freshContainer) return;
+
+        // 2) 对行做 key 级别复用：把旧行的交互状态（输入值/勾选）迁移到新行上。
+        //    这里复用「状态」而不是复用「DOM 节点」，可以天然保证顺序与数量都以服务端为准，
+        //    不会出现重复行。
+        var freshRows = Array.prototype.slice.call(freshContainer.children);
+        for (var r = 0; r < freshRows.length; r++) {
+            var nk = freshRows[r].getAttribute && freshRows[r].getAttribute('data-wire-key');
+            if (!nk) continue;
+            var oldRow = keptRows[nk];
+            if (oldRow) {
+                carryOverRowState(oldRow, freshRows[r]);
             }
         }
+    }
 
-        // 按顺序复用/新增
-        var refNode = null; // 用作 insertBefore 的参考点（每张卡片插入到上一张之后）
-        var prevEl = null;
-        for (var p = 0; p < newEls.length; p++) {
-            var nkey = newEls[p].getAttribute && newEls[p].getAttribute('data-wire-key');
-            var target;
-            if (nkey && oldMap[nkey]) {
-                target = oldMap[nkey];
-                // 更新可交互属性与内容（保留用户输入状态外的差异）
-                syncAttributes(target, newEls[p]);
-                syncTextNodes(target, newEls[p]);
-            } else {
-                target = newEls[p];
-                sectionEl.appendChild(target);
+    /**
+     * 把旧行里「用户正在编辑的状态」迁移到新行对应控件上。
+     * 仅在该控件是行内输入（row-scoped）且服务端值未变化时保留用户输入，
+     * 避免用旧值覆盖服务端刚更新的权威值（如改名成功后应显示新名字）。
+     */
+    function carryOverRowState(oldRow, newRow) {
+        var oldInputs = oldRow.querySelectorAll('input, textarea, select');
+        var newInputs = newRow.querySelectorAll('input, textarea, select');
+        if (oldInputs.length !== newInputs.length) return;
+
+        for (var i = 0; i < oldInputs.length; i++) {
+            var o = oldInputs[i];
+            var n = newInputs[i];
+            var type = (n.getAttribute('type') || '').toLowerCase();
+
+            if (type === 'checkbox' || type === 'radio') {
+                // 勾选状态以服务端为准（新 DOM 的 checked 属性），不做迁移
+                continue;
             }
-            prevEl = target;
-            refNode = target;
-        }
-        // 确保顺序正确：以 newEls 顺序重排
-        for (var q = 0; q < newEls.length; q++) {
-            var nk2 = newEls[q].getAttribute && newEls[q].getAttribute('data-wire-key');
-            var node = (nk2 && oldMap[nk2]) ? oldMap[nk2] : newEls[q];
-            var current = sectionEl.children[q];
-            if (current !== node) {
-                sectionEl.insertBefore(node, current);
+            if (type === 'file') continue;
+
+            // 服务端值 = 新节点的 value 属性；旧节点 value 属性 = 上一次服务端值
+            var oldServerVal = o.getAttribute('value');
+            var newServerVal = n.getAttribute('value');
+            var userVal = o.value;
+
+            // 用户确实改动过（当前值 != 上次服务端值），且服务端这次没有给出新值时，
+            // 才保留用户输入，避免覆盖服务端权威更新。
+            if (userVal !== oldServerVal && oldServerVal === newServerVal) {
+                n.value = userVal;
             }
         }
     }
