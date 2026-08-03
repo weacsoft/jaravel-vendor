@@ -74,9 +74,10 @@ public class ClickCaptcha extends AbstractCaptcha {
         CaptchaProperties p = context.getProperties();
         Random random = new Random();
 
-        // 点击验证码画布尺寸由用户配置决定
-        int width = p.getWidth();
-        int height = p.getHeight();
+        // 点击验证码画布尺寸由用户配置决定，但需保证不小于安全最小尺寸，
+        // 否则 generatePositions 中 width/height - 2*margin 会得到非正数导致 nextInt 抛异常。
+        int width = Math.max(p.getWidth(), 300);
+        int height = Math.max(p.getHeight(), 200);
 
         // 1. 创建背景：优先加载自定义背景图，无则使用浅色纯色背景（不用噪点背景）
         BufferedImage bg = loadBackgroundImage(width, height);
@@ -333,8 +334,8 @@ public class ClickCaptcha extends AbstractCaptcha {
             int x = 0, y = 0;
             boolean found = false;
             for (int attempt = 0; attempt < maxAttempts && !found; attempt++) {
-                x = margin + random.nextInt(width - 2 * margin);
-                y = margin + random.nextInt(height - 2 * margin);
+                x = margin + random.nextInt(Math.max(1, width - 2 * margin));
+                y = margin + random.nextInt(Math.max(1, height - 2 * margin));
                 found = true;
                 for (int[] pos : positions) {
                     if (Math.abs(pos[0] - x) < minDistance && Math.abs(pos[1] - y) < minDistance) {
