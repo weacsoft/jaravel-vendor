@@ -38,4 +38,17 @@ public class WireAutoConfiguration {
         log.info("Wire 模块已初始化：autoInjectJs={}, jsPath={}, excludedSections={}",
                 properties.isAutoInjectJs(), properties.getJsPath(), properties.getExcludedSections());
     }
+
+    /**
+     * 声明 {@code wire.js} 为可发布静态资源，供 {@code vendor:publish:static --tag=wire} 使用。
+     * <p>
+     * 该 Bean 只被 {@code vendor:publish:static} 消费，普通 {@code vendor:publish} 不会触发。
+     *
+     * @return 静态资源发布声明
+     */
+    @org.springframework.context.annotation.Bean
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean(WireStaticPublishable.class)
+    public WireStaticPublishable wireStaticPublishable() {
+        return new WireStaticPublishable();
+    }
 }

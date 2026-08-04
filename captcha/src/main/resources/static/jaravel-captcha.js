@@ -356,10 +356,16 @@ class Captcha {
         this._destroyed = false;
         this._refreshing = false;       // 刷新中标记，防止并发刷新
         this._completed = false;        // 用户已完成前端验证操作（点击N个文字/滑动/旋转完成），刷新时重置
-        this._visible = true;
+        // 弹层模式默认隐藏，等待业务方调用 show() 弹出；内联模式立即可见
+        this._visible = !this.options.modal;
+        this._loaded = false;           // 是否已成功拉取过验证码（弹层模式下延迟到首次 show()）
         this._listeners = [];       // 所有托管的事件监听器
         this._clickPoints = [];     // click 类型的点击坐标
         this._eventListeners = {};  // 事件监听器 { event: [callback, ...] }
+        this._stageBaseWidth = 0;   // 舞台原始像素宽度（= 后端图片宽度）
+        this._stageScale = 1;       // 舞台当前缩放系数
+        this._lastTouchTapAt = 0;   // 最近一次触摸点击时间，用于抑制幽灵 click
+        this._autoCloseTimer = null;
 
         // 解析加密模式（含 Web Crypto 降级）
         this._resolveEncryption();
@@ -376,21 +382,86 @@ class Captcha {
         // 绑定事件
         this._attachEvents();
 
-        // 加载验证码
-        this._loadCaptcha();
+        // 监听尺寸变化，保持舞台等比缩放（桌面窗口缩放 / 移动端旋屏）
+        this._observeResize();
+
+        // 加载验证码：内联模式立即加载；弹层模式延迟到首次 show()，避免未打开就消耗验证码
+        if (!this.options.modal) {
+            this._loadCaptcha();
+        }
     }
 
     // ========== 选项合并 ==========
 
+    /**
+     * 合并配置选项。
+     *
+     * ## 配置权限边界（重要）
+     *
+     * 前端**只能**控制展示层，**不能**控制任何影响验证码强度的参数。
+     *
+     * | 类别 | 归属 | 示例 |
+     * |------|------|------|
+     * | 安全 / 校验参数 | **后端** `jaravel.captcha.*` | tolerance、noise、interfereLines、length、width、height、clickTargetCount、clickDecoyCount、expireSeconds |
+     * | 场景选择 | 前端「选择」，后端「定义」 | `scene: 'login'`（必须在后端 `jaravel.captcha.scenes` 白名单内） |
+     * | 展示层配置 | **前端** | modal、maxWidth、theme、文案、zIndex、遮罩行为 |
+     *
+     * 历史版本允许 `config: {tolerance: 999, clickTargetCount: 1}` 直接透传到后端，
+     * 等于把验证码难度交给攻击者控制。现已移除：`config` 中除 `scene` 外的键一律忽略并告警。
+     */
     _mergeOptions(options) {
         const opts = options || {};
+
+        // ---- 兼容旧写法：从已废弃的 config 中仅提取 scene，其余键忽略并告警 ----
+        let scene = opts.scene || null;
+        if (opts.config && typeof opts.config === 'object') {
+            const rejected = [];
+            for (const key in opts.config) {
+                if (!Object.prototype.hasOwnProperty.call(opts.config, key)) continue;
+                if (key === 'scene') {
+                    if (!scene) scene = opts.config.scene;
+                } else {
+                    rejected.push(key);
+                }
+            }
+            if (rejected.length > 0) {
+                console.warn(
+                    '[Captcha] options.config 已废弃：' + rejected.join(', ') +
+                    ' 属于后端安全参数，前端设置无效并已忽略。' +
+                    '请改用后端 jaravel.captcha.* 配置，或用 scene 选择后端预声明的场景。'
+                );
+            }
+        }
+
         return {
             type: (opts.type || 'number').toLowerCase(),
             apiUrl: opts.apiUrl || '/api/captcha/generate',
             encryptionType: (opts.encryptionType || 'none').toLowerCase(),
             encryptionKey: opts.encryptionKey || null,
-            // per-instance 后端配置覆盖（如 {clickTargetCount: 6, length: 6}），作为查询参数传给 generate API
-            config: opts.config || null
+
+            // ---- 场景：前端唯一能影响后端生成的入参，且只能「选择」不能「设值」 ----
+            scene: (typeof scene === 'string' && scene) ? scene : null,
+
+            // ---- 展示层配置（纯前端，不参与任何后端请求）----
+            /** 全屏弹层模式：点击 show() 后弹出全屏遮罩，验证框屏幕居中 */
+            modal: opts.modal === true,
+            /** 弹层标题（modal 模式） */
+            modalTitle: opts.modalTitle || '安全验证',
+            /** 是否显示右上角关闭按钮（modal 模式） */
+            closable: opts.closable !== false,
+            /** 点击遮罩是否关闭（modal 模式） */
+            maskClosable: opts.maskClosable !== false,
+            /** 按 ESC 是否关闭（modal 模式） */
+            escClosable: opts.escClosable !== false,
+            /** 弹层层级 */
+            zIndex: (typeof opts.zIndex === 'number') ? opts.zIndex : 9999,
+            /** 完成验证后是否自动关闭弹层（modal 模式），毫秒；0/false=不自动关闭 */
+            autoCloseDelay: (opts.autoCloseDelay === false || opts.autoCloseDelay === 0)
+                ? 0 : (typeof opts.autoCloseDelay === 'number' ? opts.autoCloseDelay : 600),
+            /** 验证框最大展示宽度（px），实际展示尺寸随容器自适应缩放 */
+            maxWidth: (typeof opts.maxWidth === 'number' && opts.maxWidth > 0) ? opts.maxWidth : 360,
+            /** 数字/算术类型是否自动聚焦输入框（移动端建议关闭以免弹出键盘遮挡） */
+            autoFocus: opts.autoFocus !== false
         };
     }
 
@@ -425,11 +496,30 @@ class Captcha {
 
 .jc-wrapper {
     font-family: 'Roboto', 'Helvetica', 'Arial', sans-serif;
+    width: 100%;
     max-width: 360px;
     padding: 16px;
     background: #f5f5f5;
     border-radius: 8px;
     box-sizing: border-box;
+    /* 允许纵向滚动，禁止双指缩放带来的坐标漂移 */
+    -webkit-text-size-adjust: 100%;
+}
+
+/* ===== 响应式舞台（stage） =====
+   验证码的滑块 / 旋转 / 点选依赖「图片像素坐标」与「布局像素坐标」严格 1:1，
+   否则提交给后端的 gapX / 点选坐标会失真。
+   因此这里不缩放内部元素，而是把整个舞台按容器宽度做 CSS transform 等比缩放：
+   - 舞台内部始终保持后端下发的原始像素尺寸（坐标计算不受影响）；
+   - 视觉上自适应任意屏幕宽度（桌面 / 移动端同一份代码）；
+   - 拖动时把屏幕位移除以缩放系数换算回布局位移即可。 */
+.jc-stage-wrap {
+    width: 100%;
+    overflow: hidden;
+}
+.jc-stage {
+    transform-origin: top left;
+    will-change: transform;
 }
 
 /* ----- 加载与错误提示 ----- */
@@ -502,13 +592,10 @@ class Captcha {
 /* ----- 滑动验证码 ----- */
 .jc-slider-container {
     position: relative;
-    display: inline-block;
-    width: 300px;
-    height: 150px;
+    display: block;
+    /* 尺寸由 JS 按后端下发的图片尺寸设置，保证与图片像素 1:1 */
 }
 .jc-slider-bg {
-    width: 300px;
-    height: 150px;
     border-radius: 4px;
     display: block;
 }
@@ -546,13 +633,15 @@ class Captcha {
 /* ----- 拖动轨道（滑动 & 旋转共用） ----- */
 .jc-drag-track {
     position: relative;
-    width: 300px;
+    width: 100%;
     height: 36px;
     background: #e0e0e0;
     border-radius: 18px;
     margin: 12px auto;
     user-select: none;
     -webkit-user-select: none;
+    /* 移动端：手指在轨道上拖动时不要触发页面滚动 */
+    touch-action: none;
 }
 .jc-drag-handle {
     position: absolute;
@@ -578,6 +667,10 @@ class Captcha {
     padding: 0;
     margin: 0;
     box-sizing: border-box;
+    /* 移动端：手柄独占触摸手势，避免与页面滚动 / 缩放冲突 */
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
 }
 .jc-drag-handle:hover { background: #1565c0; }
 .jc-drag-handle:active { cursor: grabbing; background: #0d47a1; }
@@ -603,13 +696,19 @@ class Captcha {
 }
 .jc-click-area {
     position: relative;
-    display: inline-block;
+    display: block;
     cursor: pointer;
+    /* 移动端：允许点击但禁用双击缩放，避免 300ms 延迟与坐标漂移 */
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
 }
 .jc-click-img {
     border: 1px solid #e0e0e0;
     border-radius: 4px;
     display: block;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
 }
 .jc-click-mark {
     position: absolute;
@@ -653,6 +752,107 @@ class Captcha {
     text-align: center;
     margin: 4px 0 0 0;
 }
+
+/* ===================================================================
+   全屏弹层模式（modal）
+   所有验证码类型通用：点击验证按钮后弹出全屏遮罩，验证框屏幕居中。
+   使用 position:fixed + flex 居中，兼容桌面与移动端（含刘海屏安全区）。
+   =================================================================== */
+.jc-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.55);
+    /* 移动端浏览器地址栏收起时 100vh 会溢出，用动态视口单位兜底 */
+    height: 100%;
+    padding: 16px;
+    padding-top: calc(16px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    box-sizing: border-box;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    opacity: 0;
+    transition: opacity 0.18s ease;
+}
+.jc-overlay.jc-overlay-open { opacity: 1; }
+
+.jc-modal {
+    position: relative;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+    width: 100%;
+    max-width: 400px;
+    margin: auto;
+    box-sizing: border-box;
+    transform: translateY(12px) scale(0.98);
+    transition: transform 0.18s ease;
+}
+.jc-overlay-open .jc-modal { transform: translateY(0) scale(1); }
+
+.jc-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid #eee;
+}
+.jc-modal-title {
+    font-size: 16px;
+    font-weight: 500;
+    color: #212121;
+    margin: 0;
+}
+.jc-modal-close {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    border: none;
+    background: transparent;
+    color: #757575;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: background 0.15s, color 0.15s;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+.jc-modal-close:hover { background: #f0f0f0; color: #212121; }
+.jc-modal-close:active { background: #e0e0e0; }
+
+.jc-modal-body { padding: 8px; }
+
+/* 弹层内的验证框铺满弹层宽度、去掉外层灰底 */
+.jc-modal .jc-wrapper {
+    max-width: 100%;
+    background: transparent;
+    padding: 8px;
+}
+
+/* 弹层打开时锁定页面滚动 */
+.jc-body-locked {
+    overflow: hidden !important;
+    touch-action: none;
+}
+
+/* 小屏适配：进一步压缩留白 */
+@media (max-width: 420px) {
+    .jc-overlay { padding: 10px; }
+    .jc-modal-header { padding: 12px 12px; }
+    .jc-modal-title { font-size: 15px; }
+    .jc-wrapper { padding: 12px; }
+    .jc-modal .jc-wrapper { padding: 6px; }
+}
 `;
         document.head.appendChild(style);
     }
@@ -675,7 +875,8 @@ class Captcha {
     _buildUI() {
         const wrapper = document.createElement('div');
         wrapper.className = 'jc-wrapper';
-        if (!this._visible) wrapper.style.display = 'none';
+        wrapper.style.maxWidth = this.options.maxWidth + 'px';
+        if (!this._visible && !this.options.modal) wrapper.style.display = 'none';
 
         // 加载提示
         const loading = document.createElement('div');
@@ -725,8 +926,71 @@ class Captcha {
                 break;
         }
 
-        this.container.appendChild(wrapper);
         this._wrapper = wrapper;
+
+        if (this.options.modal) {
+            // 全屏弹层模式：验证框挂到 body 上的全屏遮罩内，屏幕居中
+            this._buildModal(wrapper);
+        } else {
+            // 内联模式：保持原行为，直接挂在业务容器内
+            this.container.appendChild(wrapper);
+        }
+    }
+
+    // ----- 全屏弹层外壳 -----
+
+    /**
+     * 构建全屏弹层外壳（遮罩 + 居中卡片）。
+     * <p>
+     * 遮罩挂载到 {@code document.body} 而非业务容器，避免被父级
+     * {@code overflow:hidden} / {@code transform} / {@code z-index} 层叠上下文裁剪 ——
+     * 这是弹层在真实业务页面里最常见的失效原因。
+     *
+     * @param {HTMLElement} wrapper 验证框主体
+     */
+    _buildModal(wrapper) {
+        const overlay = document.createElement('div');
+        overlay.className = 'jc-overlay';
+        overlay.style.zIndex = String(this.options.zIndex);
+        overlay.style.display = 'none';
+        overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-modal', 'true');
+
+        const modal = document.createElement('div');
+        modal.className = 'jc-modal';
+
+        // 头部：标题 + 关闭按钮
+        const header = document.createElement('div');
+        header.className = 'jc-modal-header';
+
+        const title = document.createElement('p');
+        title.className = 'jc-modal-title';
+        title.textContent = this.options.modalTitle;
+        header.appendChild(title);
+
+        if (this.options.closable) {
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'jc-modal-close';
+            closeBtn.type = 'button';
+            closeBtn.title = '关闭';
+            closeBtn.setAttribute('aria-label', '关闭');
+            closeBtn.innerHTML = '&times;';
+            header.appendChild(closeBtn);
+            this._modalCloseEl = closeBtn;
+        }
+        modal.appendChild(header);
+
+        // 主体
+        const body = document.createElement('div');
+        body.className = 'jc-modal-body';
+        body.appendChild(wrapper);
+        modal.appendChild(body);
+
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+
+        this._overlayEl = overlay;
+        this._modalEl = modal;
     }
 
     // ----- 数字 / 算术 -----
@@ -763,6 +1027,9 @@ class Captcha {
     // ----- 滑动 -----
 
     _buildSlider(content) {
+        // 舞台：图片与轨道共处同一坐标系，保证 handle.offsetLeft == 图片像素 X
+        const stage = this._createStage(content);
+
         const container = document.createElement('div');
         container.className = 'jc-slider-container';
 
@@ -778,7 +1045,7 @@ class Captcha {
         container.appendChild(block);
         this._sliderBlockEl = block;
 
-        content.appendChild(container);
+        stage.appendChild(container);
         this._sliderContainerEl = container;
 
         // 拖动轨道
@@ -796,7 +1063,7 @@ class Captcha {
         tip.textContent = '向右拖动滑块';
         track.appendChild(tip);
 
-        content.appendChild(track);
+        stage.appendChild(track);
         this._sliderTrackEl = track;
 
         // 刷新按钮
@@ -814,6 +1081,8 @@ class Captcha {
     // ----- 旋转 -----
 
     _buildRotate(content) {
+        const stage = this._createStage(content);
+
         const container = document.createElement('div');
         container.className = 'jc-rotate-container';
 
@@ -829,14 +1098,14 @@ class Captcha {
         container.appendChild(circle);
         this._rotateCircleEl = circle;
 
-        content.appendChild(container);
+        stage.appendChild(container);
         this._rotateContainerEl = container;
 
         // 角度文字
         const angleText = document.createElement('p');
         angleText.className = 'jc-rotate-angle';
         angleText.textContent = '当前角度：0\u00b0';
-        content.appendChild(angleText);
+        stage.appendChild(angleText);
         this._rotateAngleEl = angleText;
 
         // 拖动轨道
@@ -854,7 +1123,7 @@ class Captcha {
         tip.textContent = '拖动滑块旋转圆盘';
         track.appendChild(tip);
 
-        content.appendChild(track);
+        stage.appendChild(track);
         this._rotateTrackEl = track;
 
         // 刷新按钮
@@ -877,6 +1146,8 @@ class Captcha {
         content.appendChild(prompt);
         this._clickPromptEl = prompt;
 
+        const stage = this._createStage(content);
+
         const area = document.createElement('div');
         area.className = 'jc-click-area';
 
@@ -886,7 +1157,7 @@ class Captcha {
         area.appendChild(img);
         this._clickImgEl = img;
 
-        content.appendChild(area);
+        stage.appendChild(area);
         this._clickAreaEl = area;
 
         const progress = document.createElement('p');
@@ -905,6 +1176,111 @@ class Captcha {
         refreshBtn.style.display = 'flex';
         content.appendChild(refreshBtn);
         this._refreshBtnEl = refreshBtn;
+    }
+
+    // ========== 响应式舞台（跨端自适应的核心） ==========
+
+    /**
+     * 创建响应式舞台并挂载到内容区。
+     * <p>
+     * <b>为什么需要舞台</b>：滑动缺口 X、点选坐标都以「后端图片像素」为单位提交，
+     * 若直接用 CSS 把图片缩放到 100% 宽度，布局像素与图片像素不再 1:1，
+     * 拖动值与点击坐标都会失真（在手机上表现为「怎么滑都不对」）。
+     * <p>
+     * 舞台的做法是：内部所有元素保持后端下发的原始像素尺寸，
+     * 整体用 {@code transform: scale(k)} 等比缩放到容器宽度。
+     * 这样一份代码同时适配桌面与移动端，无需任何条件分支。
+     *
+     * @param {HTMLElement} content 内容容器
+     * @returns {HTMLElement} 舞台元素
+     */
+    _createStage(content) {
+        const wrap = document.createElement('div');
+        wrap.className = 'jc-stage-wrap';
+
+        const stage = document.createElement('div');
+        stage.className = 'jc-stage';
+        wrap.appendChild(stage);
+
+        content.appendChild(wrap);
+        this._stageWrapEl = wrap;
+        this._stageEl = stage;
+        return stage;
+    }
+
+    /**
+     * 设置舞台的原始像素宽度（等于后端图片宽度），并立即重算缩放。
+     *
+     * @param {number} width 后端图片宽度（像素）
+     */
+    _setStageBaseWidth(width) {
+        const w = (typeof width === 'number' && width > 0) ? Math.round(width) : 0;
+        if (w <= 0) return;
+        this._stageBaseWidth = w;
+        if (this._stageEl) {
+            this._stageEl.style.width = w + 'px';
+        }
+        this._updateStageScale();
+    }
+
+    /**
+     * 按容器可用宽度重算舞台缩放系数。
+     * <p>
+     * 只缩小不放大（{@code k <= 1}），避免小图在大屏被拉糊。
+     * transform 不参与布局，因此需要手动把外层高度收缩为 {@code 原始高度 * k}，
+     * 否则底部会出现一大片空白。
+     */
+    _updateStageScale() {
+        if (!this._stageEl || !this._stageWrapEl || this._stageBaseWidth <= 0) return;
+
+        const available = this._stageWrapEl.clientWidth;
+        if (available <= 0) return; // 隐藏状态下宽度为 0，等可见时再算
+
+        const scale = Math.min(1, available / this._stageBaseWidth);
+        this._stageScale = scale;
+        this._stageEl.style.transform = (scale < 1) ? ('scale(' + scale + ')') : '';
+
+        const naturalHeight = this._stageEl.offsetHeight;
+        if (naturalHeight > 0) {
+            const h = Math.ceil(naturalHeight * scale);
+            if (this._lastWrapHeight !== h) {
+                this._stageWrapEl.style.height = h + 'px';
+                this._lastWrapHeight = h;
+            }
+        }
+    }
+
+    /**
+     * 当前舞台缩放系数（屏幕像素 → 布局像素的换算依据）。
+     * @returns {number} 大于 0 的缩放系数
+     */
+    _getStageScale() {
+        return (this._stageScale > 0) ? this._stageScale : 1;
+    }
+
+    /**
+     * 监听尺寸变化：窗口缩放、移动端旋屏、容器宽度变化。
+     * <p>
+     * ResizeObserver 只在<b>宽度</b>变化时才重算 —— 高度变化是本方法自身
+     * 修改 wrap 高度造成的，忽略它可彻底避免回调自激循环。
+     */
+    _observeResize() {
+        const update = () => this._updateStageScale();
+
+        this._addManagedListener(window, 'resize', update);
+        this._addManagedListener(window, 'orientationchange', update);
+
+        if (typeof ResizeObserver !== 'undefined' && this._stageWrapEl) {
+            this._lastWrapWidth = -1;
+            this._resizeObserver = new ResizeObserver((entries) => {
+                if (!entries || entries.length === 0) return;
+                const w = entries[0].contentRect.width;
+                if (Math.abs(w - this._lastWrapWidth) < 0.5) return;
+                this._lastWrapWidth = w;
+                update();
+            });
+            this._resizeObserver.observe(this._stageWrapEl);
+        }
     }
 
     // ========== 事件绑定 ==========
@@ -931,6 +1307,52 @@ class Captcha {
             case 'click':
                 this._attachClickEvents();
                 break;
+        }
+
+        // 全屏弹层模式的关闭交互
+        if (this.options.modal) {
+            this._attachModalEvents();
+        }
+    }
+
+    // ----- 全屏弹层事件 -----
+
+    _attachModalEvents() {
+        // 关闭按钮
+        if (this._modalCloseEl) {
+            this._addManagedListener(this._modalCloseEl, 'click', () => this.hide());
+        }
+
+        // 点击遮罩空白处关闭（点弹层内部不关闭）
+        if (this.options.maskClosable && this._overlayEl) {
+            this._addManagedListener(this._overlayEl, 'mousedown', (e) => {
+                if (e.target === this._overlayEl) {
+                    this._maskPressed = true;
+                }
+            });
+            this._addManagedListener(this._overlayEl, 'mouseup', (e) => {
+                // 要求按下与抬起都在遮罩上，避免在弹层内拖动到遮罩误关闭
+                if (this._maskPressed && e.target === this._overlayEl) {
+                    this.hide();
+                }
+                this._maskPressed = false;
+            });
+            // 移动端：touchend 直接判定
+            this._addManagedListener(this._overlayEl, 'touchend', (e) => {
+                if (e.target === this._overlayEl) {
+                    this.hide();
+                }
+            });
+        }
+
+        // ESC 关闭
+        if (this.options.escClosable) {
+            this._escHandler = (e) => {
+                if (e.key === 'Escape' && this._visible) {
+                    this.hide();
+                }
+            };
+            this._addManagedListener(document, 'keydown', this._escHandler);
         }
     }
 
@@ -999,40 +1421,75 @@ class Captcha {
         this._clickImgWidth = 0;
         this._clickImgHeight = 0;
 
+        // 触摸：touchend 立即响应，不必等浏览器合成 click（省掉最长 300ms 延迟）
+        this._addManagedListener(this._clickImgEl, 'touchend', (e) => {
+            if (!e.changedTouches || e.changedTouches.length === 0) return;
+            // 阻止浏览器随后合成的「幽灵 click」，否则一次点按会被记录两次
+            e.preventDefault();
+            this._lastTouchTapAt = Date.now();
+            const t = e.changedTouches[0];
+            this._registerClickPoint(t.clientX, t.clientY);
+        }, { passive: false });
+
+        // 鼠标：桌面端走标准 click
         this._addManagedListener(this._clickImgEl, 'click', (e) => {
-            if (!this._captchaData) return;
-            if (this._clickPoints.length >= this._clickCount) return;
-
-            const rect = this._clickImgEl.getBoundingClientRect();
-            const displayX = e.clientX - rect.left;
-            const displayY = e.clientY - rect.top;
-
-            const imgWidth = this._clickImgWidth || this._clickImgEl.naturalWidth || rect.width;
-            const imgHeight = this._clickImgHeight || this._clickImgEl.naturalHeight || rect.height;
-            const scaleX = imgWidth / rect.width;
-            const scaleY = imgHeight / rect.height;
-            const realX = Math.round(displayX * scaleX);
-            const realY = Math.round(displayY * scaleY);
-
-            this._clickPoints.push({ x: realX, y: realY });
-
-            // 添加视觉标记
-            const mark = document.createElement('div');
-            mark.className = 'jc-click-mark';
-            mark.style.left = (displayX - 15) + 'px';
-            mark.style.top = (displayY - 15) + 'px';
-            mark.textContent = this._clickPoints.length;
-            this._clickAreaEl.appendChild(mark);
-
-            // 更新进度
-            this._clickProgressEl.textContent =
-                '已点击 ' + this._clickPoints.length + ' / ' + this._clickCount;
-
-            // 达到所需点击数后触发完成
-            if (this._clickPoints.length >= this._clickCount) {
-                this._complete();
-            }
+            // 双保险：部分浏览器 preventDefault 后仍会补发 click，按时间窗过滤
+            if (Date.now() - this._lastTouchTapAt < 700) return;
+            this._registerClickPoint(e.clientX, e.clientY);
         });
+    }
+
+    /**
+     * 记录一个点击坐标（鼠标与触摸共用）。
+     * <p>
+     * 坐标换算分两步，务必区分两个坐标系：
+     * <ul>
+     *   <li><b>屏幕像素</b> — {@code clientX/Y}、{@code getBoundingClientRect()}，受 transform 缩放影响</li>
+     *   <li><b>布局像素</b> — 舞台内元素的 left/top，等于后端图片像素（舞台基准宽 = 图片宽）</li>
+     * </ul>
+     * 提交给后端的是图片像素坐标；视觉标记挂在舞台内，必须用布局像素定位，
+     * 直接拿屏幕像素去放标记会在缩放后整体偏移。
+     *
+     * @param {number} clientX 屏幕 X
+     * @param {number} clientY 屏幕 Y
+     */
+    _registerClickPoint(clientX, clientY) {
+        if (!this._captchaData || this._completed) return;
+        if (this._clickPoints.length >= this._clickCount) return;
+
+        const rect = this._clickImgEl.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+
+        const displayX = clientX - rect.left;
+        const displayY = clientY - rect.top;
+
+        // rect 是缩放后的视觉尺寸，除以它即可一步换算到图片像素，无需再乘舞台系数
+        const imgWidth = this._clickImgWidth || this._clickImgEl.naturalWidth || rect.width;
+        const imgHeight = this._clickImgHeight || this._clickImgEl.naturalHeight || rect.height;
+        const realX = Math.round(displayX * (imgWidth / rect.width));
+        const realY = Math.round(displayY * (imgHeight / rect.height));
+
+        // 越界点击（缩放取整误差）钳制回图片范围内
+        if (realX < 0 || realY < 0 || realX > imgWidth || realY > imgHeight) return;
+
+        this._clickPoints.push({ x: realX, y: realY });
+
+        // 视觉标记：舞台内布局像素 == 图片像素
+        const mark = document.createElement('div');
+        mark.className = 'jc-click-mark';
+        mark.style.left = (realX - 15) + 'px';
+        mark.style.top = (realY - 15) + 'px';
+        mark.textContent = this._clickPoints.length;
+        this._clickAreaEl.appendChild(mark);
+
+        // 更新进度
+        this._clickProgressEl.textContent =
+            '已点击 ' + this._clickPoints.length + ' / ' + this._clickCount;
+
+        // 达到所需点击数后触发完成
+        if (this._clickPoints.length >= this._clickCount) {
+            this._complete();
+        }
     }
 
     // ========== 通用拖动控制器（滑动 & 旋转共用） ==========
@@ -1088,7 +1545,12 @@ class Captcha {
 
         const pointerMove = (clientX) => {
             if (!isDragging) return;
-            const dx = clientX - startClientX;
+            // 屏幕位移 → 布局位移。
+            // 舞台整体用 transform:scale(k) 缩放（移动端小屏 k<1），而 offsetLeft /
+            // offsetWidth 读到的都是<b>未缩放</b>的布局像素。若直接用 clientX 差值，
+            // 手指移动 100 屏幕像素会被当成 100 布局像素，实际只该走 100/k —— 
+            // 缺口位置会系统性偏移，导致移动端永远对不准。
+            const dx = (clientX - startClientX) / this._getStageScale();
             const newLeft = Math.round(Math.max(0, Math.min(maxLeft, startLeft + dx)));
             handleEl.style.left = newLeft + 'px';
             currentValue = calcValue(newLeft);
@@ -1187,14 +1649,15 @@ class Captcha {
         // 触发 beforeGet 事件（获取验证码前，包含刷新场景）
         this._emit('beforeGet', this.options.type);
         try {
-            // 构建 URL，附加 config 查询参数
+            // 构建 URL。
+            // 只发送 type 与 scene 两个参数：
+            //   - type  ：验证码形态（展示层，前端可决定）
+            //   - scene ：场景<b>名</b>，具体数值由后端 jaravel.captcha.scenes 白名单定义
+            // 任何 tolerance / length / clickTargetCount 之类的安全参数都不再从前端传出，
+            // 后端也已停止接受 —— 前端能「选场景」，但不能「定难度」。
             let url = this.options.apiUrl + '?type=' + encodeURIComponent(this.options.type);
-            if (this.options.config) {
-                for (var key in this.options.config) {
-                    if (this.options.config.hasOwnProperty(key)) {
-                        url += '&' + encodeURIComponent(key) + '=' + encodeURIComponent(this.options.config[key]);
-                    }
-                }
+            if (this.options.scene) {
+                url += '&scene=' + encodeURIComponent(this.options.scene);
             }
             const resp = await fetch(url);
             const json = await resp.json();
@@ -1203,6 +1666,7 @@ class Captcha {
             }
             this._captchaData = json.data;
             this._captchaKey = json.data.captchaKey;
+            this._loaded = true;
             this._renderCaptcha(json.data);
             // 触发 afterGet 事件（验证码已加载并渲染完成）
             this._emit('afterGet', this._captchaKey, this._captchaData);
@@ -1243,11 +1707,27 @@ class Captcha {
 
     _renderSlider(data) {
         const extra = data.extra || {};
+        const width = extra.width || 0;
+        const height = extra.height || 0;
+
         this._sliderBgEl.src = this._imgSrc(data.imageBase64);
         this._sliderBlockEl.src = this._imgSrc(extra.sliderImage);
         this._sliderBlockEl.style.top = (extra.gapY || 0) + 'px';
         this._sliderBlockEl.style.left = '0px';
         this._sliderBlockSize = extra.blockSize || 40;
+
+        // 容器锁定为后端图片的原始像素尺寸，缩放交给舞台统一处理
+        if (width > 0 && this._sliderContainerEl) {
+            this._sliderContainerEl.style.width = width + 'px';
+            this._sliderBgEl.style.width = width + 'px';
+            if (height > 0) {
+                this._sliderContainerEl.style.height = height + 'px';
+                this._sliderBgEl.style.height = height + 'px';
+            }
+            if (this._sliderTrackEl) this._sliderTrackEl.style.width = width + 'px';
+            this._setStageBaseWidth(width);
+        }
+
         if (this._dragController) this._dragController.reset();
     }
 
@@ -1276,6 +1756,11 @@ class Captcha {
         if (this._rotateAngleEl) {
             this._rotateAngleEl.textContent = '当前角度：0\u00b0';
         }
+
+        // 舞台基准 = 圆盘图原始边长
+        if (this._rotateTrackEl) this._rotateTrackEl.style.width = size + 'px';
+        this._setStageBaseWidth(size);
+
         if (this._dragController) this._dragController.reset();
     }
 
@@ -1291,6 +1776,15 @@ class Captcha {
         // 清除旧的点击标记
         const oldMarks = this._clickAreaEl.querySelectorAll('.jc-click-mark');
         oldMarks.forEach((m) => m.remove());
+
+        // 舞台基准 = 图片原始像素宽度，使点击坐标换算与缩放解耦
+        if (this._clickImgWidth > 0) {
+            this._clickImgEl.style.width = this._clickImgWidth + 'px';
+            if (this._clickImgHeight > 0) {
+                this._clickImgEl.style.height = this._clickImgHeight + 'px';
+            }
+            this._setStageBaseWidth(this._clickImgWidth);
+        }
     }
 
     // ========== 工具方法 ==========
@@ -1422,19 +1916,168 @@ class Captcha {
     // ========== 公开 API ==========
 
     /**
-     * 显示验证码
+     * 显示验证码。
+     * <p>
+     * 弹层模式下会打开全屏遮罩、锁定页面滚动，并在首次打开时才真正拉取验证码
+     * （避免用户从未打开弹层却白白消耗一次验证码额度）。
+     *
+     * @returns {Captcha} this（链式）
      */
     show() {
+        if (this._destroyed || this._visible) return this;
         this._visible = true;
+        this._clearAutoClose();
+
         if (this._wrapper) this._wrapper.style.display = 'block';
+
+        if (this.options.modal && this._overlayEl) {
+            this._clearOverlayHideTimer();
+            this._overlayEl.style.display = 'flex';
+            this._lockBodyScroll();
+        }
+
+        // 首次打开才加载：弹层模式的延迟加载；若已完成过一轮则重新来一张
+        if (!this._loaded) {
+            this._loadCaptcha();
+        } else if (this._completed) {
+            this.refresh();
+        }
+
+        // 隐藏时 clientWidth 为 0 无法计算缩放，等一帧布局稳定后再算
+        this._afterFrame(() => {
+            // 展开类必须在 display:flex 生效之后的下一帧才加：同一帧内浏览器会
+            // 合并样式计算，opacity/transform 过渡不会触发，遮罩将停在
+            // opacity:0 + translateY(12px)（视觉上完全不可见且不居中）。
+            if (this._visible && this.options.modal && this._overlayEl) {
+                this._overlayEl.classList.add('jc-overlay-open');
+            }
+            this._updateStageScale();
+            this._focusFirstInput();
+        });
+
+        this._emit('show');
+        return this;
     }
 
     /**
-     * 隐藏验证码
+     * 隐藏验证码。
+     * <p>
+     * 弹层模式下关闭遮罩并解除页面滚动锁定。
+     *
+     * @returns {Captcha} this（链式）
      */
     hide() {
+        if (this._destroyed || !this._visible) return this;
         this._visible = false;
-        if (this._wrapper) this._wrapper.style.display = 'none';
+        this._clearAutoClose();
+
+        if (this.options.modal) {
+            if (this._overlayEl) {
+                const overlay = this._overlayEl;
+                overlay.classList.remove('jc-overlay-open');
+                // 等淡出过渡跑完再移出渲染树；直接 display:none 会让遮罩瞬间闪断
+                this._clearOverlayHideTimer();
+                this._overlayHideTimer = setTimeout(() => {
+                    this._overlayHideTimer = null;
+                    if (!this._visible) overlay.style.display = 'none';
+                }, Captcha.OVERLAY_TRANSITION_MS);
+            }
+            this._unlockBodyScroll();
+        } else if (this._wrapper) {
+            this._wrapper.style.display = 'none';
+        }
+
+        this._emit('hide');
+        return this;
+    }
+
+    // ========== 弹层辅助 ==========
+
+    /** 取消待执行的遮罩隐藏定时器（淡出未完成时又被重新打开） */
+    _clearOverlayHideTimer() {
+        if (this._overlayHideTimer) {
+            clearTimeout(this._overlayHideTimer);
+            this._overlayHideTimer = null;
+        }
+    }
+
+    /**
+     * 锁定 body 滚动。
+     * <p>
+     * 用全局计数而非布尔标记：页面同时存在多个验证码弹层时，
+     * 只有最后一个关闭才解锁，避免先关的那个把后开的滚动锁提前解除。
+     */
+    _lockBodyScroll() {
+        if (this._bodyLocked) return;
+        this._bodyLocked = true;
+        Captcha._modalOpenCount = (Captcha._modalOpenCount || 0) + 1;
+        if (Captcha._modalOpenCount === 1) {
+            document.body.classList.add('jc-body-locked');
+        }
+    }
+
+    _unlockBodyScroll() {
+        if (!this._bodyLocked) return;
+        this._bodyLocked = false;
+        Captcha._modalOpenCount = Math.max(0, (Captcha._modalOpenCount || 1) - 1);
+        if (Captcha._modalOpenCount === 0) {
+            document.body.classList.remove('jc-body-locked');
+        }
+    }
+
+    /**
+     * 验证完成后按 {@code autoCloseDelay} 自动关闭弹层。
+     * 仅弹层模式生效；{@code autoCloseDelay: 0 | false} 表示不自动关闭。
+     */
+    _scheduleAutoClose() {
+        if (!this.options.modal || !this._visible) return;
+        const delay = this.options.autoCloseDelay;
+        if (!delay || delay <= 0) return;
+
+        this._clearAutoClose();
+        this._autoCloseTimer = setTimeout(() => {
+            this._autoCloseTimer = null;
+            if (!this._destroyed) this.hide();
+        }, delay);
+    }
+
+    _clearAutoClose() {
+        if (this._autoCloseTimer) {
+            clearTimeout(this._autoCloseTimer);
+            this._autoCloseTimer = null;
+        }
+    }
+
+    /**
+     * 弹层打开后把焦点移到输入框（仅字符型验证码，且移动端不自动聚焦，
+     * 避免软键盘瞬间弹起顶掉刚显示的验证码图片）。
+     */
+    _focusFirstInput() {
+        if (!this.options.autoFocus || !this._inputEl || !this._visible) return;
+        if (Captcha._isTouchDevice()) return;
+        try { this._inputEl.focus(); } catch (e) { /* 忽略 */ }
+    }
+
+    /**
+     * 等待一帧后执行（布局稳定后再读取尺寸）。
+     * @param {Function} fn 回调
+     */
+    _afterFrame(fn) {
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => { if (!this._destroyed) fn(); });
+        } else {
+            setTimeout(() => { if (!this._destroyed) fn(); }, 16);
+        }
+    }
+
+    /**
+     * 是否为触摸设备（仅用于交互细节优化，不做功能分支 —— 
+     * 鼠标与触摸事件始终同时绑定，保证同一份代码跨端可用）。
+     * @returns {boolean}
+     */
+    static _isTouchDevice() {
+        return (typeof window !== 'undefined')
+            && ('ontouchstart' in window || (navigator && navigator.maxTouchPoints > 0));
     }
 
     /**
@@ -1577,6 +2220,9 @@ class Captcha {
 
         // 触发 complete 事件，只传递已处理的参数（不含原始明文）
         this._emit('complete', this._captchaKey, encryptedInput);
+
+        // 弹层模式：完成后短暂停留展示结果，再自动收起
+        this._scheduleAutoClose();
     }
 
     /**
@@ -1586,7 +2232,21 @@ class Captcha {
         if (this._destroyed) return;
         this._destroyed = true;
 
-        // 移除所有托管的事件监听器
+        // 自动关闭定时器
+        this._clearAutoClose();
+        // 遮罩淡出定时器（淡出途中被 destroy，回调会摸到已移除的节点）
+        this._clearOverlayHideTimer();
+
+        // 解除 body 滚动锁（弹层未关就 destroy 时，页面会永久锁死滚动）
+        this._unlockBodyScroll();
+
+        // 断开尺寸观察，否则 ResizeObserver 会持有已移除 DOM 的引用造成泄漏
+        if (this._resizeObserver) {
+            try { this._resizeObserver.disconnect(); } catch (e) { /* 忽略 */ }
+            this._resizeObserver = null;
+        }
+
+        // 移除所有托管的事件监听器（含 window resize / document keydown-ESC / 拖动监听）
         this._listeners.forEach(({ el, event, handler, options }) => {
             el.removeEventListener(event, handler, options);
         });
@@ -1598,6 +2258,11 @@ class Captcha {
         // 移除验证码 UI
         if (this._wrapper && this._wrapper.parentNode) {
             this._wrapper.parentNode.removeChild(this._wrapper);
+        }
+
+        // 移除挂在 body 上的全屏遮罩（弹层模式下它不在业务容器内，不会被上面的清理带走）
+        if (this._overlayEl && this._overlayEl.parentNode) {
+            this._overlayEl.parentNode.removeChild(this._overlayEl);
         }
 
         // 恢复容器原有内容
@@ -1637,8 +2302,20 @@ class Captcha {
         this._captchaData = null;
         this._captchaKey = null;
         this._clickPoints = [];
+        this._overlayEl = null;
+        this._modalEl = null;
+        this._modalCloseEl = null;
+        this._stageEl = null;
+        this._stageWrapEl = null;
+        this._escHandler = null;
     }
 }
+
+/**
+ * 遮罩淡入淡出时长（毫秒），与 CSS 中 .jc-overlay 的 transition 保持一致。
+ * 关闭时据此延迟移出渲染树，避免动画被 display:none 打断。
+ */
+Captcha.OVERLAY_TRANSITION_MS = 200;
 
 
 // ====================================================================

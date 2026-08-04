@@ -21,6 +21,13 @@
             <artifactId>cache</artifactId>
             <optional>true</optional>
         </dependency>
+        <!-- core 为可选依赖：仅用于声明 PublishableStatic（vendor:publish:static 静态资源发布），
+             不引入 core 时验证码核心功能完全不受影响 -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>core</artifactId>
+            <optional>true</optional>
+        </dependency>
         <!-- SpringBoot 自动装配（兼容层，optional） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

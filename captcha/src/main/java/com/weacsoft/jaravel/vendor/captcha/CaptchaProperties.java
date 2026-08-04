@@ -583,4 +583,75 @@ public class CaptchaProperties {
     public static CaptchaProperties createDefault() {
         return new CaptchaProperties();
     }
+
+    /**
+     * 创建当前配置的副本（浅拷贝，集合字段做新列表拷贝）。
+     * <p>
+     * 用途：运行时需要"以全局配置为基线，只覆盖个别字段"时，
+     * 先 {@code copy()} 再修改，避免 {@link #createDefault()} 造成的
+     * 「未显式设置的字段被静默重置为出厂默认值」问题。
+     * <p>
+     * 典型场景：按业务场景（scene）下发差异化配置：
+     * <pre>
+     *   CaptchaProperties scene = global.copy();
+     *   scene.setClickTargetCount(6);   // 其余字段仍继承全局配置
+     * </pre>
+     * <p>
+     * 注意：本方法直接复制字段值，<b>不经过 setter 的取值范围校验</b>，
+     * 因此副本与源对象在语义上完全等价。
+     *
+     * @return 与当前对象字段值完全一致的新实例
+     */
+    public CaptchaProperties copy() {
+        CaptchaProperties c = new CaptchaProperties();
+        // 基础配置
+        c.width = this.width;
+        c.height = this.height;
+        c.length = this.length;
+        c.expireSeconds = this.expireSeconds;
+        c.caseSensitive = this.caseSensitive;
+        c.tolerance = this.tolerance;
+        c.interfereCount = this.interfereCount;
+        c.noiseCount = this.noiseCount;
+        c.interferenceLevel = this.interferenceLevel;
+        // 视觉配置
+        c.fontFamily = this.fontFamily;
+        c.cjkFontFamily = this.cjkFontFamily;
+        c.fontPath = this.fontPath;
+        c.fontStyle = this.fontStyle;
+        c.minFontSize = this.minFontSize;
+        c.maxFontSize = this.maxFontSize;
+        c.maxRotationDegree = this.maxRotationDegree;
+        c.charSet = this.charSet;
+        c.arcInterfere = this.arcInterfere;
+        c.arcInterfereCount = this.arcInterfereCount;
+        // 轨迹验证配置
+        c.trajectoryEnabled = this.trajectoryEnabled;
+        c.minTrajectoryPoints = this.minTrajectoryPoints;
+        c.minTrajectoryDurationMs = this.minTrajectoryDurationMs;
+        c.maxTrajectoryDurationMs = this.maxTrajectoryDurationMs;
+        c.maxJumpDistance = this.maxJumpDistance;
+        // 背景图配置
+        c.backgroundImagePath = this.backgroundImagePath;
+        c.backgroundImageBase64 = this.backgroundImageBase64;
+        c.backgroundImages = (this.backgroundImages == null)
+                ? null : new java.util.ArrayList<>(this.backgroundImages);
+        // 点选验证码配置
+        c.clickTargetCount = this.clickTargetCount;
+        c.clickDecoyCount = this.clickDecoyCount;
+        // 加密配置
+        c.encryptionType = this.encryptionType;
+        c.encryptionKey = this.encryptionKey;
+        // 水印配置
+        c.watermarkText = this.watermarkText;
+        c.watermarkFontFamily = this.watermarkFontFamily;
+        c.watermarkFontSize = this.watermarkFontSize;
+        c.watermarkColor = this.watermarkColor;
+        c.watermarkPosition = this.watermarkPosition;
+        c.watermarkRotation = this.watermarkRotation;
+        c.watermarkImageBase64 = this.watermarkImageBase64;
+        c.watermarkOpacity = this.watermarkOpacity;
+        c.watermarkScale = this.watermarkScale;
+        return c;
+    }
 }

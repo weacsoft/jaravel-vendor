@@ -20,13 +20,21 @@
 - [12. 存储选择](#12-存储选择)
 - [13. 自定义验证码类型](#13-自定义验证码类型)
 - [14. 前端 JavaScript API](#14-前端-javascript-api)
+- [15. 前端自包含与静态发布](#15-前端自包含与静态发布)
+- [16. 全屏弹层模式](#16-全屏弹层模式)
+- [17. 跨端兼容](#17-跨端兼容)
+- [18. 场景白名单与权限边界](#18-场景白名单与权限边界)
+- [19. 端到端测试](#19-端到端测试)
 
 ---
 
 ## 1. 核心特性
 
 - **五种验证码**：图片数字（`number`）、算术（`arithmetic`）、滑动拼图（`slider`）、旋转（`rotate`）、文字点选（`click`）
-- **事件驱动前端**：`jaravel-captcha.js` 前端库（零依赖），用户完成验证操作后触发 `complete` 事件（不自动提交到后端），由业务方决定后续处理。支持 `on`/`off` 注册/移除事件监听器，支持 `beforeGet`、`afterGet`、`complete` 三个事件
+- **事件驱动前端**：`jaravel-captcha.js` 前端库（零依赖，内联 CSS），用户完成验证操作后触发 `complete` 事件（不自动提交到后端），由业务方决定后续处理。支持 `on`/`off` 注册/移除事件监听器，支持 `beforeGet`、`afterGet`、`complete` 三个事件
+- **全屏弹层模式**：所有验证码类型均支持 `modal: true` 配置，点击验证按钮后弹出全屏遮罩，验证框屏幕居中，支持 ESC / 点击遮罩空白 / 关闭按钮关闭
+- **跨端兼容**：同一套代码同时支持桌面鼠标事件与移动端触摸事件，滑动/点选验证码在舞台缩放后仍保持像素级坐标换算
+- **场景白名单权限边界**：前端只能传 `scene` 名字从后端已声明的白名单中「选择」配置，不能传 `tolerance`、`length`、`clickTargetCount` 等具体数值，防止前端篡改安全参数
 - **轨迹行为分析**：滑动/旋转验证码不仅校验最终位置，还校验拖动轨迹的人类行为特征——点数、时长、连续性、非匀速、加速度方向多样性，有效防范自动化脚本直接提交最终值
 - **核心层零 SpringBoot 依赖**：纯 Java 实现，图像生成基于 `java.awt`，编码基于 `java.util.Base64`，可独立嵌入任意 Java 项目
 - **模板方法模式**：`AbstractCaptcha` 封装生成/验证的模板流程，子类只需实现 `doGenerate` 与 `doVerify` 两个钩子方法
@@ -1487,11 +1495,10 @@ const captcha2 = Captcha.init('container2', {
         }
     });
 
-    // 文字点选验证码（per-instance 配置）
+    // 文字点选验证码（通过 scene 选择后端已声明的配置）
     const click = Captcha.init('click-captcha', {
         type: 'click',
-        apiUrl: '/api/captcha/generate',
-        config: { clickTargetCount: 3, clickDecoyCount: 5, width: 300, height: 180 }
+        scene: 'register'   // 后端 register 场景配置 clickTargetCount=6
     }).on('complete', async (key, input) => {
         const resp = await fetch('/api/captcha/verify', {
             method: 'POST',
@@ -1511,3 +1518,124 @@ const captcha2 = Captcha.init('container2', {
 ```
 
 > 更多 API 细节（方法签名、参数格式、内部方法等）参见上文 "Frontend JavaScript API" 章节。
+
+
+---
+
+## 15. 前端自包含与静态发布
+
+`jaravel-captcha.js` 是一个**零外部依赖**的单文件前端库：
+
+- 不依赖 mdui、jQuery、Bootstrap 等任何第三方 UI 库；
+- 全部样式通过运行时内联 `<style>` 注入，无需额外 CSS 文件；
+- 一个文件即可在任意 HTML 页面独立运行。
+
+模块通过 `CaptchaStaticPublishable` 向 artisan 注册静态资源发布能力：
+
+```bash
+# 列出可发布资源
+artisan vendor:publish:static --list
+
+# 仅发布 captcha 模块的静态资源到 src/main/resources/static/
+artisan vendor:publish:static --tag=captcha
+
+# 强制覆盖已存在文件
+artisan vendor:publish:static --tag=captcha --force
+```
+
+发布的资源包括：
+
+- `static/jaravel-captcha.js` — 验证码前端库（事实来源）
+- `static/captcha-demo.html` — 独立演示页
+
+> **注意**：`vendor:publish`（不带 `:static`）只发布 Java 配置类源码，**不会**发布任何前端静态资源；静态资源由独立的 `vendor:publish:static` 命令处理，两者完全隔离。
+
+## 16. 全屏弹层模式
+
+所有验证码类型均支持弹层展示：
+
+```javascript
+Captcha.init('captcha-host', {
+    type: 'slider',
+    modal: true,           // 启用全屏弹层
+    modalTitle: '安全验证', // 弹层标题
+    closable: true,        // 显示关闭按钮
+    maskClosable: true,    // 点击遮罩空白关闭
+    escClosable: true,     // ESC 关闭
+    zIndex: 1000           // 自定义层叠顺序
+}).show();
+```
+
+行为：
+
+- 调用 `show()` 后创建 `position:fixed` 全屏遮罩，验证框垂直水平居中；
+- 弹层打开时自动锁定 body 滚动，关闭时恢复（多弹层场景使用全局计数器，只有最后一个关闭才解锁）；
+- 支持 `autoCloseDelay`（毫秒）：验证成功后自动关闭弹层；
+- `destroy()` 会彻底移除遮罩 DOM 并解除滚动锁，防止内存泄漏。
+
+## 17. 跨端兼容
+
+同一套 `jaravel-captcha.js` 代码同时兼容桌面与移动：
+
+- **事件统一**：内部使用 Pointer/Touch/Mouse 混合监听，桌面走鼠标事件，移动端走触摸事件；
+- **舞台缩放**：验证码图片原始像素尺寸作为「舞台基准宽度」，容器窄于该宽度时自动等比缩小（`transform: scale(k)`），用户输入按布局像素换算回原始像素提交后端；
+- **坐标换算**：滑动位移 = 屏幕位移 / 舞台缩放系数；点选坐标按图片在视口中的实际显示比例换算；
+- **触摸优化**：触摸事件 `passive:false` 防止滚动抢占，并通过 `touchend` 抑制幽灵点击。
+
+## 18. 场景白名单与权限边界
+
+Captcha 模块参考 anji-plus/captcha 的 `CaptchaConfig / CaptchaVO` 分离思想，把参数分为两类：
+
+| 参数类型 | 示例 | 谁能控制 | 说明 |
+| --- | --- | --- | --- |
+| 后端安全参数 | `tolerance`、`length`、`clickTargetCount`、`width`、`height` | 仅后端 `application.yml` | 前端若试图通过旧 `config:{...}` 传入，会被前端库废弃告警并丢弃，后端亦不会读取 |
+| 场景选择参数 | `scene` | 前端 | 前端只传预声明的场景名，后端从 `CaptchaSceneRegistry` 解析对应配置 |
+
+`application.yml` 示例：
+
+```yaml
+jaravel:
+  captcha:
+    tolerance: 8.0
+    click-target-count: 3
+    scenes:
+      login:
+        tolerance: 5.0
+      register:
+        click-target-count: 6
+```
+
+前端使用：
+
+```javascript
+Captcha.init('host', { type: 'click', scene: 'register' });
+```
+
+非法/未知场景名安全回落全局默认配置，不会报错也不会降低难度。
+
+## 19. 端到端测试
+
+模块在 `jaravel/e2e/captcha-e2e.js` 提供基于 Playwright 的真实浏览器端到端测试，覆盖：
+
+- 桌面端（1280×900，鼠标事件）
+- 移动端（390×844，触摸事件，iPhone 12 尺寸）
+- 平板端（768×1024，触摸事件）
+
+验证内容：
+
+- 前端资源自包含（无 mdui、旧路径 404、独立页面可运行）
+- 配置权限边界（`config` 越权参数被丢弃、白名单场景生效、非法场景回落默认）
+- 响应式舞台（基准宽度、等比缩放、不溢出）
+- 五种验证码的生成、交互、后端闭环校验（滑动验证码通过 canvas 模板匹配还原真实缺口）
+- 全屏弹层模式（遮罩可见、居中、body 滚动锁、多种关闭方式、destroy 清理）
+
+运行方式：
+
+```bash
+cd jaravel
+# 确保应用运行于 localhost:8080
+NODE_PATH="$HOME/.workbuddy/binaries/node/workspace/node_modules" \
+  node e2e/captcha-e2e.js
+```
+
+本次改造完成后，114 项断言全部通过，0 失败。

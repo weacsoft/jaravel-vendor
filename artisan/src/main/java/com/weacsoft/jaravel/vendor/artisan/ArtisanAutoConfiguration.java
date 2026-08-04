@@ -10,8 +10,10 @@ import com.weacsoft.jaravel.vendor.artisan.make.MakeMiddlewareCommand;
 import com.weacsoft.jaravel.vendor.artisan.make.MakeMigrationCommand;
 import com.weacsoft.jaravel.vendor.artisan.make.MakeModelCommand;
 import com.weacsoft.jaravel.vendor.artisan.vendor.VendorPublishCommand;
+import com.weacsoft.jaravel.vendor.artisan.vendor.VendorPublishStaticCommand;
 import com.weacsoft.jaravel.vendor.core.publish.AppPublishableConfig;
 import com.weacsoft.jaravel.vendor.core.publish.PublishableConfig;
+import com.weacsoft.jaravel.vendor.core.publish.PublishableStatic;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -149,5 +151,22 @@ public class ArtisanAutoConfiguration {
         List<PublishableConfig> configs = publishables.orderedStream().collect(Collectors.toList());
         log.debug("[Artisan] vendor:publish 发现 {} 个可发布配置", configs.size());
         return new VendorPublishCommand(configs, properties);
+    }
+
+    // ==================== vendor:publish:static 命令注册 ====================
+
+    /**
+     * {@code vendor:publish:static} 命令。
+     * <p>
+     * 只收集 {@link PublishableStatic}，与 {@link #vendorPublishCommand} 使用的
+     * {@link PublishableConfig} 完全隔离：执行 {@code vendor:publish} 不会触发静态资源发布。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public VendorPublishStaticCommand vendorPublishStaticCommand(ObjectProvider<PublishableStatic> publishables,
+                                                                 MakeCodeProperties properties) {
+        List<PublishableStatic> statics = publishables.orderedStream().collect(Collectors.toList());
+        log.debug("[Artisan] vendor:publish:static 发现 {} 个静态资源发布器", statics.size());
+        return new VendorPublishStaticCommand(statics, properties);
     }
 }

@@ -120,6 +120,19 @@ public class CaptchaProperties {
     /** 加密密钥 */
     private String encryptionKey = "jaravel-captcha-default-key";
 
+    // 场景白名单
+    /**
+     * 命名场景白名单：场景名 → 差异化配置。
+     * <p>
+     * 前端只能通过 {@code scene=<name>} 选择这里预先声明的场景，
+     * 无法传递任何具体数值，从根本上杜绝「前端下调验证码难度」。
+     * 场景中未声明的字段一律继承本类的全局配置。
+     *
+     * @see CaptchaSceneProperties
+     * @see CaptchaSceneRegistry
+     */
+    private java.util.Map<String, CaptchaSceneProperties> scenes = new java.util.LinkedHashMap<>();
+
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
 
@@ -242,6 +255,11 @@ public class CaptchaProperties {
 
     public String getEncryptionKey() { return encryptionKey; }
     public void setEncryptionKey(String encryptionKey) { this.encryptionKey = encryptionKey; }
+
+    public java.util.Map<String, CaptchaSceneProperties> getScenes() { return scenes; }
+    public void setScenes(java.util.Map<String, CaptchaSceneProperties> scenes) {
+        this.scenes = (scenes != null) ? scenes : new java.util.LinkedHashMap<>();
+    }
 
     /**
      * 转为核心层配置对象。

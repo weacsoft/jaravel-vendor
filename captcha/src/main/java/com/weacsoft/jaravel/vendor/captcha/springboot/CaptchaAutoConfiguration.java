@@ -84,4 +84,41 @@ public class CaptchaAutoConfiguration {
                 cacheStore != null ? "CacheStore" : "Memory");
         return manager;
     }
+
+    /**
+     * 创建验证码场景注册表 Bean（前端可选场景白名单）。
+     * <p>
+     * 前端只能通过 {@code scene=<name>} 选择后端预声明的场景，
+     * 不能再通过查询参数直接指定 {@code tolerance / clickTargetCount / length} 等安全参数。
+     * 未配置任何场景时该 Bean 仍会创建，此时任何 scene 都不会命中，一律使用全局配置。
+     *
+     * @param properties SpringBoot 配置（含 scenes 定义）
+     * @return 场景注册表
+     */
+    @Bean
+    @ConditionalOnMissingBean(CaptchaSceneRegistry.class)
+    public CaptchaSceneRegistry captchaSceneRegistry(CaptchaProperties properties) {
+        return new CaptchaSceneRegistry(properties.toCoreProperties(), properties.getScenes());
+    }
+
+    /**
+     * 声明验证码模块自带的前端资源为可发布静态资源。
+     * <p>
+     * 仅在 classpath 中存在 core 模块的 {@code PublishableStatic} 时生效
+     * （core 在 captcha 中是 optional 依赖）。注册后可执行：
+     * <pre>
+     * artisan vendor:publish:static --tag=captcha
+     * </pre>
+     * 把 {@code jaravel-captcha.js} 与独立演示页发布到 {@code src/main/resources/static/}。
+     * <p>
+     * 该 Bean 只被 {@code vendor:publish:static} 消费，普通 {@code vendor:publish} 不会触发。
+     *
+     * @return 静态资源发布声明
+     */
+    @Bean
+    @ConditionalOnClass(com.weacsoft.jaravel.vendor.core.publish.PublishableStatic.class)
+    @ConditionalOnMissingBean(CaptchaStaticPublishable.class)
+    public CaptchaStaticPublishable captchaStaticPublishable() {
+        return new CaptchaStaticPublishable();
+    }
 }

@@ -12,6 +12,7 @@ import java.nio.file.Paths;
  *     make:
  *       base-package: com.example.app      # 基包名（默认 com.weacsoft.jaravel）
  *       output-dir: src/main/java          # 输出根目录（默认 src/main/java）
+ *       resources-dir: src/main/resources  # 资源根目录（默认 src/main/resources）
  * </pre>
  * <p>
  * 生成路径映射（对齐 Laravel app/Http/Controllers 等）：
@@ -40,10 +41,20 @@ public class MakeCodeProperties {
     /** 输出根目录（Java 源码根目录） */
     private String outputDir = "src/main/java";
 
+    /**
+     * 资源根目录（静态资源发布根目录）。
+     * <p>
+     * 供 {@code vendor:publish:static} 使用，模块自带的 js / css / html
+     * 会发布到 {@code resources-dir/static/} 下。
+     */
+    private String resourcesDir = "src/main/resources";
+
     public String getBasePackage() { return basePackage; }
     public void setBasePackage(String basePackage) { this.basePackage = basePackage; }
     public String getOutputDir() { return outputDir; }
     public void setOutputDir(String outputDir) { this.outputDir = outputDir; }
+    public String getResourcesDir() { return resourcesDir; }
+    public void setResourcesDir(String resourcesDir) { this.resourcesDir = resourcesDir; }
 
     /**
      * 获取迁移文件完整的包名。

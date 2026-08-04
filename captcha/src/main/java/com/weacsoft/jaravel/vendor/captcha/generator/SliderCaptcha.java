@@ -155,6 +155,10 @@ public class SliderCaptcha extends AbstractCaptcha {
         result.getExtra().put("gapY", gapY);
         result.getExtra().put("blockSize", blockSize);
         result.getExtra().put("trajectoryEnabled", p.isTrajectoryEnabled());
+        // 背景图原始像素尺寸。前端据此建立「舞台」坐标系并等比缩放，
+        // 保证移动端窄屏下 answer(gapX) 与手指位移仍严格 1:1 对应。
+        result.getExtra().put("width", width);
+        result.getExtra().put("height", height);
         return result;
     }
 
