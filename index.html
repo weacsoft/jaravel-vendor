@@ -2563,14 +2563,31 @@ request.removeCookie(&quot;token&quot;);
 <tr><td>`Cookie[] getNewCookies()`</td><td>获取本次新增的 Cookie 对象数组</td></tr>
 </table>
 
-<h6 id="http-客户端信息">客户端信息</h6>
+<h6 id="http-客户端信息与请求元数据">客户端信息与请求元数据</h6>
 
 <table>
 <tr><th>方法签名</th><th>说明</th></tr>
 <tr><td>`String ip()`</td><td>获取客户端 IP 地址，对齐 Laravel `$request->ip()`</td></tr>
+<tr><td>`String remoteAddr()`</td><td>获取原始远程地址（不经过 X-Forwarded-For 处理），供 TrustProxies 等中间件使用</td></tr>
+<tr><td>`String method()`</td><td>获取 HTTP 请求方法，对齐 Laravel `$request->method()`</td></tr>
+<tr><td>`String uri()`</td><td>获取请求 URI，对齐 Laravel `$request->uri()`</td></tr>
+<tr><td>`String path()`</td><td>获取请求路径（Servlet 路径），对齐 Laravel `$request->path()`</td></tr>
+<tr><td>`String contentType()`</td><td>获取请求的 Content-Type</td></tr>
+<tr><td>`boolean isSecure()`</td><td>判断请求是否通过 HTTPS 发起，对齐 Laravel `$request->secure()`</td></tr>
 </table>
 
-<p><code>ip()</code> 方法优先从 <code>X-Forwarded-For</code> 请求头获取（经过反向代理时取第一个 IP），否则使用 <code>HttpServletRequest.getRemoteAddr()</code>。若底层 Servlet 请求未绑定则返回 <code>&quot;unknown&quot;</code>。</p>
+<p><code>ip()</code> 方法优先从 <code>X-Forwarded-For</code> 请求头获取（经过反向代理时取第一个 IP），否则使用 <code>remoteAddr()</code>。若底层 Servlet 请求未绑定则返回 <code>&quot;unknown&quot;</code>。<code>remoteAddr()</code> 直接返回 TCP 连接地址，不经过代理头处理，供 <code>TrustProxies</code> 中间件在处理代理头之前获取真实连接地址。</p>
+
+<h6 id="http-session-操作">Session 操作</h6>
+
+<table>
+<tr><th>方法签名</th><th>说明</th></tr>
+<tr><td>`void putSession(String key, Object value)`</td><td>向 HttpSession 写入属性，对齐 Laravel Session `put`</td></tr>
+<tr><td>`void removeSessionAttribute(String key)`</td><td>从 HttpSession 移除属性，对齐 Laravel Session `forget`</td></tr>
+<tr><td>`HttpSession rawSession(boolean create)`</td><td>获取原始 HttpSession 对象（仅供 invalidate 等底层操作）</td></tr>
+</table>
+
+<p><code>putSession()</code> 同时更新内部 session 缓存，使后续 <code>session(key)</code> 读取能立即取到新值。<code>rawSession()</code> 优先使用 <code>session(key)</code>、<code>putSession(key, value)</code> 等封装方法，仅在需要 <code>invalidate()</code> 等底层操作时使用。</p>
 
 <pre><code>
 public Response store(Request request) {
@@ -3333,6 +3350,15 @@ router.middleware(authMiddleware).get(&quot;/profile&quot;, req -&gt; {
 <tr><td>`routeParam`</td><td>`String key, Class<T> clazz`</td><td>`<T> T`</td><td>按类型获取路由参数</td></tr>
 <tr><td>`routeParams`</td><td>无</td><td>`Map<String, Object>`</td><td>获取所有路由参数</td></tr>
 <tr><td>`ip`</td><td>无</td><td>`String`</td><td>获取客户端 IP（优先 X-Forwarded-For）</td></tr>
+<tr><td>`remoteAddr`</td><td>无</td><td>`String`</td><td>获取原始远程地址（不经过代理头处理）</td></tr>
+<tr><td>`method`</td><td>无</td><td>`String`</td><td>获取 HTTP 请求方法</td></tr>
+<tr><td>`uri`</td><td>无</td><td>`String`</td><td>获取请求 URI</td></tr>
+<tr><td>`path`</td><td>无</td><td>`String`</td><td>获取请求路径</td></tr>
+<tr><td>`contentType`</td><td>无</td><td>`String`</td><td>获取请求的 Content-Type</td></tr>
+<tr><td>`isSecure`</td><td>无</td><td>`boolean`</td><td>判断是否 HTTPS 请求</td></tr>
+<tr><td>`putSession`</td><td>`String key, Object value`</td><td>`void`</td><td>向 Session 写入属性</td></tr>
+<tr><td>`removeSessionAttribute`</td><td>`String key`</td><td>`void`</td><td>从 Session 移除属性</td></tr>
+<tr><td>`rawSession`</td><td>`boolean create`</td><td>`HttpSession`</td><td>获取原始 HttpSession 对象</td></tr>
 <tr><td>`setAttribute` / `getAttribute`</td><td>`String key, Object value`</td><td>`void`/`Object`</td><td>中间件间传递属性</td></tr>
 <tr><td>`addInput` / `addQuery` / `addHeader` / `addFile` / `addCookie` / `addSession`</td><td>`String key, Object value`</td><td>`void`</td><td>添加数据</td></tr>
 <tr><td>`replaceInput` / `replaceQuery` / `replaceHeader` / `replaceFile` / `replaceCookie` / `replaceSession`</td><td>`String key, Object value`</td><td>`void`</td><td>替换数据</td></tr>
