@@ -244,6 +244,13 @@ public class WireService {
     }
 
     /**
+     * 获取 long 类型字段值。
+     */
+    public long getLong(String key) {
+        return toLong(data.get(key));
+    }
+
+    /**
      * 获取 String 类型字段值。
      */
     public String getStr(String key) {
@@ -374,6 +381,19 @@ public class WireService {
         if (value instanceof Number) return ((Number) value).intValue();
         try {
             return Integer.parseInt(value.toString());
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    /**
+     * 安全的 long 转换。
+     */
+    private static long toLong(Object value) {
+        if (value == null) return 0;
+        if (value instanceof Number) return ((Number) value).longValue();
+        try {
+            return Long.parseLong(value.toString());
         } catch (Exception e) {
             return 0;
         }

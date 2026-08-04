@@ -693,7 +693,7 @@
         for (var i = 0; i < el.attributes.length; i++) {
             var attr = el.attributes[i];
             if (attr.name.indexOf('wire:param-') === 0) {
-                var key = attr.name.substring(12);
+                var key = attr.name.substring(11);
                 var raw = attr.value;
                 if (raw === '') raw = '1';
                 else if (raw === 'true') raw = true;
