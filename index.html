@@ -204,7 +204,7 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
 <a href="#other" class="group">其他</a>
 <a href="#cat-springboot" class="sub" title="SpringBoot 集成核心，自动装配路由/中间件/响应">springboot — SpringBoot 适配</a>
 <a href="#cat-wechat-sdk" class="sub" title="公众号/小程序支持，AccessToken 缓存，OAuth 授权">wechat-sdk — 微信 SDK</a>
-<a href="#cat-captcha" class="sub" title="图片数字/算术/滑动/旋转验证码，核心层无 SpringBoot 依赖，可独立使用">captcha — 验证码模块</a>
+<a href="#cat-captcha" class="sub" title="图片数字/算术/滑动/旋转/文字点选验证码，零依赖前端库，核心层无 SpringBoot 依赖，可独立使用">captcha — 验证码模块</a>
 <a href="#cat-wire" class="sub" title="Laravel Livewire 风格反应式 UI，wire.js 自动注入，服务端渲染模板">wire — Wire 渲染模块</a>
 <a href="#cat-starter" class="sub" title="引入所有模块的便捷 starter">starter — 聚合启动器</a>
 <a href="#cat-cluster" class="sub" title="服务器集群部署：Session / Cache 共享，Redis 基础设施">cluster — 集群部署</a>
@@ -23686,9 +23686,9 @@ private MiniProgramService miniService;
 </section>
 <section id="cat-captcha">
 <h3>captcha — 验证码模块</h3>
-<p class="module-desc">图片数字/算术/滑动/旋转验证码，核心层无 SpringBoot 依赖，可独立使用</p>
+<p class="module-desc">图片数字/算术/滑动/旋转/文字点选验证码，零依赖前端库，核心层无 SpringBoot 依赖，可独立使用</p>
 <h4>简介</h4>
-<p>&gt; Jaravel-Vendor 的验证码模块，提供图片数字、算术、滑动、旋转四种验证码。核心层为纯 Java 实现（基于 <code>java.awt</code> 与 <code>java.util.Base64</code>），无 SpringBoot 依赖，可独立使用；同时提供 SpringBoot 3 自动装配适配层，开箱即用。包名统一为 <code>com.weacsoft.jaravel.vendor.captcha</code>。</p>
+<p>&gt; Jaravel-Vendor 的验证码模块，提供图片数字、算术、滑动、旋转、文字点选五种验证码。核心层为纯 Java 实现（基于 <code>java.awt</code> 与 <code>java.util.Base64</code>），无 SpringBoot 依赖，可独立使用；同时提供 SpringBoot 3 自动装配适配层，开箱即用。包名统一为 <code>com.weacsoft.jaravel.vendor.captcha</code>。</p>
 
 <p>---</p>
 
@@ -23709,14 +23709,24 @@ private MiniProgramService miniService;
 <li><a href="#captcha-12-存储选择">12. 存储选择</a></li>
 <li><a href="#captcha-13-自定义验证码类型">13. 自定义验证码类型</a></li>
 <li><a href="#captcha-14-前端事件系统">14. 前端事件系统（v0.1.2 新增）</a></li>
+<li><a href="#captcha-15-前端自包含与静态发布">15. 前端自包含与静态发布</a></li>
+<li><a href="#captcha-16-全屏弹层模式">16. 全屏弹层模式</a></li>
+<li><a href="#captcha-17-跨端兼容">17. 跨端兼容</a></li>
+<li><a href="#captcha-18-场景白名单与权限边界">18. 场景白名单与权限边界</a></li>
+<li><a href="#captcha-19-端到端测试">19. 端到端测试</a></li>
+
 </ul>
 
 <p>---</p>
 
 <h5 id="captcha-1-核心特性">1. 核心特性</h5>
 
-<li><strong>四种验证码</strong>：图片数字（<code>number</code>）、算术（<code>arithmetic</code>）、滑动拼图（<code>slider</code>）、旋转（<code>rotate</code>）</li>
+<li><strong>五种验证码</strong>：图片数字（<code>number</code>）、算术（<code>arithmetic</code>）、滑动拼图（<code>slider</code>）、旋转（<code>rotate</code>）、文字点选（<code>click</code>）</li>
 <li><strong>轨迹行为分析</strong>：滑动/旋转验证码不仅校验最终位置，还校验拖动轨迹的人类行为特征——点数、时长、连续性、非匀速、加速度方向多样性，有效防范自动化脚本直接提交最终值</li>
+<li><strong>零依赖前端库</strong>：<code>jaravel-captcha.js</code> 自包含全部 CSS，无需 mdui/jQuery/Bootstrap，单一文件即可运行</li>
+<li><strong>全屏弹层模式</strong>：所有类型支持 <code>modal: true</code>，点击验证按钮后弹出全屏遮罩，验证框屏幕居中</li>
+<li><strong>跨端兼容</strong>：同一套代码同时支持桌面鼠标事件与移动端触摸事件，舞台缩放后仍保持像素级坐标换算</li>
+<li><strong>场景白名单权限边界</strong>：前端只能传 <code>scene</code> 名字选择后端已声明配置，不能传 <code>tolerance</code> / <code>length</code> / <code>clickTargetCount</code> 等安全参数</li>
 <li><strong>核心层零 SpringBoot 依赖</strong>：纯 Java 实现，图像生成基于 <code>java.awt</code>，编码基于 <code>java.util.Base64</code>，可独立嵌入任意 Java 项目</li>
 <li><strong>模板方法模式</strong>：<code>AbstractCaptcha</code> 封装生成/验证的模板流程，子类只需实现 <code>doGenerate</code> 与 <code>doVerify</code> 两个钩子方法</li>
 <li><strong>存储解耦（SPI）</strong>：通过 <code>CaptchaStore</code> 接口与具体存储解耦，内置 <code>MemoryCaptchaStore</code>（内存）与 <code>CacheStoreCaptchaStore</code>（适配 jaravel cache 模块，支持 Redis 等）</li>
@@ -23752,7 +23762,7 @@ private MiniProgramService miniService;
 │                                 │                            │
 │              ┌──────────────────┼──────────────────┐         │
 │              │                  │                  │         │
-│        NumberCaptcha   ArithmeticCaptcha   SliderCaptcha   RotateCaptcha
+│        NumberCaptcha   ArithmeticCaptcha   SliderCaptcha   RotateCaptcha   ClickCaptcha
 │                                                              │
 │   CaptchaStore（SPI）◀── MemoryCaptchaStore / CacheStoreCaptchaStore
 │   CaptchaProperties（配置）   CaptchaResult（结果）           │
@@ -23900,7 +23910,7 @@ public class CaptchaController {
 
 <p>无需任何配置即可启动，默认使用内存存储与默认图片参数。通过 <code>application.yml</code> 可自定义配置（见<a href="#captcha-7-配置说明">第 7 节</a>）。</p>
 
-<p>&gt; <strong>前端示例</strong>：模块内置了一个完整的演示页面 <code>src/main/resources/static/captcha-demo.html</code>，涵盖数字、算术、滑动、旋转四种验证码的生成、展示、轨迹采集与验证全流程。滑动/旋转验证码的轨迹采集逻辑可直接参考该文件（详见<a href="#captcha-84-前端轨迹采集示例">第 8.4 节</a>）。在 SpringBoot 项目中引入本模块后，访问 <code>http://localhost:8080/captcha-demo.html</code> 即可打开演示页（需配置静态资源访问）。</p>
+<p>&gt; <strong>前端示例</strong>：模块内置了一个完整的演示页面 <code>src/main/resources/static/captcha-demo.html</code>，涵盖数字、算术、滑动、旋转、文字点选五种验证码的生成、展示、轨迹采集与验证全流程。滑动/旋转验证码的轨迹采集逻辑可直接参考该文件（详见<a href="#captcha-84-前端轨迹采集示例">第 8.4 节</a>）。在 SpringBoot 项目中引入本模块后，访问 <code>http://localhost:8080/captcha-demo.html</code> 即可打开演示页；也可通过 <code>artisan vendor:publish:static --tag=captcha</code> 将资源发布到业务工程的 <code>src/main/resources/static/</code>。</p>
 
 <h6 id="captcha-43-自定义配置的独立使用">4.3 自定义配置的独立使用</h6>
 
@@ -26069,6 +26079,41 @@ CaptchaProperties coreProps = springBootProps.toCoreProperties();
 // coreProps.getWatermarkText() == &quot;© MyCorp&quot;
 // coreProps.getWatermarkPosition() == &quot;bottom-right&quot;
 </code></pre>
+
+<h5 id="captcha-15-前端自包含与静态发布">15. 前端自包含与静态发布</h5>
+
+<p><code>jaravel-captcha.js</code> 是零外部依赖的单文件前端库，运行时内联注入全部 CSS，无需 mdui / jQuery / Bootstrap。模块通过 <code>CaptchaStaticPublishable</code> 注册静态资源发布能力：</p>
+
+<pre><code>
+artisan vendor:publish:static --list          # 列出可发布资源
+artisan vendor:publish:static --tag=captcha   # 发布到 src/main/resources/static/
+artisan vendor:publish:static --tag=captcha --force
+</code></pre>
+
+<p>发布产物包括 <code>static/jaravel-captcha.js</code>（事实来源）与 <code>static/captcha-demo.html</code>。注意 <code>vendor:publish</code>（不带 <code>:static</code>）只发布 Java 配置类源码，不会发布前端静态资源，两者完全隔离。</p>
+
+<h5 id="captcha-16-全屏弹层模式">16. 全屏弹层模式</h5>
+
+<p>所有验证码类型均支持 <code>modal: true</code>。调用 <code>show()</code> 后创建 <code>position:fixed</code> 全屏遮罩，验证框垂直水平居中；打开时锁定 body 滚动，关闭时恢复（多弹层场景使用全局计数器）；支持 <code>autoCloseDelay</code> 自动关闭；<code>destroy()</code> 会彻底移除遮罩 DOM 并解除滚动锁。</p>
+
+<h5 id="captcha-17-跨端兼容">17. 跨端兼容</h5>
+
+<p>同一套代码同时支持桌面鼠标事件与移动端触摸事件。验证码图片原始像素尺寸作为「舞台基准宽度」，容器较窄时自动等比缩小（<code>transform: scale(k)</code>），用户输入按布局像素换算回原始像素提交后端。滑动位移 = 屏幕位移 / 舞台缩放系数；点选坐标按图片在视口中的实际显示比例换算。</p>
+
+<h5 id="captcha-18-场景白名单与权限边界">18. 场景白名单与权限边界</h5>
+
+<p>参考 anji-plus/captcha 的 <code>CaptchaConfig / CaptchaVO</code> 分离思想，参数分为两类：</p>
+
+<table>
+<tr><th>参数类型</th><th>示例</th><th>谁能控制</th><th>说明</th></tr>
+<tr><td>后端安全参数</td><td><code>tolerance</code>、<code>length</code>、<code>clickTargetCount</code></td><td>仅后端 <code>application.yml</code></td><td>前端旧 <code>config:{...}</code> 写法会被废弃告警并丢弃，后端亦不读取</td></tr>
+<tr><td>场景选择参数</td><td><code>scene</code></td><td>前端</td><td>只传预声明场景名，后端 <code>CaptchaSceneRegistry</code> 解析对应配置；非法/未知场景名安全回落全局默认</td></tr>
+</table>
+
+<h5 id="captcha-19-端到端测试">19. 端到端测试</h5>
+
+<p><code>jaravel/e2e/captcha-e2e.js</code> 提供基于 Playwright 的真实浏览器端到端测试，覆盖桌面端（鼠标）、移动端（iPhone 12 触摸）、平板端（触摸）。验证内容包括前端资源自包含、配置权限边界、响应式舞台、五种验证码闭环校验、全屏弹层模式等。本次改造完成后 <strong>114 项断言全部通过，0 失败</strong>。</p>
+
 </section>
 <section id="cat-wire">
 <h3>wire — Wire 渲染模块</h3>
