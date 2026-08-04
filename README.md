@@ -413,6 +413,17 @@ jaravel:
 
 - http：修复 `RequestFactory.handleFormUrlEncodedRequest` 解析 form-urlencoded body 时因 `getReader()` / `getParameterMap()` 与 inputStream 的竞态导致 body 被消费、`wire_body` 字段丢失的问题。改为统一使用 `getInputStream()` 缓存式读取 body 并写入 `request.input`，删除危险的基于 `getReader()` 的 `generateUrlencode(Request)` 方法；仅在 inputStream 真正抛异常时回退到 `getParameterMap()`。该问题会导致 Wire 组件翻页（`pageNum`）、改名等携带的参数被忽略。
 - wire：撤销 `WireRequest.from` 中对 `request.all()` 的兜底序列化逻辑，仅信任 HTTP 层已解析写入的 `request.input("wire_body")` / `request.get("wire_body")`，读不到即抛 `IllegalStateException`。职责收敛为「HTTP 层负责解析 body，Wire 层负责消费」。
+- http：修复 `Request.get(String key, T defaultValue)` 当 `defaultValue` 为 `null` 时抛 NPE 的问题。新增对 `null` 默认值的特殊处理，直接从 input/query 获取原始值返回，不再调用 `defaultValue.getClass()` 导致 NPE。
+- http：修复 `Request.FluxMultipartFile.isEmpty()` 逻辑反转问题（原来有内容时返回 true，空文件时返回 false），改为正确的 `getBytes().length == 0`。
+- http：修复 `Request.get(String key, String defaultValue)` 中 query 参数覆盖 input 值的问题，改为 if-else 结构确保 input 值优先于 query 参数。
+- http：修复 `files()` / `file()` / `inputs()` / `queries()` / `gets()` / `sessions()` / `headers()` 等方法在 key 不存在时可能抛 NPE 的问题，统一返回空集合。
+- http：新增 `Request` 类方法 `remoteAddr()` / `method()` / `uri()` / `path()` / `contentType()` / `isSecure()` / `putSession()` / `removeSessionAttribute()` / `rawSession()`，对齐 Laravel `$request->method()` / `$request->path()` 等接口，供中间件使用。
+- http：`VerifyCsrfToken` 中间件改用 `Request` 类方法（`method()` / `uri()` / `session()` / `putSession()` / `setAttribute()`）替代直接访问 `HttpServletRequest`，与框架封装对齐。
+- http：`TrustProxies` 中间件改用 `Request` 类方法（`remoteAddr()` / `header()` / `setAttribute()`）替代直接访问 `HttpServletRequest`。
+- http：`CookieSessionStore` 改用 `Request` 类方法替代直接访问 `HttpServletRequest`。
+- auth：`Authenticate` 中间件改用 `Request` 类方法替代直接访问 `HttpServletRequest`。
+- aether-upload：`AetherUploadController` 改用 `Request` 类方法替代直接访问 `HttpServletRequest`。
+- wire：修复 `wire.js` 中重复定义的 `getInputValue` 函数导致 select-multiple 处理被覆盖的问题；新增 `credentials: 'same-origin'` 确保 fetch 请求携带同源 Cookie（JSESSIONID/XSRF-TOKEN），修复 CSRF 验证失败（419）问题。
 
 遵循语义化版本规范（SemVer）：
 - `0.x.x`：初始开发阶段，API 可能变化

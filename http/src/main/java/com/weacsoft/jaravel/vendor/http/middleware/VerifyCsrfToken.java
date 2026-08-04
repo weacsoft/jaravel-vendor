@@ -2,6 +2,7 @@ package com.weacsoft.jaravel.vendor.http.middleware;
 
 import com.weacsoft.jaravel.vendor.http.controller.request.Request;
 import com.weacsoft.jaravel.vendor.http.controller.response.Response;
+import com.weacsoft.jaravel.vendor.http.controller.response.ResponseBuilder;
 
 import java.security.SecureRandom;
 import java.util.Arrays;
@@ -43,9 +44,9 @@ public class VerifyCsrfToken implements Middleware {
         // 标记当前请求已启用 CSRF 中间件：仅当此标记存在时，模板 csrf_field()/@csrf 才输出隐藏域。
         // 若开发者未在路由组引用 "VerifyCsrfToken" 别名，本方法不会被调用，标记缺失，
         // 模板将返回空字符串（指令等同不存在）。
-        request.getRequest().setAttribute(CSRF_ENABLED_MARKER, Boolean.TRUE);
+        request.setAttribute(CSRF_ENABLED_MARKER, Boolean.TRUE);
 
-        String method = request.getRequest().getMethod();
+        String method = request.method();
 
         if (isSafeMethod(method) || isExcluded(request)) {
             Response response = next.apply(request);
@@ -54,7 +55,12 @@ public class VerifyCsrfToken implements Middleware {
         }
 
         if (!verifyCsrfToken(request)) {
-            throw new RuntimeException("CSRF token validation failed");
+            // CSRF 校验失败：返回 419（对齐 Laravel 的 419 Page Expired），
+            // 并刷新 XSRF-TOKEN cookie，使前端刷新页面后能拿到新 token。
+            // 前端（wire.js）检测到 419 后自动 reload 页面，用户无感知。
+            Response expired = ResponseBuilder.error(419, "CSRF token mismatch");
+            addCsrfTokenCookie(request, expired);
+            return expired;
         }
 
         Response response = next.apply(request);
@@ -76,7 +82,7 @@ public class VerifyCsrfToken implements Middleware {
     }
 
     protected boolean isExcluded(Request request) {
-        String uri = request.getRequest().getRequestURI();
+        String uri = request.uri();
         return Arrays.asList(except()).contains(uri);
     }
 
@@ -95,16 +101,16 @@ public class VerifyCsrfToken implements Middleware {
     }
 
     protected String getSessionToken(Request request) {
-        Object token = request.getRequest().getSession().getAttribute(CSRF_SESSION_KEY);
+        String token = request.session(CSRF_SESSION_KEY, String.class);
         if (token == null) {
             token = generateToken();
-            request.getRequest().getSession().setAttribute(CSRF_SESSION_KEY, token);
+            request.putSession(CSRF_SESSION_KEY, token);
         }
-        return (String) token;
+        return token;
     }
 
     protected String getRequestToken(Request request) {
-        String token = request.getRequest().getHeader(CSRF_TOKEN_HEADER_NAME);
+        String token = request.header(CSRF_TOKEN_HEADER_NAME);
         if (token != null && !token.isEmpty()) {
             return token;
         }
@@ -132,7 +138,7 @@ public class VerifyCsrfToken implements Middleware {
         jakarta.servlet.http.Cookie cookie = new jakarta.servlet.http.Cookie(CSRF_TOKEN_COOKIE_NAME, token);
         cookie.setHttpOnly(false);
         cookie.setPath("/");
-        cookie.setSecure(request.getRequest().isSecure());
+        cookie.setSecure(request.isSecure());
         cookie.setMaxAge(7200);
 
         response.addCookie(cookie);
@@ -184,7 +190,7 @@ public class VerifyCsrfToken implements Middleware {
     }
 
     private static boolean isCsrfEnabled(Request request) {
-        Object flag = request.getRequest().getAttribute(CSRF_ENABLED_MARKER);
+        Object flag = request.getAttribute(CSRF_ENABLED_MARKER);
         return Boolean.TRUE.equals(flag);
     }
 

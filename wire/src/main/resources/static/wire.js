@@ -542,6 +542,7 @@
             method: 'POST',
             headers: headers,
             body: body,
+            credentials: 'same-origin', // 显式声明发送同源 Cookie（JSESSIONID/XSRF-TOKEN），避免某些浏览器默认不携带
             redirect: 'manual' // 不自动跟随重定向，由我们手动处理（用于检测 302 登录跳转）
         }).then(function (response) {
             // 情况1: 401 未认证 — 中间件拦截，返回 JSON {message, redirect}
@@ -561,6 +562,12 @@
             if (response.status === 0 || response.type === 'opaqueredirect') {
                 redirectToLogin('/login');
                 throw new Error('AUTH_EXPIRED');
+            }
+            // 情况3: 419 CSRF token 过期 — 服务端已刷新 XSRF-TOKEN cookie，
+            // 重新加载页面即可获取新 token，用户无感知（对齐 Laravel 419 Page Expired）
+            if (response.status === 419) {
+                window.location.reload();
+                throw new Error('CSRF_EXPIRED');
             }
             if (!response.ok) {
                 throw new Error('Wire 请求失败: ' + response.status);
@@ -587,7 +594,8 @@
             }
         }).catch(function (error) {
             // AUTH_EXPIRED 是认证过期，已经在上面处理了重定向，不需要额外日志
-            if (error.message !== 'AUTH_EXPIRED') {
+            // CSRF_EXPIRED 是 token 过期，已经在上面处理了页面刷新，不需要额外日志
+            if (error.message !== 'AUTH_EXPIRED' && error.message !== 'CSRF_EXPIRED') {
                 console.error('Wire 错误:', error);
             }
             hideLoading(component, action);
@@ -659,7 +667,17 @@
             if (type === 'radio') return input.checked ? input.value : '';
             return input.value;
         }
-        if (tag === 'select' || tag === 'textarea') return input.value;
+        if (tag === 'select') {
+            if (input.type === 'select-multiple') {
+                var values = [];
+                for (var i = 0; i < input.selectedOptions.length; i++) {
+                    values.push(input.selectedOptions[i].value);
+                }
+                return values;
+            }
+            return input.value;
+        }
+        if (tag === 'textarea') return input.value;
         return input.value;
     }
 
@@ -704,20 +722,6 @@
             params[key] = value;
         });
         return params;
-    }
-
-    function getInputValue(input) {
-        if (input.type === 'checkbox') {
-            return input.checked;
-        }
-        if (input.type === 'select-multiple') {
-            var values = [];
-            for (var i = 0; i < input.selectedOptions.length; i++) {
-                values.push(input.selectedOptions[i].value);
-            }
-            return values;
-        }
-        return input.value;
     }
 
     function getTargetSections(component, triggerEl) {

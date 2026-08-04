@@ -668,19 +668,37 @@ request.removeCookie("token");
 | `Cookie[] getCookieObjects()` | 获取全部 Cookie 对象数组 |
 | `Cookie[] getNewCookies()` | 获取本次新增的 Cookie 对象数组 |
 
-#### 客户端信息
+#### 客户端信息与请求元数据
 
 | 方法签名 | 说明 |
 | --- | --- |
 | `String ip()` | 获取客户端 IP 地址，对齐 Laravel `$request->ip()` |
+| `String remoteAddr()` | 获取原始远程地址（不经过 X-Forwarded-For 处理），供 TrustProxies 等中间件使用 |
+| `String method()` | 获取 HTTP 请求方法，对齐 Laravel `$request->method()` |
+| `String uri()` | 获取请求 URI，对齐 Laravel `$request->uri()` |
+| `String path()` | 获取请求路径（Servlet 路径），对齐 Laravel `$request->path()` |
+| `String contentType()` | 获取请求的 Content-Type |
+| `boolean isSecure()` | 判断请求是否通过 HTTPS 发起，对齐 Laravel `$request->secure()` |
 
-`ip()` 方法优先从 `X-Forwarded-For` 请求头获取（经过反向代理时取第一个 IP），否则使用 `HttpServletRequest.getRemoteAddr()`。若底层 Servlet 请求未绑定则返回 `"unknown"`。
+`ip()` 方法优先从 `X-Forwarded-For` 请求头获取（经过反向代理时取第一个 IP），否则使用 `remoteAddr()`。若底层 Servlet 请求未绑定则返回 `"unknown"`。`remoteAddr()` 直接返回 TCP 连接地址，不经过代理头处理，供 `TrustProxies` 中间件在处理代理头之前获取真实连接地址。
+
+#### Session 操作
+
+| 方法签名 | 说明 |
+| --- | --- |
+| `void putSession(String key, Object value)` | 向 HttpSession 写入属性，对齐 Laravel Session `put` |
+| `void removeSessionAttribute(String key)` | 从 HttpSession 移除属性，对齐 Laravel Session `forget` |
+| `HttpSession rawSession(boolean create)` | 获取原始 HttpSession 对象（仅供 invalidate 等底层操作） |
+
+`putSession()` 同时更新内部 session 缓存，使后续 `session(key)` 读取能立即取到新值。`rawSession()` 优先使用 `session(key)`、`putSession(key, value)` 等封装方法，仅在需要 `invalidate()` 等底层操作时使用。
 
 ```java
 public Response store(Request request) {
     String clientIp = request.ip();   // 对齐 Laravel $request->ip()
-    log.info("请求来自: {}", clientIp);
-    return ResponseBuilder.json(Map.of("ip", clientIp));
+    String method = request.method(); // 对齐 Laravel $request->method()
+    request.putSession("user_id", 123);  // 写入 session
+    log.info("{} 请求来自: {}", method, clientIp);
+    return ResponseBuilder.json(Map.of("ip", clientIp, "method", method));
 }
 ```
 

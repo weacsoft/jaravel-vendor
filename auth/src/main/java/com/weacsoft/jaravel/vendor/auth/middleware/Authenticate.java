@@ -65,8 +65,8 @@ public class Authenticate implements Middleware {
         }
 
         String accept = request.header("Accept");
-        String contentType = request.getRequest() != null ? request.getRequest().getContentType() : null;
-        String path = request.getRequest() != null ? request.getRequest().getRequestURI() : null;
+        String contentType = request.contentType();
+        String path = request.uri();
         boolean isApi = (accept != null && accept.contains("application/json"))
                 || (contentType != null && contentType.contains("application/json"))
                 || (path != null && path.startsWith("/api"));

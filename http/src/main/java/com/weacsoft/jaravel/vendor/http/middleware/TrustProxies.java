@@ -77,7 +77,7 @@ public class TrustProxies implements Middleware {
     }
 
     protected boolean isTrustedProxy(Request request) {
-        String remoteAddr = request.getRequest().getRemoteAddr();
+        String remoteAddr = request.remoteAddr();
         return getMatcher().matches(remoteAddr);
     }
 
@@ -107,31 +107,31 @@ public class TrustProxies implements Middleware {
     }
 
     protected void setTrustedHeaders(Request request) {
-        String xForwardedFor = request.getRequest().getHeader(X_FORWARDED_FOR);
+        String xForwardedFor = request.header(X_FORWARDED_FOR);
         if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
             String[] ips = xForwardedFor.split(",");
             String realIp = ips[0].trim();
-            request.getRequest().setAttribute("real_ip", realIp);
+            request.setAttribute("real_ip", realIp);
         }
 
-        String xRealIp = request.getRequest().getHeader(X_REAL_IP);
+        String xRealIp = request.header(X_REAL_IP);
         if (xRealIp != null && !xRealIp.isEmpty()) {
-            request.getRequest().setAttribute("real_ip", xRealIp);
+            request.setAttribute("real_ip", xRealIp);
         }
 
-        String xForwardedProto = request.getRequest().getHeader(X_FORWARDED_PROTO);
+        String xForwardedProto = request.header(X_FORWARDED_PROTO);
         if (xForwardedProto != null && !xForwardedProto.isEmpty()) {
-            request.getRequest().setAttribute("real_scheme", xForwardedProto);
+            request.setAttribute("real_scheme", xForwardedProto);
         }
 
-        String xForwardedHost = request.getRequest().getHeader(X_FORWARDED_HOST);
+        String xForwardedHost = request.header(X_FORWARDED_HOST);
         if (xForwardedHost != null && !xForwardedHost.isEmpty()) {
-            request.getRequest().setAttribute("real_host", xForwardedHost);
+            request.setAttribute("real_host", xForwardedHost);
         }
 
-        String xForwardedPort = request.getRequest().getHeader(X_FORWARDED_PORT);
+        String xForwardedPort = request.header(X_FORWARDED_PORT);
         if (xForwardedPort != null && !xForwardedPort.isEmpty()) {
-            request.getRequest().setAttribute("real_port", xForwardedPort);
+            request.setAttribute("real_port", xForwardedPort);
         }
     }
 }

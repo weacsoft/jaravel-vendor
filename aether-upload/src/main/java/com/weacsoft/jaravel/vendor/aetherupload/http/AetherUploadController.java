@@ -207,15 +207,13 @@ public class AetherUploadController implements Controllers {
         if (group != null && !group.isEmpty()) {
             return group;
         }
-        if (request.getRequest() != null) {
-            String uri = request.getRequest().getRequestURI();
-            if (uri != null) {
-                String[] segments = uri.split("/");
-                if (segments.length >= 2) {
-                    String candidate = segments[segments.length - 2];
-                    if (manager.groupNames().contains(candidate)) {
-                        return candidate;
-                    }
+        String uri = request.uri();
+        if (uri != null && !uri.isEmpty()) {
+            String[] segments = uri.split("/");
+            if (segments.length >= 2) {
+                String candidate = segments[segments.length - 2];
+                if (manager.groupNames().contains(candidate)) {
+                    return candidate;
                 }
             }
         }

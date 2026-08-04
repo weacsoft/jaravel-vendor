@@ -193,17 +193,28 @@ public class RequestFactory {
                 String[] pairs = raw.split("&");
                 generateParam(result, pairs);
                 result.forEach((name, values) -> values.forEach(v -> request.addInput(name, v)));
+            } else {
+                // Body 为空（可能已被 Servlet 容器/Filter 链解析消费了 inputStream），
+                // 退回 getParameterMap() 兜底，确保 wire_body 等表单字段不丢失。
+                fallbackToParameterMap(httpServletRequest, request);
             }
         } catch (Exception ignored) {
             // 读取失败时退回 Servlet 容器已解析的参数，作为兜底
-            Map<String, String[]> paramMap = httpServletRequest.getParameterMap();
-            if (paramMap != null) {
-                paramMap.forEach((name, values) -> {
-                    for (String value : values) {
-                        request.addInput(name, value);
-                    }
-                });
-            }
+            fallbackToParameterMap(httpServletRequest, request);
+        }
+    }
+
+    /**
+     * 从 Servlet 容器已解析的 parameterMap 中读取表单字段，作为 inputStream 已被消费时的兜底。
+     */
+    private static void fallbackToParameterMap(HttpServletRequest httpServletRequest, Request request) {
+        Map<String, String[]> paramMap = httpServletRequest.getParameterMap();
+        if (paramMap != null) {
+            paramMap.forEach((name, values) -> {
+                for (String value : values) {
+                    request.addInput(name, value);
+                }
+            });
         }
     }
 

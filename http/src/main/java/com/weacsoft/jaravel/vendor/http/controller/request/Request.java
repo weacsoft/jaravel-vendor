@@ -198,8 +198,7 @@ public class Request {
         if (value == null) {
             if (input.containsKey(key)) {
                 value = input.get(key).toString();
-            }
-            if (query.containsKey(key)) {
+            } else if (query.containsKey(key)) {
                 value = query.get(key).toString();
             }
         }
@@ -207,6 +206,24 @@ public class Request {
     }
 
     public <T> T get(String key, T defaultValue) {
+        if (defaultValue == null) {
+            // 当 defaultValue 为 null 时，无法推断 Class<T>，直接尝试从 input/query 获取原始值
+            // 用户应使用 get(key, Class<T>) 进行类型安全的 null 默认值获取
+            Object raw = null;
+            if (input.containsKey(key)) {
+                raw = input.get(key);
+                if (raw instanceof List) {
+                    raw = ((List<Object>) raw).get(0);
+                }
+            }
+            if (raw == null && query.containsKey(key)) {
+                raw = query.get(key);
+                if (raw instanceof List) {
+                    raw = ((List<Object>) raw).get(0);
+                }
+            }
+            return (T) raw;
+        }
         T value = get(key, (Class<T>) defaultValue.getClass());
         return value != null ? value : defaultValue;
     }
@@ -236,11 +253,17 @@ public class Request {
         if (value instanceof List) {
             return ((List<Object>) value);
         }
+        if (value != null) {
+            return Collections.singletonList(value);
+        }
         value = query.get(key);
         if (value instanceof List) {
             return ((List<Object>) value);
         }
-        return Collections.singletonList(value);
+        if (value != null) {
+            return Collections.singletonList(value);
+        }
+        return Collections.emptyList();
     }
 
     public Map<String, Object> all() {
@@ -291,6 +314,9 @@ public class Request {
 
     public List<Object> queries(String key) {
         Object value = query.get(key);
+        if (value == null) {
+            return Collections.emptyList();
+        }
         if (value instanceof List) {
             return ((List<Object>) value);
         }
@@ -338,6 +364,9 @@ public class Request {
 
     public List<Object> inputs(String key) {
         Object value = input.get(key);
+        if (value == null) {
+            return Collections.emptyList();
+        }
         if (value instanceof List) {
             return ((List<Object>) value);
         }
@@ -353,15 +382,22 @@ public class Request {
     }
 
     public MultipartFile file(String key) {
-        Object value = files(key);
+        Object value = file.get(key);
+        if (value == null) {
+            return null;
+        }
         if (value instanceof List) {
-            return ((List<MultipartFile>) value).get(0);
+            List<MultipartFile> list = (List<MultipartFile>) value;
+            return list.isEmpty() ? null : list.get(0);
         }
         return (MultipartFile) value;
     }
 
     public List<MultipartFile> files(String key) {
         Object value = file.get(key);
+        if (value == null) {
+            return Collections.emptyList();
+        }
         if (value instanceof List) {
             return (List<MultipartFile>) value;
         }
@@ -409,6 +445,9 @@ public class Request {
 
     public List<Object> headers(String key) {
         Object value = header.get(key);
+        if (value == null) {
+            return Collections.emptyList();
+        }
         if (value instanceof List) {
             return ((List<Object>) value);
         }
@@ -532,6 +571,9 @@ public class Request {
 
     public List<Object> sessions(String key) {
         Object value = session.get(key);
+        if (value == null) {
+            return Collections.emptyList();
+        }
         if (value instanceof List) {
             return ((List<Object>) value);
         }
@@ -645,6 +687,129 @@ public class Request {
         return remoteAddr != null ? remoteAddr : "unknown";
     }
 
+    /**
+     * 获取原始远程地址（不经过 X-Forwarded-For 处理），对齐 Laravel 的 $request->ip() 在 TrustProxies 之前的行为。
+     * <p>
+     * 供 TrustProxies 等中间件在处理代理头之前获取真实 TCP 连接地址使用。
+     *
+     * @return 原始客户端 IP 地址
+     */
+    public String remoteAddr() {
+        if (request == null) {
+            return "unknown";
+        }
+        String addr = request.getRemoteAddr();
+        return addr != null ? addr : "unknown";
+    }
+
+    /**
+     * 获取 HTTP 请求方法，对齐 Laravel 的 $request->method()。
+     *
+     * @return HTTP 方法（GET/POST/PUT/DELETE 等），request 不可用时返回空串
+     */
+    public String method() {
+        if (request == null) {
+            return "";
+        }
+        return request.getMethod();
+    }
+
+    /**
+     * 获取请求 URI，对齐 Laravel 的 $request->uri()。
+     *
+     * @return 请求 URI（如 /api/wire/demo），request 不可用时返回空串
+     */
+    public String uri() {
+        if (request == null) {
+            return "";
+        }
+        return request.getRequestURI();
+    }
+
+    /**
+     * 获取请求路径（Servlet 路径），对齐 Laravel 的 $request->path()。
+     *
+     * @return 请求路径，request 不可用时返回空串
+     */
+    public String path() {
+        if (request == null) {
+            return "";
+        }
+        String servletPath = request.getServletPath();
+        return servletPath != null ? servletPath : "";
+    }
+
+    /**
+     * 获取请求的 Content-Type，对齐 Laravel 的 $request->contentType()。
+     *
+     * @return Content-Type 字符串，request 不可用时返回 null
+     */
+    public String contentType() {
+        if (request == null) {
+            return null;
+        }
+        return request.getContentType();
+    }
+
+    /**
+     * 判断请求是否通过 HTTPS 发起，对齐 Laravel 的 $request->secure()。
+     *
+     * @return true=HTTPS，false=HTTP，request 不可用时返回 false
+     */
+    public boolean isSecure() {
+        if (request == null) {
+            return false;
+        }
+        return request.isSecure();
+    }
+
+    /**
+     * 向当前请求的 HttpSession 写入属性值，对齐 Laravel Session 的 put 操作。
+     * <p>
+     * 同时更新内部 session 缓存，使后续 session(key) 读取能立即取到新值。
+     *
+     * @param key   session 属性名
+     * @param value 属性值
+     */
+    public void putSession(String key, Object value) {
+        if (request != null) {
+            HttpSession httpSession = request.getSession(true);
+            httpSession.setAttribute(key, value);
+        }
+        session.put(key, value);
+    }
+
+    /**
+     * 从当前请求的 HttpSession 中移除属性，对齐 Laravel Session 的 forget 操作。
+     *
+     * @param key session 属性名
+     */
+    public void removeSessionAttribute(String key) {
+        if (request != null) {
+            HttpSession httpSession = request.getSession(false);
+            if (httpSession != null) {
+                httpSession.removeAttribute(key);
+            }
+        }
+        session.remove(key);
+    }
+
+    /**
+     * 获取原始 HttpSession 对象（供需要直接操作 session 生命周期的场景使用）。
+     * <p>
+     * 注意：优先使用 session(key)、putSession(key, value) 等封装方法，
+     * 仅在需要 invalidate() 等底层操作时才使用此方法。
+     *
+     * @param create 是否在 session 不存在时创建新 session
+     * @return HttpSession 实例，request 不可用时返回 null
+     */
+    public HttpSession rawSession(boolean create) {
+        if (request == null) {
+            return null;
+        }
+        return request.getSession(create);
+    }
+
     public void setRequest(HttpServletRequest request) {
         this.request = request;
         Enumeration<String> headerNames = request.getHeaderNames();
@@ -699,7 +864,7 @@ public class Request {
         @Override
         public boolean isEmpty() {
             try {
-                return getBytes().length > 0;
+                return getBytes().length == 0;
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
