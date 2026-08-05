@@ -27274,6 +27274,32 @@ jaravel:
 <p><strong>BaseModel.fill(Map) 简易填充</strong>：新增 <code>BaseModel.fill(Map&lt;String,Object&gt;)</code>，按属性名反射调用 setter 写入当前对象；键为 null/无对应 setter 的条目忽略（多余属性），值为 null/空串视为「不做任何操作」跳过，字符串值自动转换为 setter 声明的参数类型（数值、布尔、BigDecimal、LocalDate/LocalDateTime/LocalTime、Date、字符等）。常用于把请求/表单参数快速填充到模型后链式 <code>save()</code>。见 database 文档「fill()」小节。</p>
 <p style="color:var(--muted)">注：本快照站为历史预生成版本，详细内容以仓库内 Markdown 为准。</p>
 </section>
+
+<section id="arch-update-2026-08-05" style="margin-top:3rem;padding:1.5rem;border:1px solid var(--rule);border-radius:8px;background:var(--bg2)">
+<h2>2026-08-05 更新：Captcha 全场景修复 + fat-jar 部署支持</h2>
+
+<h3>Captcha 模块深度修复</h3>
+<p>修复场景白名单 403 验证失败的深层根因——场景注册表 <code>CaptchaSceneRegistry</code> 未做 <code>AppKey.resolve()</code> 全局密钥解析，导致带 <code>scene</code> 的 generate 与 verify 加解密密钥不对称。修复方案：</p>
+<ul>
+  <li><code>AbstractCaptcha</code> 加解密统一使用实例级 <code>this.properties</code>（已解析全局密钥），保证 generate 与 verify 密码参数对称。</li>
+  <li><code>CaptchaAutoConfiguration</code> 抽取 <code>resolveCoreProperties()</code> 共用方法，使 <code>captchaManager</code> 与 <code>captchaSceneRegistry</code> 共享同一份已解析配置。</li>
+  <li>合并凭证 <code>key = type + "." + captchaKey</code>：前端只需一个 key 即可提交验证。</li>
+  <li>密钥取值遵循「模块自身配置优先 → core 全局 <code>jaravel.key</code> 兜底」。</li>
+</ul>
+<p>E2E 验证：114 项断言全绿（桌面/移动端/平板端），<code>spring-boot:run</code> 与 <code>java -jar</code> 两种部署模式均通过。</p>
+
+<h3>fat-jar 模板编译与插件编译修复</h3>
+<p>Spring Boot 3.2 fat-jar 使用 <code>nested:</code> 协议加载嵌套 jar，<code>java.class.path</code> 仅含最外层 jar，导致 jblade 模板编译与 plugin-java-core 插件编译在 <code>java -jar</code> 模式下失败。修复方案：</p>
+<ul>
+  <li>新增共享工具 <code>RuntimeClasspath</code>（<code>com.weacsoft.jaravel.vendor.utils.runtime</code>）：检测 fat-jar → 展开 BOOT-INF/lib 与 BOOT-INF/classes 到临时目录 → 拼入 javac classpath。</li>
+  <li><code>BladeCompiler</code>：<code>resolveCompilerClasspath()</code> 委托给 <code>RuntimeClasspath.resolve()</code>。</li>
+  <li><code>BladeEngine</code>：<code>MemoryClassLoader</code> 父类加载器设为 <code>BladeEngine.class.getClassLoader()</code>（<code>LaunchedURLClassLoader</code>），确保编译后模板运行时能解析 <code>BladeTemplate</code>。</li>
+  <li><code>DynamicJavaCompiler</code>（plugin-java-core）：<code>buildClasspath()</code> 委托给 <code>RuntimeClasspath.resolve()</code>，<code>demo-greeting</code> 插件 fat-jar 启动注册成功。</li>
+</ul>
+<p>jblade 单元测试：52 通过，0 失败。</p>
+
+<p style="margin-top:0.75rem"><strong>目录导航</strong>：<a href="#cat-captcha">captcha 模块文档</a> · <a href="#captcha-captchamanager">CaptchaManager API</a> · <a href="#captcha-19-端到端测试">E2E 测试</a> · <a href="#jblade-5-bladecompiler-——-模板编译器">BladeCompiler</a></p>
+</section>
 </div>
 </div>
 </body>
