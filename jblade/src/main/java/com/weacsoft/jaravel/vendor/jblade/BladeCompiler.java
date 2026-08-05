@@ -130,7 +130,18 @@ public class BladeCompiler {
         try (MemoryFileManager fileManager = new MemoryFileManager(compiler.getStandardFileManager(diagnostics, null, null))) {
             List<JavaFileObject> compilationUnits = new ArrayList<>();
             compilationUnits.add(new SourceCodeJavaFileObject(fullClassName, sourceCode));
-            JavaCompiler.CompilationTask task = compiler.getTask(null, fileManager, diagnostics, null, null, compilationUnits);
+            // 必须显式传入 -classpath：以可执行 fat-jar（java -jar app.jar）方式运行时，
+            // 依赖类位于 BOOT-INF/lib/*.jar 这类「嵌套 jar」中，javac 的标准文件管理器
+            // 读不到它们，System.getProperty("java.class.path") 也只包含最外层 jar，
+            // 会导致「程序包 com.weacsoft.jaravel.vendor.jblade 不存在」之类的编译错误。
+            List<String> options = new ArrayList<>();
+            String cp = resolveCompilerClasspath();
+            if (cp != null && !cp.isEmpty()) {
+                options.add("-classpath");
+                options.add(cp);
+            }
+            JavaCompiler.CompilationTask task = compiler.getTask(null, fileManager, diagnostics,
+                    options.isEmpty() ? null : options, null, compilationUnits);
             Boolean success = task.call();
             if (success == null || !success) {
                 StringBuilder errorMsg = new StringBuilder("模板 [" + templateName + "] 编译错误: ");
@@ -152,6 +163,30 @@ public class BladeCompiler {
      */
     public MemoryClassLoader getClassLoader() {
         return classLoader;
+    }
+
+    /* =====================================================================
+     * 运行时编译 classpath 解析
+     * ---------------------------------------------------------------------
+     * 直接委托给通用工具 RuntimeClasspath（位于 jaravel-vendor/utils），
+     * 该工具兼容 Spring Boot 可执行 fat-jar（java -jar）场景：在检测到
+     * fat-jar 时会把 BOOT-INF/lib 与 BOOT-INF/classes 展开到临时目录后
+     * 拼入 classpath。jblade 自身不再重复实现 FAT-JAR 探测逻辑。
+     * ===================================================================== */
+
+    /**
+     * 手动指定编译 classpath 的系统属性（与 {@code RuntimeClasspath} 保持一致）。
+     */
+    public static final String CLASSPATH_PROPERTY =
+            com.weacsoft.jaravel.vendor.utils.runtime.RuntimeClasspath.CLASSPATH_PROPERTY;
+
+    /**
+     * 解析供 javac 使用的 classpath（兼容 Spring Boot fat-jar）。
+     *
+     * @return 以 {@link File#pathSeparator} 分隔的 classpath，可能为空字符串
+     */
+    private static String resolveCompilerClasspath() {
+        return com.weacsoft.jaravel.vendor.utils.runtime.RuntimeClasspath.resolve();
     }
 
     private String generateClassName(String templateName) {

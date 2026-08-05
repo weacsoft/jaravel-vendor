@@ -7,7 +7,7 @@
     <parent>
         <groupId>io.github.lijialong1313</groupId>
         <artifactId>jaravel-vendor</artifactId>
-        <version>0.1.2</version>
+        <version>0.1.2-SNAPSHOT</version>
     </parent>
 
     <artifactId>migration</artifactId>
@@ -23,6 +23,12 @@
         <dependency>
             <groupId>io.github.lijialong1313</groupId>
             <artifactId>artisan</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- core（optional：仅用于声明 PublishableConfig，独立运行时不需要） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>core</artifactId>
             <optional>true</optional>
         </dependency>
         <!-- SpringBoot 适配（optional：独立运行时不需要） -->

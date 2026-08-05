@@ -77,11 +77,21 @@ public class RedisManager {
     private final String defaultConnection;
 
     /**
+     * 无参构造器，使用默认配置（便于快速原型和测试）。
+     */
+    public RedisManager() {
+        this(new RedisProperties());
+    }
+
+    /**
      * 构造 Redis 管理器。
      *
-     * @param properties Redis 配置属性
+     * @param properties Redis 配置属性，为 {@code null} 时使用默认配置
      */
     public RedisManager(RedisProperties properties) {
+        if (properties == null) {
+            properties = new RedisProperties();
+        }
         this.connectionConfigs = properties.getConnections();
         this.options = properties.getOptions();
         this.clientResources = DefaultClientResources.builder().build();

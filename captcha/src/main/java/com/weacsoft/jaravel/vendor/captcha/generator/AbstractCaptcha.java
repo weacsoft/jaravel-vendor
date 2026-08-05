@@ -154,6 +154,8 @@ public abstract class AbstractCaptcha implements Captcha {
      */
     public CaptchaResult generate(CaptchaProperties overrides, String encryptionKey) {
         CaptchaProperties props = overrides != null ? overrides : this.properties;
+        // 注意：crypto 一律使用实例级加解密参数（见 createCrypto 说明），
+        // overrides 只影响验证码「形态」，不影响加解密。
         CaptchaCrypto crypto = createCrypto(props, encryptionKey);
 
         CaptchaContext context = new CaptchaContext(null, props);
@@ -174,8 +176,17 @@ public abstract class AbstractCaptcha implements Captcha {
         String captchaKey = crypto.encrypt(payload);
 
         result.setCaptchaKey(captchaKey);
+        // 合并凭证：type + "." + captchaKey。前端只需提交这一个 key 与用户输入即可校验，
+        // 可与其它表单字段放在同一次请求里一起提交、一起校验（避免二次提交安全漏洞）。
+        result.setKey(getType() + "." + captchaKey);
         result.setType(getType());
         result.setExpireTime(expireTime);
+        // 下发实际生效的加密类型与密钥，确保前端加密用户输入时与服务端解密使用同一把密钥
+        // （尤其在服务端启用了 jaravel.key 全局密钥兜底时，前端必须用下发值而非静态配置）。
+        // 这里必须取「crypto 实际使用的」参数，而不是 props（可能是场景级副本）中的值，
+        // 否则前端会拿到一把服务端并未使用的密钥，校验阶段解密必定失败（表现为恒定 403）。
+        result.setEncType(effectiveEncryptionType());
+        result.setEncKey(effectiveEncryptionKey(encryptionKey));
         return result;
     }
 
@@ -304,16 +315,52 @@ public abstract class AbstractCaptcha implements Captcha {
 
     /**
      * 根据配置和可选的运行时密钥创建加密实例。
+     * <p>
+     * <b>重要：加解密参数一律取实例级配置 {@link #properties}，而非传入的 {@code props}。</b>
+     * 原因是 generate 与 verify 的上下文不对称：
+     * <ul>
+     *   <li>generate 可以带场景（{@code scene}）等运行时 overrides；</li>
+     *   <li>verify 只拿得到合并凭证 {@code key} 与用户输入，<b>无法还原场景上下文</b>。</li>
+     * </ul>
+     * 若 generate 时用了 overrides 副本里的密钥（例如场景副本继承了模块出厂默认密钥，
+     * 而实例级配置已被 {@code AppKey} 回退成全局 {@code jaravel.key}），
+     * verify 阶段就会用另一把密钥解密，导致校验恒定失败（HTTP 403）且极难排查。
+     * <p>
+     * 因此 overrides 只用于控制验证码的「形态」（尺寸、长度、容差、干扰等），
+     * 加解密参数只有两个来源：显式传入的 {@code encryptionKey}，或实例级配置。
      *
-     * @param props         配置属性
-     * @param encryptionKey 运行时密钥（null 则使用 props 中的密钥）
+     * @param props         配置属性（仅用于兜底，实例级配置缺失时才使用）
+     * @param encryptionKey 运行时密钥（null 则使用实例级配置中的密钥）
      * @return CaptchaCrypto 实例
      */
     protected CaptchaCrypto createCrypto(CaptchaProperties props, String encryptionKey) {
-        String type = props != null ? props.getEncryptionType() : "none";
+        CaptchaProperties cryptoProps = this.properties != null ? this.properties : props;
+        String type = cryptoProps != null ? cryptoProps.getEncryptionType() : "none";
         String key = encryptionKey != null ? encryptionKey
-                : (props != null ? props.getEncryptionKey() : null);
+                : (cryptoProps != null ? cryptoProps.getEncryptionKey() : null);
         return CaptchaCrypto.create(type, key);
+    }
+
+    /**
+     * 返回实际生效的加密类型（与 {@link #createCrypto} 保持一致）。
+     *
+     * @return 加密类型，实例级配置缺失时返回 {@code "none"}
+     */
+    protected String effectiveEncryptionType() {
+        return this.properties != null ? this.properties.getEncryptionType() : "none";
+    }
+
+    /**
+     * 返回实际生效的加密密钥（与 {@link #createCrypto} 保持一致）。
+     *
+     * @param encryptionKey 运行时密钥（null 则回落到实例级配置）
+     * @return 实际用于加解密的密钥
+     */
+    protected String effectiveEncryptionKey(String encryptionKey) {
+        if (encryptionKey != null) {
+            return encryptionKey;
+        }
+        return this.properties != null ? this.properties.getEncryptionKey() : null;
     }
 
     // ==================== 公共图像工具 ====================

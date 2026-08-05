@@ -58,11 +58,21 @@ public class QueueManager {
     private final long retryDelayMs;
 
     /**
+     * 无参构造器，使用默认配置（便于快速原型和测试）。
+     */
+    public QueueManager() {
+        this(new EventProperties());
+    }
+
+    /**
      * 构造队列管理器。
      *
-     * @param properties 事件配置属性
+     * @param properties 事件配置属性，为 {@code null} 时使用默认配置
      */
     public QueueManager(EventProperties properties) {
+        if (properties == null) {
+            properties = new EventProperties();
+        }
         EventProperties.Queue queueCfg = properties.getQueue();
         EventProperties.Retry retryCfg = properties.getRetry();
 

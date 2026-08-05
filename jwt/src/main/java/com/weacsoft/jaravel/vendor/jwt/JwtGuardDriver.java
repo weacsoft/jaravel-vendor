@@ -29,6 +29,15 @@ public class JwtGuardDriver implements AuthGuardDriver {
     private final JwtService jwtService;
     private final JwtConfig jwtConfig;
 
+    /**
+     * 便捷构造器：jwtConfig 使用默认值。
+     *
+     * @param jwtService JWT 服务
+     */
+    public JwtGuardDriver(JwtService jwtService) {
+        this(jwtService, new JwtConfig());
+    }
+
     public JwtGuardDriver(JwtService jwtService, JwtConfig jwtConfig) {
         this.jwtService = jwtService;
         this.jwtConfig = jwtConfig;

@@ -19,16 +19,19 @@ import java.util.Map;
  * &lt;script src="/jaravel-captcha.js"&gt;&lt;/script&gt;
  * </pre>
  * <p>
- * 注意：本声明<b>不会</b>被 {@code vendor:publish} 触发——那条命令只处理
- * {@code PublishableConfig}（Java 配置类源码）。
+ * 注意：
+ * <ul>
+ *   <li>本声明<b>不会</b>被 {@code vendor:publish} 触发——那条命令只处理
+ *       {@code PublishableConfig}（Java 配置类源码）。</li>
+ *   <li>{@code vendor:publish:static} 只发布模块运行<b>必需</b>的 CSS / JS 资源，
+ *       <b>不发布任何演示页或示例文件</b>——示例仅保留在框架仓库内供参考，
+ *       避免污染业务工程的 {@code static/} 目录。</li>
+ * </ul>
  */
 public class CaptchaStaticPublishable implements PublishableStatic {
 
     /** 前端库：OOP 验证码组件 + 加解密工具（内联 CSS，无第三方依赖） */
     public static final String JS_RESOURCE = "static/jaravel-captcha.js";
-
-    /** 独立演示页：纯静态，可直接用浏览器打开 */
-    public static final String DEMO_RESOURCE = "static/captcha-demo.html";
 
     @Override
     public String tag() {
@@ -39,12 +42,11 @@ public class CaptchaStaticPublishable implements PublishableStatic {
     public Map<String, String> resources() {
         Map<String, String> map = new LinkedHashMap<>();
         map.put(JS_RESOURCE, "static/jaravel-captcha.js");
-        map.put(DEMO_RESOURCE, "static/captcha-demo.html");
         return Collections.unmodifiableMap(map);
     }
 
     @Override
     public String description() {
-        return "验证码前端库（自包含，内联 CSS，无 mdui/jQuery 等外部依赖）与独立演示页";
+        return "验证码前端库 jaravel-captcha.js（自包含，内联 CSS，无 mdui/jQuery 等外部依赖）";
     }
 }

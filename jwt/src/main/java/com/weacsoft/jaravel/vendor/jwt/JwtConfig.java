@@ -9,11 +9,28 @@ package com.weacsoft.jaravel.vendor.jwt;
  * —— 仅校验签名与过期，不依赖任何缓存。开启黑名单后，登出踢 token 功能生效，
  * 需配合 cache 模块使用。宽限期功能需要黑名单开启才能工作（因为宽限期结束后需要将旧 token
  * 加入黑名单以防止重复使用）。
+ * <p>
+ * <b>密钥兜底</b>：当 {@link #secret} 仍为出厂默认值 {@link #DEFAULT_SECRET} 时，
+ * {@code JwtAutoConfiguration} 会自动回退到 core 模块的全局应用密钥
+ * （application 配置项 {@code jaravel.key}），遵循「模块自身配置优先 → core 全局密钥兜底」。
  */
 public class JwtConfig {
 
-    /** 签名密钥（生产环境务必更换） */
-    private String secret = "jaravel-secret-key-change-this-in-production-32bytes";
+    /**
+     * JWT 模块的出厂默认签名密钥。
+     * <p>
+     * 仅作为「用户是否显式配置过 {@code jaravel.jwt.secret}」的判定基准：
+     * 若实际值仍等于此常量，说明用户没配，框架会回退到全局 {@code jaravel.key}。
+     */
+    public static final String DEFAULT_SECRET = "jaravel-secret-key-change-this-in-production-32bytes";
+
+    /**
+     * 签名密钥。
+     * <p>
+     * 未显式配置时等于 {@link #DEFAULT_SECRET}，此时框架自动回退到全局应用密钥
+     * {@code jaravel.key}；显式配置后以本值为准。
+     */
+    private String secret = DEFAULT_SECRET;
     /** 签发者 */
     private String issuer = "jaravel";
     /** access token 有效期（毫秒），默认 1 小时 */

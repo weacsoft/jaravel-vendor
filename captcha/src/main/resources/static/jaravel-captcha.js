@@ -11,12 +11,13 @@
  * 用法：
  *   const captcha = Captcha.init('container-id', {
  *       type: 'slider',
- *       apiUrl: '/api/captcha/generate',
- *       verifyUrl: '/api/captcha/verify',
- *       encryptionType: 'aes',
- *       encryptionKey: 'my-secret-key',
- *       onSuccess: (captchaKey, captchaInput) => { ... },
- *       onFail: () => { ... }
+ *       apiUrl: '/api/captcha/generate'
+ *       // 加密参数可省略：不传时自动采用后端 generate 下发的 encType / encKey
+ *   });
+ *   captcha.on('complete', (key, captchaInput) => {
+ *       // key 是「合并凭证」（格式 type.captchaKey，已包含类型信息）
+ *       // 把 key 和 captchaInput 随登录表单等业务字段一起提交，
+ *       // 服务端一次性校验，避免「先验证码后业务」两段式提交的时间窗漏洞
  *   });
  *   captcha.show();
  *   captcha.refresh();
@@ -262,7 +263,7 @@ const JaravelCaptcha = (function () {
      * 生成验证码
      * @param {string} apiUrl - 生成验证码的 API 地址
      * @param {string} type - 验证码类型
-     * @returns {Promise<Object>} { captchaKey, type, imageBase64, expireTime, extra }
+     * @returns {Promise<Object>} { key, encType, encKey, type, captchaKey, imageBase64, expireTime, extra }
      */
     async function fetchCaptcha(apiUrl, type) {
         const url = apiUrl + '?type=' + encodeURIComponent(type || 'rotate');
@@ -275,23 +276,25 @@ const JaravelCaptcha = (function () {
     }
 
     /**
-     * 提交验证码验证
+     * 提交验证码验证。
+     * <p>
+     * 只需要「合并凭证 key」+「用户输入」两个参数：key 由 generate 接口下发
+     * （格式 `type.captchaKey`），内部已包含验证码类型，无需再单独传 type。
+     *
      * @param {string} apiUrl - 验证 API 地址
-     * @param {string} type - 验证码类型
-     * @param {string} captchaKey - 生成时返回的 captchaKey
+     * @param {string} key - 生成时返回的合并凭证 data.key
      * @param {string} input - 用户输入（明文）
-     * @param {string} encType - 加密类型
-     * @param {string} encKey - 加密密钥
+     * @param {string} [encType] - 加密类型（不传则用 generate 下发的 encType）
+     * @param {string} [encKey] - 加密密钥（不传则用 generate 下发的 encKey）
      * @returns {Promise<boolean>} 验证是否通过
      */
-    async function submitCaptcha(apiUrl, type, captchaKey, input, encType, encKey) {
+    async function submitCaptcha(apiUrl, key, input, encType, encKey) {
         const encryptedInput = await encrypt(input, encType, encKey);
         const resp = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                type: type,
-                captchaKey: captchaKey,
+                key: key,
                 input: encryptedInput
             })
         });
@@ -351,6 +354,13 @@ class Captcha {
         this.options = this._mergeOptions(options);
 
         // 运行时状态
+        /**
+         * 合并后的单一凭证（后端 generate 下发的 data.key，格式 `type.captchaKey`）。
+         * 校验时只需提交它 + 用户输入两个参数，可与登录表单等其他字段一次性提交，
+         * 避免「先验证码、后业务」的两段式提交带来的时间窗漏洞。
+         */
+        this._key = null;
+        /** @deprecated 兼容旧版：拆分后的 captchaKey，新代码请用 {@link _key} */
         this._captchaKey = null;
         this._captchaData = null;
         this._destroyed = false;
@@ -438,6 +448,16 @@ class Captcha {
             apiUrl: opts.apiUrl || '/api/captcha/generate',
             encryptionType: (opts.encryptionType || 'none').toLowerCase(),
             encryptionKey: opts.encryptionKey || null,
+            /**
+             * 是否由业务方显式指定了加密参数。
+             * <p>
+             * 未显式指定时，组件会自动采用后端 generate 接口下发的
+             * {@code encType} / {@code encKey}——这一点在启用了全局应用密钥
+             * （{@code jaravel.key}）兜底时尤为重要：模块实际使用的密钥可能
+             * 与前端硬编码的默认值不同，必须以后端下发的为准。
+             */
+            encryptionTypeExplicit: !!opts.encryptionType,
+            encryptionKeyExplicit: !!opts.encryptionKey,
 
             // ---- 场景：前端唯一能影响后端生成的入参，且只能「选择」不能「设值」 ----
             scene: (typeof scene === 'string' && scene) ? scene : null,
@@ -1666,10 +1686,30 @@ class Captcha {
             }
             this._captchaData = json.data;
             this._captchaKey = json.data.captchaKey;
+            // 合并凭证：优先用后端下发的 data.key；老版本后端没有该字段时本地拼装
+            this._key = json.data.key
+                || ((json.data.type || this.options.type) + '.' + json.data.captchaKey);
+
+            // 采用后端下发的加密参数（业务方未显式指定时）。
+            // 启用全局应用密钥兜底后，模块实际密钥由后端决定，前端必须跟随。
+            if (json.data.encType && !this.options.encryptionTypeExplicit) {
+                this.options.encryptionType = String(json.data.encType).toLowerCase();
+                this._resolveEncryption();
+            }
+            if (json.data.encKey && !this.options.encryptionKeyExplicit) {
+                this.options.encryptionKey = json.data.encKey;
+            } else if (json.data.encKey && this.options.encryptionKey !== json.data.encKey) {
+                // 显式配置的密钥与后端实际生效的密钥不一致：服务端将无法解密用户输入，
+                // 校验会恒定失败。这类问题只表现为 403，极难排查，因此在此显式告警。
+                console.warn('[Captcha] 前端显式配置的 encryptionKey 与后端下发的 encKey 不一致，'
+                    + '服务端解密必定失败。请移除前端硬编码密钥，改用后端下发值'
+                    + '（后端启用 jaravel.key 全局密钥兜底时实际密钥会变化）。');
+            }
+
             this._loaded = true;
             this._renderCaptcha(json.data);
             // 触发 afterGet 事件（验证码已加载并渲染完成）
-            this._emit('afterGet', this._captchaKey, this._captchaData);
+            this._emit('afterGet', this._key, this._captchaData);
         } catch (e) {
             this._showError('加载失败: ' + e.message);
             console.error('[Captcha] 加载验证码失败:', e);
@@ -2091,6 +2131,7 @@ class Captcha {
 
         // 重置完成状态
         this._completed = false;
+        this._key = null;
         this._captchaKey = null;
 
         this._resetUI();
@@ -2108,9 +2149,11 @@ class Captcha {
      * 支持的事件：
      * <ul>
      *   <li>{@code beforeGet} — 获取验证码前（含刷新），参数：{@code (type)}</li>
-     *   <li>{@code afterGet} — 验证码加载并渲染完成后，参数：{@code (captchaKey, captchaData)}</li>
-     *   <li>{@code complete} — 用户完成前端验证操作，参数：{@code (captchaKey, captchaInput)}</li>
+     *   <li>{@code afterGet} — 验证码加载并渲染完成后，参数：{@code (key, captchaData)}</li>
+     *   <li>{@code complete} — 用户完成前端验证操作，参数：{@code (key, captchaInput)}</li>
      * </ul>
+     * 其中 {@code key} 为后端下发的<b>合并凭证</b>（格式 {@code type.captchaKey}），
+     * 校验时只需把它和 {@code captchaInput} 两个值随业务表单一起提交。
      *
      * @param {string} event 事件名
      * @param {Function} callback 回调函数
@@ -2164,7 +2207,22 @@ class Captcha {
     // ========== 数据获取 ==========
 
     /**
-     * 获取当前 captchaKey
+     * 获取当前<b>合并凭证</b>（格式 {@code type.captchaKey}）。
+     * <p>
+     * 这是校验接口唯一需要的凭证参数，配合 {@link getCaptchaInput} 的返回值
+     * 即可完成校验：{@code POST /api/captcha/verify { key, input }}。
+     *
+     * @returns {string|null}
+     */
+    getKey() {
+        return this._key;
+    }
+
+    /**
+     * 获取当前 captchaKey（不含类型前缀）。
+     *
+     * @deprecated 请改用 {@link getKey}——合并凭证已包含类型信息，
+     *             单独的 captchaKey 需要额外传 type，属于两段式旧用法。
      * @returns {string|null}
      */
     getCaptchaKey() {
@@ -2186,13 +2244,14 @@ class Captcha {
     /**
      * 用户完成前端验证操作时内部调用。
      * <p>
-     * 不提交到后端，不判断准确与否。仅触发 complete 事件，参数为验证参数
-     * （captchaKey、加密后的 input、原始明文 input），由业务方决定后续处理。
+     * 不提交到后端，不判断准确与否。仅触发 complete 事件，参数为
+     * {@code (key, encryptedInput)}——即「合并凭证 + 加密后的用户输入」两个值，
+     * 由业务方决定后续处理（推荐随业务表单一次性提交，服务端一并校验）。
      */
     async _complete() {
         // 防止重复完成
         if (this._completed) return;
-        if (!this._captchaKey) {
+        if (!this._key) {
             console.warn('[Captcha] 验证码尚未加载');
             return;
         }
@@ -2219,7 +2278,8 @@ class Captcha {
         this._showResult(true, '已完成');
 
         // 触发 complete 事件，只传递已处理的参数（不含原始明文）
-        this._emit('complete', this._captchaKey, encryptedInput);
+        // 第一个参数为「合并凭证 key」，业务方把它和 input 一起随业务表单提交即可
+        this._emit('complete', this._key, encryptedInput);
 
         // 弹层模式：完成后短暂停留展示结果，再自动收起
         this._scheduleAutoClose();
@@ -2300,6 +2360,7 @@ class Captcha {
         this._clickProgressEl = null;
         this._dragController = null;
         this._captchaData = null;
+        this._key = null;
         this._captchaKey = null;
         this._clickPoints = [];
         this._overlayEl = null;

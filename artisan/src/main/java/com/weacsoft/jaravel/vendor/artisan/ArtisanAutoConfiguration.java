@@ -1,5 +1,6 @@
 package com.weacsoft.jaravel.vendor.artisan;
 
+import com.weacsoft.jaravel.vendor.artisan.key.KeyGenerateCommand;
 import com.weacsoft.jaravel.vendor.artisan.make.MakeAllCommand;
 import com.weacsoft.jaravel.vendor.artisan.make.MakeCodeProperties;
 import com.weacsoft.jaravel.vendor.artisan.make.MakeCommandCommand;
@@ -117,6 +118,20 @@ public class ArtisanAutoConfiguration {
         MakeAllCommand cmd = new MakeAllCommand();
         cmd.setProperties(properties);
         return cmd;
+    }
+
+    // ==================== key:generate 命令注册 ====================
+
+    /**
+     * {@code key:generate} 命令：生成 Base64 全局应用密钥并写入 application 配置。
+     * <p>
+     * 生成的密钥对应 core 模块的 {@code jaravel.key}，是 captcha / jwt / cookies
+     * 等模块的兜底主密钥。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public KeyGenerateCommand keyGenerateCommand(MakeCodeProperties properties) {
+        return new KeyGenerateCommand(properties);
     }
 
     // ==================== vendor:publish 命令注册 ====================

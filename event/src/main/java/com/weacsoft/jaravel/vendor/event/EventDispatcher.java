@@ -44,12 +44,19 @@ public class EventDispatcher implements Dispatcher {
     private QueueDispatcher queueDispatcher;
 
     /**
+     * 无参构造器，内部创建默认 {@link QueueManager}（便于纯同步场景和测试）。
+     */
+    public EventDispatcher() {
+        this(new QueueManager());
+    }
+
+    /**
      * 构造事件调度器。
      *
-     * @param queueManager 队列管理器
+     * @param queueManager 队列管理器，为 {@code null} 时内部创建默认实例
      */
     public EventDispatcher(QueueManager queueManager) {
-        this.queueManager = queueManager;
+        this.queueManager = queueManager != null ? queueManager : new QueueManager();
     }
 
     /**

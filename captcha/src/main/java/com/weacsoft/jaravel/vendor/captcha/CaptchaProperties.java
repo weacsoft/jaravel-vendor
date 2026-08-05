@@ -37,6 +37,16 @@ package com.weacsoft.jaravel.vendor.captcha;
  */
 public class CaptchaProperties {
 
+    /**
+     * 模块内置的默认加密密钥。
+     * <p>
+     * 当 {@code jaravel.captcha.encryption-key} 保持此默认值时，
+     * 表示业务方未为验证码模块单独配置密钥，此时应回退到
+     * core 模块的全局应用密钥 {@code jaravel.key}
+     * （见 {@code com.weacsoft.jaravel.vendor.core.crypto.AppKey#resolve}）。
+     */
+    public static final String DEFAULT_ENCRYPTION_KEY = "jaravel-captcha-default-key";
+
     // ==================== 基础配置 ====================
 
     /** 图片宽度（像素） */
@@ -171,7 +181,7 @@ public class CaptchaProperties {
      *   <li>RSA 模式：Base64 公钥 + "|" + Base64 私钥，或仅公钥 / 仅私钥</li>
      * </ul>
      */
-    private String encryptionKey = "jaravel-captcha-default-key";
+    private String encryptionKey = DEFAULT_ENCRYPTION_KEY;
 
     // ==================== 水印配置 ====================
 

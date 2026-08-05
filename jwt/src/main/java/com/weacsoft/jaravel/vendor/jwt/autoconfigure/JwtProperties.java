@@ -1,12 +1,16 @@
 package com.weacsoft.jaravel.vendor.jwt.autoconfigure;
 
+import com.weacsoft.jaravel.vendor.jwt.JwtConfig;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
  * JWT 配置属性，前缀 {@code jaravel.jwt}。
  * <pre>
  * jaravel:
+ *   # 全局应用密钥（Base64），由 `artisan key:generate` 生成
+ *   key: base64-random-key
  *   jwt:
+ *     # 不配置时自动回退到上面的 jaravel.key（模块配置优先 → 全局密钥兜底）
  *     secret: your-secret-key
  *     ttl: 3600000
  *     refresh-ttl: 604800000
@@ -25,8 +29,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "jaravel.jwt")
 public class JwtProperties {
 
-    /** 签名密钥（生产环境务必更换） */
-    private String secret = "jaravel-secret-key-change-this-in-production-32bytes";
+    /**
+     * 签名密钥。
+     * <p>
+     * 保持默认值时，框架自动回退到全局应用密钥 {@code jaravel.key}
+     * （由 {@code artisan key:generate} 生成）；显式配置后以本值为准。
+     */
+    private String secret = JwtConfig.DEFAULT_SECRET;
     /** access token 有效期（毫秒），默认 1 小时 */
     private long ttl = 3600_000L;
     /** refresh token 有效期（毫秒），默认 7 天 */

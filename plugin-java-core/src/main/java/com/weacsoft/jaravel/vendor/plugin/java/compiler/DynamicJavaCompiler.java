@@ -99,15 +99,18 @@ public class DynamicJavaCompiler {
     /**
      * 构建 classpath 字符串。
      * <p>
-     * 使用 {@code System.getProperty("java.class.path")} 获取当前 classpath，
-     * 使源文件可引用主程序的所有依赖。
+     * 使用通用工具 {@link com.weacsoft.jaravel.vendor.utils.runtime.RuntimeClasspath}
+     * 解析当前 classpath，使源文件可引用主程序的所有依赖。该工具兼容 Spring Boot
+     * 可执行 fat-jar（java -jar）场景：以 {@code java -jar app.jar} 启动时，依赖位于
+     * {@code BOOT-INF/lib/*.jar}（嵌套 jar），{@code java.class.path} 只包含最外层 jar，
+     * 标准 javac 读不到；此工具会把 BOOT-INF 展开到临时目录后拼入 classpath，
+     * 避免出现「程序包 com.weacsoft.jaravel.vendor.plugin.jar.annotation 不存在」之类的编译错误。
      *
-     * @param parentClassLoader 父 ClassLoader（保留参数，当前使用系统 classpath）
+     * @param parentClassLoader 父 ClassLoader（保留参数，兼容旧签名）
      * @return classpath 字符串
      */
     private String buildClasspath(ClassLoader parentClassLoader) {
-        String classpath = System.getProperty("java.class.path");
-        return classpath != null ? classpath : "";
+        return com.weacsoft.jaravel.vendor.utils.runtime.RuntimeClasspath.resolve();
     }
 
     /**

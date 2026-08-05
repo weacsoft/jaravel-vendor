@@ -47,4 +47,18 @@ public class ModelCacheAutoConfiguration {
                                                ModelCacheProperties properties) {
         return new ModelCacheService(cacheManager, properties);
     }
+
+    /**
+     * 声明 model-cache 模块的可发布配置类，供 {@code artisan vendor:publish --tag=model-cache} 使用。
+     * <p>
+     * 仅声明元数据，不依赖 artisan 模块；未引入 artisan 时该 Bean 无人消费，无副作用。
+     *
+     * @return 可发布配置声明
+     */
+    @Bean
+    @ConditionalOnClass(com.weacsoft.jaravel.vendor.core.publish.PublishableConfig.class)
+    @ConditionalOnMissingBean(ModelCachePublishableConfig.class)
+    public ModelCachePublishableConfig modelCachePublishableConfig() {
+        return new ModelCachePublishableConfig();
+    }
 }

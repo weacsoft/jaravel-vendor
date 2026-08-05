@@ -25,9 +25,14 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Eloquent Model 基类，对齐 Laravel 的 {@code Illuminate\Database\Eloquent\Model}。
@@ -683,6 +688,33 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
      */
     @SuppressWarnings({"unchecked", "rawtypes"})
     public T fill(Map<String, Object> data) {
+        return fill(data, (String[]) null);
+    }
+
+    /**
+     * 简易填充（限定字段）：将 Map 中指定属性名的值调用 setter 写入当前对象。
+     * <p>
+     * 与 {@link #fill(Map)} 的区别：第二个参数指定只赋值哪些属性，Map 中其余键值对被忽略。
+     * 这在快速增删改查场景中非常有用——例如表单提交的数据包含多个字段，
+     * 但你只想更新其中部分字段（防止批量赋值漏洞）。
+     *
+     * <p>行为约定：与 {@link #fill(Map)} 一致，区别仅在于先按 {@code fields} 过滤 Map。</p>
+     *
+     * <p>示例：</p>
+     * <pre>{@code
+     * // 只填充 name 和 age，忽略 Map 中的其他键
+     * user.fill(formData, "name", "age");
+     *
+     * // 传入 null 或空数组等价于不限定（填充全部）
+     * user.fill(formData, (String[]) null);
+     * }</pre>
+     *
+     * @param data   待填充的键值数据
+     * @param fields 只允许赋值的属性名列表；为 {@code null} 或空时等价于 {@link #fill(Map)}
+     * @return this，便于链式调用
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public T fill(Map<String, Object> data, String... fields) {
         if (data == null || data.isEmpty()) {
             return (T) this;
         }
@@ -690,7 +722,21 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
         if (entityClass == null) {
             return (T) this;
         }
-        for (Map.Entry<String, Object> entry : data.entrySet()) {
+        // 若指定了字段列表，先过滤 Map，只保留指定字段的键值对
+        Map<String, Object> effectiveData = data;
+        if (fields != null && fields.length > 0) {
+            Set<String> fieldSet = new HashSet<>(Arrays.asList(fields));
+            effectiveData = new LinkedHashMap<>();
+            for (Map.Entry<String, Object> entry : data.entrySet()) {
+                if (entry.getKey() != null && fieldSet.contains(entry.getKey())) {
+                    effectiveData.put(entry.getKey(), entry.getValue());
+                }
+            }
+            if (effectiveData.isEmpty()) {
+                return (T) this;
+            }
+        }
+        for (Map.Entry<String, Object> entry : effectiveData.entrySet()) {
             String key = entry.getKey();
             Object value = entry.getValue();
             // 1. 键为 null → 忽略
@@ -720,6 +766,57 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
             }
         }
         return (T) this;
+    }
+
+    /**
+     * 获取 Model 类的所有业务属性名（不含属性值）。
+     * <p>
+     * 遍历指定 Model 类的类层次结构（从业务子类到 BaseModel 之前），收集所有非 static、
+     * 非 transient、非 {@code @Column(inDatabase = false)} 的字段名。
+     * <p>
+     * 可用于快速构建增删改查模板页面：获取属性名列表后，可自动生成表单字段、列表表头等。
+     *
+     * <p>示例：</p>
+     * <pre>{@code
+     * List<String> fields = BaseModel.getPropertyNames(User.class);
+     * // → ["id", "name", "email", "createdAt", ...]
+     *
+     * // 结合 fill 限定字段使用：
+     * user.fill(formData, BaseModel.getPropertyNames(User.class)
+     *         .toArray(new String[0]));
+     * }</pre>
+     *
+     * @param modelClass 业务 Model 类
+     * @return 属性名列表（按类层次从子类到父类顺序）
+     */
+    public static List<String> getPropertyNames(Class<?> modelClass) {
+        List<String> names = new ArrayList<>();
+        Class<?> clazz = modelClass;
+        while (clazz != null && clazz != BaseModel.class && clazz != Object.class) {
+            for (Field field : clazz.getDeclaredFields()) {
+                int mods = field.getModifiers();
+                if (Modifier.isStatic(mods) || Modifier.isTransient(mods)) {
+                    continue;
+                }
+                Column column = field.getAnnotation(Column.class);
+                if (column != null && !column.inDatabase()) {
+                    continue;
+                }
+                names.add(field.getName());
+            }
+            clazz = clazz.getSuperclass();
+        }
+        return names;
+    }
+
+    /**
+     * 获取当前对象的所有业务属性名（实例方法便捷入口）。
+     *
+     * @return 属性名列表
+     * @see #getPropertyNames(Class)
+     */
+    public List<String> getPropertyNames() {
+        return getPropertyNames(this.getClass());
     }
 
     /** 内部哨兵：表示因转换失败而跳过该字段。 */

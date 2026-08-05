@@ -34,6 +34,15 @@ public class ModelCacheService {
     private final ModelCacheProperties properties;
 
     /**
+     * 便捷构造器：properties 使用默认值。
+     *
+     * @param cacheManager 缓存管理器
+     */
+    public ModelCacheService(CacheManager cacheManager) {
+        this(cacheManager, new ModelCacheProperties());
+    }
+
+    /**
      * @param cacheManager 缓存管理器（用于按名称解析 store）
      * @param properties   模型缓存配置
      */

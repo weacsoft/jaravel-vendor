@@ -1,5 +1,7 @@
 package com.weacsoft.jaravel.vendor.http.middleware;
 
+import com.weacsoft.jaravel.vendor.core.SpringContext;
+import com.weacsoft.jaravel.vendor.core.crypto.AppKey;
 import com.weacsoft.jaravel.vendor.http.controller.request.Request;
 import com.weacsoft.jaravel.vendor.http.controller.response.Response;
 
@@ -33,12 +35,27 @@ import java.util.Base64;
  * }
  * }</pre>
  *
- * <p><b>安全提示</b>：默认密钥仅用于演示，生产环境必须覆盖 {@link #encryptionKey()} 指定安全密钥（建议 32 字节）。
+ * <p><b>密钥兜底</b>：未覆盖 {@link #encryptionKey()} 时（即仍返回出厂默认值
+ * {@link #DEFAULT_ENCRYPTION_KEY}），框架会自动回退到 core 模块的全局应用密钥
+ * {@code jaravel.key}，遵循「模块自身配置优先 → core 全局密钥兜底」。
+ * 因此只要在 application 配置里设置过 {@code jaravel.key}（{@code artisan key:generate} 生成），
+ * Cookie 加密就不会再使用弱默认密钥。
+ *
+ * <p><b>安全提示</b>：默认密钥仅用于演示，生产环境请配置 {@code jaravel.key}
+ * 或覆盖 {@link #encryptionKey()} 指定安全密钥（建议 32 字节）。
  */
 public class EncryptCookies implements Middleware {
 
     private static final String ALGORITHM = "AES/CBC/PKCS5Padding";
     private static final String KEY_ALGORITHM = "AES";
+
+    /**
+     * 模块出厂默认加密密钥。
+     * <p>
+     * 仅作为「子类是否覆盖过 {@link #encryptionKey()}」的判定基准：
+     * 若实际值仍等于此常量，说明没有自定义密钥，框架回退到全局 {@code jaravel.key}。
+     */
+    public static final String DEFAULT_ENCRYPTION_KEY = "default-encryption-key-32bytes";
 
     @Override
     public Response handle(Request request, NextFunction next, String... params) {
@@ -50,11 +67,33 @@ public class EncryptCookies implements Middleware {
 
     /**
      * 加密密钥，子类可覆盖以指定安全密钥。
+     * <p>
+     * 保持默认实现时返回 {@link #DEFAULT_ENCRYPTION_KEY}，实际加解密会由
+     * {@link #resolveEncryptionKey()} 回退到全局应用密钥 {@code jaravel.key}。
      *
-     * @return 加密密钥，默认为演示用密钥
+     * @return 加密密钥，默认为出厂默认值
      */
     protected String encryptionKey() {
-        return "default-encryption-key-32bytes";
+        return DEFAULT_ENCRYPTION_KEY;
+    }
+
+    /**
+     * 解析实际生效的加密密钥：「子类覆盖优先 → core 全局密钥兜底」。
+     * <p>
+     * 中间件由路由层反射实例化而非 Spring 托管，因此这里通过 core 的
+     * {@link SpringContext#beanOrNull(Class)} 安全获取 {@link AppKey}：
+     * 容器未初始化或未引入 core 自动装配时返回 {@code null}，
+     * 此时保持 {@link #encryptionKey()} 的返回值，行为与旧版本一致。
+     *
+     * @return 最终用于 AES 加解密的密钥
+     */
+    protected String resolveEncryptionKey() {
+        String moduleKey = encryptionKey();
+        AppKey appKey = SpringContext.beanOrNull(AppKey.class);
+        if (appKey != null) {
+            return appKey.resolve(moduleKey, DEFAULT_ENCRYPTION_KEY);
+        }
+        return moduleKey;
     }
 
     /**
@@ -145,7 +184,7 @@ public class EncryptCookies implements Middleware {
     }
 
     protected SecretKeySpec generateKey() {
-        byte[] keyBytes = encryptionKey().getBytes(StandardCharsets.UTF_8);
+        byte[] keyBytes = resolveEncryptionKey().getBytes(StandardCharsets.UTF_8);
         byte[] keyBytes32 = new byte[32];
         System.arraycopy(keyBytes, 0, keyBytes32, 0, Math.min(keyBytes.length, 32));
         return new SecretKeySpec(keyBytes32, KEY_ALGORITHM);

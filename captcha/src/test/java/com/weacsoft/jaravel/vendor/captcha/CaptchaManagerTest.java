@@ -82,7 +82,45 @@ class CaptchaManagerTest {
     void testVerifyWrongAnswer() {
         CaptchaManager manager = CaptchaManager.createDefault();
         CaptchaResult result = manager.generate("number");
-        assertFalse(manager.verify("number", result.getCaptchaKey(), "definitely-wrong-answer"));
+        assertFalse(manager.verify(result.getKey(), "definitely-wrong-answer"));
+    }
+
+    @Test
+    void testMergedKeyFormat() {
+        CaptchaManager manager = CaptchaManager.createDefault();
+        CaptchaResult result = manager.generate("number");
+        // 合并凭证 = type + "." + captchaKey，前端只需持有它一个值
+        assertEquals("number." + result.getCaptchaKey(), result.getKey());
+        assertEquals("number." + result.getCaptchaKey(), result.toMap().get("key"));
+    }
+
+    @Test
+    void testVerifyRejectsMalformedKey() {
+        CaptchaManager manager = CaptchaManager.createDefault();
+        // 无分隔符 / 空类型 / 空 captchaKey 一律判失败，不抛异常
+        assertFalse(manager.verify(null, "input"));
+        assertFalse(manager.verify("nodot", "input"));
+        assertFalse(manager.verify(".onlykey", "input"));
+        assertFalse(manager.verify("number.", "input"));
+    }
+
+    @Test
+    void testUnregisterMakesTypePluggable() {
+        CaptchaManager manager = CaptchaManager.createDefault();
+        assertTrue(manager.getTypes().contains("click"));
+
+        // 运行时注销 → 该类型不再可用（生成抛异常、校验返回 false）
+        assertNotNull(manager.unregister("click"));
+        assertFalse(manager.getTypes().contains("click"));
+        assertThrows(IllegalArgumentException.class, () -> manager.generate("click"));
+        assertFalse(manager.verify("click.whatever", "input"));
+
+        // 重新注册 → 恢复可用，其它类型全程不受影响
+        manager.register(new com.weacsoft.jaravel.vendor.captcha.generator.ClickCaptcha(
+                manager.getProperties()));
+        assertTrue(manager.getTypes().contains("click"));
+        assertNotNull(manager.generate("click"));
+        assertNotNull(manager.generate("number"));
     }
 
     @Test
@@ -96,7 +134,7 @@ class CaptchaManagerTest {
         CaptchaResult result = manager.generate("number");
         // 等待超过过期时间
         Thread.sleep(1100);
-        assertFalse(manager.verify("number", result.getCaptchaKey(), "anything"));
+        assertFalse(manager.verify(result.getKey(), "anything"));
     }
 
     @Test
@@ -105,6 +143,6 @@ class CaptchaManagerTest {
         // 未知类型生成抛 IllegalArgumentException
         assertThrows(IllegalArgumentException.class, () -> manager.generate("unknown"));
         // 未知类型验证返回 false（不抛异常）
-        assertFalse(manager.verify("unknown", "key", "input"));
+        assertFalse(manager.verify("unknown.key", "input"));
     }
 }

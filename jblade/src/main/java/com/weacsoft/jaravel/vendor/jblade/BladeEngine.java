@@ -113,7 +113,15 @@ public class BladeEngine {
      * @param memoryClassLoader 自定义类加载器（可为 null，null 时创建新的）
      */
     public BladeEngine(String templateDir, String suffix, CacheStore cacheStore, MemoryClassLoader memoryClassLoader) {
-        this.memoryClassLoader = memoryClassLoader != null ? memoryClassLoader : new MemoryClassLoader();
+        // 父类加载器必须能解析模板编译产物所依赖的运行期类（如 jblade 的 BladeTemplate）。
+        // 普通 -cp / spring-boot:run 下，BladeEngine 的类加载器即应用类加载器，天然可见这些类；
+        // 但在 Spring Boot 可执行 fat-jar（java -jar）下，JVM 系统类加载器只包含最外层 jar，
+        // 真正的依赖位于 BOOT-INF/lib（由 LaunchedURLClassLoader 加载）。若此处用默认系统类加载器作
+        // 为父类，运行期加载编译后的模板类时会 NoClassDefFoundError: BladeTemplate。
+        // 因此显式以本类所在的类加载器作为父类，fat-jar 与展开部署形态表现一致。
+        ClassLoader runtimeParent = BladeEngine.class.getClassLoader();
+        this.memoryClassLoader = memoryClassLoader != null ? memoryClassLoader
+                : new MemoryClassLoader(new ConcurrentHashMap<>(), runtimeParent);
         this.compiler = new BladeCompiler(templateDir, this.memoryClassLoader, suffix);
         this.cacheStore = cacheStore;
         this.useCacheStore = cacheStore != null;

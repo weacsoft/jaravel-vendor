@@ -60,6 +60,17 @@ public class DatabaseFilesystem implements Filesystem {
     private final String filesTable;
     private final String chunksTable;
 
+    /**
+     * 便捷构造器：仅指定名称和数据源，其余参数使用默认值
+     *（binary=true, contentColumn=null→"content", chunkSize=1MB, tablePrefix=null→"storage_", defaultVisibility=null→PRIVATE）。
+     *
+     * @param name       磁盘名称
+     * @param dataSource 数据源
+     */
+    public DatabaseFilesystem(String name, DataSource dataSource) {
+        this(name, dataSource, true, null, 1048576L, null, null);
+    }
+
     public DatabaseFilesystem(String name,
                               DataSource dataSource,
                               boolean binary,

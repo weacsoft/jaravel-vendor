@@ -7,7 +7,7 @@
     <parent>
         <groupId>io.github.lijialong1313</groupId>
         <artifactId>jaravel-vendor</artifactId>
-        <version>0.1.2</version>
+        <version>0.1.2-SNAPSHOT</version>
     </parent>
 
     <artifactId>plugin-java-core</artifactId>
@@ -24,6 +24,12 @@
         <dependency>
             <groupId>io.github.lijialong1313</groupId>
             <artifactId>plugin-jar-core</artifactId>
+        </dependency>
+        <!-- 运行时编译 classpath 解析工具（兼容 Spring Boot fat-jar），默认 compile 作用域
+             以确保 RuntimeClasspath 在 java -jar 部署形态下随 uber-jar 一同打包 -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>utils</artifactId>
         </dependency>
         <!-- Spring Framework (provided by host application) -->
         <dependency>

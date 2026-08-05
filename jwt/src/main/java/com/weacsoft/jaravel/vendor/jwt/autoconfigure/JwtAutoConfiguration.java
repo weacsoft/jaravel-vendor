@@ -3,10 +3,14 @@ package com.weacsoft.jaravel.vendor.jwt.autoconfigure;
 import com.weacsoft.jaravel.vendor.auth.AuthManager;
 import com.weacsoft.jaravel.vendor.cache.CacheManager;
 import com.weacsoft.jaravel.vendor.cache.CacheStore;
+import com.weacsoft.jaravel.vendor.core.crypto.AppKey;
 import com.weacsoft.jaravel.vendor.jwt.JwtConfig;
 import com.weacsoft.jaravel.vendor.jwt.JwtGuardDriver;
 import com.weacsoft.jaravel.vendor.jwt.JwtService;
 import com.weacsoft.jaravel.vendor.jwt.JwtTokenResponseFilter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -37,11 +41,33 @@ import org.springframework.context.annotation.Conditional;
 @EnableConfigurationProperties(JwtProperties.class)
 public class JwtAutoConfiguration {
 
+    private static final Logger log = LoggerFactory.getLogger(JwtAutoConfiguration.class);
+
+    /**
+     * 创建 JwtConfig。
+     * <p>
+     * <b>密钥兜底</b>：若用户没有显式配置 {@code jaravel.jwt.secret}（值仍等于
+     * {@link JwtConfig#DEFAULT_SECRET}），则回退到 core 模块的全局应用密钥
+     * {@code jaravel.key}，遵循「模块自身配置优先 → core 全局密钥兜底」。
+     *
+     * @param properties     JWT 配置属性
+     * @param appKeyProvider 全局应用密钥（core 模块提供，缺失时保持模块默认值）
+     * @return JWT 配置
+     */
     @Bean
     @ConditionalOnMissingBean
-    public JwtConfig jwtConfig(JwtProperties properties) {
+    public JwtConfig jwtConfig(JwtProperties properties, ObjectProvider<AppKey> appKeyProvider) {
+        String secret = properties.getSecret();
+        AppKey appKey = appKeyProvider.getIfAvailable();
+        if (appKey != null) {
+            String resolved = appKey.resolve(secret, JwtConfig.DEFAULT_SECRET);
+            if (!resolved.equals(secret)) {
+                log.info("[JWT] 未配置 jaravel.jwt.secret，签名密钥回退到全局应用密钥 jaravel.key");
+            }
+            secret = resolved;
+        }
         return new JwtConfig()
-                .setSecret(properties.getSecret())
+                .setSecret(secret)
                 .setTtl(properties.getTtl())
                 .setRefreshTtl(properties.getRefreshTtl())
                 .setHeader(properties.getHeader())

@@ -25,6 +25,16 @@ public class SessionGuard implements AuthGuard {
     private boolean resolved = false;
 
     /**
+     * 便捷构造器：name 默认 {@code "web"}。
+     *
+     * @param provider     用户提供者
+     * @param sessionStore Session 存储后端（cookie / redis 等）
+     */
+    public SessionGuard(UserProvider provider, SessionStore sessionStore) {
+        this("web", provider, sessionStore);
+    }
+
+    /**
      * @param name         守卫名称（如 web / admin）
      * @param provider     用户提供者
      * @param sessionStore Session 存储后端（cookie / redis 等）

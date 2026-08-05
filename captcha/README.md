@@ -39,7 +39,7 @@
 - **核心层零 SpringBoot 依赖**：纯 Java 实现，图像生成基于 `java.awt`，编码基于 `java.util.Base64`，可独立嵌入任意 Java 项目
 - **模板方法模式**：`AbstractCaptcha` 封装生成/验证的模板流程，子类只需实现 `doGenerate` 与 `doVerify` 两个钩子方法
 - **存储解耦（SPI）**：通过 `CaptchaStore` 接口与具体存储解耦，内置 `MemoryCaptchaStore`（内存）与 `CacheStoreCaptchaStore`（适配 jaravel cache 模块，支持 Redis 等）
-- **无状态 token 验证**：生成结果携带 token（Base64 编码 captchaKey + answer + expireTime），可在不依赖服务端存储的场景下完成验证
+- **无状态 token 验证**：生成结果携带自包含、AES 加密的 `captchaKey`（`expireTime|nonce|answer`），并额外下发合并凭证 `key = type + "." + captchaKey`，可在不依赖服务端存储的场景下完成验证；`nonce` 验证后一次性消费，防复用
 - **答案防泄露**：答案仅存于 `CaptchaStore`，不下发到前端；`CaptchaResult` 中只包含 base64 图片、token 与额外展示数据
 - **统一管理器**：`CaptchaManager` 维护 `type -> Captcha` 映射，提供按类型生成/验证的统一入口，`createDefault()` 开箱注册五种验证码
 - **SpringBoot 3 自动装配**：引入依赖即自动创建 `CaptchaManager` Bean，并根据是否引入 cache 模块智能选择存储
@@ -178,7 +178,7 @@ CaptchaResult result = manager.generate("number", captchaKey);
 System.out.println(result.toMap());
 
 // 4. 验证用户输入（一次性消费，验证后答案从存储中删除）
-boolean ok = manager.verify("number", captchaKey, "ABCD");
+boolean ok = manager.verify(result.getKey(), "ABCD");
 ```
 
 ### 4.2 SpringBoot 使用
@@ -246,7 +246,7 @@ manager.register(new RotateCaptcha(store, properties));
 manager.register(new ClickCaptcha(store, properties));
 
 CaptchaResult result = manager.generate("number", "my-key");
-boolean ok = manager.verify("number", "my-key", "ABC23");
+boolean ok = manager.verify(result.getKey(), "ABC23");
 ```
 
 ---
@@ -270,7 +270,7 @@ boolean ok = manager.verify("number", "my-key", "ABC23");
 ```java
 CaptchaResult result = manager.generate("number", key);
 // 前端展示 result.getImageBase64()，用户输入识别结果
-boolean ok = manager.verify("number", key, "AB23");
+boolean ok = manager.verify(result.getKey(), "AB23");
 ```
 
 ### 5.2 算术验证码（`arithmetic`）
@@ -288,7 +288,7 @@ boolean ok = manager.verify("number", key, "AB23");
 ```java
 CaptchaResult result = manager.generate("arithmetic", key);
 // 图片显示如 "12 + 5 = ?"，用户输入 "17"
-boolean ok = manager.verify("arithmetic", key, "17");
+boolean ok = manager.verify(result.getKey(), "17");
 ```
 
 ### 5.3 滑动验证码（`slider`）
@@ -312,11 +312,11 @@ CaptchaResult result = manager.generate("slider", key);
 // 前端用 imageBase64 作背景，sliderImage 作滑块，gapY 固定纵坐标
 // 用户拖动后提交 JSON：
 // {"value": 123, "trajectory": [{"t":0,"v":0},{"t":50,"v":5},...]}
-boolean ok = manager.verify("slider", key,
+boolean ok = manager.verify(result.getKey(),
         "{\"value\":123,\"trajectory\":[{\"t\":0,\"v\":0},{\"t\":50,\"v\":5}]}");
 
 // 未启用轨迹验证时，也可直接提交数字字符串（向后兼容）
-boolean ok2 = manager.verify("slider", key, "123");
+boolean ok2 = manager.verify(result.getKey(), "123");
 ```
 
 ### 5.4 旋转验证码（`rotate`）
@@ -338,11 +338,11 @@ boolean ok2 = manager.verify("slider", key, "123");
 CaptchaResult result = manager.generate("rotate", key);
 // 前端展示旋转后的图片，用户拖动转回正方向并提交 JSON：
 // {"value": 90, "trajectory": [{"t":0,"v":0},{"t":50,"v":3},...]}
-boolean ok = manager.verify("rotate", key,
+boolean ok = manager.verify(result.getKey(),
         "{\"value\":90,\"trajectory\":[{\"t\":0,\"v\":0},{\"t\":50,\"v\":3}]}");
 
 // 未启用轨迹验证时，也可直接提交数字字符串（向后兼容）
-boolean ok2 = manager.verify("rotate", key, "90");
+boolean ok2 = manager.verify(result.getKey(), "90");
 ```
 
 ### 5.5 文字点选验证码（`click`）
@@ -368,11 +368,11 @@ CaptchaResult result = manager.generate("click", key);
 // 前端展示 imageBase64，显示提示 "请依次点击：天、地、人"
 // 用户依次点击 3 个文字后提交 JSON：
 // {"clicks":[{"x":120,"y":80},{"x":200,"y":150},{"x":300,"y":100}]}
-boolean ok = manager.verify("click", key,
+boolean ok = manager.verify(result.getKey(),
         "{\"clicks\":[{\"x\":120,\"y\":80},{\"x\":200,\"y\":150},{\"x\":300,\"y\":100}]}");
 
 // 或分号分隔坐标字符串（向后兼容）
-boolean ok2 = manager.verify("click", key, "120,80;200,150;300,100");
+boolean ok2 = manager.verify(result.getKey(), "120,80;200,150;300,100");
 ```
 
 点击验证码的配置通过 `clickTargetCount`（目标文字数量，默认 3）和 `clickDecoyCount`（干扰文字数量，默认 3）控制：
@@ -394,21 +394,35 @@ props.setTolerance(25);        // 25 像素容差
 
 ### 原理
 
-`generate` 时会同时生成一个 token，其结构为：
+`generate` 时，`AbstractCaptcha` 会把答案连同过期时间与一次性随机数（nonce）加密为一个**自包含的 `captchaKey`**：
 
 ```
-base64(captchaKey) . base64(answer) . base64(expireTime)
+captchaKey = AES.encrypt(expireTime + "|" + nonce + "|" + answer)
 ```
 
-- 三段以 `.` 拼接
-- 每段为 UTF-8 字符串的 Base64 编码
-- `expireTime` 为毫秒时间戳
+- `expireTime`：毫秒时间戳，过期后拒绝验证；
+- `nonce`：每次生成唯一，验证成功后写入 `CaptchaStore` 标记为「已消费」，再次用同一 `captchaKey` 提交即被拒绝（防复用）；
+- `answer`：真实答案，位于最后一段，可含特殊字符；
+- 加密算法由 `CaptchaProperties.encryptionType` 决定（默认 `aes`，可选 `none`/`rsa`），密钥按「模块自身配置优先 → core 全局 `jaravel.key` 兜底」解析。
 
-> 注意：token 仅做 Base64 编码，**非加密安全**。如需更高安全性可由子类覆盖 `generateToken` / `verifyToken` 方法（如改用 HMAC 签名）。
+> 注意：旧文档中「token 为明文 Base64」已不适用——当前 `captchaKey` 是 **AES 加密密文**，服务端解密后才能取到答案。将其直接暴露给前端不会泄露答案。
+
+为方便前端，**生成结果额外下发一个合并凭证 `key`**：
+
+```
+key = type + "." + captchaKey
+```
+
+例如数字验证码的 `key` 形如 `number.xxxx...`。前端只需持有这一个 `key`，连同用户输入一起提交，无需再单独传 `type` 与 `captchaKey`，避免两段式提交带来的时间窗攻击面。
 
 ### 使用方式
 
-由于 `verifyToken` 为 `protected` 方法，无状态验证需通过 `Captcha` 实现实例调用。典型做法是在自定义验证码或控制器中调用：
+`CaptchaResult` 提供两个字段：
+
+- `getCaptchaKey()` —— 内层自包含密文（无状态 token）；
+- `getKey()` —— 合并凭证 `type + "." + captchaKey`，前端应提交这个值。
+
+有状态验证通过 `CaptchaManager.verify(key, userInput)`（合并凭证两参）完成；无状态验证需通过 `Captcha` 实例的 `verifyToken(captchaKey, userInput)`（protected 方法，需子类暴露或反射）完成：
 
 ```java
 import com.weacsoft.jaravel.vendor.captcha.*;
@@ -416,20 +430,20 @@ import com.weacsoft.jaravel.vendor.captcha.*;
 CaptchaManager manager = CaptchaManager.createDefault();
 CaptchaResult result = manager.generate("number", "my-key");
 
-// 前端同时拿到 imageBase64 与 token
-String token = result.getToken();
+// 前端同时拿到 imageBase64 与合并凭证 key
+String key = result.getKey();            // number.xxxx...
 String userInput = "AB23";
 
-// 无状态验证：通过 Captcha 实例的 verifyToken（需子类暴露或反射）
-// 默认 verify() 走的是 store 有状态验证（一次性消费）：
-boolean ok1 = manager.verify("number", "my-key", userInput);
+// 有状态验证（推荐，一次性消费，验证后不可重复提交）：
+boolean ok1 = manager.verify(key, userInput);
 
-// 若要使用 token 无状态验证，需扩展 Captcha 暴露 verifyToken，
-// 或直接使用 AbstractCaptcha 子类实例（protected 方法）
+// 若要使用无状态 token 验证，需扩展 Captcha 暴露 verifyToken，
+// 或直接拿到 AbstractCaptcha 子类实例（protected 方法）：
+// boolean ok2 = ((AbstractCaptcha) manager.get("number")).verifyToken(result.getCaptchaKey(), userInput);
 ```
 
 > **有状态 vs 无状态**：
-> - 有状态（`verify`）：从 `CaptchaStore` 取出答案并一次性删除，验证后不可重复使用，更安全。
+> - 有状态（`verify`）：从 `CaptchaStore` 取出答案并一次性删除（同时消费 nonce），验证后不可重复使用，更安全。
 > - 无状态（`verifyToken`）：不依赖服务端存储，token 自带答案与过期时间，但 token 被截获后可在有效期内重复使用。
 
 ---
@@ -1198,7 +1212,7 @@ CaptchaManager manager = CaptchaManager.createDefault();
 manager.register(new IdiomCaptcha(manager.getStore(), manager.getProperties()));
 
 CaptchaResult result = manager.generate("idiom", key);
-boolean ok = manager.verify("idiom", key, "一帆风顺");
+boolean ok = manager.verify(result.getKey(), "一帆风顺");
 ```
 
 ```java

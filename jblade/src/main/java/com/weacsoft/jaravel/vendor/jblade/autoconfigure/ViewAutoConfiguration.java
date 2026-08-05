@@ -14,6 +14,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.AnnotationUtils;
@@ -92,6 +94,20 @@ public class ViewAutoConfiguration {
         log.info("[view] 默认 View 实现: {}",
                 defaultView == null ? "<none>" : defaultView.name());
         return manager;
+    }
+
+    /**
+     * 声明 jblade 模块的可发布配置类，供 {@code artisan vendor:publish --tag=jblade} 使用。
+     * <p>
+     * 仅声明元数据，不依赖 artisan 模块；未引入 artisan 时该 Bean 无人消费，无副作用。
+     *
+     * @return 可发布配置声明
+     */
+    @Bean
+    @ConditionalOnClass(com.weacsoft.jaravel.vendor.core.publish.PublishableConfig.class)
+    @ConditionalOnMissingBean(JbladePublishableConfig.class)
+    public JbladePublishableConfig jbladePublishableConfig() {
+        return new JbladePublishableConfig();
     }
 
     private CacheStore resolveCacheStore(ObjectProvider<CacheManager> cacheManagerProvider) {

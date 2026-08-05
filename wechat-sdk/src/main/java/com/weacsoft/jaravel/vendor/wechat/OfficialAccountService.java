@@ -86,6 +86,19 @@ public class OfficialAccountService {
     private final CacheStore cacheStore;
 
     /**
+     * 便捷构造器：cacheManager 为 {@code null}（内部回退到内存缓存）。
+     *
+     * @param accessTokenManager Access Token 管理器
+     * @param properties         微信配置属性
+     * @param httpClient         OkHttp 客户端
+     */
+    public OfficialAccountService(AccessTokenManager accessTokenManager,
+                                  WechatProperties properties,
+                                  OkHttpClient httpClient) {
+        this(accessTokenManager, properties, httpClient, null);
+    }
+
+    /**
      * 构造公众号服务。
      * <p>
      * 通过 {@link CacheManager} 解析缓存仓库用于 JSSDK ticket 缓存：使用 cache 模块的默认 store

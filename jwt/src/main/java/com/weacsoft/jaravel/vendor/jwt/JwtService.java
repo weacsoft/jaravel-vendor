@@ -42,9 +42,25 @@ public class JwtService {
     /** 黑名单缓存 store（array / file / redis / database 等），blacklistEnabled=false 时可为 null */
     private final CacheStore blacklistStore;
 
+    /**
+     * 无参构造器，使用默认配置（blacklistStore 为 null，黑名单功能不启用）。
+     */
+    public JwtService() {
+        this(new JwtConfig(), null);
+    }
+
+    /**
+     * 便捷构造器：仅指定配置，blacklistStore 为 null。
+     *
+     * @param config JWT 配置，为 {@code null} 时使用默认配置
+     */
+    public JwtService(JwtConfig config) {
+        this(config, null);
+    }
+
     public JwtService(JwtConfig config, CacheStore blacklistStore) {
-        this.config = config;
-        this.key = Keys.hmacShaKeyFor(config.getSecret().getBytes(StandardCharsets.UTF_8));
+        this.config = config != null ? config : new JwtConfig();
+        this.key = Keys.hmacShaKeyFor(this.config.getSecret().getBytes(StandardCharsets.UTF_8));
         this.blacklistStore = blacklistStore;
     }
 

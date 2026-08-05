@@ -148,4 +148,18 @@ public class QueueDatabaseAutoConfiguration {
         logger.info("[queue] 注册 DatabaseQueueDispatcher，桥接 event 模块到队列驱动");
         return new DatabaseQueueDispatcher(driver, applicationContext);
     }
+
+    /**
+     * 声明 queue-database 模块的可发布配置类，供 {@code artisan vendor:publish --tag=queue-database} 使用。
+     * <p>
+     * 仅声明元数据，不依赖 artisan 模块；未引入 artisan 时该 Bean 无人消费，无副作用。
+     *
+     * @return 可发布配置声明
+     */
+    @Bean
+    @ConditionalOnClass(com.weacsoft.jaravel.vendor.core.publish.PublishableConfig.class)
+    @ConditionalOnMissingBean(QueueDatabasePublishableConfig.class)
+    public QueueDatabasePublishableConfig queueDatabasePublishableConfig() {
+        return new QueueDatabasePublishableConfig();
+    }
 }

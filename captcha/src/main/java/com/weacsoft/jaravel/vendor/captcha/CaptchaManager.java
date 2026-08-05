@@ -25,8 +25,13 @@ import java.util.Set;
  * <pre>
  *   CaptchaManager manager = CaptchaManager.createDefault();
  *   CaptchaResult result = manager.generate("number");
- *   boolean ok = manager.verify("number", result.getCaptchaKey(), userInput);
+ *   // 下发给前端的是「合并凭证」result.getKey()（格式 type.captchaKey）
+ *   boolean ok = manager.verify(result.getKey(), userInput);
  * </pre>
+ * <p>
+ * 校验接口<b>只接收两个参数</b>：合并凭证 + 用户输入。验证码类型已编码在凭证里，
+ * 因此业务方可以把验证码与登录表单等字段一次性提交、一次性校验，
+ * 不需要「先验证码、后业务」的两段式请求（那种做法存在可被重放的时间窗）。
  * <p>
  * <h3>运行时配置覆盖</h3>
  * <pre>
@@ -39,13 +44,13 @@ import java.util.Set;
  * <h3>运行时加密密钥</h3>
  * <pre>
  *   CaptchaResult result = manager.generate("number", null, "my-secret-key");
- *   boolean ok = manager.verify("number", captchaKey, userInput, "my-secret-key");
+ *   boolean ok = manager.verify(result.getKey(), userInput, "my-secret-key");
  * </pre>
  * <p>
  * <h3>静态调用</h3>
  * <pre>
  *   CaptchaResult result = CaptchaManager.generateStatic("number");
- *   boolean ok = CaptchaManager.verifyStatic("number", captchaKey, userInput);
+ *   boolean ok = CaptchaManager.verifyStatic(result.getKey(), userInput);
  * </pre>
  */
 public class CaptchaManager {
@@ -121,6 +126,22 @@ public class CaptchaManager {
         captchas.put(captcha.getType(), captcha);
     }
 
+    /**
+     * 注销指定类型的验证码实现（运行时动态移除）。
+     * <p>
+     * 配合 {@link #register(Captcha)} 即可在运行时动态增删验证码类型，
+     * 实现「各类型相互独立、可插拔」。注销后该类型不再参与生成 / 校验。
+     *
+     * @param type 要注销的验证码类型
+     * @return 被注销的实现（不存在返回 {@code null}）
+     */
+    public Captcha unregister(String type) {
+        if (type == null) {
+            return null;
+        }
+        return captchas.remove(type);
+    }
+
     // ==================== 生成 ====================
 
     /**
@@ -164,60 +185,79 @@ public class CaptchaManager {
         return captcha.generate();
     }
 
-    // ==================== 验证 ====================
+    // ==================== 验证（合并凭证，唯一入口） ====================
 
     /**
-     * 验证指定类型的验证码（使用默认配置，自动解密加密输入）。
+     * 用<b>合并凭证</b>校验验证码（使用默认配置，自动解密加密输入）。
+     * <p>
+     * 合并凭证 {@code key} 由生成时下发（{@link CaptchaResult#getKey()}，
+     * 格式 {@code type + "." + captchaKey}），本身已包含验证码类型，
+     * 因此校验只需要「凭证 + 用户输入」两个参数。
+     * <p>
+     * <b>为什么合并：</b>拆成 {@code type} / {@code captchaKey} 两个参数时，
+     * 前端往往被迫先单独调一次「校验验证码」接口、通过后再提交业务表单，
+     * 两次请求之间存在可被利用的时间窗（拿到"验证通过"状态后重放业务请求）。
+     * 合并成单一凭证后，验证码可以和用户名、密码等字段<b>一次性提交</b>，
+     * 服务端在同一个事务里完成校验，从根本上消除这个漏洞。
      *
-     * @param type       验证码类型
-     * @param captchaKey 验证码标识（自包含加密令牌）
-     * @param userInput  用户输入（可能是加密的）
-     * @return 是否通过；类型未注册返回 {@code false}
+     * @param key       合并凭证（生成时返回的 {@code key} 字段）
+     * @param userInput 用户输入（可能是加密的）
+     * @return 是否通过；凭证格式非法或类型未注册返回 {@code false}
      */
-    public boolean verify(String type, String captchaKey, String userInput) {
-        return verify(type, captchaKey, userInput, null, null);
+    public boolean verify(String key, String userInput) {
+        return verifyDetailed(key, userInput, null, null).isPassed();
     }
 
     /**
-     * 验证指定类型的验证码（带运行时加密密钥）。
+     * 用合并凭证校验验证码（带运行时加密密钥）。
      *
-     * @param type          验证码类型
-     * @param captchaKey    验证码标识
+     * @param key           合并凭证
      * @param userInput     用户输入
      * @param encryptionKey 运行时加密密钥（null 表示使用配置中的密钥）
      * @return 是否通过
      */
-    public boolean verify(String type, String captchaKey, String userInput, String encryptionKey) {
-        return verify(type, captchaKey, userInput, null, encryptionKey);
+    public boolean verify(String key, String userInput, String encryptionKey) {
+        return verifyDetailed(key, userInput, null, encryptionKey).isPassed();
     }
 
     /**
-     * 验证指定类型的验证码（带运行时配置覆盖和加密密钥）。
+     * 用合并凭证校验验证码（带运行时配置覆盖和加密密钥）。
      *
-     * @param type          验证码类型
-     * @param captchaKey    验证码标识
+     * @param key           合并凭证
      * @param userInput     用户输入
      * @param overrides     运行时配置覆盖
      * @param encryptionKey 运行时加密密钥
      * @return 是否通过
      */
-    public boolean verify(String type, String captchaKey, String userInput,
+    public boolean verify(String key, String userInput,
                           CaptchaProperties overrides, String encryptionKey) {
-        return verifyDetailed(type, captchaKey, userInput, overrides, encryptionKey).isPassed();
+        return verifyDetailed(key, userInput, overrides, encryptionKey).isPassed();
     }
 
     /**
-     * 验证指定类型的验证码，返回详细结果（含是否已被使用）。
+     * 用<b>合并凭证</b>校验验证码，返回详细结果（含是否已被使用）。
+     * <p>
+     * 合并凭证格式为 {@code type + "." + captchaKey}；本方法解析出类型后
+     * 分发到对应生成器，调用方无需再传 {@code type}。
      *
-     * @param type          验证码类型
-     * @param captchaKey    验证码标识
+     * @param key           合并凭证（生成时返回的 {@code key} 字段）
      * @param userInput     用户输入
      * @param overrides     运行时配置覆盖
      * @param encryptionKey 运行时加密密钥
      * @return 验证结果（含是否通过、是否已被使用）
      */
-    public VerifyResult verifyDetailed(String type, String captchaKey, String userInput,
+    public VerifyResult verifyDetailed(String key, String userInput,
                           CaptchaProperties overrides, String encryptionKey) {
+        if (key == null) {
+            return VerifyResult.fail();
+        }
+        int idx = key.indexOf('.');
+        if (idx <= 0 || idx == key.length() - 1) {
+            return VerifyResult.fail();
+        }
+        String type = key.substring(0, idx);
+        String captchaKey = key.substring(idx + 1);
+
         Captcha captcha = captchas.get(type);
         if (captcha == null) {
             return VerifyResult.fail();
@@ -226,6 +266,17 @@ public class CaptchaManager {
             return ((AbstractCaptcha) captcha).verify(captchaKey, userInput, overrides, encryptionKey);
         }
         return captcha.verify(captchaKey, userInput) ? VerifyResult.pass() : VerifyResult.fail();
+    }
+
+    /**
+     * 用合并凭证校验验证码，返回详细结果（使用默认配置）。
+     *
+     * @param key       合并凭证
+     * @param userInput 用户输入
+     * @return 验证结果
+     */
+    public VerifyResult verifyDetailed(String key, String userInput) {
+        return verifyDetailed(key, userInput, null, null);
     }
 
     // ==================== 查询 ====================
@@ -333,28 +384,26 @@ public class CaptchaManager {
     }
 
     /**
-     * 静态方法：验证验证码（使用默认实例）。
+     * 静态方法：用合并凭证校验验证码（使用默认实例）。
      *
-     * @param type       验证码类型
-     * @param captchaKey 验证码标识
-     * @param userInput  用户输入
+     * @param key       合并凭证（生成时返回的 {@code key} 字段）
+     * @param userInput 用户输入
      * @return 是否通过
      */
-    public static boolean verifyStatic(String type, String captchaKey, String userInput) {
-        return getDefault().verify(type, captchaKey, userInput);
+    public static boolean verifyStatic(String key, String userInput) {
+        return getDefault().verify(key, userInput);
     }
 
     /**
-     * 静态方法：验证验证码（带运行时加密密钥）。
+     * 静态方法：用合并凭证校验验证码（带运行时加密密钥）。
      *
-     * @param type          验证码类型
-     * @param captchaKey    验证码标识
+     * @param key           合并凭证
      * @param userInput     用户输入
      * @param encryptionKey 运行时加密密钥
      * @return 是否通过
      */
-    public static boolean verifyStatic(String type, String captchaKey, String userInput, String encryptionKey) {
-        return getDefault().verify(type, captchaKey, userInput, encryptionKey);
+    public static boolean verifyStatic(String key, String userInput, String encryptionKey) {
+        return getDefault().verify(key, userInput, encryptionKey);
     }
 
     // ==================== 工厂方法 ====================

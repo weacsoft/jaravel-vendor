@@ -55,8 +55,10 @@ public class CaptchaAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean(CaptchaManager.class)
     public CaptchaManager captchaManager(CaptchaProperties properties,
-                                         org.springframework.beans.factory.ObjectProvider<com.weacsoft.jaravel.vendor.cache.CacheStore> cacheStoreProvider) {
-        com.weacsoft.jaravel.vendor.captcha.CaptchaProperties coreProps = properties.toCoreProperties();
+                                         org.springframework.beans.factory.ObjectProvider<com.weacsoft.jaravel.vendor.cache.CacheStore> cacheStoreProvider,
+                                         org.springframework.beans.factory.ObjectProvider<com.weacsoft.jaravel.vendor.core.crypto.AppKey> appKeyProvider) {
+        com.weacsoft.jaravel.vendor.captcha.CaptchaProperties coreProps =
+                resolveCoreProperties(properties, appKeyProvider);
 
         // 选择防复用存储：优先使用 CacheStore，无则回退到 MemoryCaptchaStore
         CaptchaStore store;
@@ -92,13 +94,65 @@ public class CaptchaAutoConfiguration {
      * 不能再通过查询参数直接指定 {@code tolerance / clickTargetCount / length} 等安全参数。
      * 未配置任何场景时该 Bean 仍会创建，此时任何 scene 都不会命中，一律使用全局配置。
      *
-     * @param properties SpringBoot 配置（含 scenes 定义）
+     * <b>注意</b>：这里必须使用与 {@link #captchaManager} 完全一致的「已解析」核心配置
+     * （即经过 {@code AppKey} 全局密钥兜底处理后的配置）。场景配置由
+     * {@code globalProperties.copy()} 派生，若基准配置未经解析，场景副本就会带上
+     * 模块出厂默认密钥，与管理器实际使用的全局密钥不一致。
+     *
+     * @param properties      SpringBoot 配置（含 scenes 定义）
+     * @param appKeyProvider  全局应用密钥（可选）
      * @return 场景注册表
      */
     @Bean
     @ConditionalOnMissingBean(CaptchaSceneRegistry.class)
-    public CaptchaSceneRegistry captchaSceneRegistry(CaptchaProperties properties) {
-        return new CaptchaSceneRegistry(properties.toCoreProperties(), properties.getScenes());
+    public CaptchaSceneRegistry captchaSceneRegistry(CaptchaProperties properties,
+                                                     org.springframework.beans.factory.ObjectProvider<com.weacsoft.jaravel.vendor.core.crypto.AppKey> appKeyProvider) {
+        return new CaptchaSceneRegistry(resolveCoreProperties(properties, appKeyProvider),
+                properties.getScenes());
+    }
+
+    /**
+     * 将 SpringBoot 配置转换为核心层配置，并完成全局应用密钥兜底。
+     * <p>
+     * 应用密钥兜底：模块自身未显式配置 {@code encryption-key}（等于出厂默认值）时，
+     * 回退到全局 {@code jaravel.key}，避免每个模块各自维护弱默认密钥。
+     * <p>
+     * 该方法被 {@link #captchaManager} 与 {@link #captchaSceneRegistry} 共用，
+     * 保证「生成」与「校验」两侧看到的加解密参数完全一致。
+     *
+     * @param properties     SpringBoot 配置
+     * @param appKeyProvider 全局应用密钥（可选）
+     * @return 已解析的核心层配置
+     */
+    private static com.weacsoft.jaravel.vendor.captcha.CaptchaProperties resolveCoreProperties(
+            CaptchaProperties properties,
+            org.springframework.beans.factory.ObjectProvider<com.weacsoft.jaravel.vendor.core.crypto.AppKey> appKeyProvider) {
+        com.weacsoft.jaravel.vendor.captcha.CaptchaProperties coreProps = properties.toCoreProperties();
+        com.weacsoft.jaravel.vendor.core.crypto.AppKey appKey =
+                (appKeyProvider != null) ? appKeyProvider.getIfAvailable() : null;
+        if (appKey != null) {
+            String effective = appKey.resolve(
+                    coreProps.getEncryptionKey(),
+                    com.weacsoft.jaravel.vendor.captcha.CaptchaProperties.DEFAULT_ENCRYPTION_KEY);
+            coreProps.setEncryptionKey(effective);
+        }
+        return coreProps;
+    }
+
+    /**
+     * 声明验证码模块的 Java 配置类可发布（{@code artisan vendor:publish --tag=captcha}）。
+     * <p>
+     * 发布后在业务工程生成 {@code config/CaptchaConfig.java}，用户可在此增删验证码类型、
+     * 注入自定义实现，做到各类型相互独立、可插拔。该声明与 {@code vendor:publish:static}
+     * （前端静态资源）完全隔离。
+     *
+     * @return 配置类发布声明
+     */
+    @Bean
+    @ConditionalOnClass(com.weacsoft.jaravel.vendor.core.publish.PublishableConfig.class)
+    @ConditionalOnMissingBean(CaptchaPublishableConfig.class)
+    public CaptchaPublishableConfig captchaPublishableConfig() {
+        return new CaptchaPublishableConfig();
     }
 
     /**
@@ -109,7 +163,7 @@ public class CaptchaAutoConfiguration {
      * <pre>
      * artisan vendor:publish:static --tag=captcha
      * </pre>
-     * 把 {@code jaravel-captcha.js} 与独立演示页发布到 {@code src/main/resources/static/}。
+     * 把 {@code jaravel-captcha.js}（零依赖前端库）发布到 {@code src/main/resources/static/}。
      * <p>
      * 该 Bean 只被 {@code vendor:publish:static} 消费，普通 {@code vendor:publish} 不会触发。
      *

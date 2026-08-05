@@ -59,6 +59,15 @@ public class LocalFilesystem implements Filesystem {
     private final Visibility defaultVisibility;
 
     /**
+     * 便捷构造器：仅指定根目录，name 默认 {@code "local"}，urlPrefix 和 defaultVisibility 为 {@code null}。
+     *
+     * @param root 根目录（相对运行目录或绝对路径），自动创建
+     */
+    public LocalFilesystem(String root) {
+        this("local", root, null, null);
+    }
+
+    /**
      * 创建本地文件系统。
      *
      * @param name              磁盘名称
