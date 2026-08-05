@@ -1,5 +1,6 @@
 package com.weacsoft.jaravel.vendor.http.controller.response;
 
+import com.weacsoft.jaravel.vendor.http.pjax.PjaxRenderer;
 import com.weacsoft.jaravel.vendor.jblade.view.ViewFacade;
 import com.weacsoft.jaravel.vendor.json.Json;
 import com.weacsoft.jaravel.vendor.utils.Maps;
@@ -12,6 +13,28 @@ import java.util.List;
 import java.util.Map;
 
 public class ResponseBuilder {
+
+    /**
+     * PJAX 渲染策略，由 wire 模块在启动时注册。为 {@code null} 时表示未启用 PJAX。
+     * <p>使用 volatile 保证跨线程可见性；注册发生在启动阶段，运行期只读。</p>
+     */
+    private static volatile PjaxRenderer pjaxRenderer;
+
+    /**
+     * 注册 PJAX 渲染策略。由 wire 模块的自动配置在容器启动时调用。
+     *
+     * @param renderer 渲染器；传 {@code null} 可注销
+     */
+    public static void setPjaxRenderer(PjaxRenderer renderer) {
+        ResponseBuilder.pjaxRenderer = renderer;
+    }
+
+    /**
+     * 获取当前注册的 PJAX 渲染策略。
+     */
+    public static PjaxRenderer getPjaxRenderer() {
+        return pjaxRenderer;
+    }
 
     /**
      * 便捷构造不可变 Map，用于替代 {@code Map.of(...)}。
@@ -50,7 +73,30 @@ public class ResponseBuilder {
         };
     }
 
+    /**
+     * 渲染视图。
+     *
+     * <p><b>PJAX 透明接管</b>：若已注册 {@link PjaxRenderer} 且当前请求带 PJAX 标记，
+     * 则委托渲染器返回「仅变化区域」的局部响应；否则按常规整页渲染。
+     * 控制器无需感知，写法保持不变。</p>
+     *
+     * @param templateName 模板名，如 {@code "pages.home"}
+     * @param data         模板变量
+     */
     public static Response view(String templateName, Map<String, Object> data) {
+        PjaxRenderer renderer = pjaxRenderer;
+        if (renderer != null) {
+            try {
+                if (renderer.shouldIntercept()) {
+                    Response pjaxResponse = renderer.render(templateName, data);
+                    if (pjaxResponse != null) {
+                        return pjaxResponse;
+                    }
+                }
+            } catch (RuntimeException e) {
+                // PJAX 渲染失败时静默回退整页渲染，保证可用性
+            }
+        }
         return new AbstractResponse() {
             {
                 addHeader("Content-Type", "text/html; charset=utf-8");

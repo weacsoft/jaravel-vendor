@@ -56,6 +56,16 @@ public class BladeEngine {
     /** 预编译模板名 -> 类全限定名映射 */
     private Map<String, String> precompiledTemplateMapping;
 
+    /** 模板目录（用于 view:cache 扫描与预编译产物定位） */
+    private final String templateDir;
+
+    /**
+     * PJAX 区域元数据缓存（编译期分析所得）。
+     * <p>key = 模板名，value = 该模板的布局父链 + 实际输出的 @yield 区域名集合。
+     * 在模板编译时填充（{@link #analyzeRegions}），PJAX 切换时按此推导需要更新的区域，无需重新渲染。</p>
+     */
+    private final Map<String, TemplateRegionMeta> regionMetaCache = new ConcurrentHashMap<>();
+
     public BladeEngine(String templateDir) {
         this(templateDir, DEFAULT_SUFFIX, null, null);
     }
@@ -122,6 +132,7 @@ public class BladeEngine {
         ClassLoader runtimeParent = BladeEngine.class.getClassLoader();
         this.memoryClassLoader = memoryClassLoader != null ? memoryClassLoader
                 : new MemoryClassLoader(new ConcurrentHashMap<>(), runtimeParent);
+        this.templateDir = templateDir;
         this.compiler = new BladeCompiler(templateDir, this.memoryClassLoader, suffix);
         this.cacheStore = cacheStore;
         this.useCacheStore = cacheStore != null;
@@ -133,6 +144,22 @@ public class BladeEngine {
      */
     public String getSuffix() {
         return compiler.getSuffix();
+    }
+
+    /**
+     * 获取当前模板目录
+     * @return 模板目录（classpath 下相对路径，如 "templates"）
+     */
+    public String getTemplateDir() {
+        return templateDir;
+    }
+
+    /**
+     * 取得一级模板类缓存当前大小（供 ViewCache 统计）。
+     * @return 已编译模板数量
+     */
+    public int templateClassCacheSize() {
+        return templateClassCache.size();
     }
 
     /**
@@ -316,7 +343,10 @@ public class BladeEngine {
         BladeTemplate current = template;
         java.util.Set<String> visited = new java.util.LinkedHashSet<>();
         visited.add(templateName);
-        String parentName = context.getParentTemplate();
+        // 保存子模板 @extends 声明的直接父模板名；循环内为终止继承会将其清空，
+        // 但对外（如 PJAX 兼容性判定）这是必要的布局元数据，须在方法结束时还原。
+        String originalParent = context.getParentTemplate();
+        String parentName = originalParent;
         while (parentName != null && !parentName.isEmpty()) {
             if (!visited.add(parentName)) {
                 throw new IllegalStateException("模板继承出现循环: " + visited + " -> " + parentName);
@@ -332,6 +362,8 @@ public class BladeEngine {
             current = parent;
             parentName = context.getParentTemplate();
         }
+        // 还原直接父模板名，供调用方（renderPjax 的布局兼容性判定）读取
+        context.setParentTemplate(originalParent);
         return current;
     }
 
@@ -433,6 +465,220 @@ public class BladeEngine {
         initInheritanceChain(template, templateName, context);
 
         return new ArrayList<>(context.getSectionRenderers().keySet());
+    }
+
+    // ===== PJAX 区域分析与渲染 =====
+
+    /**
+     * PJAX 区域元数据（编译期分析所得）。
+     */
+    public static class TemplateRegionMeta {
+        /** 布局父模板名（@extends 指向的模板），可能为 null（无布局） */
+        public String parentTemplate;
+        /** 本模板（含继承链）实际输出的所有 @yield 区域名（有序） */
+        public java.util.LinkedHashSet<String> yieldNames = new java.util.LinkedHashSet<>();
+        /** 本模板（含继承链）注册的 @section 名（有序） */
+        public java.util.LinkedHashSet<String> sectionNames = new java.util.LinkedHashSet<>();
+
+        /** 派生出需要参与切换判定的全部区域名（yield ∪ 已注册 section，去重保序） */
+        public java.util.List<String> regionNames() {
+            java.util.LinkedHashSet<String> all = new java.util.LinkedHashSet<>();
+            all.addAll(yieldNames);
+            all.addAll(sectionNames);
+            return new java.util.ArrayList<>(all);
+        }
+    }
+
+    /**
+     * 取得模板的区域元数据（编译期分析所得）。未分析则触发一次分析。
+     *
+     * @param templateName 模板名
+     * @return 区域元数据（至少包含空集合，不会为 null）
+     */
+    public TemplateRegionMeta getRegionMeta(String templateName) throws Exception {
+        TemplateRegionMeta meta = regionMetaCache.get(templateName);
+        if (meta != null) {
+            return meta;
+        }
+        analyzeRegions(templateName, loadTemplate(templateName).getClass().getName());
+        return regionMetaCache.getOrDefault(templateName, new TemplateRegionMeta());
+    }
+
+    /**
+     * 编译期区域分析：初始化继承链并完整渲染一次（输出丢弃），
+     * 记录布局父链 + @yield 区域名 + 注册 @section 名，存入 regionMetaCache。
+     * <p>失败（如模板需请求级数据）仅缺失元数据，PJAX 退化为整页渲染，不影响正常功能。</p>
+     */
+    private void analyzeRegions(String templateName, String className) {
+        try {
+            Class<?> cls = memoryClassLoader.loadClass(className);
+            BladeTemplate template = (BladeTemplate) cls.getDeclaredConstructor().newInstance();
+            template.setEngine(this);
+            template.resetContext();
+            BladeContext context = template.getContext();
+            BladeTemplate root = initInheritanceChain(template, templateName, context);
+            // 触发完整渲染以记录 @yield 区域名（输出丢弃）
+            java.io.StringWriter sink = new java.io.StringWriter();
+            root.render(sink);
+            TemplateRegionMeta meta = new TemplateRegionMeta();
+            meta.parentTemplate = context.getParentTemplate();
+            meta.yieldNames = new java.util.LinkedHashSet<>(context.getYieldedNames());
+            meta.sectionNames = new java.util.LinkedHashSet<>(context.getSectionRenderers().keySet());
+            regionMetaCache.put(templateName, meta);
+        } catch (Exception e) {
+            // 分析失败不阻断编译/渲染
+        }
+    }
+
+    /**
+     * 清除区域元数据缓存（与模板类缓存同步失效）。
+     */
+    public void clearRegionMeta() {
+        regionMetaCache.clear();
+    }
+
+    /**
+     * PJAX 渲染结果持有者。
+     */
+    public static class PjaxRenderResult {
+        public String html;
+        public TemplateRegionMeta meta;
+        public String title;
+    }
+
+    /**
+     * 以 PJAX 模式渲染模板：在每个 @yield 区域外包裹 pjax 分段标记，
+     * 并附带编译期分析得到的区域元数据与页面标题。
+     *
+     * @param templateName 模板名
+     * @param variables    模板变量
+     * @return 渲染结果（含带标记的 HTML、区域元数据、标题文本）
+     */
+    public PjaxRenderResult renderPjax(String templateName, Map<String, Object> variables) throws Exception {
+        BladeTemplate template = loadTemplate(templateName);
+        template.setEngine(this);
+        template.resetContext();
+        BladeContext context = template.getContext();
+        if (variables != null) {
+            for (Map.Entry<String, Object> entry : variables.entrySet()) {
+                context.setVariable(entry.getKey(), entry.getValue());
+            }
+        }
+        context.setVariable(BladeTemplate.PJAX_MODE_KEY, true);
+        BladeTemplate root = initInheritanceChain(template, templateName, context);
+        String html = root.render();
+        PjaxRenderResult result = new PjaxRenderResult();
+        result.html = html;
+        // 从本次实际渲染（已带入模板变量，必然成功）的上下文提取区域元数据。
+        // 注意：不可依赖 getRegionMeta 的无变量预热渲染——当模板需要请求级数据时，
+        // 预热渲染会抛异常被吞掉，导致 parentTemplate 等永远为空，进而 PJAX 兼容性
+        // 判定（isCompatible）始终失败、永远退化为整页刷新。
+        result.meta = captureRegionMeta(templateName, context);
+        String title = extractPjaxRegion(html, "title");
+        result.title = title != null ? title : "";
+        return result;
+    }
+
+    /**
+     * 从实际渲染后的上下文提取区域元数据，并回写 regionMetaCache。
+     *
+     * <p>与 {@link #analyzeRegions} 不同，这里使用的是已成功渲染（带模板变量）的
+     * 上下文，因此 {@code parentTemplate} / @yield 区域名 / 已注册 @section 名都真实可靠。
+     * 这正是 PJAX 兼容性判定（布局相同 + 区域集合相同）所必需的信息。</p>
+     */
+    private TemplateRegionMeta captureRegionMeta(String templateName, BladeContext context) {
+        TemplateRegionMeta meta = new TemplateRegionMeta();
+        meta.parentTemplate = context.getParentTemplate();
+        meta.yieldNames = new java.util.LinkedHashSet<>(context.getYieldedNames());
+        meta.sectionNames = new java.util.LinkedHashSet<>(context.getSectionRenderers().keySet());
+        regionMetaCache.put(templateName, meta);
+        return meta;
+    }
+
+    /**
+     * 从带 pjax 标记的 HTML 中提取指定区域名的内容（不含标记本身）。
+     *
+     * @param html 带 pjax 标记的 HTML
+     * @param name 区域名
+     * @return 区域内容；不存在返回 null
+     */
+    public static String extractPjaxRegion(String html, String name) {
+        if (html == null || name == null) {
+            return null;
+        }
+        String start = BladeTemplate.PJAX_SECTION_START_PREFIX + name + "-->";
+        String end = BladeTemplate.PJAX_SECTION_END_PREFIX + name + "-->";
+        int s = html.indexOf(start);
+        if (s < 0) {
+            return null;
+        }
+        int contentStart = s + start.length();
+        int e = html.indexOf(end, contentStart);
+        if (e < 0) {
+            return html.substring(contentStart);
+        }
+        return html.substring(contentStart, e);
+    }
+
+    /**
+     * 扫描模板目录下所有模板名（用于 view:cache 全量预编译）。
+     * <p>优先扫描文件系统 {@code resources/<templateDir>}，便于开发期 artisan 命令直接预热；
+     * 找不到时回退到 classpath 资源遍历（适用于 fat-jar 等打包形态）。</p>
+     *
+     * @return 点分式模板名列表
+     */
+    public java.util.List<String> scanTemplateNames() {
+        java.util.List<String> names = new java.util.ArrayList<>();
+        java.io.File dir = new java.io.File("resources" + java.io.File.separator + templateDir);
+        if (dir.isDirectory()) {
+            collectTemplateFiles(dir, dir, names);
+        } else {
+            try {
+                java.net.URL url = BladeEngine.class.getClassLoader().getResource(templateDir.replace(java.io.File.separator, "/"));
+                if (url != null) {
+                    java.nio.file.Path base = java.nio.file.Paths.get(url.toURI());
+                    if (java.nio.file.Files.isDirectory(base)) {
+                        collectTemplatePaths(base, base, names);
+                    }
+                }
+            } catch (Exception ignored) {
+                // classpath 遍历失败，返回已扫描结果
+            }
+        }
+        return names;
+    }
+
+    private void collectTemplateFiles(java.io.File baseDir, java.io.File current, java.util.List<String> names) {
+        java.io.File[] files = current.listFiles();
+        if (files == null) {
+            return;
+        }
+        String suffix = compiler.getSuffix();
+        for (java.io.File f : files) {
+            if (f.isDirectory()) {
+                collectTemplateFiles(baseDir, f, names);
+            } else if (f.getName().endsWith(suffix)) {
+                // URI#getPath 统一使用 '/' 分隔，不能用 File.separator（Windows 上为 '\'）替换
+                String rel = baseDir.toURI().relativize(f.toURI()).getPath();
+                String name = rel.substring(0, rel.length() - suffix.length()).replace('/', '.');
+                names.add(name);
+            }
+        }
+    }
+
+    private void collectTemplatePaths(java.nio.file.Path baseDir, java.nio.file.Path current, java.util.List<String> names) {
+        String suffix = compiler.getSuffix();
+        try (java.util.stream.Stream<java.nio.file.Path> stream = java.nio.file.Files.walk(current)) {
+            stream.filter(p -> p.toString().endsWith(suffix) && java.nio.file.Files.isRegularFile(p)).forEach(p -> {
+                String rel = baseDir.relativize(p).toString();
+                String name = rel.substring(0, rel.length() - suffix.length())
+                        .replace('\\', '.')
+                        .replace('/', '.');
+                names.add(name);
+            });
+        } catch (Exception ignored) {
+            // 遍历异常忽略
+        }
     }
 
     /**
@@ -540,6 +786,8 @@ public class BladeEngine {
         String className = compiler.compile(templateName);
         // 从 MemoryClassLoader 加载 Class
         Class<?> templateClass = memoryClassLoader.loadClass(className);
+        // 编译期区域分析（PJAX）：记录布局父链 + @yield 区域名集合
+        analyzeRegions(templateName, className);
 
         // 将字节码存入二级缓存
         if (useCacheStore) {
@@ -571,6 +819,7 @@ public class BladeEngine {
             }
         }
         templateClassCache.clear();
+        regionMetaCache.clear();
         clearTemplateInstanceCache();
     }
 
@@ -585,6 +834,7 @@ public class BladeEngine {
         templateName = templateName.replace("'", "").replace("\"", "");
         templateClassCache.remove(templateName);
         templateInstanceCache.remove(templateName);
+        regionMetaCache.remove(templateName);
         if (useCacheStore) {
             cacheStore.forget(CACHE_KEY_PREFIX + templateName);
         }

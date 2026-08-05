@@ -11,6 +11,17 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public abstract class BladeTemplate {
+    /** PJAX 模式标记，设置到 BladeContext 中触发 @yield 的 pjax 分段标记 */
+    public static final String PJAX_MODE_KEY = "__pjax_mode";
+
+    /** PJAX 分段标记前缀/后缀（包裹每个 @yield 区域，供前端按区域名定位与 diff） */
+    public static final String PJAX_SECTION_START_PREFIX = "<!--pjax:start:";
+    public static final String PJAX_SECTION_END_PREFIX = "<!--pjax:end:";
+
+    /** Wire 分段标记前缀/后缀（与 PJAX 标记互不影响，可同时输出） */
+    public static final String WIRE_SECTION_START_PREFIX = "<!--wire:section-start:";
+    public static final String WIRE_SECTION_END_PREFIX = "<!--wire:section-end:";
+
     protected BladeContext context;
     private BladeEngine engine;
     private volatile boolean initialized = false;
@@ -830,13 +841,22 @@ public abstract class BladeTemplate {
 
     /**
      * @yield：输出 section 内容或默认值。
-     * 仅当 __wire_mode 为“真值”时输出 wire 分段标记
-     * （修复：以前使用 != null 判断，传入 false 也会输出标记）。
+     * <ul>
+     *   <li>仅当 __wire_mode 为“真值”时输出 wire 分段标记；</li>
+     *   <li>仅当 __pjax_mode 为“真值”时输出 pjax 分段标记（用于 PJAX 无感切换的区域定位）；</li>
+     * </ul>
+     * （修复：以前使用 != null 判断，传入 false 也会输出标记。）
      */
     protected void yieldSection(Writer writer, String name, Object defaultValue) throws Exception {
         boolean wireMode = toBoolean(context.getVariable("__wire_mode"));
+        boolean pjaxMode = toBoolean(context.getVariable("__pjax_mode"));
+        // 记录 yield 区域名，供编译期区域分析（PJAX）使用
+        context.recordYield(name);
         if (wireMode) {
-            writer.write("<!--wire:section-start:" + name + "-->");
+            writer.write(WIRE_SECTION_START_PREFIX + name + "-->");
+        }
+        if (pjaxMode) {
+            writer.write(PJAX_SECTION_START_PREFIX + name + "-->");
         }
         String content = context.yieldSection(name);
         if (content != null) {
@@ -844,8 +864,11 @@ public abstract class BladeTemplate {
         } else if (defaultValue != null) {
             writer.write(String.valueOf(defaultValue));
         }
+        if (pjaxMode) {
+            writer.write(PJAX_SECTION_END_PREFIX + name + "-->");
+        }
         if (wireMode) {
-            writer.write("<!--wire:section-end:" + name + "-->");
+            writer.write(WIRE_SECTION_END_PREFIX + name + "-->");
         }
     }
 

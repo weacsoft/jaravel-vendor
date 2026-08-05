@@ -41,6 +41,14 @@
 - [13. Section 排除列表](#13-section-排除列表)
 - [14. 完整控制器示例](#14-完整控制器示例)
 - [15. 线程安全说明](#15-线程安全说明)
+- [16. 命名组件（toast / confirm 等临时事务）](#16-命名组件toast--confirm-等临时事务)
+  - [16.1 设计动机](#161-设计动机)
+  - [16.2 三步接入](#162-三步接入)
+  - [16.3 四个生命周期与 wire.stop()](#163-四个生命周期与-wirestop)
+  - [16.4 WireOutlet 加载位置中间件](#164-wireoutlet-加载位置中间件)
+  - [16.5 组件间隔离机制](#165-组件间隔离机制)
+  - [16.6 配置项](#166-配置项)
+  - [16.7 与 PJAX 协同](#167-与-pjax-协同)
 
 ---
 
@@ -74,12 +82,20 @@ com.weacsoft.jaravel.vendor.wire
 ├── WireResponse         // 语义化响应构建器：wire/update/redirect/error/of
 ├── WireRequest          // 请求解析：从前端 POST 的 JSON 中解析 snapshot/action/params/sections
 ├── WireManager          // 核心工具类：Wire 模式渲染、section 提取、snapshot 编解码、资源注入
+├── component            // 命名组件（toast / confirm 等临时事务，见第 16 节）
+│   ├── WireOutlet              // 加载位置中间件：注入 outlet 容器 + bootstrap + 前端运行时
+│   ├── WireComponents          // 注册表（ConcurrentHashMap）+ 待下发队列（ThreadLocal）
+│   ├── WireComponentDefinition // 组件定义：name / template / defaults
+│   ├── WireComponentPayload    // 下发载荷：id / name / html / script / params
+│   └── WireComponentRenderer   // 渲染器：普通 Blade 渲染 + 抽离 <script wire:lifecycle>
 └── springboot
     ├── WireProperties       // SpringBoot 配置属性（@ConfigurationProperties, prefix=jaravel.wire）
-    └── WireAutoConfiguration // SpringBoot 自动装配（@ConditionalOnProperty 控制）
+    ├── WireAutoConfiguration // SpringBoot 自动装配（@ConditionalOnProperty 控制）
+    └── WireComponentAutoConfiguration // 注册 WireOutlet 别名、wire_outlet() 模板函数、命名组件
 
 resources/static/
-└── wire.js              // 前端运行时：事件绑定、局部更新、双向绑定、认证过期处理（零依赖）
+├── wire.js              // 前端运行时：事件绑定、局部更新、双向绑定、认证过期处理（零依赖）
+└── wire-component.js    // 命名组件运行时：四生命周期、逐实例闭包隔离、stop 语义（零依赖）
 ```
 
 ---
@@ -1011,8 +1027,231 @@ router.post("/api/wire/demo", demoController::update);
 | `WireRequest` | **单请求隔离** | 每次请求通过 `from` 创建新实例，字段 `final`，不可变 |
 | `WireManager` | **线程安全** | 无状态工具类，所有方法为静态方法。`engine` 静态字段在启动阶段单次写入后只读。`ObjectMapper` 为静态 final 线程安全。可在并发请求间安全复用 |
 | `wire.js` | 单组件隔离 | 前端运行时，每个 `wire:config` 对应一个 component 实例，`boundElements` Set 防止重复绑定 |
+| `WireComponents` | **线程安全 + 请求级隔离** | 注册表 `REGISTRY` 是 `ConcurrentHashMap`（启动期写、运行期读）；待下发队列 `PENDING` 是 `ThreadLocal`，天然按请求隔离，由 `WireOutlet` 在 `finally` 中兜底清理 |
+| `WireComponentRenderer` | **线程安全** | 无状态静态工具类，实例序号用 `AtomicLong` 自增 |
+| `WireOutlet` | **线程安全** | 中间件实例无请求态字段，配置项在启动期单次写入后只读 |
+| `wire-component.js` | 单实例隔离 | 每个实例的生命周期脚本用 `new Function` 单独求值，各自独立闭包，`wire.stop()` 只作用于自身 |
 
 > `WireService` / `WireResponse` / `WireRequest` 设计为「用完即弃」的请求级对象，不可跨请求复用。`WireManager` 是无状态工具类，可安全地在并发环境下调用。
+
+---
+
+## 16. 命名组件（toast / confirm 等临时事务）
+
+### 16.1 设计动机
+
+消息提示、确认框这类**临时事务型 UI** 有三个特点：与页面主数据无关、生命周期短、可能同时存在多个实例。
+把它们塞进 Wire 的 section 体系并不合适——它们不需要 snapshot、不需要局部刷新，只需要「后端说一声，前端弹出来，展示完自己消失」。
+
+命名组件机制为此而生：
+
+- **模板是普通 Blade 模板**，不需要 `wire:section`、不需要 snapshot，也不参与 Wire 局部刷新；
+- **在启动期注册名称 → 模板的映射**（类似 Blade 注册自定义指令）；
+- **后端一行代码下发**：`WireService.responseComponent(name, params)`；
+- **前端完全无感**：`wire-component.js` 自动挂载、自动执行生命周期、自动移除。
+
+### 16.2 三步接入
+
+**① 注册命名组件**（配置式，推荐）：
+
+```yaml
+jaravel:
+  wire:
+    components:
+      toast: components.toast       # 名称 -> 模板路径
+      confirm: components.confirm
+```
+
+也可以在启动期编程式注册：
+
+```java
+WireComponents.register("toast", "components.toast");
+WireComponents.registerAll(Map.of("confirm", "components.confirm"));
+```
+
+**② 写模板**（`templates/components/toast.blade.java`）——普通模板片段，不需要 `@extends`：
+
+```html
+<div class="wc-toast wc-toast--{{ $level }}" id="{{ $wireId }}">
+    <span class="wc-toast__icon">{{ $icon }}</span>
+    <span class="wc-toast__msg">{{ $message }}</span>
+</div>
+
+<script wire:lifecycle>
+    var timer = null;
+    function onCreate(el, params, wire) { /* 入场前：算堆叠位移等 */ }
+    function onStart(el, params, wire) {
+        el.classList.add('is-in');
+        timer = setTimeout(function () { wire.stop(); }, params.ttl || 3000);
+    }
+    function onStop(el, params, wire) {
+        el.classList.remove('is-in');
+        return 280;              // 返回毫秒数 -> 延后 280ms 再移除 DOM（播完退场动画）
+    }
+    function onDestroy(el, params, wire) { clearTimeout(timer); }
+</script>
+```
+
+**③ 后端下发**：
+
+```java
+// 路径 A：Wire 更新响应中下发（随 effects.components 返回）
+return WireService.from(request, "my-page", "/api/my-page")
+        .action("save", c -> {
+            // ... 业务逻辑
+            c.responseComponent("toast", Map.of(
+                    "level", "success", "icon", "✓",
+                    "message", "保存成功", "ttl", 3000));
+        })
+        .responseUpdate();
+
+// 路径 B：首屏 / 普通页面下发（由 WireOutlet 中间件注入 bootstrap）
+WireComponents.push("toast", Map.of("level", "info", "message", "欢迎回来"));
+return ResponseBuilder.view("dashboard", data);
+
+// 路径 C：WireResponse 链式写法
+return WireResponse.update(sections, snapshot)
+        .withComponent("toast", Map.of("message", "已更新"));
+```
+
+三条路径都不需要改模板、不需要前端写任何挂载代码。
+
+### 16.3 四个生命周期与 wire.stop()
+
+| 钩子 | 触发时机 | 典型用途 | 返回值语义 |
+| --- | --- | --- | --- |
+| `onCreate(el, params, wire)` | DOM 已创建、**尚未插入文档** | 计算初始位置、设置初始样式（避免闪烁） | 忽略 |
+| `onStart(el, params, wire)` | DOM 已插入文档 | 播入场动画、绑定事件、起 ttl 定时器 | 忽略 |
+| `onStop(el, params, wire)` | 调用 `wire.stop()` 后、**移除 DOM 之前** | 播退场动画 | 返回 `number` → 延迟该毫秒数后再移除；返回 `Promise` → 等它 resolve 后再移除 |
+| `onDestroy(el, params, wire)` | DOM 已从文档移除 | 清定时器、解绑全局监听 | 忽略 |
+
+四个钩子**全部可选**，只实现需要的即可。
+
+`wire` 参数由运行时注入，提供：
+
+- `wire.stop()` —— 模板内主动声明「我展示完了，移除我」。这是结束一个组件的**唯一入口**；
+- `wire.id` —— 当前实例的唯一 id；
+- `wire.params` —— 后端下发的参数对象。
+
+```html
+<script wire:lifecycle>
+    function onStart(el, params, wire) {
+        el.querySelector('[data-wc-ok]').addEventListener('click', function () {
+            document.dispatchEvent(new CustomEvent('wc:confirm',
+                { detail: { id: wire.id, ok: true } }));
+            wire.stop();          // ← 用户点了确定，结束本实例
+        });
+    }
+</script>
+```
+
+### 16.4 WireOutlet 加载位置中间件
+
+`WireOutlet` 是仿 `VerifyCsrfToken` 设计的中间件，负责三件事：
+
+1. 标记本次请求「命名组件可用」（模板函数 `wire_outlet()` 据此决定是否输出容器）；
+2. 请求结束后取走本次积压的组件，注入到响应里（HTML 走 bootstrap `<script>`，PJAX JSON 走 `components` 字段）；
+3. 自动注入前端运行时 `wire-component.js`。
+
+**默认挂载位置**在 `RouteServiceProvider` 的 Web 分组末尾（不在 `Web.java` 里逐条声明）：
+
+```java
+// RouteServiceProvider
+Route.group(new String[]{"VerifyCsrfToken", "WireOutlet"}, () -> {
+    // ... web 路由
+});
+```
+
+**加载位置**默认是 `</body>` 之前（`position: body-end`），也可以在模板里用 `wire_outlet()` 显式指定：
+
+```html
+<div class="my-notification-area">
+    {!! wire_outlet() !!}
+</div>
+```
+
+中间件检测到页面里已经有 `wire:outlet` 标记就**不会重复注入**，因此显式指定与自动注入不会冲突。
+中间件未启用（例如该路径在 `except` 里）时，`wire_outlet()` 返回空字符串，不会留下无人管理的空容器。
+
+**例外配置**支持精确匹配与前缀通配：
+
+```yaml
+jaravel:
+  wire:
+    outlet:
+      except:
+        - /login              # 精确匹配
+        - /demo/storage/*     # 前缀通配
+```
+
+### 16.5 组件间隔离机制
+
+同一页面可能同时存在多个实例（包括同名的多个 toast），隔离靠三层保证：
+
+1. **实例 id 唯一**：渲染时生成 `wc-{name}-{seq}`，模板内可用 `{{ $wireId }}`（组件名为 `{{ $wireName }}`）引用，
+   用于作用域化 DOM id 与 CSS，DOM 查询天然隔离；
+2. **生命周期脚本逐实例求值**：渲染器把 `<script wire:lifecycle>` 从 HTML 中**抽离**到 payload 的 `script` 字段，前端用
+   `new Function(script + '; return {onCreate, onStart, onStop, onDestroy}')` 对**每个实例单独求值**，
+   得到各自独立的闭包作用域——上例中的 `var timer` 在每个实例里都是独立变量，互不覆盖；
+3. **stop 只作用于自身**：`wire.stop()` 是绑定到当前实例的闭包方法，一个实例结束不会影响其他实例。
+
+> 为什么要把 `<script>` 抽出来？因为通过 `innerHTML` 插入的 `<script>` 标签**不会被浏览器执行**。
+> 抽离后由运行时显式求值，既解决了执行问题，又顺带拿到了闭包隔离。
+
+组件载荷结构：
+
+```json
+{
+  "id": "wc-toast-7",
+  "name": "toast",
+  "html": "<div class=\"wc-toast ...\">...</div>",
+  "script": "var timer=null; function onStart(el, params, wire){...}",
+  "params": { "level": "success", "message": "保存成功", "ttl": 3000 }
+}
+```
+
+### 16.6 配置项
+
+```yaml
+jaravel:
+  wire:
+    components:                          # 命名组件注册表：名称 -> 模板
+      toast: components.toast
+      confirm: components.confirm
+    outlet:
+      enabled: true                      # 是否启用加载位置注入
+      position: body-end                 # body-end | body-start
+      auto-inject-js: true               # 是否自动注入 wire-component.js
+      js-path: /static/wire-component.js
+      except:                            # 不注入的路径，支持 /path 与 /prefix/*
+        - /login
+```
+
+| 配置项 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `jaravel.wire.components` | `Map<String,String>` | `{}` | 命名组件注册表，键为组件名，值为 Blade 模板路径 |
+| `jaravel.wire.outlet.enabled` | `boolean` | `true` | 是否启用 outlet 注入 |
+| `jaravel.wire.outlet.position` | `String` | `body-end` | 自动注入位置：`body-end`（`</body>` 前）/ `body-start`（`<body>` 后） |
+| `jaravel.wire.outlet.auto-inject-js` | `boolean` | `true` | 是否自动注入 `wire-component.js` |
+| `jaravel.wire.outlet.js-path` | `String` | `/static/wire-component.js` | 前端运行时路径 |
+| `jaravel.wire.outlet.except` | `List<String>` | `[]` | 不注入 outlet 的路径，支持精确匹配与 `*` 前缀通配 |
+
+配置由 `WireComponentAutoConfiguration` 在启动时应用，并注册 `WireOutlet` 中间件别名与 `wire_outlet()` 模板函数。
+注册失败会直接抛 `IllegalStateException` 让应用启动失败，避免运行期才发现「指令不存在」。
+
+### 16.7 与 PJAX 协同
+
+三条下发路径在 PJAX 场景下都能正常工作：
+
+| 场景 | 响应形态 | 组件注入位置 | 前端挂载方 |
+| --- | --- | --- | --- |
+| 首屏 / 整页加载 | HTML | `<script type="application/json" wire:components>` bootstrap | `wire-component.js` 自扫描 |
+| Wire 局部更新 | JSON | `effects.components` | `wire.js` 委派给 `WireComponent.mountAll` |
+| PJAX 局部导航 | JSON | 顶层 `components` | `pjax.js` 委派给 `WireComponent.mountAll` |
+
+三者共用同一份 `WireComponents` 队列与同一个渲染器，因此后端代码完全不需要区分当前是哪种请求。
+
+> Wire 页面本身自带局部刷新能力，不纳入 PJAX 管辖；普通页面走 PJAX，组件随 `components` 字段一起下发。
 
 ---
 
@@ -1021,7 +1260,11 @@ router.post("/api/wire/demo", demoController::update);
 - **Snapshot（快照）**：组件状态的 Base64 JSON 编码，在客户端与服务端之间流转，使服务端无状态。
 - **Section（区块）**：模板中可独立更新的区域，通过 `wire:section="name"` 标记。
 - **Action（动作）**：前端触发的操作名称（如 `increment`、`save`），服务端通过 `WireService.action` 注册处理器。
-- **Effects（副作用）**：响应中除 section 更新外的附加效果，如 `redirect`、`dispatch` 事件。
+- **Effects（副作用）**：响应中除 section 更新外的附加效果，如 `redirect`、`dispatch` 事件、`components` 命名组件。
+- **命名组件（Wire Component）**：注册在名称下的普通 Blade 模板片段（toast / confirm 等），不参与局部刷新，
+  由后端 `responseComponent(name, params)` 下发、前端按四个生命周期自动挂载与销毁。详见[第 16 节](#16-命名组件toast--confirm-等临时事务)。
+- **Outlet（加载位置）**：命名组件在页面中的挂载点。默认由 `WireOutlet` 中间件注入到 `</body>` 前，
+  也可在模板里用 `{!! wire_outlet() !!}` 显式指定。
 
 ## 配置
 
@@ -1047,6 +1290,8 @@ jaravel:
 | `jaravel.wire.excluded-sections` | `List<String>` | `[]`（空列表） | 排除的 section 名列表，不被前端 wire.js 识别为可更新区域 |
 
 > 配置由 `WireAutoConfiguration` 在应用启动时自动应用到 `WireManager`。详见[第 11 节](#11-手动控制-wirejs-注入)。
+>
+> 命名组件相关的 `jaravel.wire.components` 与 `jaravel.wire.outlet.*` 配置见[第 16.6 节](#166-配置项)。
 
 此外，wire 模块需要通过 `WireManager.setEngine(bladeEngine)` 注入 Blade 引擎实例。这通常由 `springboot` 模块的 Starter 在应用启动时自动完成。
 

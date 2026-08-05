@@ -24,6 +24,8 @@ public class BladeContext {
     private final Map<String, String> componentSlots;
     private StringBuilder currentSectionContent;
     private String parentTemplate;
+    /** 本模板（含继承链）渲染时实际输出的 @yield 区域名集合，用于 PJAX 编译期区域分析 */
+    private final java.util.LinkedHashSet<String> yieldedNames;
     private boolean inSection;
     private String currentComponent;
     private String currentSlot;
@@ -41,6 +43,7 @@ public class BladeContext {
         this.componentSlots = new HashMap<>();
         this.currentSlotContent = new StringBuilder();
         this.inSlot = false;
+        this.yieldedNames = new java.util.LinkedHashSet<>();
     }
 
     public void setVariable(String name, Object value) {
@@ -135,6 +138,7 @@ public class BladeContext {
         sectionStack.clear();
         componentData.clear();
         componentSlots.clear();
+        yieldedNames.clear();
         currentSectionContent = new StringBuilder();
         parentTemplate = null;
         inSection = false;
@@ -178,6 +182,26 @@ public class BladeContext {
 
     public void setParentTemplate(String parentTemplate) {
         this.parentTemplate = parentTemplate;
+    }
+
+    /**
+     * 记录一个 @yield 区域名（渲染时由 yieldSection 调用，用于在编译期分析模板继承/区块关系）。
+     *
+     * @param name yield 区域名
+     */
+    public void recordYield(String name) {
+        if (name != null && !name.isEmpty()) {
+            yieldedNames.add(name);
+        }
+    }
+
+    /**
+     * 取得本模板（含继承链）渲染时实际输出的所有 @yield 区域名。
+     *
+     * @return yield 区域名集合（有序）
+     */
+    public java.util.LinkedHashSet<String> getYieldedNames() {
+        return yieldedNames;
     }
 
     public boolean isInSection() {

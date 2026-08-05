@@ -649,6 +649,14 @@
                     window.dispatchEvent(new CustomEvent(event.name, { detail: event.data }));
                 }
             }
+            // 命名组件（toast / confirm 等）：委托给 wire-component.js 无感挂载
+            if (data.effects.components && data.effects.components.length > 0) {
+                if (window.WireComponent && typeof window.WireComponent.mountAll === 'function') {
+                    window.WireComponent.mountAll(data.effects.components);
+                } else {
+                    console.warn('[Wire] 收到 effects.components 但前端运行时 wire-component.js 未加载');
+                }
+            }
         }
 
         // 触发 afterUpdate 事件（DOM 更新完成后）

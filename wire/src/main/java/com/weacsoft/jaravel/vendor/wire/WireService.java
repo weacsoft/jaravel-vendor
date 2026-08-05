@@ -2,6 +2,7 @@ package com.weacsoft.jaravel.vendor.wire;
 
 import com.weacsoft.jaravel.vendor.http.controller.request.Request;
 import com.weacsoft.jaravel.vendor.http.controller.response.Response;
+import com.weacsoft.jaravel.vendor.wire.component.WireComponents;
 
 import java.util.*;
 import java.util.function.Consumer;
@@ -359,6 +360,32 @@ public class WireService {
     public WireResponse responseOf() {
         dispatchActions();
         return WireResponse.of(templateName, data, toSections());
+    }
+
+    /**
+     * 在当前请求中下发一个命名组件（消息提示 / 确认框等临时事务）。
+     * <p>
+     * 等价于 {@code WireComponents.push(name, params)}，但链式更顺手：
+     * <pre>{@code
+     * return WireService.from(request, "wire-demo", "/api/wire/demo")
+     *         .action("save", c -> c.responseComponent("toast", Map.of("message", "已保存")))
+     *         .responseUpdate();   // 组件随 effects.components 自动下发，前端无感挂载
+     * }</pre>
+     *
+     * @param name   组件名
+     * @param params 本次参数（与组件默认参数合并，本次值优先）
+     */
+    public WireService responseComponent(String name, Map<String, Object> params) {
+        WireComponents.push(name, params);
+        return this;
+    }
+
+    /**
+     * 下发一个无参数的命名组件。
+     */
+    public WireService responseComponent(String name) {
+        WireComponents.push(name);
+        return this;
     }
 
     // ===== 内部方法 =====

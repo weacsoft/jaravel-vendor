@@ -28,6 +28,12 @@
             <artifactId>cache</artifactId>
             <optional>true</optional>
         </dependency>
+        <!-- Artisan CLI：可选，引入后自动注册 view:cache / view:clear 命令 -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>artisan</artifactId>
+            <optional>true</optional>
+        </dependency>
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-core</artifactId>

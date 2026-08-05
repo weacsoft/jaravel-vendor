@@ -2,6 +2,7 @@ package com.weacsoft.jaravel.vendor.wire;
 
 import com.weacsoft.jaravel.vendor.http.controller.response.Response;
 import com.weacsoft.jaravel.vendor.http.controller.response.ResponseBuilder;
+import com.weacsoft.jaravel.vendor.wire.component.WireComponents;
 
 import java.util.*;
 
@@ -155,7 +156,7 @@ public class WireResponse {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("sections", sectionHtml);
         result.put("snapshot", snapshot);
-        result.put("effects", new LinkedHashMap<>());
+        result.put("effects", attachComponents(new LinkedHashMap<>()));
         return ResponseBuilder.json(result);
     }
 
@@ -319,12 +320,51 @@ public class WireResponse {
     }
 
     /**
+     * 附加一个命名组件到本次响应。
+     * <p>
+     * 组件将在响应最终化时（{@link #build()} 或 {@link #update(String, Map, List)}）被渲染，
+     * 写入 {@code effects.components}，由前端 {@code wire-component.js} 无感挂载。
+     * 若当前响应是首屏 HTML（{@code WireResponse.wire} / {@code ResponseBuilder.view}），
+     * 则改由 {@code WireOutlet} 中间件在首屏 bootstrap 中下发——两种路径都能正确送达，调用方无需区分。
+     *
+     * @param name   组件名（须已在 {@code WireComponents} 注册，或在 {@code jaravel.wire.components} 配置）
+     * @param params 本次参数（与组件默认参数合并，本次值优先）
+     */
+    public WireResponse withComponent(String name, Map<String, Object> params) {
+        WireComponents.push(name, params);
+        return this;
+    }
+
+    /**
+     * 附加一个无参数的命名组件到本次响应。
+     */
+    public WireResponse withComponent(String name) {
+        WireComponents.push(name);
+        return this;
+    }
+
+    /**
+     * 取走当前请求待下发的命名组件（请求级队列），写入 effects 映射。
+     * <p>
+     * 队列是请求级的，由 {@code WireOutlet} 中间件在请求结束时兜底清理；
+     * 此处取走后即渲染，保证首屏 HTML 路径与 Wire 更新 JSON 路径都能正确携带组件。
+     */
+    private static Map<String, Object> attachComponents(Map<String, Object> effects) {
+        List<Map<String, Object>> drained = WireComponents.drain();
+        if (drained != null && !drained.isEmpty()) {
+            effects.put("components", drained);
+        }
+        return effects;
+    }
+
+    /**
      * 构建最终的 HTTP Response。
      */
     public Response build() {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("sections", sections);
         result.put("snapshot", snapshot != null ? snapshot : "");
+        attachComponents(effects);
         result.put("effects", effects);
 
         if (errorStatus != null) {
