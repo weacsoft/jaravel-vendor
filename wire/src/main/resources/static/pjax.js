@@ -11,7 +11,32 @@
  *  请求头  X-Pjax: true
  *          X-Pjax-Layout: <当前布局模板名>
  *          X-Pjax-Regions: name:hash,name:hash
- *  响应体  { pjax, reload, url, title, layout, template, regions:{name:html}, unchanged:[], hashes:{} }
+ *  响应体  { pjax, reload, url, title, layout, template, regions:{name:html},
+ *            unchanged:[], hashes:{}, components:[] }
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * 区域脚本运行时（Region Script Runtime）
+ * ─────────────────────────────────────────────────────────────────────────
+ * 局部刷新与整页加载的最大差异在于「脚本的生命周期」。本运行时保证被替换区域内的
+ * <script> 具备与整页加载一致的直觉语义：
+ *
+ *  1. 只执行一次。区域 HTML 用 <template> 解析（内容惰性、不执行脚本），
+ *     再由 runScripts 统一受控执行。历史实现用 Range#createContextualFragment，
+ *     该 API 会在插入时执行脚本，叠加 runScripts 后每次切换执行两遍。
+ *  2. 「进入即触发」有效。区域脚本注册的 DOMContentLoaded / load / readystatechange
+ *     回调会被拦截并在本次切换的 DOM 就绪后调用一次——否则这些事件早已触发完毕，
+ *     回调永远不会执行。
+ *  3. 不重复绑定。区域脚本在 document / window 上注册的监听器、创建的 setInterval，
+ *     都以「注册它的 script 节点」为生命周期锚点；该节点随区域替换而脱离文档时自动回收。
+ *  4. 不重复声明。内联脚本默认在函数作用域内执行（顶层 let/const/class 因此可以安全地
+ *     重复执行），同时把列首的 function/var 声明回填到 window，兼容 onclick="fn()" 写法。
+ *  5. 外部脚本不重复下载。同一 src 只加载一次；非 async 的动态脚本强制按序执行。
+ *
+ * 逐脚本可控的开关（写在 <script> 标签上）：
+ *  data-pjax-no-exec="true"   该脚本永不由 PJAX 执行
+ *  data-pjax-scope="global"   退回全局作用域执行（旧行为，需自行避免重复声明）
+ *  data-pjax-run="once"       同一段脚本整个会话只执行一次
+ *  data-pjax-reload="true"    外部脚本每次切换都重新加载
  */
 (function (window, document) {
     'use strict';
@@ -37,6 +62,187 @@
 
     /** 当前进行中的请求控制器 */
     var pending = null;
+
+    /** install() 是否已完成 */
+    var ready = false;
+
+    // =========================================================================
+    // 区域脚本运行时
+    //
+    // 必须在任何模板内联脚本之前完成安装，因此这段代码位于 IIFE 顶层同步执行，
+    // 且服务端会把 pjax.js 注入到 </head> 之前。install() 仍延迟到 DOMContentLoaded。
+    // =========================================================================
+
+    var nativeDocumentAdd = document.addEventListener;
+    var nativeDocumentRemove = document.removeEventListener;
+    var nativeWindowAdd = window.addEventListener;
+    var nativeWindowRemove = window.removeEventListener;
+    var nativeSetInterval = window.setInterval;
+    var nativeClearInterval = window.clearInterval;
+    var nativeSetTimeout = window.setTimeout;
+
+    /** 由脚本节点注册、需随该节点脱离文档一并回收的监听器 */
+    var ownedListeners = [];
+
+    /** 由脚本节点创建、需随该节点脱离文档一并清除的周期定时器 */
+    var ownedTimers = [];
+
+    /** 本次同步重放中被拦截下来的「文档就绪」回调 */
+    var deferredReady = [];
+
+    /** 已加载过的外部脚本（绝对 URL 集合） */
+    var loadedSources = Object.create(null);
+
+    /** data-pjax-run="once" 已执行过的脚本指纹 */
+    var onceExecuted = Object.create(null);
+
+    /** 是否处于 PJAX 脚本同步重放阶段 */
+    var replaying = false;
+
+    /** 需要拦截并改为「立即调用一次」的事件类型 */
+    var READY_TYPES = { DOMContentLoaded: 1, load: 1, readystatechange: 1 };
+
+    /** 可执行的 script type（空串表示未声明 type） */
+    var EXECUTABLE_TYPES = {
+        '': 1,
+        'text/javascript': 1,
+        'application/javascript': 1,
+        'application/ecmascript': 1,
+        'text/ecmascript': 1,
+        'module': 1
+    };
+
+    /**
+     * 取得当前正在同步执行的 script 节点。
+     * 内联脚本与外部脚本执行期间该值均有效，是判定「谁注册了这个监听器」的可靠依据。
+     */
+    function ownerScript() {
+        var cur = document.currentScript;
+        return (cur && cur.tagName === 'SCRIPT') ? cur : null;
+    }
+
+    function isDetached(node) {
+        if (!node) {
+            return false;
+        }
+        if (typeof node.isConnected === 'boolean') {
+            return !node.isConnected;
+        }
+        return !document.contains(node);
+    }
+
+    function safeCall(fn, arg) {
+        try {
+            fn(arg);
+        } catch (e) {
+            warn('回调执行出错', e);
+        }
+    }
+
+    /**
+     * 安排一个「文档就绪」回调：重放期间先收集、重放结束后统一触发；
+     * 重放之外（例如外部脚本异步加载完成后才注册）则下一个宏任务立即触发。
+     */
+    function scheduleReady(listener) {
+        if (replaying) {
+            deferredReady.push(listener);
+        } else {
+            nativeSetTimeout.call(window, function () {
+                safeCall(listener, null);
+            }, 0);
+        }
+    }
+
+    function flushDeferredReady() {
+        if (!deferredReady.length) {
+            return;
+        }
+        var queue = deferredReady;
+        deferredReady = [];
+        for (var i = 0; i < queue.length; i++) {
+            safeCall(queue[i], null);
+        }
+    }
+
+    /**
+     * 构造 addEventListener 代理。行为与原生完全一致，只额外做两件事：
+     *  - 区域脚本注册「文档就绪」类事件时，改为在本次切换后调用一次；
+     *  - 记录注册来源脚本节点，供节点脱离文档时自动回收。
+     */
+    function makeAddProxy(target, nativeAdd) {
+        return function (type, listener, options) {
+            var node = ownerScript();
+            if (READY_TYPES[type] && typeof listener === 'function') {
+                var fromReplay = node ? !!node.__pjaxReplay : replaying;
+                if (fromReplay && document.readyState !== 'loading') {
+                    scheduleReady(listener);
+                    return undefined;
+                }
+            }
+            var result = nativeAdd.call(target, type, listener, options);
+            if (node && typeof listener !== 'undefined' && listener !== null) {
+                ownedListeners.push({
+                    target: target,
+                    type: type,
+                    listener: listener,
+                    options: options,
+                    node: node
+                });
+            }
+            return result;
+        };
+    }
+
+    document.addEventListener = makeAddProxy(document, nativeDocumentAdd);
+    window.addEventListener = makeAddProxy(window, nativeWindowAdd);
+
+    window.setInterval = function (handler, timeout) {
+        var id = nativeSetInterval.apply(window, arguments);
+        var node = ownerScript();
+        if (node) {
+            ownedTimers.push({ id: id, node: node });
+        }
+        void handler;
+        void timeout;
+        return id;
+    };
+
+    /**
+     * 回收「注册来源脚本节点已脱离文档」的监听器与定时器。
+     * 以脚本节点为锚点而非区域名，可自然覆盖嵌套区域与首屏原生执行的脚本。
+     */
+    function sweepDetached() {
+        var keptListeners = [];
+        var removed = 0;
+        for (var i = 0; i < ownedListeners.length; i++) {
+            var rec = ownedListeners[i];
+            if (isDetached(rec.node)) {
+                try {
+                    var nativeRemove = rec.target === window ? nativeWindowRemove : nativeDocumentRemove;
+                    nativeRemove.call(rec.target, rec.type, rec.listener, rec.options);
+                    removed++;
+                } catch (e) { /* 移除失败不影响后续 */ }
+            } else {
+                keptListeners.push(rec);
+            }
+        }
+        ownedListeners = keptListeners;
+
+        var keptTimers = [];
+        for (var j = 0; j < ownedTimers.length; j++) {
+            var timer = ownedTimers[j];
+            if (isDetached(timer.node)) {
+                try {
+                    nativeClearInterval.call(window, timer.id);
+                    removed++;
+                } catch (e) { /* 忽略 */ }
+            } else {
+                keptTimers.push(timer);
+            }
+        }
+        ownedTimers = keptTimers;
+        return removed;
+    }
 
     // ===== 初始化 =====
 
@@ -99,6 +305,8 @@
             return false;
         }
 
+        emit('pjax:unload', { region: name });
+
         var node = region.start.nextSibling;
         while (node && node !== region.end) {
             var next = node.nextSibling;
@@ -106,51 +314,110 @@
             node = next;
         }
 
-        var fragment = buildFragment(html, parent);
+        var fragment = buildFragment(html);
         parent.insertBefore(fragment, region.end);
         return true;
     }
 
     /**
-     * 依据父元素上下文构造 DOM 片段。
-     * 使用 Range#createContextualFragment 以正确处理 <tr>/<td>/<option> 等
-     * 只能出现在特定父元素内的标签——innerHTML 在这些场景下会直接丢弃内容。
+     * 把 HTML 字符串解析成可插入的 DOM 片段。
+     *
+     * 采用 <template>：其内容是惰性的——脚本不会执行、图片不会加载，
+     * 同时解析器进入 "in template" 插入模式，<tr>/<td>/<option> 等
+     * 受限标签也能正确保留（innerHTML 会直接丢弃它们）。
+     *
+     * 历史实现用 Range#createContextualFragment，该 API 在插入时就会执行脚本，
+     * 与随后的 runScripts 叠加导致内联脚本每次切换执行两遍。
      */
-    function buildFragment(html, parent) {
-        var range = document.createRange();
+    function buildFragment(html) {
+        var tpl = document.createElement('template');
+        tpl.innerHTML = html;
+        if (tpl.content) {
+            return document.importNode(tpl.content, true);
+        }
+        // 极老浏览器兜底（无 <template> 支持）
+        var tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        var frag = document.createDocumentFragment();
+        while (tmp.firstChild) {
+            frag.appendChild(tmp.firstChild);
+        }
+        return frag;
+    }
+
+    // ===== 脚本执行 =====
+
+    function absoluteUrl(src) {
         try {
-            range.selectNodeContents(parent);
-            return range.createContextualFragment(html);
+            return new URL(src, location.href).href;
         } catch (e) {
-            var tmp = document.createElement('div');
-            tmp.innerHTML = html;
-            var frag = document.createDocumentFragment();
-            while (tmp.firstChild) {
-                frag.appendChild(tmp.firstChild);
-            }
-            return frag;
+            return src;
         }
     }
 
-    /**
-     * 重新执行区域内的 <script>。
-     * createContextualFragment 产出的 script 行为在各浏览器间不完全一致，
-     * 这里统一改为「克隆成新 script 元素再插入」，确保只执行一次且顺序稳定。
-     */
-    function runScripts(name) {
-        var region = regions[name];
-        if (!region) {
-            return;
+    /** FNV-1a 32 位指纹，与服务端区域指纹算法一致 */
+    function fingerprint(text) {
+        var h = 0x811c9dc5;
+        for (var i = 0; i < text.length; i++) {
+            h ^= text.charCodeAt(i);
+            h = (h * 0x01000193) >>> 0;
         }
-        var parent = region.end.parentNode;
+        return h.toString(16);
+    }
+
+    var TOP_FUNCTION = /^function[ \t]+([A-Za-z_$][\w$]*)/gm;
+    var TOP_VAR = /^var[ \t]+([A-Za-z_$][\w$]*)/gm;
+
+    /**
+     * 生成「顶层声明回填 window」的尾码。
+     *
+     * 内联脚本被包进函数作用域后，列首的 function / var 声明不再是全局的，
+     * 而模板里 onclick="fn()" 这类内联事件属性只能看到全局标识符。这里按
+     * 「行首（零缩进）」这一保守规则提取声明名并回填，既保住老写法可用，
+     * 又不会把缩进的内部函数误提升为全局。typeof 保护确保任何误判都不会抛错。
+     */
+    function buildExports(code) {
+        var names = {};
+        var match;
+        TOP_FUNCTION.lastIndex = 0;
+        while ((match = TOP_FUNCTION.exec(code)) !== null) {
+            names[match[1]] = 1;
+        }
+        TOP_VAR.lastIndex = 0;
+        while ((match = TOP_VAR.exec(code)) !== null) {
+            names[match[1]] = 1;
+        }
+        var parts = [];
+        for (var name in names) {
+            if (Object.prototype.hasOwnProperty.call(names, name)) {
+                parts.push('try{if(typeof ' + name + '!=="undefined"){window.' + name + '=' + name + ';}}catch(e){}');
+            }
+        }
+        return parts.join('');
+    }
+
+    /**
+     * 把内联脚本包进函数作用域。
+     * 这样顶层 let / const / class 在「回到同一页面」时不会因重复声明而整段报
+     * SyntaxError——那是全局重放最典型的失效方式，且浏览器不会给出任何提示。
+     */
+    function wrapScoped(code) {
+        if (!code) {
+            return '';
+        }
+        return '(function(){\n' + code + '\n;' + buildExports(code) + '\n}).call(window);';
+    }
+
+    /** 收集区域内（含嵌套）的全部 script 节点，保持文档顺序 */
+    function collectScripts(region) {
         var scripts = [];
         var node = region.start.nextSibling;
         while (node && node !== region.end) {
             if (node.nodeType === 1) {
                 if (node.tagName === 'SCRIPT') {
                     scripts.push(node);
-                } else {
-                    var nested = node.querySelectorAll ? node.querySelectorAll('script') : [];
+                } else if (node.querySelectorAll) {
+                    var nested = node.querySelectorAll('script');
                     for (var i = 0; i < nested.length; i++) {
                         scripts.push(nested[i]);
                     }
@@ -158,19 +425,127 @@
             }
             node = node.nextSibling;
         }
-        scripts.forEach(function (old) {
-            if (old.dataset && old.dataset.pjaxNoExec === 'true') {
+        return scripts;
+    }
+
+    /**
+     * 中和一个「本次不执行」的脚本节点。
+     * <p>从 {@code <template>} 解析出来的 script 插入文档时不会自动运行，所以这里
+     * 不删除节点——保留它可以让 DOM 与服务端输出保持一致，排查时一眼能看出
+     * 「这段脚本被跳过了、为什么跳过」。同时把 type 改成未知 MIME，
+     * 确保即使被其它代码重新插入文档也永远不会执行。
+     *
+     * @param node   被跳过的 script 节点
+     * @param reason 跳过原因（duplicate-source / once）
+     */
+    function neutralize(node, reason) {
+        if (!node) {
+            return;
+        }
+        try {
+            node.setAttribute('type', 'application/pjax-skipped');
+            node.setAttribute('data-pjax-skipped', reason);
+        } catch (e) { /* 忽略 */ }
+    }
+
+    /**
+     * 执行单个区域脚本：<template> 解析出来的 script 是惰性的，
+     * 必须克隆成新元素插入文档才会运行。
+     */
+    function executeScript(old, regionName) {
+        var dataset = old.dataset || {};
+        if (dataset.pjaxNoExec === 'true') {
+            return;
+        }
+
+        var type = (old.getAttribute('type') || '').toLowerCase();
+        if (!EXECUTABLE_TYPES[type]) {
+            // application/json 等数据块原样保留，绝不执行
+            return;
+        }
+
+        var src = old.getAttribute('src');
+        if (src) {
+            var abs = absoluteUrl(src);
+            if (loadedSources[abs] && dataset.pjaxReload !== 'true') {
+                // 同一外部脚本重复加载会重置库的全局状态并浪费带宽
+                neutralize(old, 'duplicate-source');
                 return;
             }
-            var fresh = document.createElement('script');
-            for (var i = 0; i < old.attributes.length; i++) {
-                var attr = old.attributes[i];
-                fresh.setAttribute(attr.name, attr.value);
+            loadedSources[abs] = true;
+        }
+
+        var runKey = null;
+        if (dataset.pjaxRun === 'once') {
+            runKey = fingerprint((old.id || '') + '\u0000' + (src || old.textContent || ''));
+            if (onceExecuted[runKey]) {
+                neutralize(old, 'once');
+                return;
             }
-            fresh.text = old.textContent;
+        }
+
+        var fresh = document.createElement('script');
+        for (var i = 0; i < old.attributes.length; i++) {
+            var attr = old.attributes[i];
+            fresh.setAttribute(attr.name, attr.value);
+        }
+        if (src && !old.hasAttribute('async')) {
+            // 动态插入的脚本默认 async=true，会打乱依赖顺序
+            fresh.async = false;
+        }
+        if (!src) {
+            var code = old.textContent || '';
+            // module 自带独立作用域，包装反而会破坏 import/export
+            fresh.text = (type === 'module' || dataset.pjaxScope === 'global') ? code : wrapScoped(code);
+        }
+        fresh.__pjaxReplay = true;
+        fresh.__pjaxRegion = regionName;
+
+        var previous = replaying;
+        replaying = true;
+        try {
             old.parentNode.replaceChild(fresh, old);
-        });
-        void parent;
+        } finally {
+            replaying = previous;
+        }
+
+        if (runKey) {
+            onceExecuted[runKey] = true;
+        }
+    }
+
+    function runScripts(name) {
+        var region = regions[name];
+        if (!region) {
+            return;
+        }
+        var scripts = collectScripts(region);
+        for (var i = 0; i < scripts.length; i++) {
+            executeScript(scripts[i], name);
+        }
+    }
+
+    /** 把首屏已存在的外部脚本登记为「已加载」，避免切换时重复拉取 */
+    /**
+     * 用首屏已有的脚本预热去重表。
+     * <p>首屏脚本由浏览器原生执行，不经过 {@code executeScript}，若不在此登记，
+     * 第一次区域替换会把它们当成「从未加载过」而重跑一遍——外部库被重复初始化、
+     * {@code data-pjax-run="once"} 也会变成执行两次。两类都必须预热。
+     */
+    function seedLoadedSources() {
+        var nodes = document.querySelectorAll('script[src]');
+        for (var i = 0; i < nodes.length; i++) {
+            var src = nodes[i].getAttribute('src');
+            if (src) {
+                loadedSources[absoluteUrl(src)] = true;
+            }
+        }
+        var onceNodes = document.querySelectorAll('script[data-pjax-run="once"]');
+        for (var j = 0; j < onceNodes.length; j++) {
+            var node = onceNodes[j];
+            var key = (node.id || '') + '\u0000' + (node.getAttribute('src') || node.textContent || '');
+            onceExecuted[fingerprint(key)] = true;
+        }
     }
 
     // ===== 状态保持 =====
@@ -320,6 +695,10 @@
 
     /**
      * 应用服务端返回的局部更新。
+     *
+     * 严格顺序：替换 DOM → 回收失效监听器/定时器 → 执行新脚本 →
+     * 触发被拦截的「文档就绪」回调 → 挂载命名组件 → 更新标题与历史 → 广播 pjax:loaded。
+     * 先回收后执行，保证新脚本注册的监听器不会被同一轮清扫误删。
      */
     function apply(payload, requestUrl, push, scrollTo) {
         var focus = captureFocus();
@@ -338,7 +717,15 @@
             }
         }
 
+        sweepDetached();
         changed.forEach(runScripts);
+        flushDeferredReady();
+
+        // 命名组件（toast / confirm 等）：PJAX 切换时不重载页面，outlet 容器与运行时仍在，
+        // 只需把新组件挂载进去即可（后端已在信封顶层带上 components 字段）。
+        if (payload.components && payload.components.length && window.WireComponent) {
+            window.WireComponent.mountAll(payload.components);
+        }
 
         if (typeof payload.title === 'string' && payload.title.length) {
             document.title = decodeEntities(payload.title);
@@ -365,7 +752,9 @@
         // 重新索引：被替换的区域内部可能含有嵌套锚点
         scanRegions();
 
-        emit('pjax:loaded', { url: finalUrl, changed: changed, unchanged: payload.unchanged || [] });
+        var detail = { url: finalUrl, changed: changed, unchanged: payload.unchanged || [], initial: false };
+        emit('pjax:loaded', detail);
+        runLoadCallbacks(detail);
         notifyWire();
     }
 
@@ -399,6 +788,40 @@
     function warn() {
         if (window.console && console.warn) {
             console.warn.apply(console, ['[pjax]'].concat(Array.prototype.slice.call(arguments)));
+        }
+    }
+
+    // ===== 页面初始化回调 =====
+
+    /**
+     * 注册「每次进入页面都要跑一次」的初始化回调。
+     *
+     * 相比在模板里写 DOMContentLoaded，这里语义明确且天然幂等：
+     * 同一个函数重复注册只保留一份，返回值可用于注销。
+     */
+    var loadCallbacks = [];
+
+    function onLoad(fn) {
+        if (typeof fn !== 'function') {
+            return function () { /* noop */ };
+        }
+        if (loadCallbacks.indexOf(fn) < 0) {
+            loadCallbacks.push(fn);
+        }
+        if (ready) {
+            safeCall(fn, { url: state.url, changed: [], unchanged: [], initial: true });
+        }
+        return function off() {
+            var idx = loadCallbacks.indexOf(fn);
+            if (idx >= 0) {
+                loadCallbacks.splice(idx, 1);
+            }
+        };
+    }
+
+    function runLoadCallbacks(detail) {
+        for (var i = 0; i < loadCallbacks.length; i++) {
+            safeCall(loadCallbacks[i], detail);
         }
     }
 
@@ -503,6 +926,7 @@
             return;
         }
         scanRegions();
+        seedLoadedSources();
 
         if ('scrollRestoration' in history) {
             history.scrollRestoration = 'manual';
@@ -511,11 +935,14 @@
             history.replaceState({ pjax: true, url: state.url, scroll: window.scrollY }, '', location.href);
         } catch (e) { /* 忽略 */ }
 
-        document.addEventListener('click', onClick, false);
-        document.addEventListener('submit', onSubmit, false);
-        window.addEventListener('popstate', onPopState, false);
+        // 全部为事件委托，只在此处绑定一次；区域替换不会造成重复绑定
+        nativeDocumentAdd.call(document, 'click', onClick, false);
+        nativeDocumentAdd.call(document, 'submit', onSubmit, false);
+        nativeWindowAdd.call(window, 'popstate', onPopState, false);
 
+        ready = true;
         emit('pjax:ready', { url: state.url, regions: Object.keys(regions) });
+        runLoadCallbacks({ url: state.url, changed: [], unchanged: [], initial: true });
     }
 
     // ===== 对外 API =====
@@ -524,8 +951,16 @@
         __installed: true,
         /** 主动切换到指定地址 */
         visit: visit,
+        /** 重新加载当前地址（不写入历史） */
+        reload: function () {
+            return visit(state.url, { push: false });
+        },
         /** 重新扫描区域锚点（在手工改动 DOM 结构后调用） */
         rescan: scanRegions,
+        /** 注册每次进入页面都会执行的初始化回调，返回注销函数 */
+        onLoad: onLoad,
+        /** 立即回收已脱离文档的脚本所注册的监听器与定时器 */
+        sweep: sweepDetached,
         /** 只读运行时状态 */
         state: function () {
             return {
@@ -535,11 +970,20 @@
                 hashes: Object.assign({}, state.hashes),
                 regions: Object.keys(regions)
             };
+        },
+        /** 脚本运行时统计，便于自检与自动化测试 */
+        stats: function () {
+            return {
+                listeners: ownedListeners.length,
+                timers: ownedTimers.length,
+                sources: Object.keys(loadedSources).length,
+                once: Object.keys(onceExecuted).length
+            };
         }
     };
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', install);
+        nativeDocumentAdd.call(document, 'DOMContentLoaded', install);
     } else {
         install();
     }

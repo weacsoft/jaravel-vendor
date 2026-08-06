@@ -547,16 +547,10 @@ public class SpringBootRouteAutoConfiguration {
                 // 设置认证上下文（当 auth 模块存在时设置 AuthContext，否则 no-op）
                 routeAuthHandler.setupAuth(customRequest);
                 try {
-                    // 获取路由中间件（含根 Router 全局中间件 + 路由组中间件 + 路由级中间件）
-                    List<Middleware> allMiddlewares = route.getMiddlewares();
-
-                    // 逆序折叠中间件链
-                    Middleware.NextFunction finalHandler = route.getAction()::handle;
-                    for (int i = allMiddlewares.size() - 1; i >= 0; i--) {
-                        final Middleware middleware = allMiddlewares.get(i);
-                        final Middleware.NextFunction next = finalHandler;
-                        finalHandler = request -> middleware.handle(request, next);
-                    }
+                    // 中间件链（含根 Router 全局中间件 + 路由组中间件 + 路由级中间件）已在
+                    // RouteDefinition 内按结构版本号缓存，此处直接复用已折叠好的处理链，
+                    // 避免每次请求重新解析别名并逆序折叠。
+                    Middleware.NextFunction finalHandler = route.getHandlerChain();
 
                     Response response = finalHandler.apply(customRequest);
                     return createResponse(response, customRequest);

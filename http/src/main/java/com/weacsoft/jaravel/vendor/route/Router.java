@@ -24,6 +24,11 @@ import static com.weacsoft.jaravel.vendor.route.RouteService.*;
 public class Router {
 
     private static final Logger log = LoggerFactory.getLogger(Router.class);
+
+    /** 单值参数替换用：匹配 URI 中的第一个 {xxx} 占位符（预编译，避免每次调用重新编译正则）。 */
+    private static final java.util.regex.Pattern FIRST_PLACEHOLDER =
+            java.util.regex.Pattern.compile("\\{[^/{}]+\\}");
+
     private final List<RouteDefinition> routes = new CopyOnWriteArrayList<>();
     private final List<Router> routers = new CopyOnWriteArrayList<>();
     /**
@@ -37,17 +42,56 @@ public class Router {
      * 保持插入顺序，支持混合使用。
      */
     private final List<Object> middlewareSpecs = new CopyOnWriteArrayList<>();
-    @Setter
     @Getter
     private String name = "";
-    @Setter
     @Getter
     private String namespace = "";
-    @Setter
     @Getter
     private String prefix = "";
-    @Setter
     private Router parentRouter;
+
+    // ===== 派生结果缓存（失效策略见 RouteService 的结构版本号说明） =====
+
+    private volatile int cacheVersion = -1;
+    private volatile String cachedFullUri;
+    private volatile String cachedFullName;
+    private volatile String cachedFullNamespace;
+    private volatile List<Middleware> cachedMiddlewares;
+    private volatile List<RouteDefinition> cachedAllRoutes;
+    private volatile Map<String, RouteDefinition> cachedNameIndex;
+
+    private void refreshCache() {
+        int version = RouteService.structureVersion();
+        if (cacheVersion != version) {
+            cachedFullUri = null;
+            cachedFullName = null;
+            cachedFullNamespace = null;
+            cachedMiddlewares = null;
+            cachedAllRoutes = null;
+            cachedNameIndex = null;
+            cacheVersion = version;
+        }
+    }
+
+    public void setName(String name) {
+        this.name = name;
+        RouteService.invalidateStructure();
+    }
+
+    public void setNamespace(String namespace) {
+        this.namespace = namespace;
+        RouteService.invalidateStructure();
+    }
+
+    public void setPrefix(String prefix) {
+        this.prefix = prefix;
+        RouteService.invalidateStructure();
+    }
+
+    public void setParentRouter(Router parentRouter) {
+        this.parentRouter = parentRouter;
+        RouteService.invalidateStructure();
+    }
 
     /**
      * 添加路由器级中间件（直接传入中间件实例）。
@@ -59,6 +103,7 @@ public class Router {
      */
     public Router middleware(Middleware... middleware) {
         middlewareSpecs.addAll(Arrays.asList(middleware));
+        RouteService.invalidateStructure();
         return this;
     }
 
@@ -80,6 +125,7 @@ public class Router {
      */
     public Router middleware(String... aliases) {
         middlewareSpecs.addAll(Arrays.asList(aliases));
+        RouteService.invalidateStructure();
         return this;
     }
 
@@ -104,6 +150,7 @@ public class Router {
      */
     public Router middleware(Class<?> clazz, String... params) {
         middlewareSpecs.add(new ClassMiddlewareSpec(clazz, params));
+        RouteService.invalidateStructure();
         return this;
     }
 
@@ -359,6 +406,7 @@ public class Router {
         RouteDefinition route = new RouteDefinition(method, uri, action);
         route.setRouter(this);
         routes.add(route);
+        RouteService.invalidateStructure();
         return route;
     }
 
@@ -369,6 +417,7 @@ public class Router {
             groupRouter.addRoute(m, uri, action);
         }
         routers.add(groupRouter);
+        RouteService.invalidateStructure();
         return groupRouter;
     }
 
@@ -414,6 +463,7 @@ public class Router {
         });
         router.accept(groupRouter);
         routers.add(groupRouter);
+        RouteService.invalidateStructure();
         return groupRouter;
     }
 
@@ -442,13 +492,20 @@ public class Router {
     public void addGroupRouter(Router router) {
         router.setParentRouter(this);
         routers.add(router);
+        RouteService.invalidateStructure();
     }
 
     public List<RouteDefinition> getAllRoutes() {
-        List<RouteDefinition> routes = new ArrayList<>();
-        routers.forEach(router -> routes.addAll(router.getAllRoutes()));
-        routes.addAll(this.routes);
-        return routes;
+        refreshCache();
+        List<RouteDefinition> cached = cachedAllRoutes;
+        if (cached == null) {
+            List<RouteDefinition> all = new ArrayList<>();
+            routers.forEach(router -> all.addAll(router.getAllRoutes()));
+            all.addAll(this.routes);
+            cached = java.util.Collections.unmodifiableList(all);
+            cachedAllRoutes = cached;
+        }
+        return cached;
     }
 
     /**
@@ -478,42 +535,80 @@ public class Router {
      * @return 完整 URL 路径（已替换参数）
      */
     public String url(String name, Object params) {
-        List<RouteDefinition> routes = getAllRoutes();
         String target = name;
         if (target.startsWith(".")) {
             target = target.substring(1);
         }
-        for (RouteDefinition def : routes) {
-            String candidate = def.getFullName();
-            if (candidate.startsWith(".")) {
-                candidate = candidate.substring(1);
-            }
-            if (candidate.equals(target) || candidate.equals(target + ".index")) {
-                String uri = def.getFullUri();
-                if (uri == null) {
-                    uri = "";
-                }
-                if (!uri.startsWith("/")) {
-                    uri = "/" + uri;
-                }
-                if (params instanceof Map) {
-                    for (Map.Entry<?, ?> e : ((Map<?, ?>) params).entrySet()) {
-                        String key = String.valueOf(e.getKey());
-                        String value = e.getValue() == null ? "" : String.valueOf(e.getValue());
-                        uri = uri.replace("{" + key + "?}", value).replace("{" + key + "}", value);
-                    }
-                } else if (params != null) {
-                    uri = uri.replaceFirst("\\{[^/{}]+\\}", String.valueOf(params));
-                }
-                return uri;
-            }
+        Map<String, RouteDefinition> index = nameIndex();
+        RouteDefinition def = index.get(target);
+        if (def == null) {
+            def = index.get(target + ".index");
         }
-        // 未命中：保留与模板一致的退化行为并告警，便于排查命名错误
-        log.warn("[route] url('{}') 未找到对应路由别名, 退化为路径映射", name);
-        return "/" + name.replace('.', '/');
+        if (def == null) {
+            // 未命中：保留与模板一致的退化行为并告警，便于排查命名错误
+            log.warn("[route] url('{}') 未找到对应路由别名, 退化为路径映射", name);
+            return "/" + name.replace('.', '/');
+        }
+        String uri = def.getFullUri();
+        if (uri == null) {
+            uri = "";
+        }
+        if (!uri.startsWith("/")) {
+            uri = "/" + uri;
+        }
+        if (params instanceof Map) {
+            for (Map.Entry<?, ?> e : ((Map<?, ?>) params).entrySet()) {
+                String key = String.valueOf(e.getKey());
+                String value = e.getValue() == null ? "" : String.valueOf(e.getValue());
+                uri = uri.replace("{" + key + "?}", value).replace("{" + key + "}", value);
+            }
+        } else if (params != null) {
+            uri = FIRST_PLACEHOLDER.matcher(uri)
+                    .replaceFirst(java.util.regex.Matcher.quoteReplacement(String.valueOf(params)));
+        }
+        return uri;
+    }
+
+    /**
+     * 路由别名 → 路由定义 的索引表（惰性构建、按结构版本号失效）。
+     * <p>
+     * 将 {@link #url(String, Object)} 的查找从 O(n) 线性扫描降为 O(1) 哈希查找。
+     * 同名冲突时保留首个（与原线性扫描的"先到先得"语义一致）。
+     *
+     * @return 不可变索引表，键为去除前导 {@code .} 的完整别名
+     */
+    private Map<String, RouteDefinition> nameIndex() {
+        refreshCache();
+        Map<String, RouteDefinition> cached = cachedNameIndex;
+        if (cached == null) {
+            Map<String, RouteDefinition> index = new java.util.HashMap<>();
+            for (RouteDefinition def : getAllRoutes()) {
+                String candidate = def.getFullName();
+                if (candidate == null) {
+                    continue;
+                }
+                if (candidate.startsWith(".")) {
+                    candidate = candidate.substring(1);
+                }
+                index.putIfAbsent(candidate, def);
+            }
+            cached = java.util.Collections.unmodifiableMap(index);
+            cachedNameIndex = cached;
+        }
+        return cached;
     }
 
     public List<Middleware> getAllMiddlewares() {
+        refreshCache();
+        List<Middleware> cached = cachedMiddlewares;
+        if (cached == null) {
+            cached = java.util.Collections.unmodifiableList(resolveAllMiddlewares());
+            cachedMiddlewares = cached;
+        }
+        return cached;
+    }
+
+    private List<Middleware> resolveAllMiddlewares() {
         List<Middleware> middlewares = new ArrayList<>();
         // 解析本路由器的中间件规格（直接中间件 + 别名/类名表达式 + 类对象 + 类+参数）
         MiddlewareAliasRegistry registry = MiddlewareAliasRegistry.getGlobal();
@@ -535,21 +630,43 @@ public class Router {
         return middlewares;
     }
 
+    /**
+     * 这三个 generateFullXxx 处在「路由条数 x 嵌套层数」的递归放大链上，
+     * 每层都会做字符串拼接与三次正则替换。结果由注册期结构决定，故就地记忆化。
+     */
     protected String generateFullUri() {
-        if (parentRouter == null)
-            return normalizeUri(prefix);
-        return normalizeUri(parentRouter.generateFullUri() + "/" + prefix);
+        refreshCache();
+        String cached = cachedFullUri;
+        if (cached == null) {
+            cached = parentRouter == null
+                    ? normalizeUri(prefix)
+                    : normalizeUri(parentRouter.generateFullUri() + "/" + prefix);
+            cachedFullUri = cached;
+        }
+        return cached;
     }
 
     protected String generateFullNamespace() {
-        if (parentRouter == null)
-            return normalizeNamesapce(namespace);
-        return normalizeNamesapce(parentRouter.generateFullNamespace() + "." + namespace);
+        refreshCache();
+        String cached = cachedFullNamespace;
+        if (cached == null) {
+            cached = parentRouter == null
+                    ? normalizeNamesapce(namespace)
+                    : normalizeNamesapce(parentRouter.generateFullNamespace() + "." + namespace);
+            cachedFullNamespace = cached;
+        }
+        return cached;
     }
 
     protected String generateFullName() {
-        if (parentRouter == null)
-            return normalizeName(name);
-        return normalizeName(parentRouter.generateFullName() + "." + name);
+        refreshCache();
+        String cached = cachedFullName;
+        if (cached == null) {
+            cached = parentRouter == null
+                    ? normalizeName(name)
+                    : normalizeName(parentRouter.generateFullName() + "." + name);
+            cachedFullName = cached;
+        }
+        return cached;
     }
 }

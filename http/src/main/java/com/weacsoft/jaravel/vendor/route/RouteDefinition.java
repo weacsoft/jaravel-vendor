@@ -38,24 +38,33 @@ public class RouteDefinition {
      * 保持插入顺序，支持混合使用。
      */
     private final List<Object> middlewareSpecs = new CopyOnWriteArrayList<>();
-    @Setter
     @Getter
     private String name = "";
-    @Setter
     @Getter
     private String namespace = "";
-    @Setter
     @Getter
     private String prefix = "";
     @Getter
     private String method;
     @Getter
-    @Setter
     private Controllers.Runner action;
-    @Setter
     private Router router;
     @Getter
     private String uri;
+
+    // ===== 派生结果缓存 =====
+    //
+    // 完整 URI / 名称 / 命名空间与中间件链都需沿父级 Router 递归合并，且中间件别名
+    // 表达式每次解析都会重新拆串并分配闭包。这些结果在路由注册完成后完全不变，
+    // 却处在每请求的必经路径上（中间件链）与模板 route() 反查路径上（名称/URI），
+    // 因此在此就地缓存，用 RouteService 的全局结构版本号统一失效。
+
+    private volatile int cacheVersion = -1;
+    private volatile String cachedFullUri;
+    private volatile String cachedFullName;
+    private volatile String cachedFullNamespace;
+    private volatile List<Middleware> cachedMiddlewares;
+    private volatile Middleware.NextFunction cachedChain;
 
     public RouteDefinition(String method, String uri, Controllers.Runner action) {
         setMethod(method);
@@ -63,12 +72,55 @@ public class RouteDefinition {
         setAction(action);
     }
 
+    /**
+     * 结构版本号变化时丢弃全部派生缓存。
+     * <p>缓存内容均为纯函数结果，竞态下最坏只是重复计算一次，无需加锁。</p>
+     */
+    private void refreshCache() {
+        int version = RouteService.structureVersion();
+        if (cacheVersion != version) {
+            cachedFullUri = null;
+            cachedFullName = null;
+            cachedFullNamespace = null;
+            cachedMiddlewares = null;
+            cachedChain = null;
+            cacheVersion = version;
+        }
+    }
+
     public void setMethod(String method) {
         this.method = method;
+        RouteService.invalidateStructure();
     }
 
     public void setUri(String uri) {
         this.uri = uri;
+        RouteService.invalidateStructure();
+    }
+
+    public void setName(String name) {
+        this.name = name;
+        RouteService.invalidateStructure();
+    }
+
+    public void setNamespace(String namespace) {
+        this.namespace = namespace;
+        RouteService.invalidateStructure();
+    }
+
+    public void setPrefix(String prefix) {
+        this.prefix = prefix;
+        RouteService.invalidateStructure();
+    }
+
+    public void setAction(Controllers.Runner action) {
+        this.action = action;
+        RouteService.invalidateStructure();
+    }
+
+    public void setRouter(Router router) {
+        this.router = router;
+        RouteService.invalidateStructure();
     }
 
     /**
@@ -79,6 +131,7 @@ public class RouteDefinition {
      */
     public RouteDefinition middleware(Middleware... middleware) {
         middlewareSpecs.addAll(Arrays.asList(middleware));
+        RouteService.invalidateStructure();
         return this;
     }
 
@@ -99,6 +152,7 @@ public class RouteDefinition {
      */
     public RouteDefinition middleware(String... aliases) {
         middlewareSpecs.addAll(Arrays.asList(aliases));
+        RouteService.invalidateStructure();
         return this;
     }
 
@@ -123,6 +177,7 @@ public class RouteDefinition {
      */
     public RouteDefinition middleware(Class<?> clazz, String... params) {
         middlewareSpecs.add(new ClassMiddlewareSpec(clazz, params));
+        RouteService.invalidateStructure();
         return this;
     }
 
@@ -132,7 +187,7 @@ public class RouteDefinition {
     }
 
     public RouteDefinition prefix(String prefix) {
-        this.prefix = prefix;
+        setPrefix(prefix);
         return this;
     }
 
@@ -141,7 +196,13 @@ public class RouteDefinition {
     }
 
     public String getFullUri() {
-        return generateFullUri();
+        refreshCache();
+        String cached = cachedFullUri;
+        if (cached == null) {
+            cached = generateFullUri();
+            cachedFullUri = cached;
+        }
+        return cached;
     }
 
     public String generateFullNamespace() {
@@ -153,14 +214,36 @@ public class RouteDefinition {
     }
 
     public String getFullName() {
-        return generateFullName();
+        refreshCache();
+        String cached = cachedFullName;
+        if (cached == null) {
+            cached = generateFullName();
+            cachedFullName = cached;
+        }
+        return cached;
     }
 
     public String getFullNamespace() {
-        return generateFullNamespace();
+        refreshCache();
+        String cached = cachedFullNamespace;
+        if (cached == null) {
+            cached = generateFullNamespace();
+            cachedFullNamespace = cached;
+        }
+        return cached;
     }
 
     public List<Middleware> getMiddlewares() {
+        refreshCache();
+        List<Middleware> cached = cachedMiddlewares;
+        if (cached == null) {
+            cached = java.util.Collections.unmodifiableList(resolveMiddlewares());
+            cachedMiddlewares = cached;
+        }
+        return cached;
+    }
+
+    private List<Middleware> resolveMiddlewares() {
         List<Middleware> middlewares = new ArrayList<>();
         // 先加父路由器中间件（含别名/类解析）
         middlewares.addAll(router.getAllMiddlewares());
@@ -179,5 +262,32 @@ public class RouteDefinition {
             }
         }
         return middlewares;
+    }
+
+    /**
+     * 取得「中间件链 + 控制器动作」折叠后的最终处理函数。
+     *
+     * <p>此前该折叠在每个请求的 HandlerFunction 内部重做一遍：为每条路由重新解析
+     * 一次中间件别名（拆串 + 分配参数数组 + 分配闭包），再自尾向头分配 N 个链式闭包。
+     * 中间件配置在注册完成后不再变化，因此结果可直接缓存，命中率 100%。</p>
+     *
+     * @return 可直接 {@code apply(request)} 的处理链
+     */
+    public Middleware.NextFunction getHandlerChain() {
+        refreshCache();
+        Middleware.NextFunction cached = cachedChain;
+        if (cached == null) {
+            List<Middleware> all = getMiddlewares();
+            final Controllers.Runner target = action;
+            Middleware.NextFunction handler = target::handle;
+            for (int i = all.size() - 1; i >= 0; i--) {
+                final Middleware middleware = all.get(i);
+                final Middleware.NextFunction next = handler;
+                handler = request -> middleware.handle(request, next);
+            }
+            cached = handler;
+            cachedChain = cached;
+        }
+        return cached;
     }
 }

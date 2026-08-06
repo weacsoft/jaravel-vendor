@@ -303,7 +303,15 @@ public final class PjaxManager {
     }
 
     /**
-     * 在 {@code </body>} 前注入 PJAX 配置块与 pjax.js。
+     * 注入 PJAX 配置块与 pjax.js。
+     *
+     * <p><b>为什么必须放在 {@code </head>} 之前且不加 defer</b>：pjax.js 在加载时会立即
+     * 安装区域脚本运行时（代理 {@code addEventListener} / {@code setInterval} 以追踪
+     * 「哪段脚本注册了什么」）。若延迟到 {@code </body>} 或加上 defer，首屏模板中的内联
+     * 脚本会先于运行时执行，它们注册的监听器与定时器便无从追踪，首次区域替换时无法回收，
+     * 造成一次性的重复绑定。放在 head 里同步加载即可彻底消除这一窗口期。</p>
+     *
+     * <p>无 {@code <head>} 的片段式 HTML 退回到 {@code </body>} 前，再退回到末尾追加。</p>
      */
     static String injectAssets(String html, String configJson) {
         StringBuilder sb = new StringBuilder();
@@ -311,9 +319,13 @@ public final class PjaxManager {
                 .append(escapeForScript(configJson))
                 .append("</script>\n");
         if (autoInjectJs) {
-            sb.append("<script src=\"").append(escapeHtml(jsPath)).append("\" defer></script>");
+            sb.append("<script src=\"").append(escapeHtml(jsPath)).append("\"></script>");
         }
         String lower = html.toLowerCase();
+        int headClose = lower.indexOf("</head>");
+        if (headClose >= 0) {
+            return html.substring(0, headClose) + sb + "\n" + html.substring(headClose);
+        }
         int bodyClose = lower.lastIndexOf("</body>");
         if (bodyClose >= 0) {
             return html.substring(0, bodyClose) + sb + "\n" + html.substring(bodyClose);
