@@ -1189,7 +1189,7 @@ Route.group(new String[]{"VerifyCsrfToken", "WireOutlet"}, () -> {
 </div>
 ```
 
-中间件检测到页面里已经有 `wire:outlet` 标记就**不会重复注入**，因此显式指定与自动注入不会冲突。
+中间件检测到页面里已经有 `data-wire-outlet` 属性（即 `{!! wire_outlet() !!}` 输出的容器或手动添加的 `<div wire:outlet>`）就**不会重复注入**，因此显式指定与自动注入不会冲突。
 中间件未启用（例如该路径在 `except` 里）时，`wire_outlet()` 返回空字符串，不会留下无人管理的空容器。
 
 **例外配置**支持精确匹配与前缀通配：

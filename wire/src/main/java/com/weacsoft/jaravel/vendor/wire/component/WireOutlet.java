@@ -214,8 +214,10 @@ public class WireOutlet implements Middleware {
         }
         String result = html;
 
-        // 1) 容器：模板里已用 {!! wire_outlet() !!} 指定了位置就不再注入
-        if (result.indexOf("wire:outlet") < 0) {
+        // 1) 容器：模板里已用 {!! wire_outlet() !!} 指定了位置就不再注入。
+        //    注意：必须检查 data-wire-outlet 属性而非 "wire:outlet" 文本，
+        //    因为模板中可能出现 <code>[wire:outlet]</code> 说明文字导致误判。
+        if (result.indexOf("data-wire-outlet") < 0) {
             result = insertAt(result, renderOutletTag(), position);
         }
 
@@ -338,7 +340,21 @@ public class WireOutlet implements Middleware {
 
         @Override
         public byte[] getBytes() {
-            return delegate.getBytes();
+            byte[] original = delegate.getBytes();
+            if (original == null || original.length == 0) {
+                return original;
+            }
+            String contentType = delegate.getContentType();
+            String type = contentType == null ? "" : contentType.toLowerCase();
+            if (type.contains("text/html")) {
+                String content = new String(original, java.nio.charset.StandardCharsets.UTF_8);
+                if (content.indexOf("wire:components") >= 0) {
+                    return original;
+                }
+                String injected = injectHtml(content, payload);
+                return injected.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            }
+            return original;
         }
 
         @Override
@@ -348,8 +364,17 @@ public class WireOutlet implements Middleware {
 
         @Override
         public Object getBody() {
-            byte[] bytes = delegate.getBytes();
-            return bytes != null ? bytes : getContent();
+            // 若 body 是 String 且为 HTML 响应，注入 outlet
+            Object body = delegate.getBody();
+            if (body instanceof String) {
+                String content = (String) body;
+                String contentType = delegate.getContentType();
+                String type = contentType == null ? "" : contentType.toLowerCase();
+                if (type.contains("text/html") && content.indexOf("wire:components") < 0) {
+                    return injectHtml(content, payload);
+                }
+            }
+            return body;
         }
     }
 

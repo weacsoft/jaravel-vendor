@@ -47,9 +47,59 @@ public class PrecompiledTemplateLoader {
             this.classBytecodes = classBytecodes;
             this.templateToClassMapping = templateToClassMapping;
         }
+
+        /**
+         * 返回类全限定名 -> 字节码映射（别名，兼容 BladeEngine 调用）。
+         */
+        public Map<String, byte[]> getClassMap() {
+            return classBytecodes;
+        }
+
+        /**
+         * 根据模板名查找对应的类全限定名。
+         */
+        public String getClassName(String templateName) {
+            return templateToClassMapping.get(templateName);
+        }
     }
 
-    // ===== 从打包文件加载 =====
+    // ===== 从输入流加载（classpath 资源） =====
+
+    /**
+     * 从输入流加载所有模板字节码和映射（用于 classpath 资源）。
+     * <p>
+     * 先将整个 zip 读入 byte[]，再从 ByteArrayInputStream 解析，
+     * 避免因 JAR URL 的 InputStream 在条目间被关闭导致 "Stream closed" 错误。
+     * </p>
+     *
+     * @param is 打包文件输入流（.jblade.zip）
+     * @return 包含字节码映射和模板名->类名映射的数据包
+     * @throws IOException 如果读取失败
+     */
+    public static PrecompiledBundle loadBundleFromPackage(InputStream is) throws IOException {
+        // 先读完整数据，避免 JAR URL 流在条目间被关闭
+        byte[] data = readAllBytes(is);
+        Map<String, byte[]> classBytecodes = new LinkedHashMap<>();
+        Map<String, String> templateToClassMapping = new LinkedHashMap<>();
+
+        try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(data))) {
+            ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                String name = entry.getName();
+                if (MANIFEST_NAME.equals(name)) {
+                    templateToClassMapping = parseManifest(zis);
+                } else if (name.endsWith(CLASS_SUFFIX) && !entry.isDirectory()) {
+                    String className = pathToClassName(name);
+                    classBytecodes.put(className, readAllBytes(zis));
+                }
+                zis.closeEntry();
+            }
+        }
+
+        return new PrecompiledBundle(classBytecodes, templateToClassMapping);
+    }
+
+    // ===== 从打包文件加载（文件路径） =====
 
     /**
      * 从打包文件加载所有模板字节码和映射。
@@ -234,21 +284,20 @@ public class PrecompiledTemplateLoader {
      */
     static Map<String, String> parseManifest(InputStream is) throws IOException {
         Map<String, String> mapping = new LinkedHashMap<>();
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(is, StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                line = line.trim();
-                if (line.isEmpty() || line.startsWith("#")) {
-                    continue;
-                }
-                int eq = line.indexOf('=');
-                if (eq > 0) {
-                    String templateName = line.substring(0, eq).trim();
-                    String className = line.substring(eq + 1).trim();
-                    if (!templateName.isEmpty() && !className.isEmpty()) {
-                        mapping.put(templateName, className);
-                    }
+        // 直接读入 byte[]，避免关闭底层 ZipInputStream
+        byte[] data = is.readAllBytes();
+        String text = new String(data, StandardCharsets.UTF_8);
+        for (String line : text.split("\\r?\\n")) {
+            line = line.trim();
+            if (line.isEmpty() || line.startsWith("#")) {
+                continue;
+            }
+            int eq = line.indexOf('=');
+            if (eq > 0) {
+                String templateName = line.substring(0, eq).trim();
+                String className = line.substring(eq + 1).trim();
+                if (!templateName.isEmpty() && !className.isEmpty()) {
+                    mapping.put(templateName, className);
                 }
             }
         }

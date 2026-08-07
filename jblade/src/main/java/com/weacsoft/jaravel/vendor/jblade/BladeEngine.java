@@ -161,7 +161,7 @@ public class BladeEngine {
         if (templateName == null || templateName.isEmpty()) {
             return false;
         }
-        templateName = templateName.replace("'", "").replace("\"", "");
+        templateName = templateName.replace("'", "").replace("\"", "").replace("/", ".");
         if (templateClassCache.containsKey(templateName)) {
             return true;
         }
@@ -439,7 +439,7 @@ public class BladeEngine {
      * @return BladeTemplate 实例
      */
     public BladeTemplate loadTemplate(String templateName) throws IOException, ClassNotFoundException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException {
-        templateName = templateName.replace("'", "").replace("\"", "");
+        templateName = templateName.replace("'", "").replace("\"", "").replace("/", ".");
 
         // 1. 查一级缓存（内存）
         Class<?> templateClass = templateClassCache.get(templateName);
@@ -564,6 +564,33 @@ public class BladeEngine {
                 cacheStore.flush();
             } catch (Exception e) {
                 // 缓存清理失败，不影响功能
+            }
+        }
+    }
+
+    /**
+     * 预填充预编译模板缓存（用于 JRE 环境，构建时预编译、运行时直接加载）。
+     * <p>
+     * 从预编译包中读取所有模板的字节码和类名，批量写入 bytecode cache 和 class name cache，
+     * 并将字节码填入 MemoryClassLoader 的 classBytes map，使后续 loadTemplate() 直接命中缓存。
+     *
+     * @param bundle 预编译包（由 BladePrecompilerMain 生成）
+     */
+    public void populatePrecompiledBundle(PrecompiledTemplateLoader.PrecompiledBundle bundle) {
+        // 注意：必须迭代 templateToClassMapping（模板名→类名），而不是 classBytecodes（类名→字节码）
+        if (bundle == null || bundle.templateToClassMapping == null || bundle.templateToClassMapping.isEmpty()) {
+            return;
+        }
+        Map<String, byte[]> classBytes = memoryClassLoader.getCompiledClasses();
+        for (Map.Entry<String, String> templateEntry : bundle.templateToClassMapping.entrySet()) {
+            String templateName = templateEntry.getKey();
+            String className = templateEntry.getValue();
+            byte[] bytecode = bundle.classBytecodes.get(className);
+            if (bytecode != null) {
+                templateBytecodeCache.put(templateName, bytecode);
+                templateClassNameCache.put(templateName, className);
+                // 直接写入 MemoryClassLoader，使 findClass() 能立即找到
+                classBytes.put(className, bytecode);
             }
         }
     }
