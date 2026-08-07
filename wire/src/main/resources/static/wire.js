@@ -1140,6 +1140,13 @@
     }
 
     function hideLoading(component, action) {
+        // 先清除触发按钮的 wire:loading 属性（由 showLoading 设置），
+        // 避免后续 [wire:loading] 查询误把触发按钮当作加载指示器而 display:none
+        var triggerEls = component.element.querySelectorAll('[wire\\:click="' + action + '"], [wire\\:submit="' + action + '"]');
+        for (var j = 0; j < triggerEls.length; j++) {
+            triggerEls[j].removeAttribute('wire:loading');
+        }
+        // 再隐藏加载指示器（原始 HTML 中带 wire:loading 的元素）
         var loadingEls = component.element.querySelectorAll('[wire\\:loading]');
         for (var i = 0; i < loadingEls.length; i++) {
             var el = loadingEls[i];
@@ -1148,10 +1155,6 @@
                 el.style.display = 'none';
                 el.removeAttribute('wire:loading-active');
             }
-        }
-        var triggerEls = component.element.querySelectorAll('[wire\\:click="' + action + '"], [wire\\:submit="' + action + '"]');
-        for (var j = 0; j < triggerEls.length; j++) {
-            triggerEls[j].removeAttribute('wire:loading');
         }
     }
 
