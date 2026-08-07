@@ -8,9 +8,10 @@ import com.weacsoft.jaravel.vendor.jblade.ViewCache;
  * <p>
  * 对齐 Laravel {@code php artisan view:clear}。清除范围：
  * <ul>
- *   <li>一级缓存：内存中已加载的模板类；</li>
- *   <li>二级缓存：CacheStore 中的编译产物；</li>
- *   <li>PJAX 区域元数据（模板继承结构分析结果）。</li>
+ *   <li>内存字节码缓存（模板名→字节码，view:cache 预热的主要成果）；</li>
+ *   <li>模板类缓存（内存中已加载的 Class 对象）；</li>
+ *   <li>可选外部 CacheStore 中的编译产物；</li>
+ *   <li>（模板继承结构分析结果）。</li>
  * </ul>
  * 底层能力由静态方法 {@link ViewCache#clear()} 提供，可在代码中直接调用。
  */
@@ -23,7 +24,7 @@ public class ViewClearCommand extends ArtisanCommand {
 
     @Override
     public String description() {
-        return "清除全部 Blade 模板编译缓存与 PJAX 区域元数据";
+        return "清除全部 Blade 模板编译缓存与 ";
     }
 
     @Override

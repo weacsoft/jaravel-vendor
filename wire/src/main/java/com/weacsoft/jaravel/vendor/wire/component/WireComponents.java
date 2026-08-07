@@ -39,7 +39,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * // 普通页面链路：由 WireOutlet 中间件写入首屏 bootstrap
  * WireComponents.push("toast", Map.of("message", "欢迎回来"));
- * return ResponseBuilder.view("pjax.home", data);
+ * return ResponseBuilder.view("pages.home", data);
  * }</pre>
  *
  * <p><b>队列是请求级的</b>（{@link ThreadLocal}）：由 {@link WireOutlet} 中间件在请求结束时

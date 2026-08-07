@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
@@ -50,47 +51,42 @@ public class Router {
     private String prefix = "";
     private Router parentRouter;
 
-    // ===== 派生结果缓存（失效策略见 RouteService 的结构版本号说明） =====
+    // ===== 派生结果缓存（统一由 RouteCache 管理） =====
 
-    private volatile int cacheVersion = -1;
-    private volatile String cachedFullUri;
-    private volatile String cachedFullName;
-    private volatile String cachedFullNamespace;
-    private volatile List<Middleware> cachedMiddlewares;
-    private volatile List<RouteDefinition> cachedAllRoutes;
-    private volatile Map<String, RouteDefinition> cachedNameIndex;
-
-    private void refreshCache() {
-        int version = RouteService.structureVersion();
-        if (cacheVersion != version) {
-            cachedFullUri = null;
-            cachedFullName = null;
-            cachedFullNamespace = null;
-            cachedMiddlewares = null;
-            cachedAllRoutes = null;
-            cachedNameIndex = null;
-            cacheVersion = version;
+    /** 预热：从本 Router 出发算满子树内所有派生结果，供 artisan route:cache 使用。 */
+    int warmCache() {
+        List<RouteDefinition> all = getAllRoutes();
+        for (RouteDefinition def : all) {
+            // 触发各 RouteDefinition 的缓存计算
+            def.getFullUri();
+            def.getFullName();
+            def.getFullNamespace();
+            def.getMiddlewares();
+            def.getHandlerChain();
         }
+        // 强制构建 nameIndex（含 urlIndex）
+        nameIndex();
+        return all.size();
     }
 
     public void setName(String name) {
         this.name = name;
-        RouteService.invalidateStructure();
+        RouteCache.clear();
     }
 
     public void setNamespace(String namespace) {
         this.namespace = namespace;
-        RouteService.invalidateStructure();
+        RouteCache.clear();
     }
 
     public void setPrefix(String prefix) {
         this.prefix = prefix;
-        RouteService.invalidateStructure();
+        RouteCache.clear();
     }
 
     public void setParentRouter(Router parentRouter) {
         this.parentRouter = parentRouter;
-        RouteService.invalidateStructure();
+        RouteCache.clear();
     }
 
     /**
@@ -103,7 +99,7 @@ public class Router {
      */
     public Router middleware(Middleware... middleware) {
         middlewareSpecs.addAll(Arrays.asList(middleware));
-        RouteService.invalidateStructure();
+        RouteCache.clear();
         return this;
     }
 
@@ -125,7 +121,7 @@ public class Router {
      */
     public Router middleware(String... aliases) {
         middlewareSpecs.addAll(Arrays.asList(aliases));
-        RouteService.invalidateStructure();
+        RouteCache.clear();
         return this;
     }
 
@@ -150,7 +146,7 @@ public class Router {
      */
     public Router middleware(Class<?> clazz, String... params) {
         middlewareSpecs.add(new ClassMiddlewareSpec(clazz, params));
-        RouteService.invalidateStructure();
+        RouteCache.clear();
         return this;
     }
 
@@ -406,7 +402,7 @@ public class Router {
         RouteDefinition route = new RouteDefinition(method, uri, action);
         route.setRouter(this);
         routes.add(route);
-        RouteService.invalidateStructure();
+        RouteCache.clear();
         return route;
     }
 
@@ -417,7 +413,7 @@ public class Router {
             groupRouter.addRoute(m, uri, action);
         }
         routers.add(groupRouter);
-        RouteService.invalidateStructure();
+        RouteCache.clear();
         return groupRouter;
     }
 
@@ -463,7 +459,7 @@ public class Router {
         });
         router.accept(groupRouter);
         routers.add(groupRouter);
-        RouteService.invalidateStructure();
+        RouteCache.clear();
         return groupRouter;
     }
 
@@ -492,18 +488,18 @@ public class Router {
     public void addGroupRouter(Router router) {
         router.setParentRouter(this);
         routers.add(router);
-        RouteService.invalidateStructure();
+        RouteCache.clear();
     }
 
     public List<RouteDefinition> getAllRoutes() {
-        refreshCache();
-        List<RouteDefinition> cached = cachedAllRoutes;
+        RouteCache.Entry entry = RouteCache.of(this);
+        List<RouteDefinition> cached = entry.allRoutes;
         if (cached == null) {
             List<RouteDefinition> all = new ArrayList<>();
             routers.forEach(router -> all.addAll(router.getAllRoutes()));
             all.addAll(this.routes);
             cached = java.util.Collections.unmodifiableList(all);
-            cachedAllRoutes = cached;
+            entry.allRoutes = cached;
         }
         return cached;
     }
@@ -527,11 +523,14 @@ public class Router {
     /**
      * 按路由别名解析为 URL 并替换路径参数（对齐 Laravel {@code route('name', [...])}）。
      * <p>
+     * 别名→URL 的结果由 {@link RouteCache} 缓存，首查 urlIndex（无参数命中），
+     * 未命中再走 nameIndex→getFullUri→参数替换路径，结果写入 urlIndex 供后续零计算命中。
+     * <p>
      * {@code params} 为 {@link Map} 时按参数名替换 {@code {key}} / {@code {key?}}；
      * 为单值时替换第一个占位符。
      *
      * @param name   路由别名（如 {@code "admin.user.show"}）
-     * @param params 路径参数（Map 或单值）
+     * @param params 路径参数（Map 或单值，为 null 时不替换）
      * @return 完整 URL 路径（已替换参数）
      */
     public String url(String name, Object params) {
@@ -539,13 +538,23 @@ public class Router {
         if (target.startsWith(".")) {
             target = target.substring(1);
         }
+
+        RouteCache.Entry entry = RouteCache.of(this);
+
+        // 无参数 → 优先查 urlIndex（零计算命中）
+        if (params == null) {
+            String cachedUrl = entry.urlIndex != null ? entry.urlIndex.get(target) : null;
+            if (cachedUrl != null) {
+                return cachedUrl;
+            }
+        }
+
         Map<String, RouteDefinition> index = nameIndex();
         RouteDefinition def = index.get(target);
         if (def == null) {
             def = index.get(target + ".index");
         }
         if (def == null) {
-            // 未命中：保留与模板一致的退化行为并告警，便于排查命名错误
             log.warn("[route] url('{}') 未找到对应路由别名, 退化为路径映射", name);
             return "/" + name.replace('.', '/');
         }
@@ -566,11 +575,19 @@ public class Router {
             uri = FIRST_PLACEHOLDER.matcher(uri)
                     .replaceFirst(java.util.regex.Matcher.quoteReplacement(String.valueOf(params)));
         }
+
+        // 无参数结果写入 urlIndex 供后续零计算命中
+        if (params == null) {
+            if (entry.urlIndex == null) {
+                entry.urlIndex = new java.util.concurrent.ConcurrentHashMap<>();
+            }
+            entry.urlIndex.putIfAbsent(target, uri);
+        }
         return uri;
     }
 
     /**
-     * 路由别名 → 路由定义 的索引表（惰性构建、按结构版本号失效）。
+     * 路由别名 → 路由定义 的索引表（惰性构建、由 RouteCache 统一缓存失效）。
      * <p>
      * 将 {@link #url(String, Object)} 的查找从 O(n) 线性扫描降为 O(1) 哈希查找。
      * 同名冲突时保留首个（与原线性扫描的"先到先得"语义一致）。
@@ -578,8 +595,8 @@ public class Router {
      * @return 不可变索引表，键为去除前导 {@code .} 的完整别名
      */
     private Map<String, RouteDefinition> nameIndex() {
-        refreshCache();
-        Map<String, RouteDefinition> cached = cachedNameIndex;
+        RouteCache.Entry entry = RouteCache.of(this);
+        Map<String, RouteDefinition> cached = entry.nameIndex;
         if (cached == null) {
             Map<String, RouteDefinition> index = new java.util.HashMap<>();
             for (RouteDefinition def : getAllRoutes()) {
@@ -593,17 +610,17 @@ public class Router {
                 index.putIfAbsent(candidate, def);
             }
             cached = java.util.Collections.unmodifiableMap(index);
-            cachedNameIndex = cached;
+            entry.nameIndex = cached;
         }
         return cached;
     }
 
     public List<Middleware> getAllMiddlewares() {
-        refreshCache();
-        List<Middleware> cached = cachedMiddlewares;
+        RouteCache.Entry entry = RouteCache.of(this);
+        List<Middleware> cached = entry.middlewares;
         if (cached == null) {
             cached = java.util.Collections.unmodifiableList(resolveAllMiddlewares());
-            cachedMiddlewares = cached;
+            entry.middlewares = cached;
         }
         return cached;
     }
@@ -632,40 +649,40 @@ public class Router {
 
     /**
      * 这三个 generateFullXxx 处在「路由条数 x 嵌套层数」的递归放大链上，
-     * 每层都会做字符串拼接与三次正则替换。结果由注册期结构决定，故就地记忆化。
+     * 每层都会做字符串拼接与三次正则替换。结果由注册期结构决定，故通过 RouteCache 就地记忆化。
      */
     protected String generateFullUri() {
-        refreshCache();
-        String cached = cachedFullUri;
+        RouteCache.Entry entry = RouteCache.of(this);
+        String cached = entry.fullUri;
         if (cached == null) {
             cached = parentRouter == null
                     ? normalizeUri(prefix)
                     : normalizeUri(parentRouter.generateFullUri() + "/" + prefix);
-            cachedFullUri = cached;
+            entry.fullUri = cached;
         }
         return cached;
     }
 
     protected String generateFullNamespace() {
-        refreshCache();
-        String cached = cachedFullNamespace;
+        RouteCache.Entry entry = RouteCache.of(this);
+        String cached = entry.fullNamespace;
         if (cached == null) {
             cached = parentRouter == null
                     ? normalizeNamesapce(namespace)
                     : normalizeNamesapce(parentRouter.generateFullNamespace() + "." + namespace);
-            cachedFullNamespace = cached;
+            entry.fullNamespace = cached;
         }
         return cached;
     }
 
     protected String generateFullName() {
-        refreshCache();
-        String cached = cachedFullName;
+        RouteCache.Entry entry = RouteCache.of(this);
+        String cached = entry.fullName;
         if (cached == null) {
             cached = parentRouter == null
                     ? normalizeName(name)
                     : normalizeName(parentRouter.generateFullName() + "." + name);
-            cachedFullName = cached;
+            entry.fullName = cached;
         }
         return cached;
     }

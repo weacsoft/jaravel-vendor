@@ -24,7 +24,7 @@ public class BladeContext {
     private final Map<String, String> componentSlots;
     private StringBuilder currentSectionContent;
     private String parentTemplate;
-    /** 本模板（含继承链）渲染时实际输出的 @yield 区域名集合，用于 PJAX 编译期区域分析 */
+    /** 本模板（含继承链）渲染时实际输出的 @yield 区域名集合，用于编译期区域分析 */
     private final java.util.LinkedHashSet<String> yieldedNames;
     private boolean inSection;
     private String currentComponent;

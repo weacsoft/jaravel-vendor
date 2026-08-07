@@ -52,75 +52,52 @@ public class RouteDefinition {
     @Getter
     private String uri;
 
-    // ===== 派生结果缓存 =====
+    // ===== 派生结果缓存（统一由 RouteCache 管理） =====
     //
     // 完整 URI / 名称 / 命名空间与中间件链都需沿父级 Router 递归合并，且中间件别名
     // 表达式每次解析都会重新拆串并分配闭包。这些结果在路由注册完成后完全不变，
     // 却处在每请求的必经路径上（中间件链）与模板 route() 反查路径上（名称/URI），
-    // 因此在此就地缓存，用 RouteService 的全局结构版本号统一失效。
+    // 因此通过 RouteCache 统一缓存。任何结构性写操作调用 RouteCache.clear() 整体失效。
 
-    private volatile int cacheVersion = -1;
-    private volatile String cachedFullUri;
-    private volatile String cachedFullName;
-    private volatile String cachedFullNamespace;
-    private volatile List<Middleware> cachedMiddlewares;
-    private volatile Middleware.NextFunction cachedChain;
-
-    public RouteDefinition(String method, String uri, Controllers.Runner action) {
+    RouteDefinition(String method, String uri, Controllers.Runner action) {
         setMethod(method);
         setUri(uri);
         setAction(action);
     }
 
-    /**
-     * 结构版本号变化时丢弃全部派生缓存。
-     * <p>缓存内容均为纯函数结果，竞态下最坏只是重复计算一次，无需加锁。</p>
-     */
-    private void refreshCache() {
-        int version = RouteService.structureVersion();
-        if (cacheVersion != version) {
-            cachedFullUri = null;
-            cachedFullName = null;
-            cachedFullNamespace = null;
-            cachedMiddlewares = null;
-            cachedChain = null;
-            cacheVersion = version;
-        }
-    }
-
     public void setMethod(String method) {
         this.method = method;
-        RouteService.invalidateStructure();
+        RouteCache.clear();
     }
 
     public void setUri(String uri) {
         this.uri = uri;
-        RouteService.invalidateStructure();
+        RouteCache.clear();
     }
 
     public void setName(String name) {
         this.name = name;
-        RouteService.invalidateStructure();
+        RouteCache.clear();
     }
 
     public void setNamespace(String namespace) {
         this.namespace = namespace;
-        RouteService.invalidateStructure();
+        RouteCache.clear();
     }
 
     public void setPrefix(String prefix) {
         this.prefix = prefix;
-        RouteService.invalidateStructure();
+        RouteCache.clear();
     }
 
     public void setAction(Controllers.Runner action) {
         this.action = action;
-        RouteService.invalidateStructure();
+        RouteCache.clear();
     }
 
     public void setRouter(Router router) {
         this.router = router;
-        RouteService.invalidateStructure();
+        RouteCache.clear();
     }
 
     /**
@@ -131,7 +108,7 @@ public class RouteDefinition {
      */
     public RouteDefinition middleware(Middleware... middleware) {
         middlewareSpecs.addAll(Arrays.asList(middleware));
-        RouteService.invalidateStructure();
+        RouteCache.clear();
         return this;
     }
 
@@ -152,7 +129,7 @@ public class RouteDefinition {
      */
     public RouteDefinition middleware(String... aliases) {
         middlewareSpecs.addAll(Arrays.asList(aliases));
-        RouteService.invalidateStructure();
+        RouteCache.clear();
         return this;
     }
 
@@ -177,7 +154,7 @@ public class RouteDefinition {
      */
     public RouteDefinition middleware(Class<?> clazz, String... params) {
         middlewareSpecs.add(new ClassMiddlewareSpec(clazz, params));
-        RouteService.invalidateStructure();
+        RouteCache.clear();
         return this;
     }
 
@@ -196,11 +173,11 @@ public class RouteDefinition {
     }
 
     public String getFullUri() {
-        refreshCache();
-        String cached = cachedFullUri;
+        RouteCache.Entry entry = RouteCache.of(this);
+        String cached = entry.fullUri;
         if (cached == null) {
             cached = generateFullUri();
-            cachedFullUri = cached;
+            entry.fullUri = cached;
         }
         return cached;
     }
@@ -214,31 +191,31 @@ public class RouteDefinition {
     }
 
     public String getFullName() {
-        refreshCache();
-        String cached = cachedFullName;
+        RouteCache.Entry entry = RouteCache.of(this);
+        String cached = entry.fullName;
         if (cached == null) {
             cached = generateFullName();
-            cachedFullName = cached;
+            entry.fullName = cached;
         }
         return cached;
     }
 
     public String getFullNamespace() {
-        refreshCache();
-        String cached = cachedFullNamespace;
+        RouteCache.Entry entry = RouteCache.of(this);
+        String cached = entry.fullNamespace;
         if (cached == null) {
             cached = generateFullNamespace();
-            cachedFullNamespace = cached;
+            entry.fullNamespace = cached;
         }
         return cached;
     }
 
     public List<Middleware> getMiddlewares() {
-        refreshCache();
-        List<Middleware> cached = cachedMiddlewares;
+        RouteCache.Entry entry = RouteCache.of(this);
+        List<Middleware> cached = entry.middlewares;
         if (cached == null) {
             cached = java.util.Collections.unmodifiableList(resolveMiddlewares());
-            cachedMiddlewares = cached;
+            entry.middlewares = cached;
         }
         return cached;
     }
@@ -274,8 +251,8 @@ public class RouteDefinition {
      * @return 可直接 {@code apply(request)} 的处理链
      */
     public Middleware.NextFunction getHandlerChain() {
-        refreshCache();
-        Middleware.NextFunction cached = cachedChain;
+        RouteCache.Entry entry = RouteCache.of(this);
+        Middleware.NextFunction cached = entry.handlerChain;
         if (cached == null) {
             List<Middleware> all = getMiddlewares();
             final Controllers.Runner target = action;
@@ -286,7 +263,7 @@ public class RouteDefinition {
                 handler = request -> middleware.handle(request, next);
             }
             cached = handler;
-            cachedChain = cached;
+            entry.handlerChain = cached;
         }
         return cached;
     }

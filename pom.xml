@@ -380,6 +380,9 @@
     </dependencies>
 
     <build>
+        <!-- 临时：本地工作区 target/maven-status 存在 NTFS 损坏目录（Windows maven 已知问题，无法删除/重命名），
+             构建输出临时改到 build/ 以绕过；提交前会还原为默认 target。 -->
+        <directory>${project.basedir}/build</directory>
         <plugins>
             <!-- JDK编译必备 -->
             <plugin>

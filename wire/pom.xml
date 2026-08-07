@@ -12,7 +12,7 @@
 
     <artifactId>wire</artifactId>
     <name>wire</name>
-    <description>Wire：Laravel Livewire 风格的部分更新模块，支持自定义 update URL 和 @section 无感 wire 更新</description>
+    <description>Wire：Laravel Livewire 风格的部分更新模块 + 透明导航（Blade @section diff 无感切换），纯 Wire 实现，无外部框架耦合</description>
 
     <dependencies>
         <dependency>

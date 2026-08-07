@@ -252,28 +252,6 @@ public class WireOutlet implements Middleware {
         return html + "\n" + fragment;
     }
 
-    /**
-     * 把组件载荷合并进 PJAX 局部响应的 JSON 信封（顶层 {@code components} 字段）。
-     * <p>
-     * PJAX 切换时页面并未重载，outlet 容器与运行时都还在，只需把新组件带过去即可。
-     */
-    static String injectPjaxJson(String json, List<Map<String, Object>> payload) {
-        if (json == null || json.isEmpty() || payload == null || payload.isEmpty()) {
-            return json;
-        }
-        try {
-            Map<String, Object> envelope = Json.parseToMap(json);
-            if (envelope == null || !envelope.containsKey("regions")) {
-                return json;  // 不是 PJAX 信封，保持原样
-            }
-            envelope.put("components", payload);
-            return Json.stringify(envelope);
-        } catch (Exception e) {
-            log.warn("[wire-component] PJAX 信封注入组件失败，已跳过本次下发", e);
-            return json;
-        }
-    }
-
     private static String safeJson(List<Map<String, Object>> payload) {
         try {
             String json = Json.stringify(payload == null ? new ArrayList<>() : payload);
@@ -324,9 +302,7 @@ public class WireOutlet implements Middleware {
                 }
                 return injectHtml(content, payload);
             }
-            if (type.contains("application/json")) {
-                return injectPjaxJson(content, payload);
-            }
+            // JSON 响应（Wire 自身或其它 JSON 接口）原样返回，不注入组件
             return content;
         }
 

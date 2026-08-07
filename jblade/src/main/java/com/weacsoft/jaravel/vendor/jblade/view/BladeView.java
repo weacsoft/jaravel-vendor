@@ -66,32 +66,4 @@ public class BladeView implements View {
         BladeEngine engine = new BladeEngine(templateDir, suffix, cacheStore);
         return new BladeView(name, engine);
     }
-
-    /**
-     * 构建 BladeView（预编译打包模式，仅需 JRE）。
-     *
-     * @param name         实现名
-     * @param packagePath  预编译类所在包路径
-     * @param urlPrefix    静态资源前缀
-     * @return BladeView
-     */
-    public static BladeView precompiledPackage(String name, String packagePath, String urlPrefix) {
-        BladeAssetHelper.setUrlPrefix(urlPrefix);
-        BladeEngine engine = BladeEngine.fromPrecompiledPackage(packagePath);
-        return new BladeView(name, engine);
-    }
-
-    /**
-     * 构建 BladeView（预编译 class 目录模式，仅需 JRE）。
-     *
-     * @param name          实现名
-     * @param classesDir    预编译 class 目录
-     * @param urlPrefix     静态资源前缀
-     * @return BladeView
-     */
-    public static BladeView precompiledClasses(String name, String classesDir, String urlPrefix) {
-        BladeAssetHelper.setUrlPrefix(urlPrefix);
-        BladeEngine engine = BladeEngine.fromPrecompiledClasses(classesDir);
-        return new BladeView(name, engine);
-    }
 }

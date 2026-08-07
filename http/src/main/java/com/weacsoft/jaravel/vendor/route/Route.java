@@ -125,6 +125,23 @@ public final class Route {
     }
 
     /**
+     * 取得根 Router（栈底）。
+     * <p>
+     * 供 {@code artisan route:cache} 等全局命令使用。
+     *
+     * @return 根 Router
+     * @throws IllegalStateException 如果未调用 {@link #setRootRouter} 初始化
+     */
+    public static Router getRootRouter() {
+        Deque<Router> stack = ROUTER_STACK.get();
+        if (stack.isEmpty()) {
+            throw new IllegalStateException(
+                    "Route 静态门面未初始化，请先调用 Route.setRootRouter(router)");
+        }
+        return stack.peekLast();
+    }
+
+    /**
      * 获取当前上下文的 Router（栈顶）。
      *
      * @return 当前 Router

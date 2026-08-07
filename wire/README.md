@@ -48,7 +48,8 @@
   - [16.4 WireOutlet 加载位置中间件](#164-wireoutlet-加载位置中间件)
   - [16.5 组件间隔离机制](#165-组件间隔离机制)
   - [16.6 配置项](#166-配置项)
-  - [16.7 与 PJAX 协同](#167-与-pjax-协同)
+  - [16.7 与 Wire 透明导航协同](#167-与-wire-透明导航协同)
+- [17. 透明导航（Transparent Navigation）](#17-透明导航transparent-navigation)
 
 ---
 
@@ -820,29 +821,47 @@ public class WireAutoConfiguration {
 
 | 事件 | 参数 | 触发时机 |
 | --- | --- | --- |
-| `beforeUpdate` | `(component, action, params)` | 发送更新请求前触发 |
+| `beforeRequest` | `(component, action, params)` | **发起 HTTP 请求前**触发（新增） |
+| `afterRequest` | `(component, data)` | **收到 HTTP 响应后、数据处理前**触发（新增） |
+| `beforeUpdate` | `(component, action, params)` | 数据处理前触发（兼容旧版，与 `beforeRequest` 同时触发） |
 | `afterUpdate` | `(component, data, sections)` | DOM 更新完成后触发 |
+
+完整的请求生命周期顺序：
+
+```
+beforeRequest ──→ 发送 HTTP 请求 ──→ afterRequest ──→ 数据处理 ──→ beforeUpdate ──→ DOM 更新 ──→ afterUpdate
+    │                (fetch)              (收到 JSON)     (handleResponse)          (replaceSection)       (rebindSection)
+```
 
 **参数说明**：
 
-- `beforeUpdate`：
-  - `component`：当前 wire 组件对象
-  - `action`：即将执行的 action 名称
-  - `params`：action 参数
-- `afterUpdate`：
-  - `component`：当前 wire 组件对象
-  - `data`：服务端返回的完整响应数据
-  - `sections`：本次更新的 section 列表
+- `component`：当前 wire 组件对象
+- `action`：即将执行的 action 名称
+- `params`：action 参数
+- `data`：服务端返回的完整响应 JSON 数据（含 sections、effects、snapshot）
+- `sections`：本次更新的 section 列表
 
 ### 12.3 使用示例
 
 ```javascript
-// mdui 框架在 DOM 更新后刷新组件
+// 发起请求前：展示 loading 状态
+Wire.on('beforeRequest', function(component, action, params) {
+    showLoading(component);
+});
+
+// 收到响应后：解析响应并做预处理
+Wire.on('afterRequest', function(component, data) {
+    if (data.errors) {
+        showErrors(data.errors);
+    }
+});
+
+// DOM 更新后：刷新第三方 UI 框架组件
 Wire.on('afterUpdate', function(component, data, sections) {
     mdui.mutation();  // 重新扫描并初始化 mdui 组件
 });
 
-// 更新前可以做些准备工作
+// 更新前可以做些准备工作（兼容旧版）
 Wire.on('beforeUpdate', function(component, action, params) {
     console.log('即将执行 action:', action);
 });
@@ -1150,7 +1169,7 @@ return WireResponse.update(sections, snapshot)
 `WireOutlet` 是仿 `VerifyCsrfToken` 设计的中间件，负责三件事：
 
 1. 标记本次请求「命名组件可用」（模板函数 `wire_outlet()` 据此决定是否输出容器）；
-2. 请求结束后取走本次积压的组件，注入到响应里（HTML 走 bootstrap `<script>`，PJAX JSON 走 `components` 字段）；
+2. 请求结束后取走本次积压的组件，注入到响应里（HTML 走 bootstrap `<script>`，Wire 导航 JSON 走 `components` 字段）；
 3. 自动注入前端运行时 `wire-component.js`。
 
 **默认挂载位置**在 `RouteServiceProvider` 的 Web 分组末尾（不在 `Web.java` 里逐条声明）：
@@ -1239,19 +1258,17 @@ jaravel:
 配置由 `WireComponentAutoConfiguration` 在启动时应用，并注册 `WireOutlet` 中间件别名与 `wire_outlet()` 模板函数。
 注册失败会直接抛 `IllegalStateException` 让应用启动失败，避免运行期才发现「指令不存在」。
 
-### 16.7 与 PJAX 协同
+### 16.7 与 Wire 透明导航协同
 
-三条下发路径在 PJAX 场景下都能正常工作：
+三条下发路径都能正常工作：
 
 | 场景 | 响应形态 | 组件注入位置 | 前端挂载方 |
 | --- | --- | --- | --- |
 | 首屏 / 整页加载 | HTML | `<script type="application/json" wire:components>` bootstrap | `wire-component.js` 自扫描 |
 | Wire 局部更新 | JSON | `effects.components` | `wire.js` 委派给 `WireComponent.mountAll` |
-| PJAX 局部导航 | JSON | 顶层 `components` | `pjax.js` 委派给 `WireComponent.mountAll` |
+| Wire 透明导航 | JSON | 顶层 `components` | `wire-navigate.js` 委派给 `WireComponent.mountAll` |
 
 三者共用同一份 `WireComponents` 队列与同一个渲染器，因此后端代码完全不需要区分当前是哪种请求。
-
-> Wire 页面本身自带局部刷新能力，不纳入 PJAX 管辖；普通页面走 PJAX，组件随 `components` 字段一起下发。
 
 ---
 
@@ -1305,6 +1322,139 @@ WireManager.setEngine(bladeEngine);
 ```java
 router.serveStatic("/static", "classpath:/static/", 3600);
 ```
+
+---
+
+## 17. 透明导航（Transparent Navigation）
+
+> 在「Wire 组件（Livewire 风格）」之外，wire 模块还提供了一套**页面级透明导航**能力：拦截带 `wire-navigate` 的链接 → 发起 AJAX → 服务端只回传**变化的 section（最小 diff）** → 前端按 `<!--wire:section-start:NAME-->` 标记局部替换 DOM → 同步 `pushState` 历史。它借鉴了 PJAX 的「链接拦截 → 局部刷新」思路，但完全独立实现，并深度结合 jblade 的 `@section` / `@yield` 模板继承，实现跨控制器、跨模板的**无感刷新**。
+
+### 17.1 与 PJAX 的本质区别
+
+| 维度 | PJAX | Wire 透明导航 |
+| --- | --- | --- |
+| 传输内容 | 全量 section 信封（所有 region 都返回） | **最小 diff**（只返回 hash 变化的 section） |
+| 标记体系 | `X-Pjax` / `X-Pjax-Region` + `<!--pjax:start-->` | `X-Wire-Navigate` / `X-Wire-Hashes` + `<!--wire:section-start:NAME-->` |
+| 后端写法 | 需判断 PJAX 头、可能走不同渲染分支 | **标准 `ResponseBuilder.view()`，零改动** |
+| 依赖关系 | 自成体系 | 复用 jblade 的 `@section`/`@yield` 继承，共享布局的部分天然无感 |
+| 首屏 | 普通整页 | 普通整页 + 注入 `window.__wireHashes`（首屏即用服务端同口径 hash） |
+
+> **关键原则**：后端控制器**不需要任何 Wire 专用代码**。只要模板用 `@yield`/`@section` 划分区域（layout 负责 `@yield`，子模板负责 `@section`），导航中间件就会自动把两次渲染的差异抽成 diff 下发。
+
+### 17.2 架构与数据流
+
+```
+浏览器                                    服务端
+──────                                    ──────
+<a href="/wire-records" wire-navigate>  ──GET /wire-records
+                                          │  WireMiddleware 拦截（X-Wire-Navigate: true）
+                                          │  WireMode.begin() + WireContext.begin(客户端上报 hash)
+                                          │  next → 标准 ResponseBuilder.view() 渲染带标记 HTML
+                                          │  WireRenderer.renderDiff(html, url)
+                                          │    ├─ 按 <!--wire:section-start:NAME--> 抽取各 section
+                                          │    ├─ FNV-1a 32-bit 计算各 section hash
+                                          │    └─ 对比客户端上报 hash，仅保留变化的 section
+                                          └─< WireDiffResponse: {sections, hashes, title, url}
+XHR 收到 JSON diff
+  ├─ 按 marker 替换变化的 section DOM（未变化的 DOM 完全不动）
+  ├─ document.title = payload.title
+  └─ history.pushState(url)
+```
+
+**核心类**：
+
+| 类 | 职责 |
+| --- | --- |
+| `navigation/WireMiddleware` | 全局拦截器。非 Wire 请求：注入 `window.__wireHashes`；Wire 请求：开启 `WireMode` + `WireContext`，渲染后调用 `WireRenderer.renderDiff` 输出 `WireDiffResponse` |
+| `navigation/WireRenderer` | 抽取 section、计算 FNV-1a hash、对比客户端 hash、生成最小 diff JSON |
+| `navigation/WireContext` | `ThreadLocal` 保存客户端上报的 hash（`incomingHashes`） |
+| `utils/WireMode` | `ThreadLocal` 标记当前是否为 Wire 渲染模式（`ResponseBuilder.view()` 读取以决定是否注入 `X-Template-Name` 等） |
+| `static/wire-navigate.js` | 前端运行时：拦截 `wire-navigate` 链接、计算/上报 hash、应用 diff、管理 `pushState`/`popstate` |
+
+### 17.3 首屏 hash 注入（消除 hash 口径差）
+
+最早版本让前端用 DOM 序列化计算 section hash，而服务端用原始 HTML 子串哈希，两者口径不一致 → 每次导航都误判「全部变化」。修复方式：
+
+- `WireMiddleware.injectInitialHashes()` 在**普通整页**响应中，若检测到 `<!--wire:section-start:` 标记，就用 `WireRenderer.computeHashes()` 算出与服务端 diff **同口径**的 hash，注入一段脚本：
+  ```html
+  <script>window.__wireHashes={"title":"a73a240e","head":"58488b10","sidebar":"05b1510a","content":"b6b910ab","scripts":"66fcc582"};</script>
+  ```
+- 前端 `wire-navigate.js` 的 `computeHashes()` 首屏**优先**使用 `window.__wireHashes`，不再依赖 DOM 序列化，从而与服务端完全一致。
+
+### 17.4 最小 diff 算法（FNV-1a 32-bit）
+
+`WireRenderer.hash()` 与前端 `wire-navigate.js` 使用**完全相同**的算法：
+
+```java
+int h = 0x811c9dc5;                       // FNV offset basis
+for (int i = 0; i < content.length(); i++) {
+    h ^= content.charAt(i);
+    h *= 0x01000193;                      // FNV prime
+}
+return String.format("%08x", h);         // 8 位十六进制
+```
+
+`renderDiff()` 逻辑：
+
+```java
+Map<String,String> incoming = WireContext.getIncomingHashes();   // 客户端上报
+Map<String,String> changed  = new LinkedHashMap<>();
+for (var e : allSections.entrySet()) {        // allSections 来自服务端本次渲染
+    String name = e.getKey();
+    String newHash = allHashes.get(name);
+    String oldHash = incoming.get(name);
+    if (newHash != null && !newHash.equals(oldHash)) {
+        changed.put(name, e.getValue());      // 仅保留 hash 变化的 section
+    }
+}
+// 响应：changed 作为 sections，allHashes 作为新的 hashes
+```
+
+> 例：仪表盘 → 记录列表导航，二者共享 layout，`head`/`scripts` 区域完全相同（hash `58488b10`/`66fcc582` 一致），因此服务端**只回传 `title`/`sidebar`/`content` 三个变化区域**，`head`/`scripts` 完全不传输、前端也不触碰对应 DOM —— 这就是「无感刷新」。
+
+### 17.5 协议细节
+
+**请求头**（前端 `wire-navigate.js` 发出）：
+
+| Header | 值 | 说明 |
+| --- | --- | --- |
+| `X-Wire-Navigate` | `true` | 标记本次为 Wire 导航请求（仅 GET） |
+| `X-Wire-Hashes` | `title=xxx,head=yyy,...` | 客户端当前各 section 的 hash（`key=value` 逗号分隔） |
+| `X-Requested-With` | `fetch` | 便于服务端识别 |
+
+**响应体**（JSON）：
+
+```json
+{
+  "sections": { "title": "...", "sidebar": "...", "content": "..." },
+  "hashes":   { "title": "938cc03a", "head": "58488b10", "sidebar": "c14b6ca0", "content": "f1b69add", "scripts": "66fcc582" },
+  "title": "记录列表 - Wire Demo",
+  "url":   "/wire-records"
+}
+```
+
+- `sections`：仅含**变化**的 section HTML（剥去 `<!--wire:section-start/end-->` 包裹，保留纯净内容）。
+- `hashes`：本次渲染的**全部** section hash，前端据此更新本地 `currentHashes` 供下次导航对比。
+- `title`：已剥去 wire 标记，前端直接赋给 `document.title`（不会把注释带进标签页）。
+
+### 17.6 如何启用
+
+1. **注册全局中间件**：在 `RouteServiceProvider`（或等价启动类）中把 `WireMiddleware` 注册为全局中间件，使其能拦截所有请求。
+2. **模板用 `@yield`/`@section` 分区**：layout 用 `@yield('sidebar')`/`@yield('content')` 等划分可刷新区域，子模板用 `@section('content', ...)` 填充；`jblade` 的 `BladeTemplate.yieldSection()` 会**始终**输出 `<!--wire:section-start:NAME-->...<!--wire:section-end:NAME-->` 标记（首屏即带锚点，无需进入 Wire 模式）。
+3. **链接加 `wire-navigate`**：`<a href="/other" wire-navigate>导航</a>`，前端运行时自动拦截并走 diff 导航。
+4. **直访即整页**：不带 `X-Wire-Navigate` 头直接访问 URL → 返回完整 HTML（并注入 `window.__wireHashes`），行为与普通页面完全一致，SEO/刷新友好。
+
+### 17.7 演示（jaravel demo）
+
+`jaravel` 工程提供跨控制器、跨模板的无感导航演示：
+
+| 路由 | 控制器 | 模板 | 说明 |
+| --- | --- | --- | --- |
+| `/wire-dashboard` | `WireDashboardController` | `wire-dashboard.blade.java` | 仪表盘（含统计卡片、命名组件入口按钮） |
+| `/wire-records` | `WireRecordsController` | `wire-records.blade.java` | 记录列表（8 行种子数据） |
+| `/wire-component-demo` | `WireComponentDemoController` | `wire-component-demo.blade.java` | 命名组件（message 式提示框插入即自毁）演示 |
+
+三者共用 `wire-layout.blade.java`（`@yield` 出 `title`/`head`/`sidebar`/`content`/`scripts` 五个区域）。在仪表盘点击顶栏「记录列表」，即可观察到：标题、`sidebar`、`content` 三个区域被 diff 替换，而 `head`/`scripts`（JS/CSS 容器）**纹丝不动**——脚本不会重新执行、无闪烁，实现真正无感。
 
 ---
 

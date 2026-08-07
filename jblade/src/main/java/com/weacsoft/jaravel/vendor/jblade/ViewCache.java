@@ -11,7 +11,7 @@ import java.io.File;
  * <p>
  * 提供两个静态方法，分别用于<b>清除</b>与<b>重建</b>全部模板编译缓存：
  * <ul>
- *   <li>{@link #clear()}：清空内存一级缓存 + CacheStore 二级缓存 + PJAX 区域元数据；</li>
+ *   <li>{@link #clear()}：清空内存一级缓存 + CacheStore 二级缓存 + 区域元数据；</li>
  *   <li>{@link #rebuild()}：先清空，再强制编译全部模板并写入缓存，同时输出预编译包
  *       （{@code storage/framework/views/templates.jblade.zip}）供 JRE 部署形态使用。</li>
  * </ul>
@@ -39,9 +39,9 @@ public final class ViewCache {
     }
 
     /**
-     * 清除全部模板缓存（一级 + 二级 + 区域元数据）。
+     * 清除全部模板缓存（内存字节码 + 模板类 + 外部 CacheStore + 实例缓存 + 区域元数据）。
      *
-     * @return 清除前缓存的模板数量；无可用引擎时返回 0
+     * @return 清除前的内存字节码缓存条目数；无可用引擎时返回 0
      */
     public static int clear() {
         BladeEngine engine = activeEngine();
@@ -50,12 +50,11 @@ public final class ViewCache {
         }
         int before = engine.templateClassCacheSize();
         engine.clearCache();
-        engine.clearRegionMeta();
         return before;
     }
 
     /**
-     * 重建全部模板缓存：清空后强制编译所有模板并写入缓存，
+     * 重建全部模板缓存：清空后强制编译所有模板，写入内存字节码缓存，
      * 同时输出预编译包（.jblade.zip）到 {@code storage/framework/views}（best-effort）。
      *
      * @return 成功编译的模板数量；无可用引擎时返回 0
@@ -66,7 +65,6 @@ public final class ViewCache {
             return 0;
         }
         engine.clearCache();
-        engine.clearRegionMeta();
         java.util.List<String> names = engine.scanTemplateNames();
         int ok = 0;
         for (String name : names) {

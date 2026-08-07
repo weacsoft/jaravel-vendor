@@ -1,10 +1,9 @@
 package com.weacsoft.jaravel.vendor.route;
 
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 
 /**
- * 路由字符串规范化工具，兼路由结构版本号的持有者。
+ * 路由字符串规范化工具。
  *
  * <h3>为什么预编译正则</h3>
  * {@code String.replaceAll} 每次调用都会重新 {@code Pattern.compile}。这三个
@@ -12,13 +11,9 @@ import java.util.regex.Pattern;
  * 一次 {@code route('name')} 反查会沿「路由条数 × 嵌套层数」放大成数千次编译。
  * 改为 {@code static final Pattern} 后编译只发生一次。
  *
- * <h3>路由结构版本号</h3>
- * 路由的完整 URI / 名称 / 中间件链都是「沿父级 Router 递归合并」的纯函数结果，
- * 在注册完成后不再变化，因此适合缓存。但缓存必须能感知注册期的任何改动——包括
- * <b>父级</b> Router 的 prefix / 中间件变更，这对逐对象失效来说很难追踪。
- * 这里改用一个全局单调递增的版本号：任何一处结构性改动都调用
- * {@link #invalidateStructure()}，各缓存只需比对自己记录的版本号即可整体失效。
- * 判断成本是一次 volatile 读，实现简单且不会漏失效。
+ * <h3>派生结果的缓存在哪里</h3>
+ * 完整 URI / 名称 / 中间件链等递归合并结果统一由 {@link RouteCache} 这一份内存缓存持有，
+ * 结构性写操作调用 {@link RouteCache#clear()} 整体失效。本类只负责字符串规范化，不持有状态。
  */
 public class RouteService {
 
@@ -28,24 +23,6 @@ public class RouteService {
     private static final Pattern MULTI_DOT = Pattern.compile("\\.+");
     private static final Pattern NO_LEADING_DOT = Pattern.compile("^(?!\\.)");
     private static final Pattern EDGE_DOT = Pattern.compile("^\\.|\\.$");
-
-    /** 路由结构版本号：任何影响完整 URI / 名称 / 中间件链的改动都会使其自增 */
-    private static final AtomicInteger STRUCTURE_VERSION = new AtomicInteger();
-
-    /**
-     * 取得当前路由结构版本号。缓存持有者用它判断自身缓存是否仍然有效。
-     */
-    public static int structureVersion() {
-        return STRUCTURE_VERSION.get();
-    }
-
-    /**
-     * 声明路由结构已发生改动，使所有派生缓存失效。
-     * <p>由 {@link Router} 与 {@link RouteDefinition} 的写操作调用。</p>
-     */
-    public static void invalidateStructure() {
-        STRUCTURE_VERSION.incrementAndGet();
-    }
 
     public static String normalizeUri(String uri) {
         if (uri == null || uri.trim().isEmpty()) {
