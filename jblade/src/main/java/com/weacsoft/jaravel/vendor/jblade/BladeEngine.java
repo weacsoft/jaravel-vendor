@@ -207,7 +207,9 @@ public class BladeEngine {
         }
 
         BladeTemplate root = initInheritanceChain(template, templateName, context);
-        return root.render();
+        // 渲染出口统一改写「注释非法位置」的 wire section 锚点（<title>/属性等），
+        // 避免锚点注释以纯文本形式泄漏到标签页标题或 class 等属性值中。
+        return WireAnchorRewriter.rewrite(root.render());
     }
 
     /**
@@ -300,7 +302,7 @@ public class BladeEngine {
 
         StringWriter writer = new StringWriter();
         renderer.accept(writer);
-        return writer.toString();
+        return WireAnchorRewriter.rewrite(writer.toString());
     }
 
     /**
@@ -331,10 +333,10 @@ public class BladeEngine {
             if (renderer != null) {
                 StringWriter writer = new StringWriter();
                 renderer.accept(writer);
-                result.put(sectionName, writer.toString());
+                result.put(sectionName, WireAnchorRewriter.rewrite(writer.toString()));
             } else {
                 String sectionContent = context.getSection(sectionName);
-                result.put(sectionName, sectionContent != null ? sectionContent : "");
+                result.put(sectionName, sectionContent != null ? WireAnchorRewriter.rewrite(sectionContent) : "");
             }
         }
         return result;

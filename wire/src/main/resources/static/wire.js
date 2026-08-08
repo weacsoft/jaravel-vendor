@@ -8,25 +8,43 @@
  * - wire:model 双向绑定（防抖 150ms，wire:model.lazy 延迟到 blur）
  * - wire:loading 加载状态显示/隐藏
  * - wire:target 指定要更新的 section
- * - Wire.on/off 事件系统（beforeUpdate/afterUpdate），支持 mdui 等框架在 DOM 更新后刷新组件
+ * - Wire.on/off 事件系统（beforeRequest/afterRequest/beforeUpdate/afterUpdate），支持 mdui 等框架在 DOM 更新后刷新组件
+ * - 请求生命周期：beforeRequest → afterRequest → beforeUpdate → afterUpdate
+ * - Wire.scan() 幂等重扫：透明导航 / 局部更新替换 DOM 后重新识别组件与事件，无需整页刷新
  * - 零外部依赖，自包含
  */
 (function () {
     'use strict';
 
+    // ===== 幂等守卫 =====
+    // 同一页面可能多次加载本脚本：宿主模板手动 <script src>、框架中间件自动注入、
+    // 透明导航替换 DOM 后 activateScripts 重新激活外链脚本。若不拦截，事件与组件会被
+    // 重复注册 —— 表现为「点一次按钮发两次请求、弹两个 toast」。
+    // 已加载过就直接返回，保留先前实例（其上已挂载的监听器与组件不受影响）。
+    if (window.Wire && window.Wire.__runtime === 'wire.js') {
+        return;
+    }
+
     var Wire = {
+        /** 运行时指纹，供幂等守卫识别 */
+        __runtime: 'wire.js',
         components: [],
         debounceTimers: {},
         // 全局事件监听器
         _listeners: {}
     };
 
+    /** 已触发过懒加载的占位元素（重扫时不重复拉取） */
+    var lazyFired = new WeakSet();
+
     /**
      * 注册事件监听器。
      * <p>
      * 支持的事件：
      * <ul>
-     *   <li>{@code beforeUpdate} — 发送更新请求前触发，参数：{@code (component, action, params)}</li>
+     *   <li>{@code beforeRequest} — 发起 HTTP 请求前触发，参数：{@code (component, action, params)}</li>
+     *   <li>{@code afterRequest} — 收到 HTTP 响应后、数据处理前触发，参数：{@code (component, data)}</li>
+     *   <li>{@code beforeUpdate} — 数据处理前触发（兼容旧版，与 beforeRequest 同时触发）</li>
      *   <li>{@code afterUpdate} — DOM 更新完成后触发，参数：{@code (component, data, sections)}</li>
      * </ul>
      * <p>
@@ -88,13 +106,20 @@
     // ===== 初始化 =====
 
     function init() {
-        // 清理 <head> 中原始文本元素（title/style/script）的 wire 标记
+        // 清理 <head> 中原始文本元素（title/style/script）的 wire 标记。
+        // 服务端 WireAnchorRewriter 已在渲染出口消除这些标记，此处仅作为旧版模板/第三方渲染的兜底。
         cleanHeadWireMarkers();
+        Wire.scan();
+    }
 
-        // 收集所有 wire:config / wire:snapshot 标记的配置节点。
-        // 注意：用属性选择器 [wire\:config] 查询 <script> 标签在部分浏览器/解析引擎下
-        // 不可靠（<script> 尤其 type="application/json" 时），因此这里优先尝试选择器，
-        // 失败（或为空）时退化为遍历所有 <script> 标签按属性判定，确保组件一定能初始化。
+    /**
+     * 收集所有 wire:config / wire:snapshot 标记的配置节点。
+     * <p>
+     * 注意：用属性选择器 [wire\:config] 查询 <script> 标签在部分浏览器/解析引擎下
+     * 不可靠（<script> 尤其 type="application/json" 时），因此这里优先尝试选择器，
+     * 失败（或为空）时退化为遍历所有 <script> 标签按属性判定，确保组件一定能初始化。
+     */
+    function collectConfigElements() {
         var configs = [];
         try {
             var bySelector = document.querySelectorAll('[wire\\:config]');
@@ -109,14 +134,64 @@
                 }
             }
         }
-        for (var j = 0; j < configs.length; j++) {
-            initComponent(configs[j]);
+        return configs;
+    }
+
+    /**
+     * 淘汰已从文档中移除的组件。
+     * <p>
+     * 透明导航会整体替换 scripts section，旧页面的 wire:config 节点随之离开文档。
+     * 若不淘汰，旧组件仍持有上一页的 updateUrl，且其 element 是共享的 document.body，
+     * 重新绑定时会把新页面的按钮也绑到旧地址上，造成「请求打到上一页接口」和重复请求。
+     */
+    function pruneComponents() {
+        var alive = [];
+        for (var i = 0; i < Wire.components.length; i++) {
+            var c = Wire.components[i];
+            if (!c.configElement || document.contains(c.configElement)) {
+                alive.push(c);
+            }
+        }
+        Wire.components = alive;
+    }
+
+    /**
+     * 幂等重扫当前文档：识别新组件、淘汰失效组件、为新出现的元素补绑事件。
+     * <p>
+     * 首屏由 init() 调用一次；此后每当 DOM 被<b>整体替换</b>（wire-navigate 透明导航、
+     * 宿主框架局部渲染等）都应再调用一次。多次调用安全：
+     * <ul>
+     *   <li>组件按 wire:config 节点身份去重，不会重复创建；</li>
+     *   <li>事件绑定按元素身份去重（component.boundElements），不会重复绑定 → 不会重复发请求；</li>
+     *   <li>懒加载 section 只触发一次。</li>
+     * </ul>
+     *
+     * @returns {Wire} Wire 对象（链式）
+     */
+    Wire.scan = function () {
+        pruneComponents();
+
+        var configs = collectConfigElements();
+        for (var i = 0; i < configs.length; i++) {
+            var cfg = configs[i];
+            var known = false;
+            for (var k = 0; k < Wire.components.length; k++) {
+                if (Wire.components[k].configElement === cfg) { known = true; break; }
+            }
+            if (!known) {
+                initComponent(cfg);   // initComponent 内部会完成首次 bindEvents
+            }
         }
 
-        // 第4点：声明式懒加载 wire:lazy —— 页面 load 后自动拉取标记了 lazy 的 section，
-        // 无需在模板里手写 if/else 或额外的 <script>。
+        // 已存在的组件：为局部更新后新插入的元素补绑（boundElements 保证不重复）
+        for (var j = 0; j < Wire.components.length; j++) {
+            bindEvents(Wire.components[j]);
+        }
+
+        // 声明式懒加载 wire:lazy —— 新页面可能带来新的 lazy 占位
         initLazy();
-    }
+        return Wire;
+    };
 
     /**
      * 声明式懒加载（Laravel Livewire lazy 风格）：
@@ -125,7 +200,16 @@
      * 后端从权威数据源（DB/慢接口）取真实数据返回。全程后端无需 if/else 分支。
      */
     function initLazy() {
-        var lazyEls = document.querySelectorAll('[wire\\:lazy]');
+        var all = document.querySelectorAll('[wire\\:lazy]');
+        // 只处理没触发过的占位元素：Wire.scan() 可能被多次调用（透明导航后重扫），
+        // 已经拉取过的 lazy section 不应再次发请求。
+        var lazyEls = [];
+        for (var q = 0; q < all.length; q++) {
+            if (!lazyFired.has(all[q])) {
+                lazyFired.add(all[q]);
+                lazyEls.push(all[q]);
+            }
+        }
         if (!lazyEls.length) return;
         function fire() {
             for (var i = 0; i < lazyEls.length; i++) {
@@ -516,7 +600,10 @@
         // 显示 loading
         showLoading(component, action);
 
-        // 触发 beforeUpdate 事件（发送请求前）
+        // 触发 beforeRequest 事件（发起 HTTP 请求前）
+        emit('beforeRequest', component, action, params);
+
+        // 触发 beforeUpdate 事件（数据处理前，保留兼容旧版）
         emit('beforeUpdate', component, action, params);
 
         // 构建请求体
@@ -574,6 +661,9 @@
             }
             return response.json();
         }).then(function (data) {
+            // 触发 afterRequest 事件（收到响应后，数据处理前）
+            emit('afterRequest', component, data);
+
             handleResponse(component, data);
             hideLoading(component, action);
 
@@ -1142,9 +1232,11 @@
     function hideLoading(component, action) {
         // 先清除触发按钮的 wire:loading 属性（由 showLoading 设置），
         // 避免后续 [wire:loading] 查询误把触发按钮当作加载指示器而 display:none
+        // 同时清除可能被误设的 display:none，确保按钮始终可见
         var triggerEls = component.element.querySelectorAll('[wire\\:click="' + action + '"], [wire\\:submit="' + action + '"]');
         for (var j = 0; j < triggerEls.length; j++) {
             triggerEls[j].removeAttribute('wire:loading');
+            triggerEls[j].style.display = '';
         }
         // 再隐藏加载指示器（原始 HTML 中带 wire:loading 的元素）
         var loadingEls = component.element.querySelectorAll('[wire\\:loading]');

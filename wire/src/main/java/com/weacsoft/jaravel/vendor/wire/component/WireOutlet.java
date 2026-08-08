@@ -227,10 +227,38 @@ public class WireOutlet implements Middleware {
                 .append(outletId).append("\">")
                 .append(safeJson(payload))
                 .append("</script>\n");
-        if (autoInjectJs) {
+        if (autoInjectJs && !alreadyLoadsRuntime(result)) {
             tail.append("<script src=\"").append(escapeAttr(jsPath)).append("\"></script>");
         }
         return insertAt(result, tail.toString(), POSITION_BODY_END);
+    }
+
+    /**
+     * 页面是否已经自行引入了组件运行时。
+     * <p>
+     * 宿主模板常会手动写 {@code <script src="/js/wire-component.js"></script>}（例如把资源
+     * 放在自己的 CDN 或加了指纹路径），此时中间件再注入一份 {@code /static/wire-component.js}
+     * 就会让同一份运行时执行两次：事件与组件被重复注册，一次点击发两次请求、弹两个 toast。
+     * <p>
+     * 判断只比对<b>文件名</b>而非完整路径，因为两者路径通常不同、内容却是同一份。
+     *
+     * @param html 已插入容器的 HTML
+     * @return 页面里已存在同名脚本引用时返回 {@code true}
+     */
+    private static boolean alreadyLoadsRuntime(String html) {
+        String fileName = jsPath;
+        int slash = fileName.lastIndexOf('/');
+        if (slash >= 0 && slash < fileName.length() - 1) {
+            fileName = fileName.substring(slash + 1);
+        }
+        int query = fileName.indexOf('?');
+        if (query > 0) {
+            fileName = fileName.substring(0, query);
+        }
+        if (fileName.isEmpty()) {
+            return false;
+        }
+        return html.contains(fileName);
     }
 
     /**

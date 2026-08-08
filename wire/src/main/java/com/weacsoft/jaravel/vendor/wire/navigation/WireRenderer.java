@@ -1,5 +1,6 @@
 package com.weacsoft.jaravel.vendor.wire.navigation;
 
+import com.weacsoft.jaravel.vendor.jblade.WireAnchorRewriter;
 import com.weacsoft.jaravel.vendor.json.Json;
 
 import java.util.LinkedHashMap;
@@ -15,7 +16,9 @@ import java.util.regex.Pattern;
  *   <li>从 HTML 中按 {@code <!--wire:section-start:NAME-->...<!--wire:section-end:NAME-->} 提取每个 section；</li>
  *   <li>计算每个 section 的 FNV-1a 32-bit hash；</li>
  *   <li>对比客户端上报的 hash（来自 WireContext），只保留变化过的 section；</li>
- *   <li>生成 JSON 响应：{@code {"sections":{...},"hashes":{...},"title":"...","url":"..."}}</li>
+ *   <li>抽取锚点值：{@code <title>} 文本、{@code class} 等<b>注释非法位置</b>由标记属性定位，
+ *       服务端直接下发渲染后的完整值（见 {@link WireAnchorRewriter}）；</li>
+ *   <li>生成 JSON 响应：{@code {"sections":{...},"hashes":{...},"anchors":{...},"title":"...","url":"..."}}</li>
  * </ol>
  *
  * <p>Wire 发送的是 <b>diff</b>（只含变化的 section），
@@ -77,10 +80,18 @@ public class WireRenderer {
             }
         }
 
+        // 抽取「注释非法位置」的锚点当前值（<title> 文本、class 等属性值）。
+        // 这些位置无法用注释定位，改由标记属性 + 服务端下发完整新值的方式更新。
+        // 数据量极小（通常只有标题与少量 class），故不做 diff，整体下发由前端幂等应用。
+        Map<String, String> anchors = WireAnchorRewriter.extract(html);
+
         // 构建 JSON 响应
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("sections", changed);
         result.put("hashes", allHashes);
+        if (!anchors.isEmpty()) {
+            result.put("anchors", anchors);
+        }
         if (title != null && !title.isEmpty()) {
             result.put("title", title);
         }

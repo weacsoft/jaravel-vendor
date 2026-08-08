@@ -77,6 +77,19 @@ public class MigrationScanner {
 
     private static final Logger log = LoggerFactory.getLogger(MigrationScanner.class);
 
+    /** 可执行包内的嵌套 classes 目录前缀（SpringBoot fat jar / 传统 war） */
+    private static final String[] NESTED_CLASSES_PREFIXES = {"BOOT-INF/classes/", "WEB-INF/classes/"};
+
+    /** 可执行包内的嵌套依赖目录前缀，其中的 class 条目不属于当前 classpath 根 */
+    private static final String[] NESTED_LIB_PREFIXES = {"BOOT-INF/lib/", "WEB-INF/lib/"};
+
+    /** 迁移注解的字节码描述符，用于 class 文件常量池预筛 */
+    private static final byte[] MIGRATION_ANNOTATION_DESCRIPTOR =
+        ("L" + MigrationAnnotation.class.getName().replace('.', '/') + ";").getBytes(StandardCharsets.UTF_8);
+
+    /** 预筛的最大 class 体积，超过则跳过预筛直接反射判定 */
+    private static final long MAX_PREFILTER_CLASS_BYTES = 512 * 1024L;
+
     /** 类名 -> 字节码，存储 DIRECTORY 模式编译后的类 */
     private final Map<String, byte[]> compiledClasses = new ConcurrentHashMap<>();
 
@@ -601,11 +614,23 @@ public class MigrationScanner {
                 if (!entryName.endsWith(".class") || entryName.startsWith("META-INF/")) {
                     continue;
                 }
-                String className = entryName
+                // 剥离可执行包（SpringBoot fat jar / war）的嵌套 classes 前缀，
+                // 否则会推导出 BOOT-INF.classes.xxx 这样无法加载的类名。
+                String classPathInJar = stripNestedClassesPrefix(entryName);
+                if (classPathInJar == null) {
+                    // BOOT-INF/lib 等嵌套依赖内的 class 条目，交由所在 jar 自身扫描
+                    continue;
+                }
+                String className = classPathInJar
                     .replace('/', '.')
                     .replace('\\', '.')
-                    .substring(0, entryName.length() - ".class".length());
+                    .substring(0, classPathInJar.length() - ".class".length());
                 if (className.contains("$")) {
+                    continue;
+                }
+                // 字节级预筛：常量池中不含迁移注解描述符的类直接跳过，
+                // 避免对依赖 jar 里成千上万个无关类调用 loadClass。
+                if (!mayBeMigrationClass(jar, entry)) {
                     continue;
                 }
                 count += tryLoadMigrationClass(className, classLoader);
@@ -614,6 +639,72 @@ public class MigrationScanner {
             log.debug("[migration] 无法读取 JAR 文件: {} - {}", jarFile.getAbsolutePath(), e.getMessage());
         }
         return count;
+    }
+
+    /**
+     * 剥离可执行包内的嵌套 classes 目录前缀。
+     * <p>
+     * SpringBoot fat jar 将应用类放在 {@code BOOT-INF/classes/} 下，
+     * 传统 war 放在 {@code WEB-INF/classes/} 下。直接用条目名推导类名会得到
+     * {@code BOOT-INF.classes.com.xxx}，{@code loadClass} 必然失败，
+     * 导致 CLASSPATH 模式在打包运行时扫描不到任何迁移类。
+     *
+     * @param entryName jar 条目名
+     * @return 相对于 classpath 根的路径；若条目位于嵌套依赖（如 {@code BOOT-INF/lib/}）内则返回 null
+     */
+    private String stripNestedClassesPrefix(String entryName) {
+        for (String prefix : NESTED_CLASSES_PREFIXES) {
+            if (entryName.startsWith(prefix)) {
+                return entryName.substring(prefix.length());
+            }
+        }
+        for (String prefix : NESTED_LIB_PREFIXES) {
+            if (entryName.startsWith(prefix)) {
+                return null;
+            }
+        }
+        return entryName;
+    }
+
+    /**
+     * 字节级预筛：判断 class 文件常量池中是否出现迁移注解的描述符。
+     * <p>
+     * 迁移类必然携带 {@link MigrationAnnotation}，其描述符字符串会以 UTF8 常量
+     * 形式出现在 class 文件中。以此为廉价前置条件可跳过绝大多数无关类，
+     * 避免全量 {@code loadClass} 带来的性能与副作用（静态初始化）风险。
+     *
+     * @param jar   所在 jar
+     * @param entry class 条目
+     * @return true 表示可能是迁移类，需要进一步反射确认
+     */
+    private boolean mayBeMigrationClass(JarFile jar, JarEntry entry) {
+        long size = entry.getSize();
+        if (size > MAX_PREFILTER_CLASS_BYTES) {
+            // 超大 class 不做预筛，直接放行给反射判定
+            return true;
+        }
+        try (InputStream in = jar.getInputStream(entry)) {
+            return containsBytes(readAllBytes(in), MIGRATION_ANNOTATION_DESCRIPTOR);
+        } catch (IOException e) {
+            return true;
+        }
+    }
+
+    /** 朴素子串匹配：判断 haystack 中是否包含 needle 字节序列 */
+    private static boolean containsBytes(byte[] haystack, byte[] needle) {
+        if (needle.length == 0 || haystack.length < needle.length) {
+            return false;
+        }
+        outer:
+        for (int i = 0; i <= haystack.length - needle.length; i++) {
+            for (int j = 0; j < needle.length; j++) {
+                if (haystack[i + j] != needle[j]) {
+                    continue outer;
+                }
+            }
+            return true;
+        }
+        return false;
     }
 
     /**
