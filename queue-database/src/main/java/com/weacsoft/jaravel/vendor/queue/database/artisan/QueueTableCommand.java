@@ -1,38 +1,30 @@
 package com.weacsoft.jaravel.vendor.queue.database.artisan;
 
 import com.weacsoft.jaravel.vendor.artisan.ArtisanCommand;
-import com.weacsoft.jaravel.vendor.queue.database.DatabaseQueueDriver;
+import com.weacsoft.jaravel.vendor.migration.MigrationGenerator;
 import com.weacsoft.jaravel.vendor.queue.database.QueueDatabaseProperties;
-import com.weacsoft.jaravel.vendor.queue.database.QueueProperties;
 
-import javax.sql.DataSource;
+import java.io.IOException;
 
 /**
- * Artisan 命令：{@code queue:table}，创建队列任务表。
+ * Artisan 命令：{@code queue:table}，生成队列任务表的迁移文件。
  * <p>
- * 对齐 Laravel {@code php artisan queue:table}，在数据库中创建 {@code jobs} 与
- * {@code failed_jobs} 表（表名可通过 {@code jaravel.queue.database.table} 配置）。
+ * 对齐 Laravel {@code php artisan queue:table}，但<b>不直接建表</b>，
+ * 而是生成一个迁移 Java 文件到项目的 {@code database/migrations/} 目录。
+ * 用户随后执行 {@code artisan migrate} 即可创建表。
  * <p>
  * 仅当使用 {@code database} 队列驱动时需要执行此命令。
  * 使用 {@code sync}（默认）或 {@code redis} 驱动时无需执行。
- * <p>
- * 命令在任意 driver 设置下均可执行，方便提前建表后切换到 database 驱动。
- * <p>
- * 当 queue-database 和 artisan 模块同时存在于 classpath 时，由
- * {@code QueueArtisanAutoConfiguration} 自动注册为 Spring Bean。
  */
 public class QueueTableCommand extends ArtisanCommand {
 
-    private final DataSource dataSource;
-    private final QueueDatabaseProperties dbProps;
-    private final QueueProperties queueProps;
+    private static final String DEFAULT_OUTPUT_DIR = "database/migrations";
+    private static final String DEFAULT_PACKAGE = "database.migrations";
 
-    public QueueTableCommand(DataSource dataSource,
-                             QueueDatabaseProperties dbProps,
-                             QueueProperties queueProps) {
-        this.dataSource = dataSource;
+    private final QueueDatabaseProperties dbProps;
+
+    public QueueTableCommand(QueueDatabaseProperties dbProps) {
         this.dbProps = dbProps;
-        this.queueProps = queueProps;
     }
 
     @Override
@@ -42,27 +34,49 @@ public class QueueTableCommand extends ArtisanCommand {
 
     @Override
     public String description() {
-        return "创建队列任务表 jobs/failed_jobs（仅 database 驱动需要）";
+        return "生成队列任务表迁移文件 jobs/failed_jobs（仅 database 驱动需要）";
     }
 
     @Override
     public int handle() {
         String table = dbProps.getTable();
         String failedTable = "failed_jobs";
-        info("正在创建队列任务表: " + table + ", " + failedTable);
 
-        // 创建临时驱动实例用于建表（不注册为 Bean，避免影响 driver=sync 时的默认行为）
-        DatabaseQueueDriver driver = new DatabaseQueueDriver(
-                dataSource, table, failedTable,
-                dbProps.getRetryAfter(), queueProps.getFailedJobRetentionDays());
-        boolean success = driver.createTable();
+        info("正在生成队列任务表迁移文件...");
+        info("  任务表: " + table);
+        info("  失败任务表: " + failedTable);
 
-        if (success) {
-            info("队列任务表创建成功: " + table + ", " + failedTable);
+        String upBody = "        schema.create(\"" + table + "\", table -> {\n" +
+                "            table.id();\n" +
+                "            table.string(\"queue\", 255);\n" +
+                "            table.text(\"payload\");\n" +
+                "            table.integer(\"attempts\").defaultValue(0);\n" +
+                "            table.bigInteger(\"reserved_at\").nullable();\n" +
+                "            table.bigInteger(\"available_at\");\n" +
+                "            table.bigInteger(\"created_at\");\n" +
+                "        });\n" +
+                "        schema.create(\"" + failedTable + "\", table -> {\n" +
+                "            table.id();\n" +
+                "            table.string(\"queue\", 255);\n" +
+                "            table.text(\"payload\");\n" +
+                "            table.text(\"exception\").nullable();\n" +
+                "            table.integer(\"attempts\").defaultValue(0);\n" +
+                "            table.bigInteger(\"failed_at\");\n" +
+                "        });";
+
+        String downBody = "        schema.dropIfExists(\"" + failedTable + "\");\n" +
+                "        schema.dropIfExists(\"" + table + "\");";
+
+        try {
+            String path = MigrationGenerator.generate(
+                    DEFAULT_OUTPUT_DIR, DEFAULT_PACKAGE,
+                    "create queue tables", upBody, downBody);
+            info("迁移文件已生成: " + path);
+            info("请执行 artisan migrate 以创建表");
             info("提示：请将 jaravel.queue.driver 设置为 database 以使用数据库队列");
             return 0;
-        } else {
-            error("队列任务表创建失败，请检查数据库权限或表是否已存在");
+        } catch (IOException e) {
+            error("生成迁移文件失败: " + e.getMessage());
             return 1;
         }
     }

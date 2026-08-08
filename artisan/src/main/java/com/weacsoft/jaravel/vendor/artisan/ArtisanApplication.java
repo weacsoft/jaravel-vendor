@@ -68,17 +68,28 @@ public class ArtisanApplication {
 
     /**
      * 从 Spring 容器自动发现所有 {@link ArtisanCommand} bean 并注册。
+     * <p>
+     * 注意：命令现在主要通过 {@link RegisterCommand} 注解 + {@link CommandRegistrar} 注册。
+     * 此方法保留用于向后兼容（手动 @Bean 注册的命令仍可被发现），但默认不再依赖此机制。
      */
     public synchronized void scanCommands() {
         if (scanned || applicationContext == null) {
             return;
         }
         scanned = true;
-        Map<String, ArtisanCommand> beans = applicationContext.getBeansOfType(ArtisanCommand.class);
-        for (ArtisanCommand cmd : beans.values()) {
-            register(cmd);
+        // 命令主要通过 @RegisterCommand 注解注册（由 CommandRegistrar 在 SmartInitializingSingleton 阶段完成）
+        // 此处仅作为向后兼容，扫描残留的 @Bean 注册的命令
+        try {
+            Map<String, ArtisanCommand> beans = applicationContext.getBeansOfType(ArtisanCommand.class);
+            for (ArtisanCommand cmd : beans.values()) {
+                register(cmd);
+            }
+            if (!beans.isEmpty()) {
+                logger.info("[artisan] 从 Spring 容器补充扫描到 {} 个命令", beans.size());
+            }
+        } catch (Exception e) {
+            logger.debug("[artisan] Spring 容器扫描命令时异常（可忽略）: {}", e.getMessage());
         }
-        logger.info("[artisan] 从 Spring 容器扫描到 {} 个命令", beans.size());
     }
 
     /**

@@ -42,6 +42,7 @@ Spring 的 bean name 全局唯一。若用 `@Bean("admin")` 注册名为 `admin`
 | `@RegisterDisk` | storage | `DiskDefinition` / `Filesystem` | ✅ 命名多实例 | 文件磁盘，`defaultDisk = true` 设为默认 |
 | `@RegisterConnection` | database | `GaarasonDataSource` | ✅ 命名多实例 | 数据源连接 |
 | `@RegisterQueueDriver` | queue-database | `QueueDriver` | ❌ **全局唯一** | 队列驱动 |
+| `@RegisterCommand` | artisan | `ArtisanCommand` | ✅ 命名多实例 | Artisan 命令（通过 CommandRegistrar 注册到 ArtisanApplication，不作为 Spring Bean） |
 | `@RegisterDirective` | jblade | `Handler` / `Condition` | ✅ 命名多实例 | Blade 自定义指令 |
 | `@RegisterView` | jblade | `View` | ✅ 命名多实例 | 自定义视图 |
 
@@ -174,10 +175,14 @@ plugin-* 等）默认启用，通过 `jaravel.<模块>.enabled: false` 关闭。
 ### 2.6 artisan 的可选性
 
 artisan 在各模块的 pom 中均为 `optional`。模块注册命令的方式是
-`@ConditionalOnClass(ArtisanCommand.class)`：
+`@RegisterCommand` 注解（对齐 `@RegisterGuard` / `@RegisterDisk` 等模式）：
 
-- **引入了 artisan** → 注册该模块的命令
-- **没引入 artisan** → 相关 `@Bean` 不装配，模块其余功能照常工作
+- **引入了 artisan** → `@ConditionalOnClass(ArtisanCommand.class)` 条件满足，
+  `*ArtisanAutoConfiguration` 类被装配，其中的 `@RegisterCommand` 方法被
+  `CommandRegistrar` 扫描，命令实例注册到 `ArtisanApplication` 内部注册表
+  （**不作为 Spring Bean**）
+- **没引入 artisan** → 相关 `*ArtisanAutoConfiguration` 不装配，
+  `@RegisterCommand` 方法不被扫描，模块其余功能照常工作
 
 ### 2.7 vendor:publish 的可选依赖处理
 
@@ -191,10 +196,14 @@ artisan 在各模块的 pom 中均为 `optional`。模块注册命令的方式�
 
 > **重要**：以下要求**仅在使用对应功能时才需要满足**。
 > 不使用 artisan、不使用 migration 也能正常运行框架。
+>
+> **设计原则**：所有 `xxx:table` 命令（`storage:table`、`cache:table`、`queue:table`）
+> **不直接建表**，而是生成一个迁移 Java 文件到项目的 `database/migrations/` 目录。
+> 用户随后执行 `artisan migrate` 即可创建表。这与 Laravel 的迁移工作流一致。
 
 ### 3.1 storage 模块
 
-**artisan 命令**：无。
+**artisan 命令**（需引入 artisan）：`storage:table`
 
 **数据库表要求**：仅在使用 `database` 磁盘驱动时需要。
 使用 `local`（默认）时**不需要任何数据库**。
@@ -202,9 +211,10 @@ artisan 在各模块的 pom 中均为 `optional`。模块注册命令的方式�
 `database` 磁盘采用**分片存储**，需要两张表，表名前缀由 `tablePrefix`
 配置决定（默认 `storage_`，即 `storage_file` 与 `storage_file_chunk`）。
 
-> **注意**：这两张表由 `DatabaseFilesystem` 在磁盘首次使用时
-> **自动幂等创建**（`CREATE TABLE IF NOT EXISTS`），
-> 因此**即使没有 migration 也能直接工作**。
+> **注意**：执行 `artisan storage:table` 会在 `database/migrations/` 目录下
+> 生成一个迁移文件，包含 `storage_file` 和 `storage_file_chunk` 两张表的建表代码。
+> 随后执行 `artisan migrate` 即可创建表。
+> 磁盘首次使用时**不再自动建表**，需先执行迁移。
 
 ### 3.2 queue-database 模块
 
@@ -212,6 +222,9 @@ artisan 在各模块的 pom 中均为 `optional`。模块注册命令的方式�
 
 **数据库表要求**：仅在 `driver=database` 时需要。
 使用 `sync`（默认回退）或 `redis` 时**不需要数据库**。
+
+> **注意**：执行 `artisan queue:table` 会生成一个迁移文件，包含
+> `jobs` 和 `failed_jobs` 两张表的建表代码。随后执行 `artisan migrate` 即可创建表。
 
 队列消费者 `DatabaseQueueWorker` 是**后台 Bean**，
 由 `jaravel.queue.worker.enabled` 控制随应用启动，**不是** artisan 命令。

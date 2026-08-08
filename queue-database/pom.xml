@@ -51,6 +51,12 @@
             <artifactId>artisan</artifactId>
             <optional>true</optional>
         </dependency>
+        <!-- 迁移文件生成（optional：queue:table 命令生成迁移文件时使用） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>migration</artifactId>
+            <optional>true</optional>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-configuration-processor</artifactId>

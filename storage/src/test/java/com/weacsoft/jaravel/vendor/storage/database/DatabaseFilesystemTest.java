@@ -33,6 +33,39 @@ public class DatabaseFilesystemTest {
         return ds;
     }
 
+    /**
+     * 手动建表（模拟 artisan migrate 执行后的效果）。
+     * 由于 DatabaseFilesystem 不再自动建表，测试需自行创建表结构。
+     */
+    private void createTables(DataSource ds, String tablePrefix, String contentColumn, boolean binary) {
+        String filesTable = tablePrefix + "file";
+        String chunksTable = tablePrefix + "file_chunk";
+        String contentType = binary ? "LONGBLOB" : "LONGTEXT";
+        try (Connection c = ds.getConnection()) {
+            c.createStatement().execute("CREATE TABLE IF NOT EXISTS " + filesTable + " (" +
+                    " disk VARCHAR(64) NOT NULL," +
+                    " path VARCHAR(1024) NOT NULL," +
+                    " visibility VARCHAR(16) NOT NULL DEFAULT 'private'," +
+                    " mime_type VARCHAR(255)," +
+                    " size BIGINT NOT NULL DEFAULT 0," +
+                    " chunk_count INTEGER NOT NULL DEFAULT 0," +
+                    " created_at BIGINT," +
+                    " updated_at BIGINT," +
+                    " PRIMARY KEY (disk, path))");
+            c.createStatement().execute("CREATE TABLE IF NOT EXISTS " + chunksTable + " (" +
+                    " disk VARCHAR(64) NOT NULL," +
+                    " path VARCHAR(1024) NOT NULL," +
+                    " chunk_index INTEGER NOT NULL," +
+                    " " + contentColumn + " " + contentType + "," +
+                    " size INTEGER NOT NULL DEFAULT 0," +
+                    " created_at BIGINT," +
+                    " updated_at BIGINT," +
+                    " PRIMARY KEY (disk, path, chunk_index))");
+        } catch (Exception e) {
+            throw new RuntimeException("测试建表失败", e);
+        }
+    }
+
     private Set<String> columnsOf(DataSource ds, String table) throws Exception {
         Set<String> cols = new HashSet<>();
         try (Connection c = ds.getConnection();
@@ -57,6 +90,7 @@ public class DatabaseFilesystemTest {
     @Test
     public void testCustomColumnNameBinary() throws Exception {
         DataSource ds = h2("storage_binary");
+        createTables(ds, "storage_", "my_data", true);
         DatabaseFilesystem fs = new DatabaseFilesystem("db", ds,
                 true, "my_data", 1024L * 1024L, "storage_", "private");
 
@@ -74,6 +108,7 @@ public class DatabaseFilesystemTest {
     @Test
     public void testCustomColumnNameBase64Text() throws Exception {
         DataSource ds = h2("storage_text");
+        createTables(ds, "storage_", "my_data", false);
         DatabaseFilesystem fs = new DatabaseFilesystem("db", ds,
                 false, "my_data", 1024L * 1024L, "storage_", "private");
 
@@ -89,6 +124,7 @@ public class DatabaseFilesystemTest {
     public void testDefaultColumnName() throws Exception {
         DataSource ds = h2("storage_def");
         // 不传 contentColumn 时默认 content
+        createTables(ds, "storage_", "content", true);
         DatabaseFilesystem fs = new DatabaseFilesystem("db", ds,
                 true, null, 1024L * 1024L, "storage_", "private");
 

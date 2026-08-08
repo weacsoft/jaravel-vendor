@@ -1,6 +1,7 @@
 package com.weacsoft.jaravel.vendor.migration.autoconfigure;
 
 import com.weacsoft.jaravel.vendor.artisan.ArtisanCommand;
+import com.weacsoft.jaravel.vendor.artisan.RegisterCommand;
 import com.weacsoft.jaravel.vendor.artisan.make.MakeCodeProperties;
 import com.weacsoft.jaravel.vendor.migration.ReverseModelGenerator;
 import com.weacsoft.jaravel.vendor.migration.artisan.MakeModelFromMigrationCommand;
@@ -54,31 +55,31 @@ public class MigrationArtisanAutoConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(MigrationArtisanAutoConfiguration.class);
 
-    @Bean
+    @RegisterCommand("执行迁移")
     public MigrateCommand migrateCommand(MigrationExecutor executor) {
         log.info("[migration-artisan] 注册命令: migrate");
         return new MigrateCommand(executor);
     }
 
-    @Bean
+    @RegisterCommand("回滚迁移")
     public MigrateRollbackCommand migrateRollbackCommand(MigrationExecutor executor) {
         log.info("[migration-artisan] 注册命令: migrate:rollback");
         return new MigrateRollbackCommand(executor);
     }
 
-    @Bean
+    @RegisterCommand("回滚所有迁移")
     public MigrateResetCommand migrateResetCommand(MigrationExecutor executor) {
         log.info("[migration-artisan] 注册命令: migrate:reset");
         return new MigrateResetCommand(executor);
     }
 
-    @Bean
+    @RegisterCommand("回滚全部并重新迁移")
     public MigrateRefreshCommand migrateRefreshCommand(MigrationExecutor executor) {
         log.info("[migration-artisan] 注册命令: migrate:refresh");
         return new MigrateRefreshCommand(executor);
     }
 
-    @Bean
+    @RegisterCommand("查看迁移状态")
     public MigrateStatusCommand migrateStatusCommand(MigrationExecutor executor) {
         log.info("[migration-artisan] 注册命令: migrate:status");
         return new MigrateStatusCommand(executor);
@@ -90,14 +91,14 @@ public class MigrationArtisanAutoConfiguration {
         return new ReverseModelGenerator(dataSource);
     }
 
-    @Bean
+    @RegisterCommand("从数据库表反向生成 Model 类")
     @ConditionalOnBean(MakeCodeProperties.class)
     public MakeModelFromTableCommand makeModelFromTableCommand(ReverseModelGenerator generator, MakeCodeProperties properties) {
         log.info("[migration-artisan] 注册命令: make:model-from-table");
         return new MakeModelFromTableCommand(generator, properties);
     }
 
-    @Bean
+    @RegisterCommand("从迁移 Java 文件生成 Model 类")
     @ConditionalOnBean(MakeCodeProperties.class)
     public MakeModelFromMigrationCommand makeModelFromMigrationCommand(ReverseModelGenerator generator, MakeCodeProperties properties) {
         log.info("[migration-artisan] 注册命令: make:model-from-migration");

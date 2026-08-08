@@ -1,11 +1,11 @@
 package com.weacsoft.jaravel.vendor.route.artisan;
 
 import com.weacsoft.jaravel.vendor.artisan.ArtisanCommand;
+import com.weacsoft.jaravel.vendor.artisan.RegisterCommand;
 import com.weacsoft.jaravel.vendor.route.Router;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.context.annotation.Bean;
 
 /**
  * 将 {@code route:cache} / {@code route:clear} artisan 命令暴露给 Spring 容器。
@@ -18,13 +18,13 @@ import org.springframework.context.annotation.Bean;
 @ConditionalOnClass({ArtisanCommand.class, Router.class})
 public class HttpRouteArtisanAutoConfiguration {
 
-    @Bean
+    @RegisterCommand("缓存路由")
     @ConditionalOnMissingBean
     public RouteCacheCommand routeCacheCommand() {
         return new RouteCacheCommand();
     }
 
-    @Bean
+    @RegisterCommand("清除路由缓存")
     @ConditionalOnMissingBean
     public RouteClearCommand routeClearCommand() {
         return new RouteClearCommand();

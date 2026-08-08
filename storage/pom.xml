@@ -24,6 +24,18 @@
             <artifactId>http</artifactId>
         </dependency>
         <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>artisan</artifactId>
+            <version>${project.version}</version>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>migration</artifactId>
+            <version>${project.version}</version>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-autoconfigure</artifactId>
         </dependency>

@@ -81,6 +81,53 @@ public final class MigrationGenerator {
     }
 
     /**
+     * 生成一个迁移 Java 源文件，使用指定的 up/down 代码体。
+     * <p>
+     * 与 {@link #generate(String, String, String)} 相比，此方法允许调用者提供
+     * up() 和 down() 方法的具体实现代码，而非空模板。用于 xxx:table 命令生成
+     * 包含建表逻辑的迁移文件。
+     *
+     * @param outputDir    输出根目录
+     * @param packageName  生成类所属的包名
+     * @param description  迁移描述
+     * @param upBody       up() 方法体代码（不含方法签名和大括号）
+     * @param downBody     down() 方法体代码（不含方法签名和大括号）
+     * @return 生成的文件绝对路径
+     * @throws IOException 写入文件失败
+     */
+    public static String generate(String outputDir, String packageName, String description,
+                                   String upBody, String downBody) throws IOException {
+        // 复用现有的参数校验和命名逻辑
+        if (outputDir == null || outputDir.trim().isEmpty()) {
+            throw new IllegalArgumentException("outputDir 不能为空");
+        }
+        if (packageName == null || packageName.trim().isEmpty()) {
+            throw new IllegalArgumentException("packageName 不能为空");
+        }
+        if (description == null || description.trim().isEmpty()) {
+            throw new IllegalArgumentException("description 不能为空");
+        }
+
+        String datePrefix = LocalDate.now().format(DATE_FORMATTER);
+        String pascalName = toPascalCase(description);
+        String className = "Migration_" + datePrefix + "_" + pascalName;
+
+        String packagePath = packageName.replace('.', '/');
+        Path dir = Paths.get(outputDir, packagePath);
+        Files.createDirectories(dir);
+
+        Path file = dir.resolve(className + ".java");
+        if (Files.exists(file)) {
+            throw new IllegalStateException("迁移文件已存在，拒绝覆盖: " + file.toAbsolutePath());
+        }
+
+        String content = buildClassSourceWithContent(packageName, className, description, upBody, downBody);
+        Files.write(file, content.getBytes(StandardCharsets.UTF_8));
+
+        return file.toAbsolutePath().toString();
+    }
+
+    /**
      * 构建迁移类的 Java 源码。
      *
      * @param packageName 包名
@@ -121,6 +168,30 @@ public final class MigrationGenerator {
                 "    }\n" +
                 "}\n";
         return sb;
+    }
+
+    private static String buildClassSourceWithContent(String packageName, String className,
+                                                    String description, String upBody, String downBody) {
+        return "package " + packageName + ";\n\n" +
+                "import com.weacsoft.jaravel.vendor.migration.Migration;\n" +
+                "import com.weacsoft.jaravel.vendor.migration.Schema;\n" +
+                "import com.weacsoft.jaravel.vendor.migration.MigrationAnnotation;\n\n" +
+                "/**\n" +
+                " * 迁移：" + description + "。\n" +
+                " * <p>\n" +
+                " * 由 artisan 命令自动生成，请勿手动修改除非你清楚自己在做什么。\n" +
+                " */\n" +
+                "@MigrationAnnotation\n" +
+                "public class " + className + " implements Migration {\n\n" +
+                "    @Override\n" +
+                "    public void up(Schema schema) {\n" +
+                upBody + "\n" +
+                "    }\n\n" +
+                "    @Override\n" +
+                "    public void down(Schema schema) {\n" +
+                downBody + "\n" +
+                "    }\n" +
+                "}\n";
     }
 
     /**

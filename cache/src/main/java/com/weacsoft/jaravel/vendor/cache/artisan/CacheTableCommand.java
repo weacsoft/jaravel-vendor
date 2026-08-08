@@ -1,36 +1,28 @@
 package com.weacsoft.jaravel.vendor.cache.artisan;
 
 import com.weacsoft.jaravel.vendor.artisan.ArtisanCommand;
-import com.weacsoft.jaravel.vendor.cache.driver.DatabaseCacheDriver;
+import com.weacsoft.jaravel.vendor.migration.MigrationGenerator;
 
-import javax.sql.DataSource;
+import java.io.IOException;
 
 /**
- * Artisan 命令：{@code cache:table}，创建数据库缓存表。
+ * Artisan 命令：{@code cache:table}，生成数据库缓存表的迁移文件。
  * <p>
- * 对齐 Laravel {@code php artisan cache:table}，在数据库中创建缓存表
- * （默认 {@code jaravel_cache}，可通过 {@code jaravel.cache.database-table} 配置）。
+ * 对齐 Laravel {@code php artisan cache:table}，但<b>不直接建表</b>，
+ * 而是生成一个迁移 Java 文件到项目的 {@code database/migrations/} 目录。
+ * 用户随后执行 {@code artisan migrate} 即可创建表。
  * <p>
  * 仅当使用 {@code database} 缓存驱动时需要执行此命令。
  * 使用 {@code array} 或 {@code file} 驱动时无需执行。
- * <p>
- * 当 cache 和 artisan 模块同时存在于 classpath 时，由
- * {@code CacheArtisanAutoConfiguration} 自动注册为 Spring Bean。
- * <p>
- * 采用<b>按需创建</b>：命令执行时才创建 {@link DatabaseCacheDriver} 实例，
- * 而非在启动时就创建（对齐工厂模式 + 用到才构建的设计理念）。
  */
 public class CacheTableCommand extends ArtisanCommand {
 
-    private final DataSource dataSource;
+    private static final String DEFAULT_OUTPUT_DIR = "database/migrations";
+    private static final String DEFAULT_PACKAGE = "database.migrations";
+
     private final String table;
 
-    /**
-     * @param dataSource 数据源
-     * @param table      缓存表名，null 或空串使用默认 {@code jaravel_cache}
-     */
-    public CacheTableCommand(DataSource dataSource, String table) {
-        this.dataSource = dataSource;
+    public CacheTableCommand(String table) {
         this.table = (table == null || table.isEmpty()) ? "jaravel_cache" : table;
     }
 
@@ -41,20 +33,31 @@ public class CacheTableCommand extends ArtisanCommand {
 
     @Override
     public String description() {
-        return "创建数据库缓存表（仅 database 驱动需要）";
+        return "生成数据库缓存表迁移文件（仅 database 驱动需要）";
     }
 
     @Override
     public int handle() {
-        // 按需创建 DatabaseCacheDriver，仅在命令执行时实例化
-        DatabaseCacheDriver driver = new DatabaseCacheDriver(dataSource, table);
-        info("正在创建缓存表: " + table);
-        boolean success = driver.createTable();
-        if (success) {
-            info("缓存表创建成功: " + table);
+        info("正在生成缓存表迁移文件...");
+        info("  表名: " + table);
+
+        String upBody = "        schema.create(\"" + table + "\", table -> {\n" +
+                "            table.string(\"cache_key\", 255).primary();\n" +
+                "            table.text(\"cache_value\").nullable();\n" +
+                "            table.bigInteger(\"expires_at\").defaultValue(0);\n" +
+                "        });";
+
+        String downBody = "        schema.dropIfExists(\"" + table + "\");";
+
+        try {
+            String path = MigrationGenerator.generate(
+                    DEFAULT_OUTPUT_DIR, DEFAULT_PACKAGE,
+                    "create cache table", upBody, downBody);
+            info("迁移文件已生成: " + path);
+            info("请执行 artisan migrate 以创建表");
             return 0;
-        } else {
-            error("缓存表创建失败，请检查数据库权限或表是否已存在");
+        } catch (IOException e) {
+            error("生成迁移文件失败: " + e.getMessage());
             return 1;
         }
     }

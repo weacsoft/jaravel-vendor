@@ -87,39 +87,6 @@ public class DatabaseFilesystem implements Filesystem {
         this.defaultVisibility = Visibility.from(defaultVisibility);
         this.filesTable = this.tablePrefix + "file";
         this.chunksTable = this.tablePrefix + "file_chunk";
-        ensureTables();
-    }
-
-    // ==================== 建表 ====================
-
-    /**
-     * 自动建表（幂等）。即使没有迁移脚本，磁盘首次使用时也能直接工作。
-     * 对于「单独的数据库」，迁移脚本通常作用于主数据源，故本方法是对独立数据源的兜底。
-     * <p>
-     * 内容列类型由 {@code binary} 决定：{@code true} 时用 BLOB/LONGBLOB，否则用 LONGTEXT。
-     * 列名由 {@code contentColumn} 决定（默认 {@code content}）。
-     */
-    private void ensureTables() {
-        String contentType = binary ? "LONGBLOB" : "LONGTEXT";
-        jdbc.execute("CREATE TABLE IF NOT EXISTS " + filesTable + " (" +
-                " disk VARCHAR(64) NOT NULL," +
-                " path VARCHAR(1024) NOT NULL," +
-                " visibility VARCHAR(16) NOT NULL DEFAULT 'private'," +
-                " mime_type VARCHAR(255)," +
-                " size BIGINT NOT NULL DEFAULT 0," +
-                " chunk_count INTEGER NOT NULL DEFAULT 0," +
-                " created_at BIGINT," +
-                " updated_at BIGINT," +
-                " PRIMARY KEY (disk, path))");
-        jdbc.execute("CREATE TABLE IF NOT EXISTS " + chunksTable + " (" +
-                " disk VARCHAR(64) NOT NULL," +
-                " path VARCHAR(1024) NOT NULL," +
-                " chunk_index INTEGER NOT NULL," +
-                " " + contentColumn + " " + contentType + "," +
-                " size INTEGER NOT NULL DEFAULT 0," +
-                " created_at BIGINT," +
-                " updated_at BIGINT," +
-                " PRIMARY KEY (disk, path, chunk_index))");
     }
 
     // ==================== 路径规范化 ====================

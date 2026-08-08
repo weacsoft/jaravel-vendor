@@ -1,6 +1,7 @@
 package com.weacsoft.jaravel.vendor.jblade.autoconfigure;
 
 import com.weacsoft.jaravel.vendor.artisan.ArtisanCommand;
+import com.weacsoft.jaravel.vendor.artisan.RegisterCommand;
 import com.weacsoft.jaravel.vendor.jblade.artisan.ViewCacheCommand;
 import com.weacsoft.jaravel.vendor.jblade.artisan.ViewClearCommand;
 import com.weacsoft.jaravel.vendor.jblade.view.ViewManager;
@@ -11,7 +12,6 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.context.annotation.Bean;
 
 /**
  * jblade 模块与 Artisan CLI 的集成自动装配。
@@ -34,7 +34,7 @@ public class JbladeArtisanAutoConfiguration {
     /**
      * 注册 {@code view:cache} 命令。
      */
-    @Bean
+    @RegisterCommand("编译全部模板并写入缓存")
     @ConditionalOnMissingBean(ViewCacheCommand.class)
     public ViewCacheCommand viewCacheCommand() {
         log.debug("[jblade-artisan] 注册命令: view:cache");
@@ -44,7 +44,7 @@ public class JbladeArtisanAutoConfiguration {
     /**
      * 注册 {@code view:clear} 命令。
      */
-    @Bean
+    @RegisterCommand("清除全部模板缓存")
     @ConditionalOnMissingBean(ViewClearCommand.class)
     public ViewClearCommand viewClearCommand() {
         log.debug("[jblade-artisan] 注册命令: view:clear");

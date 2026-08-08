@@ -29,9 +29,12 @@ import java.util.stream.Collectors;
 /**
  * Artisan 自动装配。
  * <p>
- * 创建 {@link ArtisanApplication} bean，自动从 Spring 容器发现所有 {@link ArtisanCommand} bean。
+ * 创建 {@link ArtisanApplication}（命令管理器）和 {@link CommandRegistrar}（注解扫描注册器）。
+ * 命令通过 {@link RegisterCommand} 注解注册，<b>不作为 Spring Bean</b>，
+ * 由 CommandRegistrar 在所有单例初始化完成后扫描注册到 ArtisanApplication。
  * <p>
- * 同时注册 8 个 {@code make:xxx} 代码生成命令和 {@link MakeCodeProperties} 配置。
+ * 同时注册 {@code make:xxx} 代码生成命令和 {@link MakeCodeProperties} 配置。
+ * {@code vendor:publish} 命令因需要 ObjectProvider 仍保留为 @Bean。
  * <p>
  * 业务方在主类中通过 {@link ArtisanRunner#isArtisanMode(String[])} 检测 artisan 模式，
  * 并调用 {@link ArtisanRunner#run(ArtisanApplication, String[])} 执行命令。
@@ -60,65 +63,65 @@ public class ArtisanAutoConfiguration {
         return new MakeCodeProperties();
     }
 
-    // ==================== make:xxx 命令注册 ====================
+    // ==================== make:xxx 命令注册（通过 @RegisterCommand 注解，不作为 Spring Bean） ====================
 
-    @Bean
+    @RegisterCommand("生成控制器")
     public MakeControllerCommand makeControllerCommand(MakeCodeProperties properties) {
         MakeControllerCommand cmd = new MakeControllerCommand();
         cmd.setProperties(properties);
         return cmd;
     }
 
-    @Bean
+    @RegisterCommand("生成中间件")
     public MakeMiddlewareCommand makeMiddlewareCommand(MakeCodeProperties properties) {
         MakeMiddlewareCommand cmd = new MakeMiddlewareCommand();
         cmd.setProperties(properties);
         return cmd;
     }
 
-    @Bean
+    @RegisterCommand("生成模型")
     public MakeModelCommand makeModelCommand(MakeCodeProperties properties) {
         MakeModelCommand cmd = new MakeModelCommand();
         cmd.setProperties(properties);
         return cmd;
     }
 
-    @Bean
+    @RegisterCommand("生成迁移文件")
     public MakeMigrationCommand makeMigrationCommand(MakeCodeProperties properties) {
         MakeMigrationCommand cmd = new MakeMigrationCommand();
         cmd.setProperties(properties);
         return cmd;
     }
 
-    @Bean
+    @RegisterCommand("生成命令")
     public MakeCommandCommand makeCommandCommand(MakeCodeProperties properties) {
         MakeCommandCommand cmd = new MakeCommandCommand();
         cmd.setProperties(properties);
         return cmd;
     }
 
-    @Bean
+    @RegisterCommand("生成事件")
     public MakeEventCommand makeEventCommand(MakeCodeProperties properties) {
         MakeEventCommand cmd = new MakeEventCommand();
         cmd.setProperties(properties);
         return cmd;
     }
 
-    @Bean
+    @RegisterCommand("生成监听器")
     public MakeListenerCommand makeListenerCommand(MakeCodeProperties properties) {
         MakeListenerCommand cmd = new MakeListenerCommand();
         cmd.setProperties(properties);
         return cmd;
     }
 
-    @Bean
+    @RegisterCommand("生成全部代码")
     public MakeAllCommand makeAllCommand(MakeCodeProperties properties) {
         MakeAllCommand cmd = new MakeAllCommand();
         cmd.setProperties(properties);
         return cmd;
     }
 
-    // ==================== key:generate 命令注册 ====================
+    // ==================== key:generate 命令注册（通过 @RegisterCommand 注解） ====================
 
     /**
      * {@code key:generate} 命令：生成 Base64 全局应用密钥并写入 application 配置。
@@ -126,8 +129,7 @@ public class ArtisanAutoConfiguration {
      * 生成的密钥对应 core 模块的 {@code jaravel.key}，是 captcha / jwt / cookies
      * 等模块的兜底主密钥。
      */
-    @Bean
-    @ConditionalOnMissingBean
+    @RegisterCommand("生成应用密钥")
     public KeyGenerateCommand keyGenerateCommand(MakeCodeProperties properties) {
         return new KeyGenerateCommand(properties);
     }
@@ -165,5 +167,18 @@ public class ArtisanAutoConfiguration {
         List<Publishable> all = publishables.orderedStream().collect(Collectors.toList());
         log.debug("[Artisan] vendor:publish 发现 {} 个可发布项（配置 + 资源）", all.size());
         return new VendorPublishCommand(all, properties);
+    }
+
+    // ==================== @RegisterCommand 命令注册器 ====================
+
+    /**
+     * 注册 {@link CommandRegistrar}，在所有单例 Bean 初始化完成后扫描
+     * {@link RegisterCommand} 注解方法，将命令实例注册到 {@link ArtisanApplication}。
+     * <p>
+     * 命令实例不进入 Spring 容器，对齐 @RegisterGuard / @RegisterDisk 等模式。
+     */
+    @Bean
+    public CommandRegistrar commandRegistrar(ArtisanApplication artisanApplication, ApplicationContext applicationContext) {
+        return new CommandRegistrar(applicationContext, artisanApplication);
     }
 }

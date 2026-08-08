@@ -41,3 +41,7 @@ yarn.lock
 pnpm-lock.yaml
 .cached-classes/
 .cached-tests/
+
+# AI-generated summary files (not for git)
+PROJECT_SUMMARY.md
+Recycle/
