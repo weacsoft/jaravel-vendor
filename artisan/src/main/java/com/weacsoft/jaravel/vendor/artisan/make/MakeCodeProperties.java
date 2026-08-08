@@ -44,7 +44,7 @@ public class MakeCodeProperties {
     /**
      * 资源根目录（静态资源发布根目录）。
      * <p>
-     * 供 {@code vendor:publish:static} 使用，模块自带的 js / css / html
+     * 供 {@code vendor:publish --tag=resources} 使用，模块自带的 js / css / html
      * 会发布到 {@code resources-dir/static/} 下。
      */
     private String resourcesDir = "src/main/resources";

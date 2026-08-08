@@ -62,7 +62,7 @@ public class AetherUploadPublishableConfig implements PublishableConfig {
                  * <ul>
                  *   <li>本类只读取配置生成一份快照，<b>不会</b>覆盖框架自动装配的
                  *       AetherUploadManager / AetherUploadController。</li>
-                 *   <li>前端脚本可执行 {@code artisan vendor:publish:static --tag=aether-upload} 发布。</li>
+                 *   <li>前端脚本可执行 {@code artisan vendor:publish --tag=aether-upload}（或 {@code --tag=resources}）发布。</li>
                  *   <li>删除本文件不影响启动。</li>
                  * </ul>
                  */

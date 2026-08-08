@@ -5,6 +5,7 @@ package com.weacsoft.jaravel.vendor.core.publish;
  * <p>
  * 各模块实现本接口并注册为 Spring Bean，即可被 {@code artisan vendor:publish}
  * 命令发现并把配置类源码发布到业务工程的 {@code config/} 包下。
+ * 本接口继承 {@link Publishable}，因此配置类与静态资源被同一条命令统一扫描发布。
  *
  * <h3>设计说明</h3>
  * <ul>
@@ -26,7 +27,7 @@ package com.weacsoft.jaravel.vendor.core.publish;
  * }
  * }</pre>
  */
-public interface PublishableConfig {
+public interface PublishableConfig extends Publishable {
 
     /**
      * 发布标签，对齐 Laravel {@code --tag=cache}。
@@ -60,5 +61,13 @@ public interface PublishableConfig {
      */
     default String description() {
         return "";
+    }
+
+    /**
+     * 可发布项类型固定为 {@link PublishType#CONFIG}（发布 Java 配置类源码）。
+     */
+    @Override
+    default PublishType type() {
+        return PublishType.CONFIG;
     }
 }

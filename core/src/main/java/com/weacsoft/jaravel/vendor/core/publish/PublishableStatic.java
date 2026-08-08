@@ -5,14 +5,15 @@ import java.util.Map;
 /**
  * 可发布的静态前端资源声明。
  * <p>
- * 与 {@link PublishableConfig} 平行且完全独立：
+ * 与 {@link PublishableConfig} 平行，但两者都继承 {@link Publishable}，
+ * 由同一条 {@code vendor:publish} 命令统一扫描发布：
  * <ul>
- *   <li>{@link PublishableConfig} —— 发布 <b>Java 配置类源码</b>，由 {@code vendor:publish} 处理；</li>
- *   <li>{@code PublishableStatic} —— 发布 <b>静态前端资源</b>（js / css / html），
- *       由 {@code vendor:publish:static} 处理。</li>
+ *   <li>{@link PublishableConfig} —— 发布 <b>Java 配置类源码</b>；</li>
+ *   <li>{@code PublishableStatic} —— 发布 <b>静态前端资源</b>（js / css / html）。</li>
  * </ul>
- * 两者互不触发：执行 {@code vendor:publish} 不会写出任何静态资源，
- * 执行 {@code vendor:publish:static} 也不会写出任何 Java 源码。
+ * 执行 {@code vendor:publish --all} 会同时写出配置类与静态资源；
+ * {@code vendor:publish --tag=resources} 只发布静态资源；
+ * {@code vendor:publish --tag=config} 只发布配置类。
  *
  * <h3>实现示例</h3>
  * <pre>
@@ -31,10 +32,10 @@ import java.util.Map;
  *       通常以 {@code static/} 开头，最终写入 {@code src/main/resources/static/...}。</li>
  * </ul>
  */
-public interface PublishableStatic {
+public interface PublishableStatic extends Publishable {
 
     /**
-     * 发布标签，用于 {@code vendor:publish:static --tag=<标签>} 精确发布。
+     * 发布标签，用于 {@code vendor:publish --tag=<标签>} 精确发布。
      * <p>
      * 建议使用模块名，如 {@code captcha} / {@code wire}。
      *
@@ -69,5 +70,13 @@ public interface PublishableStatic {
      */
     default ClassLoader resourceClassLoader() {
         return getClass().getClassLoader();
+    }
+
+    /**
+     * 可发布项类型固定为 {@link PublishType#RESOURCE}（发布静态前端资源）。
+     */
+    @Override
+    default PublishType type() {
+        return PublishType.RESOURCE;
     }
 }

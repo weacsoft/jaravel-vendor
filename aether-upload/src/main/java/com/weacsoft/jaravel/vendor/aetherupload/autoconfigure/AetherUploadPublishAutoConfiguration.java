@@ -21,7 +21,8 @@ import org.springframework.context.annotation.Bean;
  * 恰恰是尚未启用的开发者更需要先拿到模板，配置好分组、落盘磁盘与记录头 store 之后再打开开关。
  * <p>
  * 因此本类<b>只保留 {@code @ConditionalOnClass(PublishableConfig.class)} 这一个条件</b>，
- * 不含任何运行时条件，确保任何情况下都能执行 {@code artisan vendor:publish --tag=aether-upload}。
+ * 不含任何运行时条件，确保任何情况下都能执行 {@code artisan vendor:publish --tag=aether-upload}
+ * （含其配置类与静态前端资源）。
  */
 @AutoConfiguration
 @ConditionalOnClass(PublishableConfig.class)
@@ -38,5 +39,20 @@ public class AetherUploadPublishAutoConfiguration {
     @ConditionalOnMissingBean(AetherUploadPublishableConfig.class)
     public AetherUploadPublishableConfig aetherUploadPublishableConfig() {
         return new AetherUploadPublishableConfig();
+    }
+
+    /**
+     * 声明 aether-upload 模块的静态前端资源（上传运行时 js），
+     * 供 {@code artisan vendor:publish --tag=aether-upload} 或 {@code --tag=resources} 发布。
+     * <p>
+     * 与可发布配置同理：本类只保留 {@code @ConditionalOnClass} 条件，不含运行时开关，
+     * 确保任何情况下都能发布前端脚本，无需先开启上传能力。
+     *
+     * @return 静态资源发布声明
+     */
+    @Bean
+    @ConditionalOnMissingBean(AetherUploadStaticPublishable.class)
+    public AetherUploadStaticPublishable aetherUploadStaticPublishable() {
+        return new AetherUploadStaticPublishable();
     }
 }

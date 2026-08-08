@@ -11,10 +11,8 @@ import com.weacsoft.jaravel.vendor.artisan.make.MakeMiddlewareCommand;
 import com.weacsoft.jaravel.vendor.artisan.make.MakeMigrationCommand;
 import com.weacsoft.jaravel.vendor.artisan.make.MakeModelCommand;
 import com.weacsoft.jaravel.vendor.artisan.vendor.VendorPublishCommand;
-import com.weacsoft.jaravel.vendor.artisan.vendor.VendorPublishStaticCommand;
 import com.weacsoft.jaravel.vendor.core.publish.AppPublishableConfig;
-import com.weacsoft.jaravel.vendor.core.publish.PublishableConfig;
-import com.weacsoft.jaravel.vendor.core.publish.PublishableStatic;
+import com.weacsoft.jaravel.vendor.core.publish.Publishable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -137,13 +135,6 @@ public class ArtisanAutoConfiguration {
     // ==================== vendor:publish 命令注册 ====================
 
     /**
-     * {@code vendor:publish} 命令。
-     * <p>
-     * 通过 {@link ObjectProvider} 收集容器中所有 {@link PublishableConfig}，
-     * 实现「有则发布，无则提示」：未引入任何声明可发布配置的模块时，
-     * 列表为空，命令不报错。
-     */
-    /**
      * 声明 {@code config/AppConfig.java} 为可发布配置。
      * <p>
      * AppConfig 属于 core 模块的产物，但 core 不含自动配置类，
@@ -159,29 +150,20 @@ public class ArtisanAutoConfiguration {
         return new AppPublishableConfig();
     }
 
-    @Bean
-    @ConditionalOnMissingBean
-    public VendorPublishCommand vendorPublishCommand(ObjectProvider<PublishableConfig> publishables,
-                                                     MakeCodeProperties properties) {
-        List<PublishableConfig> configs = publishables.orderedStream().collect(Collectors.toList());
-        log.debug("[Artisan] vendor:publish 发现 {} 个可发布配置", configs.size());
-        return new VendorPublishCommand(configs, properties);
-    }
-
-    // ==================== vendor:publish:static 命令注册 ====================
-
     /**
-     * {@code vendor:publish:static} 命令。
+     * {@code vendor:publish} 命令（统一处理配置类与静态资源）。
      * <p>
-     * 只收集 {@link PublishableStatic}，与 {@link #vendorPublishCommand} 使用的
-     * {@link PublishableConfig} 完全隔离：执行 {@code vendor:publish} 不会触发静态资源发布。
+     * 通过 {@link ObjectProvider} 收集容器中所有 {@link Publishable}
+     * （{@link com.weacsoft.jaravel.vendor.core.publish.PublishableConfig} 配置类源码 +
+     * {@link com.weacsoft.jaravel.vendor.core.publish.PublishableStatic} 静态资源），
+     * 一次扫描、按需发布。未引入任何声明可发布项的模块时列表为空，命令不报错。
      */
     @Bean
     @ConditionalOnMissingBean
-    public VendorPublishStaticCommand vendorPublishStaticCommand(ObjectProvider<PublishableStatic> publishables,
-                                                                 MakeCodeProperties properties) {
-        List<PublishableStatic> statics = publishables.orderedStream().collect(Collectors.toList());
-        log.debug("[Artisan] vendor:publish:static 发现 {} 个静态资源发布器", statics.size());
-        return new VendorPublishStaticCommand(statics, properties);
+    public VendorPublishCommand vendorPublishCommand(ObjectProvider<Publishable> publishables,
+                                                     MakeCodeProperties properties) {
+        List<Publishable> all = publishables.orderedStream().collect(Collectors.toList());
+        log.debug("[Artisan] vendor:publish 发现 {} 个可发布项（配置 + 资源）", all.size());
+        return new VendorPublishCommand(all, properties);
     }
 }

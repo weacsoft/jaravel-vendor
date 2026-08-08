@@ -2,16 +2,21 @@ package com.weacsoft.jaravel.vendor.artisan;
 
 import com.weacsoft.jaravel.vendor.artisan.make.MakeCodeProperties;
 import com.weacsoft.jaravel.vendor.artisan.vendor.VendorPublishCommand;
+import com.weacsoft.jaravel.vendor.core.publish.Publishable;
 import com.weacsoft.jaravel.vendor.core.publish.PublishableConfig;
+import com.weacsoft.jaravel.vendor.core.publish.PublishableStatic;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,18 +26,18 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * {@link VendorPublishCommand} 单元测试。
+ * {@link VendorPublishCommand} 单元测试（统一处理配置类 + 静态资源）。
  * <p>
  * 测试覆盖：
  * <ul>
- *   <li>{@code --all} / {@code --tag} 发布到 {@code <基础包>/config/} 目录</li>
+ *   <li>{@code --all} 同时发布配置类与静态资源</li>
+ *   <li>{@code --tag=<模块>} 只发布该标签（含其配置与资源）</li>
+ *   <li>{@code --tag=resources} 只发布静态资源；{@code --tag=config} 只发布配置类</li>
  *   <li>{@code --force} 覆盖语义与默认跳过语义</li>
  *   <li>{@code --list} 只列出不写文件</li>
  *   <li>未知 tag 返回失败码</li>
  *   <li>无可发布项时优雅退出（可选依赖回退）</li>
  * </ul>
- * <p>
- * 测试类与 {@link ArtisanCommand} 同包，以便调用包级可见的 {@code setParsed}。
  */
 class VendorPublishCommandTest {
 
@@ -46,6 +51,7 @@ class VendorPublishCommandTest {
         properties = new MakeCodeProperties();
         properties.setBasePackage("com.example.test");
         properties.setOutputDir(tempDir.toString());
+        properties.setResourcesDir(tempDir.resolve("resources").toString());
     }
 
     /** 配置类应发布到 {@code <outputDir>/com/example/test/config/}。 */
@@ -53,15 +59,16 @@ class VendorPublishCommandTest {
         return tempDir.resolve("com/example/test/config");
     }
 
+    /** 静态资源应发布到 {@code <resourcesDir>/static/}。 */
+    private Path resourcesDir() {
+        return tempDir.resolve("resources");
+    }
+
     /**
      * 构造命令并注入解析后的选项。
-     * <p>
-     * {@code setParsed} 是 {@code ArtisanCommand} 的包级方法，而被测命令位于
-     * {@code .vendor} 子包，无法直接调用，故通过反射注入（等价于
-     * {@code ArtisanApplication} 在调度前所做的事）。
      */
-    private VendorPublishCommand command(List<PublishableConfig> configs, String... optionKeys) {
-        VendorPublishCommand cmd = new VendorPublishCommand(configs, properties);
+    private VendorPublishCommand command(List<Publishable> items, String... optionKeys) {
+        VendorPublishCommand cmd = new VendorPublishCommand(items, properties);
         Map<String, String> options = new LinkedHashMap<>();
         for (String key : optionKeys) {
             int eq = key.indexOf('=');
@@ -102,31 +109,84 @@ class VendorPublishCommandTest {
         };
     }
 
+    /** 简单的可发布静态资源桩（用内存 ClassLoader 提供字节）。 */
+    private PublishableStatic staticStub(String tag, String cp, String target, byte[] bytes) {
+        return new PublishableStatic() {
+            @Override
+            public String tag() {
+                return tag;
+            }
+
+            @Override
+            public Map<String, String> resources() {
+                return Collections.singletonMap(cp, target);
+            }
+
+            @Override
+            public ClassLoader resourceClassLoader() {
+                return new ClassLoader() {
+                    @Override
+                    public InputStream getResourceAsStream(String name) {
+                        return name.equals(cp) ? new ByteArrayInputStream(bytes) : null;
+                    }
+                };
+            }
+        };
+    }
+
     @Test
     void testPublishAll() throws IOException {
-        int code = command(List.of(stub("cache", "CacheConfig"), stub("storage", "StorageConfig")),
-                "all").handle();
+        int code = command(List.of(
+                stub("cache", "CacheConfig"),
+                staticStub("captcha", "static/x.js", "static/x.js", "console.log(1)".getBytes(StandardCharsets.UTF_8))
+        ), "all").handle();
 
         assertEquals(0, code);
-        Path cache = configDir().resolve("CacheConfig.java");
-        assertTrue(Files.exists(cache), "CacheConfig.java 应被发布");
-        assertTrue(Files.exists(configDir().resolve("StorageConfig.java")), "StorageConfig.java 应被发布");
+        assertTrue(Files.exists(configDir().resolve("CacheConfig.java")), "配置类应被发布");
+        assertTrue(Files.exists(resourcesDir().resolve("static/x.js")), "静态资源应被发布");
 
-        // 发布内容应使用业务工程的基础包名
-        String content = Files.readString(cache, StandardCharsets.UTF_8);
+        String content = Files.readString(configDir().resolve("CacheConfig.java"), StandardCharsets.UTF_8);
         assertTrue(content.startsWith("package com.example.test.config;"),
                 "发布产物的包名应为业务工程基础包 + .config，实际: " + content);
     }
 
     @Test
     void testPublishByTag() {
-        int code = command(List.of(stub("cache", "CacheConfig"), stub("storage", "StorageConfig")),
-                "tag=cache").handle();
+        int code = command(List.of(
+                stub("cache", "CacheConfig"),
+                stub("storage", "StorageConfig")
+        ), "tag=cache").handle();
 
         assertEquals(0, code);
         assertTrue(Files.exists(configDir().resolve("CacheConfig.java")));
         assertFalse(Files.exists(configDir().resolve("StorageConfig.java")),
                 "未指定的 tag 不应被发布");
+    }
+
+    @Test
+    void testPublishResourcesTag() throws IOException {
+        int code = command(List.of(
+                stub("cache", "CacheConfig"),
+                staticStub("captcha", "static/x.js", "static/x.js", "A".getBytes(StandardCharsets.UTF_8)),
+                staticStub("wire", "static/wire.js", "static/wire.js", "B".getBytes(StandardCharsets.UTF_8))
+        ), "tag=resources").handle();
+
+        assertEquals(0, code);
+        assertFalse(Files.exists(configDir().resolve("CacheConfig.java")), "--tag=resources 不应发布配置类");
+        assertTrue(Files.exists(resourcesDir().resolve("static/x.js")), "captcha 静态资源应被发布");
+        assertTrue(Files.exists(resourcesDir().resolve("static/wire.js")), "wire 静态资源应被发布");
+    }
+
+    @Test
+    void testPublishConfigTag() throws IOException {
+        int code = command(List.of(
+                stub("cache", "CacheConfig"),
+                staticStub("captcha", "static/x.js", "static/x.js", "A".getBytes(StandardCharsets.UTF_8))
+        ), "tag=config").handle();
+
+        assertEquals(0, code);
+        assertTrue(Files.exists(configDir().resolve("CacheConfig.java")), "--tag=config 应发布配置类");
+        assertFalse(Files.exists(resourcesDir().resolve("static/x.js")), "--tag=config 不应发布静态资源");
     }
 
     @Test
@@ -181,7 +241,6 @@ class VendorPublishCommandTest {
 
     @Test
     void testEmptyPublishablesExitsGracefully() {
-        // 模拟「未引入任何声明可发布配置的模块」，应优雅退出而非报错
         assertEquals(0, command(List.of(), "all").handle());
     }
 }
