@@ -350,9 +350,9 @@ blockquote ul, blockquote ol { margin-bottom: 0.2rem; }
 <table>
 <tr><th>配置类</th><th>包路径</th><th>说明</th></tr>
 <tr><td><code>config/App.java</code></td><td><code>com.weacsoft.jaravel.vendor.config</code></td><td>中央配置入口，类似 Laravel 的 <code>config/app.php</code>。通过 <code>@Import</code> 显式导入各模块配置类，控制功能启用。用户通过修改此类决定加载哪些模块</td></tr>
-<tr><td><code>config/view/ViewConfig.java</code></td><td><code>com.weacsoft.jaravel.vendor.config.view</code></td><td>视图引擎配置。通过 <code>@RegisterView</code> 声明式注册 Blade 模板引擎实现（对齐 Laravel 的 Blade 服务提供者），由 <code>ViewAutoConfiguration</code> 收集并绑定 <code>ViewFacade</code></td></tr>
-<tr><td><code>config/database/DatabaseConfig.java</code></td><td><code>com.weacsoft.jaravel.vendor.config.database</code></td><td>数据库配置。控制多数据源管理、Eloquent ORM 集成等数据层功能的启用</td></tr>
-<tr><td><code>config/wire/WireConfig.java</code></td><td><code>com.weacsoft.jaravel.vendor.config.wire</code></td><td>Wire 模块配置。控制 Wire 渲染模块（Livewire 风格反应式 UI）的启用与配置</td></tr>
+<tr><td><code>config/ViewConfig.java</code></td><td><code>com.weacsoft.jaravel.vendor.config.view</code></td><td>视图引擎配置。通过 <code>@RegisterView</code> 声明式注册 Blade 模板引擎实现（对齐 Laravel 的 Blade 服务提供者），由 <code>ViewAutoConfiguration</code> 收集并绑定 <code>ViewFacade</code></td></tr>
+<tr><td><code>config/DatabaseConfig.java</code></td><td><code>com.weacsoft.jaravel.vendor.config.database</code></td><td>数据库配置。控制多数据源管理、Eloquent ORM 集成等数据层功能的启用</td></tr>
+<tr><td><code>config/WireConfig.java</code></td><td><code>com.weacsoft.jaravel.vendor.config.wire</code></td><td>Wire 模块配置。控制 Wire 渲染模块（Livewire 风格反应式 UI）的启用与配置</td></tr>
 </table>
 
 <p><strong>使用方式</strong>：</p>
@@ -371,16 +371,6 @@ public class App {
     // 用户通过修改此类控制框架加载哪些功能模块
 }
 </code></pre>
-
-<p><strong>与旧版的区别</strong>：</p>
-
-<table>
-<tr><th>对比项</th><th>旧版（v0.1.0 及之前）</th><th>新版（v0.1.2）</th></tr>
-<tr><td>功能激活方式</td><td>引入依赖即自动激活（约定优于配置）</td><td>需在 <code>App.java</code> 中通过 <code>@Import</code> 显式导入（显式控制）</td></tr>
-<tr><td>配置可见性</td><td>各模块独立自动装配，用户难以全局概览</td><td>中央 <code>App.java</code> 集中管理所有已启用的模块，一目了然</td></tr>
-<tr><td>功能裁剪</td><td>需排除特定 AutoConfiguration 类</td><td>注释掉对应的 <code>@Import</code> 即可禁用模块</td></tr>
-<tr><td>模块配置</td><td>分散在各模块的 Properties 类</td><td>统一在 <code>config/</code> 目录下按模块组织（view/database/wire）</td></tr>
-</table>
 
 <blockquote>
 <p><strong>注意</strong>：此配置重构不影响各模块的 <code>application.yml</code> 配置项（如 <code>jaravel.wire.enabled</code>、<code>jaravel.captcha.enabled</code> 等），这些配置项仍然有效。重构主要影响的是<strong>模块的自动装配激活方式</strong>：从「依赖即激活」改为「<code>@Import</code> 显式激活」。</p>
@@ -417,6 +407,147 @@ public class App {
 <li>容器启动、所有单例 Bean 实例化完成后，ProviderRegistry（@Component，实现 SmartInitializingSingleton.afterSingletonsInstantiated）被触发——先遍历全部 ServiceProvider 依次调用 register()（第一阶段），再遍历全部 ServiceProvider 依次调用 boot()（第二阶段）。即全局约定为「先统一 register，再统一 boot」。</li>
 <li>在 register() 中可通过 Facade / SpringContext 解析依赖；在 boot() 中可安全假设其他 Provider 的 register() 已完成。</li>
 </ol>
+<h4 id="core-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. 全局应用密钥：读取 jaravel.key，缺失时随机生成并告警
+AppKey appKey = new DefaultAppKey(env.getProperty("jaravel.key", ""));
+// 2. 配置仓库：包装 Spring Environment，支持点号取值
+ConfigRepository config = new ConfigRepository(env);
+// 3. 注册代码级配置（对齐 config/*.php），按 namespace() 归入命名空间
+config.registerConfigDefinition(new AppConfigDefinition());
+// 4. 服务容器：先登记别名，之后 make("config") 即可解析对应 Spring Bean
+Application.registerDefaultBinding("config", ConfigRepository.class);
+Application app = new Application();
+app.singleton("mailer", () -&gt; new Mailer(config.string("mail.host", "127.0.0.1")));
+// 5. 服务提供者注册表：容器就绪后依次执行 register() -&gt; boot()
+ProviderRegistry registry = new ProviderRegistry(List.of(new AppServiceProvider()));
+// 6. 分页器：注入 ViewProvider 后 links() 才能渲染，未注入则降级空串
+Paginator.setDefaultViewProvider(viewManager::defaultView);
+Paginator&lt;User&gt; page = new Paginator&lt;&gt;(users, 120L, 15, 1).setPath("/users");</code></pre>
+<h4 id="core-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>App</b> — 应用静态入口，对齐 Laravel 的 app() 全局函数，从 Spring 容器取出唯一的 Application 实例</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static Application app()</code></td><td>无参数</td><td>获取应用容器实例，再链式调用 make() 解析各类服务</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>Application</b> — 应用服务容器基类（服务定位器），对齐 Laravel 的 Application/Container，通常由应用配置类继承扩展</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public &lt;T&gt; T make(Class&lt;T&gt; type)</code></td><td>type：Bean 类型</td><td>从 Spring 容器按类型解析 Bean，是所有 typed 访问器的基础</td></tr>
+<tr><td><code>public &lt;T&gt; T make(String name)</code></td><td>name：服务名称</td><td>按名称解析服务，依次查单例缓存、工厂注册、别名映射，未注册返回 null</td></tr>
+<tr><td><code>public void singleton(String name, Supplier&lt;Object&gt; factory)</code></td><td>name：服务名称；factory：实例工厂</td><td>注册单例工厂，首次 make 后缓存实例，对齐 App::singleton</td></tr>
+<tr><td><code>public void bind(String name, Supplier&lt;Object&gt; factory)</code></td><td>name：服务名称；factory：实例工厂</td><td>注册瞬态工厂，每次 make 都创建新实例，对齐 App::bind</td></tr>
+<tr><td><code>public static void registerDefaultBinding(String name, Class&lt;?&gt; type)</code></td><td>name：服务别名；type：Spring Bean 类型</td><td>登记别名到 Bean 类型的映射，对齐 Laravel config/app.php 的 aliases 数组</td></tr>
+<tr><td><code>public boolean publishToSpring(String name)</code></td><td>name：服务名称</td><td>把容器内注册的自定义服务发布为 Spring 单例 Bean，同名则先销毁再注册</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>SpringContext</b> — Spring 上下文持有器，供门面与静态工具在非注入场景下访问容器 Bean</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static &lt;T&gt; T bean(Class&lt;T&gt; type)</code></td><td>type：Bean 类型</td><td>按类型获取 Bean，容器未初始化时抛 IllegalStateException</td></tr>
+<tr><td><code>public static &lt;T&gt; T bean(String name, Class&lt;T&gt; type)</code></td><td>name：Bean 名称；type：Bean 类型</td><td>按名称加类型获取 Bean</td></tr>
+<tr><td><code>public static &lt;T&gt; T beanOrNull(Class&lt;T&gt; type)</code></td><td>type：Bean 类型</td><td>安全获取 Bean，不存在或容器未就绪时返回 null 而非抛异常</td></tr>
+<tr><td><code>public static boolean contains(String name)</code></td><td>name：Bean 名称</td><td>判断容器中是否存在指定名称的 Bean</td></tr>
+<tr><td><code>public static void registerSingleton(String name, Object bean)</code></td><td>name：Bean 名称；bean：Bean 实例</td><td>运行时注册或替换单例 Bean，已存在同名单例时先销毁旧实例</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>Config</b> — 配置门面，对齐 Laravel 的 config('app.name')，静态委托给 ConfigRepository</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static &lt;T&gt; T get(String key, T defaultValue)</code></td><td>key：点号配置键；defaultValue：默认值</td><td>读取配置项，缺失时返回默认值</td></tr>
+<tr><td><code>public static String string(String key, String defaultValue)</code></td><td>key：点号配置键；defaultValue：默认字符串</td><td>以字符串形式读取配置项</td></tr>
+<tr><td><code>public static int getInt(String key, int defaultValue)</code></td><td>key：点号配置键；defaultValue：默认整数</td><td>以整数形式读取配置项，解析失败回退默认值</td></tr>
+<tr><td><code>public static boolean getBool(String key, boolean defaultValue)</code></td><td>key：点号配置键；defaultValue：默认布尔值</td><td>以布尔形式读取配置项，识别 true 与 1</td></tr>
+<tr><td><code>public static void set(String key, Object value)</code></td><td>key：点号配置键；value：配置值</td><td>运行时写入配置，优先级高于代码级配置与 Environment</td></tr>
+<tr><td><code>public static boolean has(String key)</code></td><td>key：点号配置键</td><td>判断配置项在三层来源中是否存在</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>ConfigRepository</b> — 配置仓库实现，按「运行时覆盖 &gt; 代码级配置 &gt; Spring Environment」三层优先级解析配置</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public ConfigRepository(Environment environment)</code></td><td>environment：Spring 环境对象，可为 null</td><td>构造配置仓库，以 Environment 作为最低优先级来源</td></tr>
+<tr><td><code>public void registerConfigDefinition(ConfigDefinition definition)</code></td><td>definition：代码级配置定义</td><td>把配置定义的 values() 合并到对应 namespace 命名空间下</td></tr>
+<tr><td><code>public &lt;T&gt; T get(String key, T defaultValue)</code></td><td>key：点号配置键；defaultValue：默认值</td><td>按三层优先级读取配置，支持 app.name 形式的嵌套路径</td></tr>
+<tr><td><code>public int getInt(String key, int defaultValue)</code></td><td>key：点号配置键；defaultValue：默认整数</td><td>读取整数配置，NumberFormatException 时回退默认值</td></tr>
+<tr><td><code>public void set(String key, Object value)</code></td><td>key：点号配置键；value：配置值</td><td>写入运行时覆盖层，优先级最高</td></tr>
+<tr><td><code>public boolean has(String key)</code></td><td>key：点号配置键</td><td>在覆盖层、代码级配置与 Environment 中依次判断键是否存在</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>Validator</b> — Laravel 风格校验器，用管道分隔的规则串（如 required|string|min:2）校验 Map 数据</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static Validator make(Map&lt;String, Object&gt; data, Map&lt;String, String&gt; rules, Map&lt;String, String&gt; messages)</code></td><td>data：待校验数据；rules：字段规则串；messages：自定义消息，键形如 field.rule，可为 null</td><td>创建校验器实例</td></tr>
+<tr><td><code>public static Validator make(Map&lt;String, Object&gt; data, Map&lt;String, String&gt; rules)</code></td><td>data：待校验数据；rules：字段规则串</td><td>创建校验器，使用规则的内置默认错误消息</td></tr>
+<tr><td><code>public boolean fails()</code></td><td>无参数</td><td>判断校验是否失败，内部惰性计算并缓存错误集合</td></tr>
+<tr><td><code>public boolean passes()</code></td><td>无参数</td><td>判断校验是否全部通过</td></tr>
+<tr><td><code>public Map&lt;String, List&lt;String&gt;&gt; errors()</code></td><td>无参数</td><td>返回字段到错误消息列表的映射，消息中的 :field/:value/:param0 已被替换</td></tr>
+<tr><td><code>public Map&lt;String, Object&gt; validate()</code></td><td>无参数</td><td>执行校验，失败抛 ValidationException，成功返回仅含规则字段的已校验数据</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>FormRequest</b> — Laravel 风格表单请求基类，子类集中声明校验规则、自定义消息与授权逻辑</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public abstract Map&lt;String, String&gt; rules()</code></td><td>无参数</td><td>子类必须实现，返回字段名到规则串的映射</td></tr>
+<tr><td><code>public Map&lt;String, String&gt; messages()</code></td><td>无参数</td><td>可选重写，返回自定义错误消息，键形如 field.rule</td></tr>
+<tr><td><code>public boolean authorize()</code></td><td>无参数</td><td>授权检查，默认放行，返回 false 时校验抛 UnauthorizedException</td></tr>
+<tr><td><code>public Map&lt;String, Object&gt; validate(Map&lt;String, Object&gt; data)</code></td><td>data：待校验数据</td><td>先授权再校验，成功返回已校验数据，失败抛 ValidationException</td></tr>
+<tr><td><code>public boolean isValid(Map&lt;String, Object&gt; data)</code></td><td>data：待校验数据</td><td>只校验不抛异常，返回是否通过</td></tr>
+<tr><td><code>public Map&lt;String, Object&gt; prepare(Map&lt;String, Object&gt; data)</code></td><td>data：原始数据</td><td>校验前的数据预处理钩子，默认原样返回，可重写实现 only/except</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>Paginator&lt;T&gt;</b> — Laravel 风格分页器，不耦合具体模板引擎，实现 Iterable 与 Htmlable 可直接在模板中遍历与输出</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public Paginator(List&lt;T&gt; items, long total, int perPage, int currentPage)</code></td><td>items：当前页数据；total：总记录数；perPage：每页条数；currentPage：当前页码</td><td>构造分页器，perPage 与 currentPage 会被规整为不小于 1</td></tr>
+<tr><td><code>public Paginator&lt;T&gt; setPath(String path)</code></td><td>path：分页链接的基础路径</td><td>设置生成 URL 的基础路径，返回自身支持链式调用</td></tr>
+<tr><td><code>public Paginator&lt;T&gt; appends(String key, Object value)</code></td><td>key：查询参数名；value：参数值</td><td>追加分页链接上要保留的查询参数（如筛选条件）</td></tr>
+<tr><td><code>public String url(int page)</code></td><td>page：目标页码，小于 1 时按 1 处理</td><td>生成指定页码的完整 URL，自动拼接 page 与 appends 参数</td></tr>
+<tr><td><code>public List&lt;Map&lt;String, Object&gt;&gt; elements(int onEachSide)</code></td><td>onEachSide：当前页两侧保留的页数，负数时按 3 处理</td><td>生成页码元素序列，含 type/page/url/active 字段与省略号分隔符</td></tr>
+<tr><td><code>public Htmlable links(String viewName)</code></td><td>viewName：分页模板名（点号命名空间）</td><td>渲染分页 HTML，只有一页、视图未注入或模板缺失时三级降级为空串</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>Str</b> — 字符串静态工具集，对齐 Laravel 的 Str 门面</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static boolean is(String pattern, String value)</code></td><td>pattern：含通配符的模式串；value：待匹配字符串</td><td>通配符匹配，对齐 Laravel Str::is</td></tr>
+<tr><td><code>public static String camel(String value)</code></td><td>value：原始字符串</td><td>转换为小驼峰命名</td></tr>
+<tr><td><code>public static String studly(String value)</code></td><td>value：原始字符串</td><td>转换为大驼峰（帕斯卡）命名</td></tr>
+<tr><td><code>public static String snake(String value, String delimiter)</code></td><td>value：原始字符串；delimiter：分隔符</td><td>转换为下划线（或指定分隔符）命名</td></tr>
+<tr><td><code>public static String random(int length)</code></td><td>length：目标长度</td><td>生成指定长度的随机字符串</td></tr>
+<tr><td><code>public static String uuid()</code></td><td>无参数</td><td>生成 UUID 字符串</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>Arr</b> — Map/集合静态工具集，支持点号路径读写，对齐 Laravel 的 Arr 门面</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static &lt;T&gt; T get(Map&lt;String, Object&gt; map, String key, T defaultValue)</code></td><td>map：目标 Map；key：点号路径键；defaultValue：默认值</td><td>按点号路径读取嵌套值，缺失时返回默认值</td></tr>
+<tr><td><code>public static void set(Map&lt;String, Object&gt; map, String key, Object value)</code></td><td>map：目标 Map；key：点号路径键；value：写入值</td><td>按点号路径写入嵌套值，中间层级自动创建</td></tr>
+<tr><td><code>public static boolean has(Map&lt;String, Object&gt; map, String key)</code></td><td>map：目标 Map；key：点号路径键</td><td>判断点号路径对应的键是否存在</td></tr>
+<tr><td><code>public static &lt;T&gt; List&lt;T&gt; pluck(Collection&lt;Map&lt;String, Object&gt;&gt; list, String key)</code></td><td>list：Map 集合；key：要抽取的字段名</td><td>从 Map 集合中抽取某一字段组成列表</td></tr>
+<tr><td><code>public static Map&lt;String, Object&gt; only(Map&lt;String, Object&gt; map, String... keys)</code></td><td>map：源 Map；keys：要保留的键</td><td>返回只含指定键的新 Map</td></tr>
+<tr><td><code>public static Map&lt;String, Object&gt; except(Map&lt;String, Object&gt; map, String... keys)</code></td><td>map：源 Map；keys：要排除的键</td><td>返回剔除指定键后的新 Map</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>ServiceProvider</b> — 服务提供者基类，对齐 Laravel Service Provider，由 ProviderRegistry 在容器刷新时统一驱动</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public void register()</code></td><td>无参数</td><td>注册阶段钩子，用于绑定轻量服务，此时其它 Bean 可能尚未就绪</td></tr>
+<tr><td><code>public void boot()</code></td><td>无参数</td><td>启动阶段钩子，所有 Bean 就绪后执行，可安全使用其它服务</td></tr>
+</table>
+</div>
 </section>
 <section id="cat-utils">
 <h3>utils — 工具类</h3>
@@ -441,6 +572,93 @@ public class App {
 <li>WireMode —— 通过静态方法 WireMode.begin() / isActive() / clear() 在线程内标记/查询/清除 Wire 渲染模式（ThreadLocal 实现）。</li>
 <li>RuntimeClasspath —— 通过静态方法 RuntimeClasspath.resolve() 解析 fat-jar classpath（展开 BOOT-INF），供运行时 javac 编译使用。</li>
 </ol>
+<h4 id="utils-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. 内存缓存：零外部依赖，TTL 单位为秒，&lt;=0 表示永不过期
+SimpleMemoryCache cache = new SimpleMemoryCache();
+cache.put("captcha:a1b2", "8452", 60);
+// 2. IP 匹配器：构造后规则不可变，支持单 IP / CIDR / 区间三种表达式
+IpMatcher matcher = new IpMatcher("127.0.0.1", "10.0.0.0/8", "192.168.1.0-192.168.1.100");
+boolean allowed = matcher.matches("10.5.5.5");
+// 3. 运行时编译 classpath：fat-jar 下自动展开 BOOT-INF，每个 JVM 只算一次
+String classpath = RuntimeClasspath.resolve();
+// 4. 内存文件管理器：包装标准 FileManager，把 class 输出拦截进内存
+JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+MemoryFileManager fileManager = new MemoryFileManager(compiler.getStandardFileManager(null, null, null));
+// 5. 把第 4 步的编译产物装进内存类加载器（依赖 fileManager 的输出）
+MemoryClassLoader loader = new MemoryClassLoader();
+loader.getCompiledClasses().put("com.demo.Tpl", fileManager.getGeneratedClass("com.demo.Tpl"));
+// 6. 不可变 Map：空键跳过、空值保留，适合构造模板数据
+Map&lt;String, Object&gt; data = Maps.of("name", "alice", "age", null);</code></pre>
+<h4 id="utils-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>SimpleMemoryCache</b> — 基于 ConcurrentHashMap + TTL 的通用内存缓存，零外部依赖、线程安全，常作为 cache 模块不可用时的兜底存储</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public void put(String key, Object value, long ttlSeconds)</code></td><td>key：缓存键；value：缓存值；ttlSeconds：过期秒数，小于等于 0 表示永不过期</td><td>写入缓存并指定过期时间</td></tr>
+<tr><td><code>public &lt;T&gt; T get(String key, Class&lt;T&gt; type)</code></td><td>key：缓存键；type：期望类型</td><td>读取并按类型转换缓存值，不存在、已过期或类型不匹配返回 null</td></tr>
+<tr><td><code>public boolean exists(String key)</code></td><td>key：缓存键</td><td>判断键是否存在且未过期，命中过期项时顺带清理</td></tr>
+<tr><td><code>public boolean add(String key, Object value, long ttlSeconds)</code></td><td>key：缓存键；value：缓存值；ttlSeconds：过期秒数</td><td>仅当键不存在时写入，返回是否实际写入</td></tr>
+<tr><td><code>public Object pull(String key)</code></td><td>key：缓存键</td><td>读取后立即删除，一次性令牌场景常用</td></tr>
+<tr><td><code>public long increment(String key, long amount)</code></td><td>key：缓存键；amount：步长，可为负数实现自减</td><td>按步长自增，键不存在或非数字时按 0 起算并保留原过期时间</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>IpMatcher</b> — IP 地址匹配器，同时支持 IPv4/IPv6 的单 IP、CIDR 掩码与起止区间三种表达式，构造后线程安全</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public IpMatcher(String... expressions)</code></td><td>expressions：IP 表达式数组，每项可为单 IP、CIDR 或 区间</td><td>用一组表达式构造匹配器，非法表达式在构造期即抛 IllegalArgumentException</td></tr>
+<tr><td><code>public IpMatcher(Collection&lt;String&gt; expressions)</code></td><td>expressions：IP 表达式集合</td><td>集合形式构造，自动跳过 null 与空白项</td></tr>
+<tr><td><code>public boolean matches(String ip)</code></td><td>ip：待判断的 IPv4 或 IPv6 地址字符串</td><td>判断 IP 是否命中任一规则，解析失败返回 false，v4/v6 不混匹</td></tr>
+<tr><td><code>public boolean isEmpty()</code></td><td>无参数</td><td>判断是否为不含任何规则的空匹配器</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>Maps</b> — 不可变 Map 便捷构造工具，替代 Map.of 且允许空值、保持插入顺序、不限键值对数量</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static Map&lt;String, Object&gt; of(Object... kvs)</code></td><td>kvs：交替出现的 key/value，长度为奇数时末位 key 被忽略</td><td>构造不可变 LinkedHashMap，空键条目跳过、空值条目保留</td></tr>
+<tr><td><code>public static Map&lt;String, Object&gt; ofEntries(Object... entries)</code></td><td>entries：交替出现的 key/value</td><td>与 of 行为一致的别名方法，语义更贴近「由已有键值对数组构造」</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>WireMode</b> — Wire 模式的 ThreadLocal 标记，作为 wire 与 http/jblade 之间唯一可双向访问的公共点</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static void begin()</code></td><td>无参数</td><td>标记当前线程进入 Wire 模式，由 WireMiddleware 在请求进入时调用</td></tr>
+<tr><td><code>public static boolean isActive()</code></td><td>无参数</td><td>判断当前线程是否处于 Wire 模式，供渲染层决定输出形态</td></tr>
+<tr><td><code>public static void clear()</code></td><td>无参数</td><td>清除 ThreadLocal 标记，请求结束时必须调用以防线程复用污染</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>MemoryClassLoader</b> — 从内存字节码加载类的自定义类加载器，配合运行时编译使用（jblade 模板、动态插件）</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public MemoryClassLoader()</code></td><td>无参数</td><td>创建空字节码映射的加载器，编译后再通过 getCompiledClasses() 填充</td></tr>
+<tr><td><code>public MemoryClassLoader(Map&lt;String, byte[]&gt; classBytes, ClassLoader parent)</code></td><td>classBytes：类名到字节码的映射；parent：父类加载器</td><td>用现成字节码映射构造，未命中的类走双亲委派</td></tr>
+<tr><td><code>public Map&lt;String, byte[]&gt; getCompiledClasses()</code></td><td>无参数</td><td>获取可读写的字节码映射表，编译器把产物写入这里</td></tr>
+<tr><td><code>public List&lt;String&gt; getCompiledClassesName()</code></td><td>无参数</td><td>返回所有已载入内存的类全限定名列表</td></tr>
+<tr><td><code>public void removeAll()</code></td><td>无参数</td><td>清空所有已编译的类字节码，用于模板热重载</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>MemoryFileManager</b> — 内存 JavaFileManager，拦截 javac 的 class 输出到内存而不落盘</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public MemoryFileManager(JavaFileManager fileManager)</code></td><td>fileManager：被委托的标准文件管理器，通常由 compiler.getStandardFileManager 创建</td><td>包装标准文件管理器，构成编译输出拦截层</td></tr>
+<tr><td><code>public JavaFileObject getJavaFileForOutput(Location location, String className, JavaFileObject.Kind kind, FileObject sibling)</code></td><td>location：输出位置；className：类全限定名；kind：文件类型；sibling：兄弟文件对象</td><td>编译器回调入口，CLASS 类型改为返回内存文件对象</td></tr>
+<tr><td><code>public List&lt;String&gt; getGeneratedClassNames()</code></td><td>无参数</td><td>返回本次编译生成的全部类名（含匿名类与内部类）</td></tr>
+<tr><td><code>public byte[] getGeneratedClass(String className)</code></td><td>className：类全限定名</td><td>取出指定类的字节码，用于喂给 MemoryClassLoader，不存在返回 null</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>RuntimeClasspath</b> — 运行时编译 classpath 解析工具，兼容 Spring Boot 可执行 fat-jar 的 nested 协议</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static String resolve()</code></td><td>无参数</td><td>构造供 javac 使用的 classpath，fat-jar 下自动展开 BOOT-INF/lib 与 classes 到临时目录，结果整个 JVM 只计算一次</td></tr>
+</table>
+</div>
 </section>
 <section id="cat-http">
 <h3>http — HTTP 路由</h3>
@@ -467,6 +685,24 @@ public class App {
 <li>注册 sessionStoreRegistrar —— new SessionStoreRegistrar(applicationContext, sessionStoreHolder)。</li>
 <li>第三步（如需 artisan 集成）：注册 routeCacheCommand / routeClearCommand，均 @ConditionalOnMissingBean。</li>
 </ol>
+<h4 id="http-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. 创建根路由器：Router 是整棵路由树的根节点
+Router router = new Router();
+// 2. 绑定静态门面：Route.get()/Route.group() 与 RouteHelper.route() 都依赖它
+Route.setRootRouter(router);
+RouteHelper.setRouter(router);
+// 3. 注册中间件别名，路由中即可用 "auth:web" 这类表达式引用
+MiddlewareAliasRegistry.getGlobal().register("auth", new AuthMiddleware());
+// 4. 注册控制器实例，字符串 "UserController::index" 才能解析到方法
+ControllerRegistry.getGlobal().register(new UserController());
+// 5. 声明路由：分组前缀 + 中间件 + 路由名
+Route.middleware("auth:web").prefix("admin").group(() -&gt; {
+    Route.get("/users", "UserController::index").name("admin.users");
+});
+// 6. 运行期：由 RequestFactory 构建 Request，再执行中间件链得到 Response
+Request request = RequestFactory.buildFromHttpServletRequest(servletRequest);
+Response response = router.getAllRoutes().get(0).getHandlerChain().apply(request);</code></pre>
 <h4 id="http-注解">注解与启发式识别</h4>
 <p>本模块使用注解（启发式）声明式注册，参数如下：</p>
 <div class="annotation">
@@ -475,6 +711,96 @@ public class App {
 <p>标注在 @Configuration 方法（返回 SessionStore），由 SessionStoreRegistrar 扫描并注册为全局唯一 Session 存储。强制唯一：多个且无 override 时启动报错；override=true 本项优先生效。优先级：@RegisterSessionStore(override=true) &gt; @RegisterSessionStore &gt; 容器已有 SessionStore Bean &gt; 回退 CookieSessionStore。</p>
 <p>用法示例：</p>
 <pre><code>@Configuration public class SessionConfig { @RegisterSessionStore public SessionStore redisSessionStore(RedisManager redisManager, SessionRedisProperties props) { return new RedisSessionStore(redisManager, props.getConnection(), props.getPrefix(), props.getLifetime(), props.getCookie()); } }</code></pre>
+</div>
+<h4 id="http-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.route.Route</b> — 静态路由门面，对齐 Laravel Route:: 风格，用 ThreadLocal 追踪当前 Router 上下文</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static void setRootRouter(Router router)</code></td><td>router：根路由器实例</td><td>初始化静态门面，把根 Router 压入 ThreadLocal 栈底</td></tr>
+<tr><td><code>public static RouteDefinition get(String uri, String controllerAction)</code></td><td>uri：路径；controllerAction："控制器::方法" 字符串</td><td>在当前 Router 上注册一条 GET 路由，返回可继续链式 name()/middleware() 的定义</td></tr>
+<tr><td><code>public static void group(Map&lt;Route.Group, ?&gt; params, Runnable callback)</code></td><td>params：分组参数（PREFIX/NAMESPACE/NAME/MIDDLEWARE）；callback：分组内路由声明闭包</td><td>Map 参数式路由分组，自动压栈/出栈子 Router 实现嵌套层级</td></tr>
+<tr><td><code>public static Route.GroupBuilder middleware(String... aliases)</code></td><td>aliases：中间件别名表达式，如 "auth:api"</td><td>开启流式分组构建器，可继续 .prefix().namespace().group()</td></tr>
+<tr><td><code>public static Route.GroupBuilder prefix(String prefix)</code></td><td>prefix：URI 前缀</td><td>以 URI 前缀开启流式分组构建器</td></tr>
+<tr><td><code>public static Router currentRouter()</code></td><td>无</td><td>取 ThreadLocal 栈顶的当前 Router，未初始化时抛 IllegalStateException</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.route.Router</b> — 路由器实例 API，持有路由定义、子路由器与路由器级中间件，负责路由树聚合与 URL 反查</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public RouteDefinition get(String uri, String controllerAction)</code></td><td>uri：路径；controllerAction："控制器::方法"</td><td>注册 GET 路由（另有 post/put/delete/patch 同形重载）</td></tr>
+<tr><td><code>public RouteDefinition get(String uri, Class&lt;?&gt; controllerClass, String methodName)</code></td><td>uri：路径；controllerClass：控制器类；methodName：方法名</td><td>以类型安全方式注册 GET 路由，避免字符串控制器名拼写错误</td></tr>
+<tr><td><code>public Router middleware(String... aliases)</code></td><td>aliases：中间件别名表达式数组</td><td>追加路由器级中间件，该路由器下所有路由继承之</td></tr>
+<tr><td><code>public Router group(Map&lt;Route.Group, ?&gt; params, Consumer&lt;Router&gt; router)</code></td><td>params：分组参数；router：接收子 Router 的回调</td><td>创建子路由器分组，回调内用实例 API 声明路由</td></tr>
+<tr><td><code>public List&lt;RouteDefinition&gt; getAllRoutes()</code></td><td>无</td><td>递归展开整棵路由树，返回全部路由定义，供适配层注册到 Spring</td></tr>
+<tr><td><code>public String url(String name, Object params)</code></td><td>name：路由别名；params：路径参数（Map 或单值）</td><td>按路由别名反查完整 URL 并替换 {xxx} 占位符</td></tr>
+<tr><td><code>public StaticResourceRoute serveStatic(String urlPrefix, String location, int cacheMaxAge)</code></td><td>urlPrefix：URL 前缀；location：资源目录；cacheMaxAge：缓存秒数</td><td>注册静态资源路由，把 URL 前缀映射到本地/classpath 目录</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.http.controller.request.Request</b> — Laravel 风格请求对象，统一封装 query/input/file/header/cookie/session/路由参数</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public String input(String key)</code></td><td>key：请求体参数名</td><td>读取表单/JSON 请求体参数（另有带默认值与 Class 转换的重载）</td></tr>
+<tr><td><code>public &lt;T&gt; T get(String key, Class&lt;T&gt; clazz)</code></td><td>key：参数名；clazz：目标类型</td><td>跨 query 与 input 合并取值并转换为指定类型</td></tr>
+<tr><td><code>public MultipartFile file(String key)</code></td><td>key：文件字段名</td><td>取上传文件，多文件场景用 files(key)</td></tr>
+<tr><td><code>public &lt;T&gt; T routeParam(String key, Class&lt;T&gt; clazz)</code></td><td>key：路径占位符名；clazz：目标类型</td><td>读取 URI 路径参数（如 /users/{id} 中的 id）并做类型转换</td></tr>
+<tr><td><code>public void putSession(String key, Object value)</code></td><td>key：会话属性名；value：属性值</td><td>写入当前 HttpSession，同时同步到 Request 内部 session 快照</td></tr>
+<tr><td><code>public String ip()</code></td><td>无</td><td>解析真实客户端 IP（优先取代理转发头）</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.http.controller.response.ResponseBuilder</b> — 响应构造静态工厂，对齐 Laravel view()/response()-&gt;json()/redirect() 辅助函数</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static Response view(String templateName, Map&lt;String, Object&gt; data)</code></td><td>templateName：模板名如 "pages.home"；data：模板变量</td><td>渲染 jblade 模板并返回 HTML 响应</td></tr>
+<tr><td><code>public static Response json(Object data)</code></td><td>data：任意可序列化对象</td><td>返回 application/json 响应</td></tr>
+<tr><td><code>public static Response redirect(String url)</code></td><td>url：跳转目标地址</td><td>返回 302 重定向响应</td></tr>
+<tr><td><code>public static Response error(int status, String message)</code></td><td>status：HTTP 状态码；message：错误信息</td><td>返回错误响应，另有 unauthorized/forbidden 快捷方法</td></tr>
+<tr><td><code>public static Response file(byte[] data, String filename)</code></td><td>data：文件字节；filename：下载文件名</td><td>返回带 Content-Disposition 的二进制下载响应</td></tr>
+<tr><td><code>public static ResponseBuilder.RawResponse raw()</code></td><td>无</td><td>获取可自由设置状态码/响应头/Cookie 的原始响应构建器</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.http.middleware.Middleware</b> — 中间件函数式接口，洋葱模型，业务方实现它并通过别名或类引用挂到路由上</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>Response handle(Request request, Middleware.NextFunction next, String... params)</code></td><td>request：当前请求；next：下一层处理函数；params：别名表达式冒号后的参数</td><td>处理请求，调用 next.apply(request) 放行到下一层</td></tr>
+<tr><td><code>Response Middleware.NextFunction.apply(Request request)</code></td><td>request：当前请求</td><td>内部函数式接口，代表中间件链的下一环</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.http.middleware.MiddlewareAliasRegistry</b> — 中间件别名注册表，对齐 Laravel Kernel::$routeMiddleware，同时维护别名表与类映射表</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static MiddlewareAliasRegistry getGlobal()</code></td><td>无</td><td>获取全局单例注册表</td></tr>
+<tr><td><code>public void register(String alias, Middleware middleware)</code></td><td>alias：别名；middleware：中间件实例</td><td>按别名注册中间件，同时写入类映射表</td></tr>
+<tr><td><code>public Middleware resolve(String expression)</code></td><td>expression：别名/类名表达式，如 "auth:api,admin"</td><td>解析表达式为中间件实例，并把冒号后的参数绑定为 params</td></tr>
+<tr><td><code>public List&lt;Middleware&gt; resolveAll(List&lt;String&gt; expressions)</code></td><td>expressions：表达式列表</td><td>批量解析表达式，构造路由的中间件链</td></tr>
+<tr><td><code>public boolean isRegistered(String alias)</code></td><td>alias：别名</td><td>判断别名是否已注册</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.route.RouteHelper</b> — 路由/URL 辅助门面，对齐 Laravel 全局辅助函数 route() 与 url()</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static void setRouter(Router router)</code></td><td>router：根路由器</td><td>启动期注入根 Router，未注入时 route() 会抛 IllegalStateException</td></tr>
+<tr><td><code>public static String route(String name)</code></td><td>name：路由别名，如 "admin.login"</td><td>按路由别名解析出 URL 路径</td></tr>
+<tr><td><code>public static String route(String name, Object params)</code></td><td>name：路由别名；params：路径参数（Map 或单值）</td><td>按别名解析 URL 并替换路径占位符</td></tr>
+<tr><td><code>public static String url(String path)</code></td><td>path：路径字符串</td><td>标准化任意路径为 URL，不校验路由是否存在</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.http.session.SessionStore</b> — Session 存储契约，全局唯一，默认 CookieSessionStore，可用 @RegisterSessionStore 替换为 Redis 实现</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>Object get(String key)</code></td><td>key：会话属性名</td><td>读取当前请求会话中的属性值</td></tr>
+<tr><td><code>void put(String key, Object value)</code></td><td>key：属性名；value：属性值</td><td>写入会话属性，会话未启动时自动创建</td></tr>
+<tr><td><code>void remove(String key)</code></td><td>key：属性名</td><td>移除单个会话属性</td></tr>
+<tr><td><code>void destroy()</code></td><td>无</td><td>销毁当前会话全部数据，用于登出</td></tr>
+</table>
 </div>
 </section>
 <h2 id="template">模板引擎</h2>
@@ -505,6 +831,24 @@ public class App {
 <li>（可选 artisan 命令）viewCacheCommand / viewClearCommand：new 对应命令 Bean。</li>
 <li>（自定义扩展）自定义 Blade 函数/指令，请继承 ServiceProvider 在 boot() 中调用 BladeFunctions.register(...) / BladeDirectives.register(...)，由框架 ProviderRegistry 统一回调；视图注册可通过 @RegisterView（含 @Import(ViewRegistrar.class)）声明式完成。</li>
 </ol>
+<h4 id="jblade-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. 静态资源前缀写入辅助类，模板中 asset() 依赖它
+BladeAssetHelper.setUrlPrefix("/static");
+// 2. 创建引擎：模板目录 templates、后缀 .blade.java、编译缓存走 cache 模块（可传 null 走内存）
+BladeEngine engine = new BladeEngine("templates", ".blade.java", cacheStore);
+// 3. 注册自定义指令（等价 Laravel Blade::if / Blade::directive）
+BladeDirectives.condition("admin", args -&gt; currentUser.isAdmin());
+BladeDirectives.directive("money", args -&gt; "￥" + args[0]);
+// 4. 包装成 core 标准层的 View 实现
+BladeView bladeView = new BladeView("blade", engine);
+// 5. 注册到 ViewManager 并指定默认实现
+ViewManager viewManager = new ViewManager();
+viewManager.register(bladeView);
+viewManager.setConfiguredDefault("blade");
+// 6. 绑定静态门面，此后任意位置均可直接渲染
+ViewFacade.bind(viewManager);
+String html = ViewFacade.getView().render("welcome", Map.of("name", "Jaravel"));</code></pre>
 <h4 id="jblade-注解">注解与启发式识别</h4>
 <p>本模块使用注解（启发式）声明式注册，参数如下：</p>
 <div class="annotation">
@@ -520,6 +864,74 @@ public class App {
 <p>标注在视图相关类上，声明视图名及是否默认视图；含 @Import(ViewRegistrar.class) 触发注册器</p>
 <p>用法示例：</p>
 <pre><code>@RegisterView(name = "blade", defaultView = true) public class BladeView implements core.view.View { ... }</code></pre>
+</div>
+<h4 id="jblade-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>BladeEngine</b> — Blade 模板引擎核心：负责模板编译、字节码缓存、继承链初始化与渲染</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>BladeEngine(String templateDir, String suffix, CacheStore cacheStore)</code></td><td>classpath 下模板目录、模板后缀（默认 .blade.java）、编译缓存（可为 null）</td><td>构造引擎，内部创建 BladeCompiler 与 MemoryClassLoader</td></tr>
+<tr><td><code>String render(String templateName, Map&lt;String, Object&gt; variables) throws Exception</code></td><td>模板名（不含后缀，支持 docs.index 点号路径）、模板变量</td><td>渲染完整模板（含 @extends 继承链）并返回 HTML</td></tr>
+<tr><td><code>String renderSection(String templateName, String sectionName, Map&lt;String, Object&gt; variables) throws Exception</code></td><td>模板名、section 名、模板变量</td><td>只渲染指定 section，用于 Wire 局部更新场景</td></tr>
+<tr><td><code>Map&lt;String, String&gt; renderSections(String templateName, List&lt;String&gt; sectionNames, Map&lt;String, Object&gt; variables) throws Exception</code></td><td>模板名、section 名列表、模板变量</td><td>一次加载模板批量渲染多个 section，避免重复编译</td></tr>
+<tr><td><code>boolean templateExists(String templateName)</code></td><td>模板名</td><td>判断模板是否存在，供 @includeIf 等指令使用</td></tr>
+<tr><td><code>void clearCache()</code></td><td>无参数</td><td>清空模板类与字节码缓存，触发下次访问重新编译</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>ViewFacade</b> — 视图渲染静态门面，业务侧无需手动持有引擎即可渲染；bind 时会把默认视图注入 core 的 Paginator</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>static void bind(ViewManager manager)</code></td><td>已注册好实现的 ViewManager</td><td>绑定管理器到门面，并为 core 分页器设置默认视图提供者</td></tr>
+<tr><td><code>static View getView()</code></td><td>无参数</td><td>取当前激活的默认 View 实现，未初始化时抛 IllegalStateException</td></tr>
+<tr><td><code>static View getView(String name)</code></td><td>视图实现名（如 blade）</td><td>按名取指定 View 实现，不存在返回 null</td></tr>
+<tr><td><code>static ViewManager manager()</code></td><td>无参数</td><td>取回底层 ViewManager，便于动态注册新实现</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>ViewManager</b> — 持有所有 @RegisterView 声明的 View 实现，并按「配置 → 注解 → blade → 首个」优先级解析默认实现</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>void register(View view)</code></td><td>View 实现（按 view.name() 作为键）</td><td>注册视图实现，同名会覆盖并打告警日志</td></tr>
+<tr><td><code>View get(String name)</code></td><td>实现名</td><td>按名取视图实现</td></tr>
+<tr><td><code>void setConfiguredDefault(String name)</code></td><td>jaravel.view.default 配置的实现名</td><td>设置配置层默认实现（优先级最高）</td></tr>
+<tr><td><code>View defaultView()</code></td><td>无参数</td><td>按优先级解析当前应激活的默认 View，全无时返回 null</td></tr>
+<tr><td><code>List&lt;String&gt; names()</code></td><td>无参数</td><td>列出所有已注册的实现名</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>BladeView</b> — BladeEngine 的 core 标准层 View 适配实现，同时提供运行时编译与预编译包两种构建入口</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>static BladeView runtime(String name, String templateDir, String suffix, CacheStore cacheStore, String urlPrefix)</code></td><td>实现名、模板目录、模板后缀、编译缓存（可 null）、静态资源前缀</td><td>运行时编译模式构建（需要完整 JDK）</td></tr>
+<tr><td><code>static BladeView precompiledPackageFromResource(String name, String templateDir, String suffix, String zipPath, String urlPrefix) throws Exception</code></td><td>实现名、模板目录、后缀、classpath 下 .jblade.zip 路径、静态资源前缀</td><td>从预编译包加载模板字节码，仅需 JRE 即可运行</td></tr>
+<tr><td><code>String render(String templateName, Map&lt;String, Object&gt; data) throws Exception</code></td><td>模板名、模板数据</td><td>委托底层 BladeEngine 渲染模板</td></tr>
+<tr><td><code>boolean exists(String templateName)</code></td><td>模板名</td><td>判断模板是否存在</td></tr>
+<tr><td><code>BladeEngine getEngine()</code></td><td>无参数</td><td>暴露底层引擎，供 wire 等模块做组件级 / section 级渲染</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>BladeDirectives</b> — 自定义 Blade 指令全局注册表，对齐 Laravel Blade::if 与 Blade::directive</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>static void condition(String name, BladeDirectives.Condition condition)</code></td><td>指令名、返回 boolean 的条件实现</td><td>注册条件指令，模板中用 @name(...) ... @endname</td></tr>
+<tr><td><code>static void directive(String name, BladeDirectives.Handler handler)</code></td><td>指令名、返回输出内容的处理器</td><td>注册输出指令，模板中用 @name(...) 直接输出返回值</td></tr>
+<tr><td><code>static void mergeDirectives(Map&lt;String, BladeDirectives.Handler&gt; handlers)</code></td><td>指令名到处理器的映射</td><td>批量注册输出指令</td></tr>
+<tr><td><code>static boolean hasDirective(String name)</code></td><td>指令名</td><td>判断输出指令是否已注册</td></tr>
+<tr><td><code>static Object evaluateDirective(String name, Object... args)</code></td><td>指令名、模板传入的参数</td><td>由编译产物在渲染期回调求值</td></tr>
+<tr><td><code>static void clear()</code></td><td>无参数</td><td>清空所有已注册指令（主要用于测试隔离）</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>BladePrecompiler</b> — 模板预编译器，把 Blade 模板批量编译成 Java 源码 / class / .jblade.zip 包，使运行期只需 JRE</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>BladePrecompiler(String templateDir, String suffix)</code></td><td>模板目录、模板后缀</td><td>构造预编译器</td></tr>
+<tr><td><code>int compileAll(String outputDir, BladePrecompiler.CompileMode mode, String packageName, String fileSuffix) throws IOException</code></td><td>输出目录、编译模式、生成包名、输出文件后缀</td><td>批量编译全部模板并返回成功数量</td></tr>
+<tr><td><code>int compileAllToZip(String outputDir, String fileName) throws IOException</code></td><td>输出目录、zip 文件名</td><td>编译并打包为 .jblade.zip 预编译包</td></tr>
+<tr><td><code>int compileAllToClasses(String outputDir) throws IOException</code></td><td>class 输出目录</td><td>编译为 .class 字节码文件输出到指定目录</td></tr>
+</table>
 </div>
 </section>
 <h2 id="data">数据层</h2>
@@ -553,6 +965,26 @@ public class App {
 <li>modelShadowPatcher：new ModelShadowPatcher(applicationContext)，需 classpath 存在 ModelShadowProvider 且注入所有 Model Bean（Map&lt;String, Model&gt;）。</li>
 <li>（若启用 auth 的 EloquentUserProviderDriver）eloquentUserProviderDriver：new EloquentUserProviderDriver(applicationContext)，需 classpath 存在 UserProviderDriver。</li>
 </ol>
+<h4 id="database-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. 创建全局唯一的 gaarason 容器，所有数据源必须共用同一个
+ContainerBootstrap bootstrap = ContainerBootstrap.build();
+bootstrap.defaultRegister();
+bootstrap.bootstrapGaarasonAutoconfiguration();
+bootstrap.initialization();
+// 2. 交给 ConnectionManager 持有；再传入不同实例会抛 IllegalStateException
+ConnectionManager.setContainer(bootstrap);
+// 3. 准备原始 javax.sql.DataSource
+HikariDataSource raw = new HikariDataSource();
+raw.setJdbcUrl("jdbc:mysql://127.0.0.1:3306/demo");
+// 4. 用全局容器包装为 GaarasonDataSource，并按别名注册为默认连接
+GaarasonDataSource gds = ConnectionManager.wrap(raw);
+ConnectionManager.addConnection("primary", gds, raw);
+ConnectionManager.setDefaultConnection("primary");
+// 5. 暴露给 Spring 生态（JdbcTemplate / 事务管理器）的惰性委托数据源
+DataSource springDataSource = new JaravelDataSource();
+// 6. Model 通过 Spring Bean 取得，之后即可 save()/paginate()/newQuery()
+User user = BaseModel.self(User.class);</code></pre>
 <h4 id="database-注解">注解与启发式识别</h4>
 <p>本模块使用注解（启发式）声明式注册，参数如下：</p>
 <div class="annotation">
@@ -568,6 +1000,61 @@ public class App {
 <p>标注在连接/数据源相关类或字段上，指定连接别名（并非数据源 Bean 名称，用于 ConnectionManager 别名解析）</p>
 <p>用法示例：</p>
 <pre><code>@DataSource("mysql") public class MyConnectionFactory { ... }</code></pre>
+</div>
+<h4 id="database-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.database.BaseModel&lt;T, K&gt;</b> — Eloquent Model 基类，单一类同时承担实体定义与查询职责，泛型为「实体类型, 主键类型」</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static &lt;M extends BaseModel&lt;?, ?&gt;&gt; M self(Class&lt;M&gt; modelClass)</code></td><td>modelClass：业务 Model 类（须为 Spring Bean）</td><td>静态获取 Spring 容器管理的 Model 实例，是所有查询的统一入口</td></tr>
+<tr><td><code>public T save()</code></td><td>无</td><td>持久化当前实体：主键为空执行 INSERT，主键有值执行 UPDATE</td></tr>
+<tr><td><code>public QueryBuilder&lt;T, K&gt; newQuery()</code></td><td>无</td><td>返回 JaravelQueryBuilder 包装的查询构造器，具备跨驱动安全的 count()</td></tr>
+<tr><td><code>public Paginator&lt;T&gt; paginate(Builder&lt;?, T, K&gt; builder, int currentPage, int perPage)</code></td><td>builder：已附加条件的查询构造器；currentPage：页码（从 1 起）；perPage：每页条数</td><td>分页查询，返回可在 Blade 模板中直接 links() 的 Paginator</td></tr>
+<tr><td><code>public T fill(Map&lt;String, Object&gt; data, String... fields)</code></td><td>data：待填充键值；fields：白名单属性名，为空表示不限定</td><td>按属性名批量调用 setter 填充实体，支持字段白名单防批量赋值漏洞</td></tr>
+<tr><td><code>public BaseModel&lt;T, K&gt;.TrashedScope withTrash()</code></td><td>无</td><td>进入包含软删除数据的作用域，可继续 updateOrCreate/findOrCreate/first</td></tr>
+<tr><td><code>public T replicate()</code></td><td>无</td><td>复制当前实体（不含主键），用于「另存为」类场景</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.database.ConnectionManager</b> — 数据库连接注册表，对齐 Laravel DatabaseManager，持有全局唯一 ContainerBootstrap 与别名→连接映射</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static void setContainer(ContainerBootstrap bootstrap)</code></td><td>bootstrap：gaarason 容器实例</td><td>设置全局唯一容器；重复设置不同实例会抛 IllegalStateException</td></tr>
+<tr><td><code>public static ContainerBootstrap container()</code></td><td>无</td><td>取全局容器，未设置时依次回退 Spring Bean 与现场创建，永不返回 null</td></tr>
+<tr><td><code>public static void addConnection(String name, GaarasonDataSource dataSource, javax.sql.DataSource raw)</code></td><td>name：连接别名；dataSource：gaarason 数据源；raw：底层原始数据源，可为 null</td><td>注册连接别名；无显式默认声明时第一个注册的连接自动成为默认连接</td></tr>
+<tr><td><code>public static GaarasonDataSource connection(String name)</code></td><td>name：连接别名，null 或空表示默认连接</td><td>按别名解析连接：先查注册表，再回退 Spring 容器，都没有则抛异常</td></tr>
+<tr><td><code>public static GaarasonDataSource wrap(javax.sql.DataSource dataSource)</code></td><td>dataSource：裸 javax.sql.DataSource</td><td>用全局唯一容器把原始数据源包装为 GaarasonDataSource</td></tr>
+<tr><td><code>public static void setDefaultConnection(String name)</code></td><td>name：连接别名</td><td>显式指定默认连接，Model 未声明 @DataSource 时使用它</td></tr>
+<tr><td><code>public static javax.sql.DataSource defaultRawDataSource()</code></td><td>无</td><td>取默认连接底层的原始数据源，供事务管理器与 JdbcTemplate 使用</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.database.JaravelDataSource</b> — 框架托管的默认 DataSource，对 ConnectionManager 默认连接的惰性委托，解决 Bean 创建时序死结</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public Connection getConnection()</code></td><td>无</td><td>调用时才解析默认连接并取物理连接；无任何连接时抛 SQLException 并给出注册提示</td></tr>
+<tr><td><code>public &lt;T&gt; T unwrap(Class&lt;T&gt; iface)</code></td><td>iface：目标接口类型</td><td>解包为目标类型，自身匹配时直接返回，否则委托底层数据源</td></tr>
+<tr><td><code>public boolean isWrapperFor(Class&lt;?&gt; iface)</code></td><td>iface：目标接口类型</td><td>判断自身或底层数据源是否可解包为该类型</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.database.JaravelQueryBuilder&lt;T, K&gt;</b> — 对 gaarason QueryBuilder 的安全包装，修复 SQLite 等驱动 COUNT 返回 Integer 导致的 ClassCastException</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static &lt;T, K&gt; JaravelQueryBuilder&lt;T, K&gt; wrap(QueryBuilder&lt;T, K&gt; source)</code></td><td>source：gaarason 原生查询构造器</td><td>反射拷贝字段生成安全版 builder，已是本类实例时原样返回</td></tr>
+<tr><td><code>public Long count()</code></td><td>无</td><td>统计行数，捕获强转异常后走自实现的数值兼容 COUNT</td></tr>
+<tr><td><code>public Long count(String column)</code></td><td>column：统计列名</td><td>按列统计行数，同样带数值类型兼容兜底</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.database.EloquentUserProvider&lt;T, K&gt;</b> — 基于 Eloquent Model 的用户提供者，仅负责按主键/凭证取用户，不校验密码</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public EloquentUserProvider(Model&lt;?, T, K&gt; model, String credentialField)</code></td><td>model：用户 Model（Spring 单例）；credentialField：凭证字段名，null 时自动推断</td><td>构造用户提供者，凭证字段为空则取 Authenticatable 标识名或主键列名</td></tr>
+<tr><td><code>public Authenticatable retrieveById(Object identifier)</code></td><td>identifier：主键值</td><td>按主键取用户实体，未找到返回 null</td></tr>
+<tr><td><code>public Authenticatable retrieveByCredentials(Map&lt;String, Object&gt; credentials)</code></td><td>credentials：凭证 Map，需包含 credentialField 对应键</td><td>按凭证字段查询首条用户，密码校验由应用层自行完成</td></tr>
+</table>
 </div>
 </section>
 <section id="cat-migration">
@@ -617,6 +1104,25 @@ public class App {
 <li>（可选 artisan 命令）分别 new 各迁移命令 Bean（migrate / rollback / reset / refresh / status 等），依赖 MigrationExecutor。</li>
 <li>migrationPublishableConfig：new MigrationPublishableConfig()（artisan vendor:publish）。</li>
 </ol>
+<h4 id="migration-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. 迁移配置：迁移源模式、迁移目录、迁移记录表名
+MigrationProperties props = new MigrationProperties();
+props.setSource(MigrationSource.DIRECTORY);
+props.setDirectory("migrations");
+props.setTable("migrations");
+// 2. 连接别名 -&gt; DataSource 映射，Migration#connection() 按别名选库
+Map&lt;String, DataSource&gt; dataSources = new LinkedHashMap&lt;&gt;();
+dataSources.put("primary", dataSource);
+// 3. 一站式执行器（纯 Java，无需 Spring）：内部完成扫描、编译、执行、释放
+MigrationExecutor executor = new MigrationExecutor(dataSources, props);
+executor.execute("migrate");
+// 4. 需要细粒度控制时，直接驱动扫描器与引擎
+MigrationScanner scanner = new MigrationScanner();
+scanner.compileFromDirectory("migrations");
+Migrator migrator = new Migrator(dataSources, "migrations", scanner);
+migrator.run();
+migrator.finish();</code></pre>
 <h4 id="migration-注解">注解与启发式识别</h4>
 <p>本模块使用注解（启发式）声明式注册，参数如下：</p>
 <div class="annotation">
@@ -625,6 +1131,97 @@ public class App {
 <p>标注在迁移类上，声明该迁移的名称/标识</p>
 <p>用法示例：</p>
 <pre><code>@MigrationAnnotation(name = "create_users_table") public class CreateUsersTable extends Migration { ... }</code></pre>
+</div>
+<h4 id="migration-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.migration.Migration</b> — 迁移接口，业务迁移类实现它并用 @MigrationAnnotation 标记，运行时被扫描编译执行</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>void up(Schema schema)</code></td><td>schema：Schema 构建器</td><td>正向迁移：建表、加字段、加索引，一次可处理多张表</td></tr>
+<tr><td><code>void down(Schema schema)</code></td><td>schema：Schema 构建器</td><td>回滚迁移，应与 up() 对称地删表/删字段</td></tr>
+<tr><td><code>default String getName()</code></td><td>无</td><td>迁移名称，默认取类名，用于排序与写入 migrations 表</td></tr>
+<tr><td><code>default String connection()</code></td><td>无</td><td>声明本迁移使用的连接别名，默认 primary，重写即可多库混用</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.migration.Schema</b> — Schema 构建器，对齐 Laravel Schema 门面，按自动检测的方言执行 DDL</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public Schema(DataSource dataSource)</code></td><td>dataSource：目标数据源</td><td>构造 Schema，内部创建 JdbcExecutor 并自动探测数据库方言</td></tr>
+<tr><td><code>public void create(String table, Consumer&lt;Blueprint&gt; definition)</code></td><td>table：表名；definition：表结构定义回调</td><td>创建表，执行建表、索引、外键 SQL</td></tr>
+<tr><td><code>public void table(String table, Consumer&lt;Blueprint&gt; definition)</code></td><td>table：表名；definition：变更定义回调</td><td>修改已有表，生成 ALTER TABLE 语句</td></tr>
+<tr><td><code>public void dropIfExists(String table)</code></td><td>table：表名</td><td>表存在时删除，常用于 down() 回滚</td></tr>
+<tr><td><code>public boolean hasTable(String table)</code></td><td>table：表名</td><td>按方言查系统目录判断表是否存在</td></tr>
+<tr><td><code>public boolean hasColumn(String table, String column)</code></td><td>table：表名；column：列名</td><td>判断指定列是否存在，用于幂等迁移</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.migration.Blueprint</b> — 表结构蓝图，流式声明字段/索引/外键，同时支持 CREATE 与 ALTER 两种模式</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public ColumnDefinition id()</code></td><td>无</td><td>声明自增主键 id（等价 bigIncrements("id")）</td></tr>
+<tr><td><code>public ColumnDefinition string(String column, int length)</code></td><td>column：列名；length：长度</td><td>声明变长字符串列，另有 text/integer/decimal/json 等同族方法</td></tr>
+<tr><td><code>public void timestamps()</code></td><td>无</td><td>一次性添加 created_at 与 updated_at 时间戳列</td></tr>
+<tr><td><code>public ColumnDefinition softDeletes()</code></td><td>无</td><td>添加软删除列 deleted_at</td></tr>
+<tr><td><code>public void unique(String... columns)</code></td><td>columns：参与唯一索引的列名</td><td>创建单列或复合唯一索引，index(...) 为普通索引版本</td></tr>
+<tr><td><code>public ForeignKeyDefinition foreign(String column)</code></td><td>column：本表外键列名</td><td>开始定义外键约束，可继续 references()/on()/onDelete()</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.migration.ColumnDefinition</b> — 列定义对象，由 Blueprint 的列方法返回，用流式修饰符描述列属性</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public ColumnDefinition nullable()</code></td><td>无</td><td>允许该列为 NULL，notNull() 为其反向修饰</td></tr>
+<tr><td><code>public ColumnDefinition defaultValue(Object value)</code></td><td>value：默认值</td><td>设置列默认值</td></tr>
+<tr><td><code>public ColumnDefinition comment(String comment)</code></td><td>comment：列注释</td><td>设置列注释（由方言决定是否输出）</td></tr>
+<tr><td><code>public ColumnDefinition unique()</code></td><td>无</td><td>为该列建唯一索引，index() 为普通索引</td></tr>
+<tr><td><code>public ColumnDefinition after(String column)</code></td><td>column：参照列名</td><td>ALTER 模式下指定新列插入在哪一列之后</td></tr>
+<tr><td><code>public ColumnDefinition change()</code></td><td>无</td><td>标记该列为「修改已有列」，生成 MODIFY/ALTER COLUMN 而非 ADD</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.migration.engine.MigrationExecutor</b> — 迁移执行器，对齐 artisan migrate 系列命令，完全独立于 SpringBoot 可直接实例化</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public MigrationExecutor(Map&lt;String, DataSource&gt; dataSources, MigrationProperties properties)</code></td><td>dataSources：别名→数据源映射（至少含 primary）；properties：迁移配置</td><td>构造多库迁移执行器；另有单数据源的兼容构造</td></tr>
+<tr><td><code>public void execute(String... args)</code></td><td>args：命令参数 migrate / rollback[=N] / reset / refresh / status</td><td>按参数选择迁移源加载迁移类并执行，结束后释放扫描器资源</td></tr>
+<tr><td><code>public MigrationProperties getProperties()</code></td><td>无</td><td>取当前迁移配置，便于日志与外部判断迁移源模式</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.migration.engine.Migrator</b> — 迁移引擎，对齐 Laravel Migrator，按连接别名选库执行并维护批次记录</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public Migrator(Map&lt;String, DataSource&gt; dataSources, String migrationsTable, MigrationScanner scanner)</code></td><td>dataSources：别名→数据源；migrationsTable：迁移记录表名；scanner：已加载完成的扫描器</td><td>构造迁移引擎</td></tr>
+<tr><td><code>public List&lt;String&gt; run()</code></td><td>无</td><td>执行全部待迁移项，返回本次执行的迁移名列表</td></tr>
+<tr><td><code>public List&lt;String&gt; rollback(int steps)</code></td><td>steps：回滚批次数</td><td>回滚最近 N 批迁移</td></tr>
+<tr><td><code>public List&lt;String&gt; refresh()</code></td><td>无</td><td>先 reset 回滚全部再重新 run，常用于开发期重建库</td></tr>
+<tr><td><code>public List&lt;String&gt; pending()</code></td><td>无</td><td>列出尚未执行的迁移名</td></tr>
+<tr><td><code>public void finish()</code></td><td>无</td><td>释放扫描器与内存类加载器等资源</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.migration.engine.MigrationScanner</b> — 迁移源扫描器/加载器，支持目录源码内存编译、预编译目录、zip 包、JAR、classpath 五种模式</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public void compileFromDirectory(String directory)</code></td><td>directory：迁移 .java 源码目录</td><td>DIRECTORY 模式：扫描并在内存中编译迁移源码（需 JDK）</td></tr>
+<tr><td><code>public void loadFromDirectoryClasses(String dirPath)</code></td><td>dirPath：预编译 .class 目录</td><td>DIRECTORY_CLASSES 模式：用 URLClassLoader 加载预编译类（只需 JRE）</td></tr>
+<tr><td><code>public void loadFromJar(File jarFile)</code></td><td>jarFile：迁移 JAR 文件</td><td>JAR 模式：从 JAR 加载预编译迁移类</td></tr>
+<tr><td><code>public void loadFromClasspath()</code></td><td>无</td><td>CLASSPATH 模式：扫描当前 classpath 中带 @MigrationAnnotation 的迁移类</td></tr>
+<tr><td><code>public List&lt;String&gt; getAllMigrationClassNames()</code></td><td>无</td><td>返回已加载的全部迁移类名，供 Migrator 反射实例化</td></tr>
+<tr><td><code>public void finish()</code></td><td>无</td><td>清空已编译字节码并释放内存类加载器</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.migration.JdbcExecutor</b> — 轻量 JDBC 执行工具，Schema 与 MigrationRepository 的底层执行器，不依赖 Spring JDBC</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public JdbcExecutor(DataSource dataSource)</code></td><td>dataSource：目标数据源</td><td>构造执行器</td></tr>
+<tr><td><code>public void execute(String sql)</code></td><td>sql：DDL 或任意语句</td><td>执行无返回值的 SQL 语句</td></tr>
+<tr><td><code>public int update(String sql, Object... args)</code></td><td>sql：带占位符的语句；args：参数</td><td>执行 INSERT/UPDATE/DELETE，返回受影响行数</td></tr>
+<tr><td><code>public &lt;T&gt; List&lt;T&gt; queryForList(String sql, Class&lt;T&gt; elementType, Object... args)</code></td><td>sql：查询语句；elementType：单列结果类型；args：参数</td><td>查询单列多行结果，queryForMapList 返回多列结果</td></tr>
+</table>
 </div>
 </section>
 <section id="cat-model-cache">
@@ -656,6 +1253,24 @@ public class App {
 <li>注册 modelCacheService：new ModelCacheService(cacheManager, properties)。</li>
 <li>若 PublishableConfig 在 classpath，追加 modelCachePublishableConfig：new ModelCachePublishableConfig()。</li>
 </ol>
+<h4 id="model-cache-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. 先准备 cache 模块的 CacheManager，它是模型缓存的存储后端
+CacheManager cacheManager = new CacheManager();
+cacheManager.addStore("redis", redisStore);
+cacheManager.setDefaultStore("redis");
+// 2. 模型缓存配置：全局开关、store 名、默认 TTL（秒）、键前缀
+ModelCacheProperties props = new ModelCacheProperties();
+props.setStore("redis");
+props.setDefaultTtl(3600);
+props.setKeyPrefix("model-cache:");
+// 3. 核心服务（也可用单参构造 new ModelCacheService(cacheManager) 取默认配置）
+ModelCacheService service = new ModelCacheService(cacheManager, props);
+// 4. 使用：模型类需标注 @CachableModel(ttl = 600, prefix = "user")
+User u = service.find(User.class, 1L, () -&gt; User.self().find(1L).toObject());
+service.invalidate(User.class);
+// 5. 注册为 Spring Bean 后，可改用静态门面（内部走 Facade.resolve）
+User u2 = ModelCache.find(User.class, 1L, () -&gt; User.self().find(1L).toObject());</code></pre>
 <h4 id="model-cache-注解">注解与启发式识别</h4>
 <p>本模块使用注解（启发式）声明式注册，参数如下：</p>
 <div class="annotation">
@@ -664,6 +1279,50 @@ public class App {
 <p>标注在模型类上，声明该类可被 ModelCacheService 以版本号机制缓存。ttl 指定缓存秒数（-1 使用 default-ttl），prefix 自定义键前缀（为空使用 key-prefix）</p>
 <p>用法示例：</p>
 <pre><code>@CachableModel(ttl = 600, prefix = "user:") public class User { }</code></pre>
+</div>
+<h4 id="model-cache-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.modelcache.ModelCache</b> — 模型缓存静态门面，对齐 laravel-model-caching 调用风格，内部 Facade.resolve 出 ModelCacheService</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static &lt;T, K&gt; T find(Class&lt;T&gt; modelClass, K id, Supplier&lt;T&gt; loader)</code></td><td>modelClass：模型类；id：主键值；loader：回源加载器</td><td>缓存按主键查询，未命中时调用 loader 回源并回填</td></tr>
+<tr><td><code>public static &lt;T&gt; List&lt;T&gt; findAll(Class&lt;T&gt; modelClass, String queryKey, Supplier&lt;List&lt;T&gt;&gt; loader)</code></td><td>modelClass：模型类；queryKey：查询标识；loader：回源加载器</td><td>缓存列表查询结果</td></tr>
+<tr><td><code>public static &lt;T&gt; Object query(Class&lt;T&gt; modelClass, String queryKey, Supplier&lt;Object&gt; loader)</code></td><td>modelClass：模型类；queryKey：查询标识；loader：回源加载器</td><td>缓存任意查询结果，如聚合 count 或单值字段</td></tr>
+<tr><td><code>public static &lt;T&gt; void invalidate(Class&lt;T&gt; modelClass)</code></td><td>modelClass：模型类</td><td>递增版本号使该模型全部缓存失效</td></tr>
+<tr><td><code>public static &lt;T, K&gt; void invalidate(Class&lt;T&gt; modelClass, K id)</code></td><td>modelClass：模型类；id：主键值</td><td>只失效单条记录的主键查询缓存，不影响版本号</td></tr>
+<tr><td><code>public static boolean isCachable(Class&lt;?&gt; modelClass)</code></td><td>modelClass：模型类</td><td>判断模型是否可缓存（全局开关开启且标注了 @CachableModel）</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.modelcache.ModelCacheService</b> — 模型缓存核心服务，基于版本号机制实现无 tag 依赖的批量失效，可直接注入使用</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public ModelCacheService(CacheManager cacheManager, ModelCacheProperties properties)</code></td><td>cacheManager：缓存管理器；properties：模型缓存配置</td><td>构造服务；单参构造 ModelCacheService(CacheManager) 使用默认配置</td></tr>
+<tr><td><code>public &lt;T, K&gt; T find(Class&lt;T&gt; modelClass, K id, Supplier&lt;T&gt; loader)</code></td><td>modelClass：模型类；id：主键值；loader：回源加载器</td><td>按主键缓存查询；loader 返回 null 时不回填，避免缓存空值</td></tr>
+<tr><td><code>public &lt;T&gt; List&lt;T&gt; findAll(Class&lt;T&gt; modelClass, String queryKey, Supplier&lt;List&lt;T&gt;&gt; loader)</code></td><td>modelClass：模型类；queryKey：查询标识（建议用 SQL 哈希）；loader：回源加载器</td><td>缓存列表查询，键中含当前版本号</td></tr>
+<tr><td><code>public &lt;T&gt; void invalidate(Class&lt;T&gt; modelClass)</code></td><td>modelClass：模型类</td><td>递增版本号使旧键不再命中，旧缓存随 TTL 自然过期</td></tr>
+<tr><td><code>public &lt;T&gt; long getVersion(Class&lt;T&gt; modelClass)</code></td><td>modelClass：模型类</td><td>读取当前缓存版本号，不存在时初始化为 1</td></tr>
+<tr><td><code>public &lt;T&gt; long getTtl(Class&lt;T&gt; modelClass)</code></td><td>modelClass：模型类</td><td>取模型 TTL：优先 @CachableModel#ttl()，为负则用全局 default-ttl</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.modelcache.CachableModel</b> — 标注在 Model 类上手动开启查询缓存的注解，未标注的模型一律直接回源</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>long ttl() default -1</code></td><td>无（注解元素）</td><td>缓存 TTL 秒数，-1 用全局默认值，0 表示永不过期只靠版本号失效</td></tr>
+<tr><td><code>String prefix() default ""</code></td><td>无（注解元素）</td><td>自定义缓存键中的模型前缀，为空时取类的 SimpleName</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.modelcache.ModelCacheProperties</b> — 模型缓存配置项，绑定 jaravel.model-cache.* 配置，也可手动 new 出来传给服务</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public void setEnabled(boolean enabled)</code></td><td>enabled：全局开关，默认 true</td><td>关闭后所有查询直接回源，isCachable() 恒为 false</td></tr>
+<tr><td><code>public void setStore(String store)</code></td><td>store：缓存 store 名，默认空</td><td>指定使用的缓存仓库，为空或未注册时回退默认 store</td></tr>
+<tr><td><code>public void setDefaultTtl(long defaultTtl)</code></td><td>defaultTtl：默认 TTL 秒数，默认 3600</td><td>设置未在注解中指定 ttl 时的全局默认过期时间</td></tr>
+<tr><td><code>public void setKeyPrefix(String keyPrefix)</code></td><td>keyPrefix：键前缀，默认 "model-cache:"</td><td>设置所有模型缓存键的统一前缀</td></tr>
+</table>
 </div>
 </section>
 <section id="cat-queue-database">
@@ -713,6 +1372,24 @@ public class App {
 <li>注册 queueDatabasePublishableConfig。</li>
 <li>注册 queueTableCommand（可选 artisan 集成）。</li>
 </ol>
+<h4 id="queue-database-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. 准备数据源（复用业务已有的 DataSource）
+DataSource dataSource = appDataSource;
+// 2. 创建数据库队列驱动：jobs 表 + failed_jobs 表，重试超时 1800 秒，失败任务保留 7 天
+DatabaseQueueDriver driver = new DatabaseQueueDriver(dataSource, "jobs", "failed_jobs", 1800L, 7);
+// 3. 首次使用需建表（等价 artisan queue:table）
+driver.createTable();
+// 4. 用 Holder 包装，解决驱动「注册时机晚于使用时机」的问题
+QueueDriverHolder holder = new QueueDriverHolder();
+holder.set(driver);
+// 5. 分发器：桥接 event 模块，把 ShouldQueue 监听器推入队列
+DatabaseQueueDispatcher dispatcher = new DatabaseQueueDispatcher(holder, applicationContext);
+// 6. worker：消费 default 队列，最大重试 3 次、重试延迟 5s、轮询 1s、每队列 1 线程
+DatabaseQueueWorker worker = new DatabaseQueueWorker(holder, applicationContext,
+        Arrays.asList("default"), 3, 5000L, 1000L, 1);
+// 7. 启动消费；应用关闭前调用 worker.stop()
+worker.start();</code></pre>
 <h4 id="queue-database-注解">注解与启发式识别</h4>
 <p>本模块使用注解（启发式）声明式注册，参数如下：</p>
 <div class="annotation">
@@ -721,6 +1398,73 @@ public class App {
 <p>标注在 @Configuration 方法（返回 QueueDriver），由 QueueDriverRegistrar 扫描并注册为全局队列驱动。强制唯一：多个且无 override 时启动报错；override=true 本项优先生效。</p>
 <p>用法示例：</p>
 <pre><code>@Configuration public class QueueConfig { @RegisterQueueDriver(override = true) public QueueDriver myQueueDriver(RedisManager redisManager, QueueProperties props) { return new RedisQueueDriver(redisManager, props.getRedisConnection(), 90); } }</code></pre>
+</div>
+<h4 id="queue-database-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>QueueDriver</b> — 队列存储后端抽象接口，对齐 Laravel Illuminate\Contracts\Queue\Queue，支持数据库 / Redis 实现</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>long push(String queueName, String payload, long delayMs)</code></td><td>队列名、JSON 任务负载、延迟毫秒数</td><td>延迟推送任务到队列并返回任务 ID</td></tr>
+<tr><td><code>QueuedJob pop(String queueName)</code></td><td>队列名</td><td>弹出一个到期任务，多实例下靠行锁/原子操作保证只被一个实例获取</td></tr>
+<tr><td><code>void delete(long jobId)</code></td><td>任务 ID</td><td>标记任务执行成功并从队列删除</td></tr>
+<tr><td><code>void release(long jobId, long delayMs)</code></td><td>任务 ID、重试延迟毫秒</td><td>任务失败后释放锁并设置重试延迟</td></tr>
+<tr><td><code>void fail(long jobId, String queue, String payload, int attempts, String exception)</code></td><td>原任务 ID、队列名、任务负载、已尝试次数、异常信息</td><td>超过最大重试次数后把任务归档到失败队列（failed_jobs）</td></tr>
+<tr><td><code>List&lt;QueuedJob&gt; getFailedJobs()</code></td><td>无参数</td><td>按失败时间倒序列出所有失败任务，供重试或删除</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>DatabaseQueueDriver</b> — 基于 JdbcTemplate + DataSource 的数据库队列驱动实现，任务与失败任务均落库持久化</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>DatabaseQueueDriver(DataSource dataSource, String table, String failedTable, long retryAfterSeconds, int failedJobRetentionDays)</code></td><td>数据源、任务表名、失败任务表名、重试超时秒数、失败任务保留天数</td><td>全参数构造数据库队列驱动（不会自动建表）</td></tr>
+<tr><td><code>boolean createTable()</code></td><td>无参数</td><td>创建 jobs / failed_jobs 两张表（IF NOT EXISTS），兼容 MySQL/H2/SQLite</td></tr>
+<tr><td><code>String getTable()</code></td><td>无参数</td><td>返回当前使用的任务表名</td></tr>
+<tr><td><code>void retryFailedJob(long failedJobId)</code></td><td>失败任务 ID</td><td>重新推回原队列并从失败表移除，对齐 queue:retry</td></tr>
+<tr><td><code>void clearFailedJobs()</code></td><td>无参数</td><td>清空全部失败任务，对齐 queue:flush</td></tr>
+<tr><td><code>void purgeOldFailedJobs()</code></td><td>无参数</td><td>按保留天数清理过期的历史失败任务</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>RedisQueueDriver</b> — 基于 redis-config 模块 RedisManager 的 Redis 队列驱动，使用 ZSet/List 实现延迟与保留队列</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>RedisQueueDriver(RedisManager redisManager, String connectionName, long retryAfterSeconds, int failedJobRetentionDays)</code></td><td>Redis 管理器（不可为 null）、连接名（空为默认连接）、重试超时秒数、失败任务保留天数</td><td>构造 Redis 队列驱动</td></tr>
+<tr><td><code>long push(String queueName, String payload, long delayMs)</code></td><td>队列名、任务负载、延迟毫秒</td><td>把任务写入 Redis 队列（延迟任务进入 delayed ZSet）</td></tr>
+<tr><td><code>QueuedJob pop(String queueName)</code></td><td>队列名</td><td>原子弹出一个到期任务并放入 reserved 集合</td></tr>
+<tr><td><code>int size(String queueName)</code></td><td>队列名</td><td>返回队列中待处理任务数</td></tr>
+<tr><td><code>void purgeOldFailedJobs()</code></td><td>无参数</td><td>清理超过保留期的失败任务记录</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>DatabaseQueueWorker</b> — 通用队列消费工作线程，适配任意 QueueDriver（database / redis），负责轮询、执行监听器与重试</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>DatabaseQueueWorker(QueueDriver driver, ApplicationContext applicationContext, List&lt;String&gt; queues, int maxAttempts, long retryDelayMs, long pollIntervalMs, int workerThreads)</code></td><td>队列驱动、Spring 上下文、要消费的队列名列表、最大重试次数、重试延迟毫秒、轮询间隔毫秒、每队列线程数</td><td>构造队列 worker 并按队列数 × 线程数创建守护线程池</td></tr>
+<tr><td><code>void start()</code></td><td>无参数</td><td>为每个队列启动一个守护工作线程开始消费（幂等）</td></tr>
+<tr><td><code>void stop()</code></td><td>无参数</td><td>停止所有工作线程并关闭线程池</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>DatabaseQueueDispatcher</b> — 持久化队列分发器，实现 event 模块的 QueueDispatcher，把 ShouldQueue 监听器序列化后推入队列驱动</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>DatabaseQueueDispatcher(QueueDriver driver, ApplicationContext applicationContext)</code></td><td>队列驱动、Spring 上下文（用于解析监听器 bean 名）</td><td>构造分发器</td></tr>
+<tr><td><code>void dispatch(String queueName, Object listener, Event event, long delayMs)</code></td><td>队列名、监听器实例、事件对象、延迟毫秒</td><td>把 listenerClass/listenerBeanName/eventClass/eventData 组成 JSON 负载推入队列</td></tr>
+<tr><td><code>boolean isAvailable()</code></td><td>无参数</td><td>底层驱动存在时返回 true，供 EventDispatcher 判断是否走持久化队列</td></tr>
+<tr><td><code>QueueDriver getDriver()</code></td><td>无参数</td><td>取得底层队列驱动</td></tr>
+<tr><td><code>long push(String queueName, Listener&lt;?&gt; listener, Event event)</code></td><td>队列名、监听器、事件</td><td>便捷方法：以零延迟直接分发一个事件任务</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>QueueDriverHolder</b> — 队列驱动持有者（本身实现 QueueDriver），解决 worker/dispatcher 创建早于 @RegisterQueueDriver 扫描的时机问题</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>void set(QueueDriver delegate)</code></td><td>实际生效的队列驱动</td><td>由 QueueDriverRegistrar 注入最终解析出的驱动</td></tr>
+<tr><td><code>boolean isPresent()</code></td><td>无参数</td><td>判断是否已有可用驱动（sync 模式下为 false）</td></tr>
+<tr><td><code>long push(String queueName, String payload)</code></td><td>队列名、任务负载</td><td>转发写操作；无驱动时抛出 IllegalStateException 提示改用同步分发</td></tr>
+<tr><td><code>List&lt;QueuedJob&gt; getFailedJobs()</code></td><td>无参数</td><td>转发读操作；无驱动时返回空列表，保证 queue:failed 不崩溃</td></tr>
+</table>
 </div>
 </section>
 <h2 id="auth">认证授权</h2>
@@ -763,6 +1507,24 @@ public class App {
 <li>authRegistrar：new AuthRegistrar(authManager, guardDrivers, providerDrivers)，汇总所有 AuthGuardDriver / UserProviderDriver Bean 列表（在所有单例就绪后注册）。</li>
 <li>authPublishableConfig：new AuthPublishableConfig()（artisan vendor:publish）。</li>
 </ol>
+<h4 id="auth-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. 准备依赖：Session 存储 + 用户提供者（实现 retrieveById / retrieveByCredentials）
+SessionStore sessionStore = new CookieSessionStore();
+UserProvider userProvider = new EloquentUserProvider&lt;&gt;(userModel, "email");
+// 2. 创建认证管理器并注册守卫驱动（工厂），SessionGuardDriver 支持 driver = "session"
+AuthManager auth = new AuthManager();
+auth.registerGuardDriver(new SessionGuardDriver(sessionStore));
+// 3. 注册用户提供者：提供者名 + UserProvider 实例
+auth.registerProvider("users", userProvider);
+// 4. 注册守卫：守卫名 + 驱动名 + 提供者名（另有重载可传 Map&lt;String, Object&gt; config）
+auth.registerGuard("web", "session", "users");
+auth.setDefaultGuard("web");
+// 5. 请求内解析守卫（ThreadLocal 请求级缓存，同请求内返回同一实例）并登录
+AuthGuard guard = auth.guard("web");
+guard.login(currentUser);
+// 6. 请求结束必须 clear()，防止线程池复用导致状态串台
+auth.clear();</code></pre>
 <h4 id="auth-注解">注解与启发式识别</h4>
 <p>本模块使用注解（启发式）声明式注册，参数如下：</p>
 <div class="annotation">
@@ -778,6 +1540,52 @@ public class App {
 <p>标注在返回 UserProviderDriver 的 @Bean 方法上，声明用户提供者名</p>
 <p>用法示例：</p>
 <pre><code>@RegisterProvider("eloquent") public UserProviderDriver eloquentProvider() { ... }</code></pre>
+</div>
+<h4 id="auth-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.auth.facade.Auth</b> — 静态认证门面，代理 AuthManager，默认作用于默认守卫</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static &lt;T extends Authenticatable&gt; T user()</code></td><td>无参数，类型 T 由赋值目标推断</td><td>取当前登录用户，无需强制类型转换</td></tr>
+<tr><td><code>public static boolean check()</code></td><td>无参数</td><td>判断当前请求是否已登录</td></tr>
+<tr><td><code>public static void login(Authenticatable user)</code></td><td>user=实现 Authenticatable 的用户对象</td><td>在默认守卫上登录指定用户</td></tr>
+<tr><td><code>public static void logout()</code></td><td>无参数</td><td>登出默认守卫，清除会话与缓存的用户</td></tr>
+<tr><td><code>public static AuthGuard guard(String name)</code></td><td>name=守卫名称，如 web / api</td><td>取指定守卫以进行多守卫认证操作</td></tr>
+<tr><td><code>public static String token(String guardName)</code></td><td>guardName=守卫名称</td><td>取该守卫最近一次登录签发的 token（仅 JWT 等支持 token 的守卫有效）</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.auth.AuthManager</b> — 认证管理器，维护守卫配置 / 提供者 / 双层驱动，并按请求缓存守卫实例</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public AuthGuard guard(String name)</code></td><td>name=守卫名称</td><td>解析守卫，实例缓存在当前线程 ThreadLocal 中</td></tr>
+<tr><td><code>public void registerProvider(String name, UserProvider provider)</code></td><td>name=提供者名称；provider=用户提供者实例</td><td>注册用户提供者，供守卫按名称查找</td></tr>
+<tr><td><code>public void registerGuard(String name, String driver, String providerName, Map&lt;String, Object&gt; config)</code></td><td>name=守卫名；driver=守卫驱动名；providerName=提供者名；config=额外配置</td><td>注册守卫配置，守卫实例在首次解析时由驱动创建</td></tr>
+<tr><td><code>public void registerGuardDriver(AuthGuardDriver driver)</code></td><td>driver=守卫驱动（工厂）实例</td><td>注册守卫驱动，创建守卫时按 support(driver) 匹配</td></tr>
+<tr><td><code>public void registerProviderDriver(UserProviderDriver driver)</code></td><td>driver=提供者驱动（工厂）实例</td><td>注册提供者驱动，供配置式创建 UserProvider</td></tr>
+<tr><td><code>public void clear()</code></td><td>无参数</td><td>清理 ThreadLocal 中的守卫实例，由 AuthLifecycleFilter 在请求结束时调用</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.auth.contract.AuthGuard</b> — 单个守卫的认证契约，实现类如 SessionGuard、JwtGuard，内部持有请求级可变状态</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>boolean check()</code></td><td>无参数</td><td>判断该守卫下是否已认证</td></tr>
+<tr><td><code>boolean guest()</code></td><td>无参数</td><td>判断是否为游客，即 check() 取反</td></tr>
+<tr><td><code>&lt;T extends Authenticatable&gt; T user()</code></td><td>无参数，类型由赋值目标推断</td><td>解析并缓存当前用户，未认证返回 null</td></tr>
+<tr><td><code>default Object id()</code></td><td>无参数</td><td>取当前用户标识，未认证返回 null</td></tr>
+<tr><td><code>void login(Authenticatable user)</code></td><td>user=待登录用户</td><td>在该守卫上建立登录态（写会话或签发 token）</td></tr>
+<tr><td><code>void logout()</code></td><td>无参数</td><td>清除该守卫的登录态与已缓存用户</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.auth.contract.UserProvider</b> — 用户检索契约，业务方实现它把认证接到自己的用户表/用户服务上</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>Authenticatable retrieveById(Object identifier)</code></td><td>identifier=用户唯一标识</td><td>按主键取回用户，供守卫从会话或 token 还原登录态</td></tr>
+<tr><td><code>Authenticatable retrieveByCredentials(Map&lt;String, Object&gt; credentials)</code></td><td>credentials=登录凭据表，如 email / password</td><td>按凭据检索用户，用于登录校验</td></tr>
+</table>
 </div>
 </section>
 <section id="cat-jwt">
@@ -820,12 +1628,84 @@ public class App {
 <li>仅当 guard driver 配置为 jwt 时注册 jwtGuardDriver：new JwtGuardDriver(jwtService, jwtConfig)。</li>
 <li>注册 jwtTokenResponseFilter：new JwtTokenResponseFilter(jwtConfig, authManager)。</li>
 </ol>
+<h4 id="jwt-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. 配置：链式 setter；未显式设置 secret 时框架会回退到全局 jaravel.key
+JwtConfig config = new JwtConfig()
+        .setSecret("please-change-this-secret-at-least-32-bytes")
+        .setTtl(3600_000L)
+        .setBlacklistEnabled(true)
+        .setGracePeriodSeconds(60);
+// 2. 黑名单存储：仅 blacklistEnabled=true 时需要，从 cache 模块取 store
+CacheStore blacklistStore = cacheManager.store("redis");
+// 3. JWT 服务（无状态单例）：签发 / 解析 / 校验 / 黑名单都在这里
+JwtService jwtService = new JwtService(config, blacklistStore);
+// 4. 守卫驱动：注册进 AuthManager 后，guards 里配 driver: jwt 即生效
+JwtGuardDriver driver = new JwtGuardDriver(jwtService, config);
+authManager.registerGuardDriver(driver);
+// 5. 响应过滤器：把自动续期 / 宽限期签发的新 token 写入响应头
+JwtTokenResponseFilter filter = new JwtTokenResponseFilter(config, authManager);</code></pre>
+<h4 id="jwt-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>JwtService</b> — JWT 核心服务（无状态单例），对齐 Tymon\JWTAuth，负责 token 的签发、解析、校验、续期与黑名单</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public JwtService(JwtConfig config, CacheStore blacklistStore)</code></td><td>config：JWT 配置，null 时用默认；blacklistStore：黑名单缓存，关闭黑名单时可传 null</td><td>构造服务，用 config 的 secret 生成 HMAC-SHA 密钥</td></tr>
+<tr><td><code>public String generate(String subject, Map&lt;String, Object&gt; claims, long ttl)</code></td><td>subject：用户主键；claims：自定义声明；ttl：有效期毫秒</td><td>签发带自定义声明的 access token，HS256 签名</td></tr>
+<tr><td><code>public boolean validate(String token)</code></td><td>token：待校验的 token</td><td>校验签名、过期与黑名单，任一不通过返回 false（黑名单关闭时只校验前两项）</td></tr>
+<tr><td><code>public boolean shouldRefresh(String token)</code></td><td>token：access token</td><td>判断是否已过 TTL 一半需要续期，token 无效或已过期返回 false</td></tr>
+<tr><td><code>public String refresh(String refreshToken)</code></td><td>refreshToken：refresh token</td><td>校验 type=refresh 且不在黑名单后换取新 access token，失败返回 null</td></tr>
+<tr><td><code>public void blacklist(String token)</code></td><td>token：access 或 refresh token</td><td>登出时把 token 加入黑名单，TTL 取其剩余有效期，黑名单关闭时为空操作</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>JwtGuard</b> — JWT 认证守卫，按请求隔离（ThreadLocal），从 Authorization 头解析 Bearer token 并还原用户</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public JwtGuard(String name, UserProvider provider, JwtService jwtService, boolean refreshEnabled, JwtConfig jwtConfig)</code></td><td>name：守卫名；provider：用户提供者；jwtService：JWT 服务；refreshEnabled：是否自动续期；jwtConfig：JWT 配置</td><td>构造守卫实例，通常由 JwtGuardDriver 创建而非手写</td></tr>
+<tr><td><code>public &lt;T extends Authenticatable&gt; T user()</code></td><td>无参数</td><td>解析当前请求用户：校验 token 后按 subject 查库，命中半程 TTL 自动续期，过期但在宽限期内则放行一次并拉黑旧 token</td></tr>
+<tr><td><code>public boolean check()</code></td><td>无参数</td><td>判断当前请求是否已认证，等价于 user() 非空</td></tr>
+<tr><td><code>public void login(Authenticatable user)</code></td><td>user：已认证的用户对象</td><td>登录指定用户并签发 access token，可通过 token() 取回</td></tr>
+<tr><td><code>public void logout()</code></td><td>无参数</td><td>把当前请求的 token 加入黑名单并清理请求级状态</td></tr>
+<tr><td><code>public String token()</code></td><td>无参数</td><td>取最近一次签发的 access token（登录或续期产生），未产生则返回 null</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>JwtConfig</b> — JWT 配置对象，对齐 config/jwt.php，全部 setter 返回自身支持链式配置</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public JwtConfig setSecret(String secret)</code></td><td>secret：签名密钥</td><td>设置签名密钥；保持为 DEFAULT_SECRET 时框架自动回退到全局 jaravel.key</td></tr>
+<tr><td><code>public JwtConfig setTtl(long ttl)</code></td><td>ttl：access token 有效期，单位毫秒</td><td>设置 access token 有效期，默认 1 小时</td></tr>
+<tr><td><code>public JwtConfig setRefreshTtl(long refreshTtl)</code></td><td>refreshTtl：refresh token 有效期，单位毫秒</td><td>设置 refresh token 有效期，默认 7 天</td></tr>
+<tr><td><code>public JwtConfig setRefreshEnabled(boolean refreshEnabled)</code></td><td>refreshEnabled：是否启用自动续期</td><td>控制 token 过半 TTL 时是否自动签发新 token，默认开启</td></tr>
+<tr><td><code>public JwtConfig setBlacklistEnabled(boolean blacklistEnabled)</code></td><td>blacklistEnabled：是否启用黑名单</td><td>开启后登出踢 token 生效并依赖 cache 模块，默认关闭（表现为标准 JWT）</td></tr>
+<tr><td><code>public JwtConfig setGracePeriodSeconds(long gracePeriodSeconds)</code></td><td>gracePeriodSeconds：宽限期秒数，0 表示关闭</td><td>设置过期 token 仍可请求一次的宽限窗口，需同时开启黑名单才生效</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>JwtGuardDriver</b> — JWT 守卫驱动（工厂模式），注册为 Bean 后由 auth 模块自动收集，使 guards 配置可用 driver: jwt</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public JwtGuardDriver(JwtService jwtService, JwtConfig jwtConfig)</code></td><td>jwtService：JWT 服务；jwtConfig：JWT 配置</td><td>构造驱动，另有仅传 jwtService 的便捷构造器（配置取默认值）</td></tr>
+<tr><td><code>public boolean support(String driver)</code></td><td>driver：配置中声明的驱动名</td><td>声明本驱动支持 jwt（忽略大小写）</td></tr>
+<tr><td><code>public AuthGuard create(String name, UserProvider provider, Map&lt;String, Object&gt; config)</code></td><td>name：守卫名；provider：用户提供者；config：该守卫的配置项</td><td>创建 JwtGuard 实例，自动带入 refreshEnabled 与 jwtConfig</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>JwtTokenResponseFilter</b> — JWT token 响应过滤器（OncePerRequestFilter），请求结束时把新签发的 token 写入响应头</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public JwtTokenResponseFilter(JwtConfig jwtConfig, AuthManager authManager)</code></td><td>jwtConfig：JWT 配置（提供响应头名）；authManager：认证管理器</td><td>构造过滤器</td></tr>
+<tr><td><code>protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)</code></td><td>request：请求；response：响应；filterChain：过滤器链</td><td>放行请求后检查默认守卫是否签发了新 token，有则写入 graceHeader（默认 X-New-Token），无守卫或异常时静默跳过</td></tr>
+</table>
+</div>
 </section>
 <section id="cat-session-redis">
 <h3>session-redis — Redis 会话</h3>
 <p class="module-desc">基于 Redis 的 Session 存储，32 位 Session ID</p>
 <blockquote>
-<p><strong>历史行为变更</strong>：早期版本使用 <code>@ConditionalOnProperty(..., matchIfMissing = true)</code>，只要依赖在 classpath 上就自动装配并注入 <code>RedisManager</code>，导致「装了但没启用」的项目在无 Redis 时启动失败。现已修正为显式选用。</p>
+<p><strong>显式选用</strong>：会话存储需通过配置显式指定使用 Redis 存储，避免仅引入依赖、但未配置 Redis 时启动失败（不会因 classpath 上存在依赖就自动装配 <code>RedisManager</code>）。</p>
 </blockquote>
 <h4 id="session-redis-自动配置参数">SpringBoot 自动配置参数</h4>
 <p>配置前缀 <code>jaravel.session.redis</code>。在 <code>application.yml</code> 中通过以下键自动加载：</p>
@@ -851,6 +1731,29 @@ public class App {
 <li>注册 redisSessionStore —— new RedisSessionStore(redisManager, props.getConnection(), props.getPrefix(), props.getLifetime(), props.getCookie())，需 @RegisterSessionStore(override=true) 或声明为 SessionStore Bean；需满足 @Conditional(OnRedisSessionDriverCondition) 且容器已有 RedisManager，仅 Servlet Web 应用生效。</li>
 <li>注册 sessionRedisPublishableConfig —— new SessionRedisPublishableConfig()。</li>
 </ol>
+<h4 id="session-redis-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. 准备 Redis 连接配置（对应 jaravel.redis.connections.session）
+RedisProperties redisProps = new RedisProperties();
+RedisProperties.ConnectionConfig conn = new RedisProperties.ConnectionConfig();
+conn.setHost("127.0.0.1"); conn.setPort(6379); conn.setDatabase(2);
+redisProps.getConnections().put("session", conn);
+// 2. 创建 Redis 管理器
+RedisManager redisManager = new RedisManager(redisProps);
+// 3. 准备 Session 配置（前缀 jaravel.session.redis）
+SessionRedisProperties props = new SessionRedisProperties();
+props.setConnection("session");
+props.setPrefix("laravel_session");
+props.setLifetime(30);          // 生命周期：分钟
+props.setCookie("manage_session");
+// 4. 构建 Redis Session 存储（连接名、键前缀、生命周期分钟、Cookie 名）
+SessionStore store = new RedisSessionStore(redisManager, props.getConnection(),
+        props.getPrefix(), props.getLifetime(), props.getCookie());
+// 5. 在请求上下文中读写，Session ID 取自 Cookie，写入时惰性创建并刷新 TTL
+store.put("login_web_id", 12345L);
+Object uid = store.get("login_web_id");</code></pre>
+<h4 id="session-redis-功能说明">功能说明</h4>
+<p>本模块没有面向业务的调用型 API，它只是把 http 模块的 SessionStore 换成 Redis 实现，用于多机 Session 同步。装配时通过 @RegisterSessionStore(override = true) 把 RedisSessionStore 注册为全局 Session 存储，覆盖默认的 CookieSessionStore；Session 数据以 Hash 存于 &lt;prefix&gt;:&lt;sessionId&gt;，ID 通过 Cookie 传递，每次读写都会刷新 TTL 实现滑动过期。使用方式纯配置化：把 jaravel.session.driver 设为 redis，并按需配置 jaravel.session.redis 下的 connection / prefix / lifetime / cookie，也可用 auto-register 强制开关；只要没选用 redis 驱动，模块完全不装配、不连接 Redis。业务代码照常使用 http 模块的 Session 能力（SessionStore Bean 或 Request 的会话方法）即可，无需感知本模块的任何类。</p>
 </section>
 <h2 id="cache">缓存与事件</h2>
 <p class="module-desc">缓存系统、事件系统、Redis 配置与缓存。</p>
@@ -896,6 +1799,24 @@ public class App {
 <li>cachePublishableConfig：new CachePublishableConfig()（artisan vendor:publish）。</li>
 <li>（可选，当 classpath 存在 DataSource+JdbcTemplate 且 OnDatabaseCacheStoreCondition 满足）databaseCacheDriverFactory：new DatabaseCacheDriverFactory(applicationContext)。</li>
 </ol>
+<h4 id="cache-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. 创建缓存管理器（store 定义与实例分离，实例延迟创建）
+CacheManager manager = new CacheManager();
+// 2. 注册驱动工厂（工厂模式，按 support(driver) 顺序匹配）
+manager.registerDriverFactory(new ArrayCacheDriverFactory());
+manager.registerDriverFactory(new FileCacheDriverFactory());
+// 3. 准备配置：默认 store 名、全局键前缀、file 驱动目录
+CacheProperties props = new CacheProperties();
+props.setDefaultStore("file");
+props.setPrefix("jaravel");
+props.setFileDir("storage/framework/cache");
+// 4. 按配置注册 store 定义，此时并不创建实例
+manager.initFromConfig(props);
+// 5. 也可手动注册已构建的 store：DefaultCacheStore(CacheDriver driver, String prefix)
+manager.addStore("memory", new DefaultCacheStore(new ArrayCacheDriver(), "jaravel"));
+// 6. 首次 store(name) 时由工厂创建 CacheDriver 并包装为 DefaultCacheStore
+manager.store("file").put("user:1", user, 60);</code></pre>
 <h4 id="cache-注解">注解与启发式识别</h4>
 <p>本模块使用注解（启发式）声明式注册，参数如下：</p>
 <div class="annotation">
@@ -904,6 +1825,52 @@ public class App {
 <p>标注在返回 CacheStore 的 @Bean 方法上，声明 store 名及是否默认 store</p>
 <p>用法示例：</p>
 <pre><code>@RegisterCacheStore(value = "redis", defaultStore = true) public CacheStore redisStore() { ... }</code></pre>
+</div>
+<h4 id="cache-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.cache.Cache</b> — 静态缓存门面，代理 CacheManager 的默认 store，对齐 Laravel Cache::</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static boolean put(String key, Object value, long ttl)</code></td><td>key=缓存键；value=缓存值；ttl=过期秒数，0 表示永久</td><td>写入缓存并覆盖同名键</td></tr>
+<tr><td><code>public static &lt;T&gt; T get(String key, Class&lt;T&gt; type)</code></td><td>key=缓存键；type=目标类型</td><td>按类型读取缓存值，便于反序列化为业务对象</td></tr>
+<tr><td><code>public static Object remember(String key, long ttl, Supplier&lt;Object&gt; loader)</code></td><td>key=缓存键；ttl=过期秒数；loader=未命中时的加载函数</td><td>读缓存，未命中则执行 loader 并回填</td></tr>
+<tr><td><code>public static long increment(String key, long amount)</code></td><td>key=缓存键；amount=增量</td><td>原子自增计数并返回新值，decrement 为自减版本</td></tr>
+<tr><td><code>public static boolean forget(String key)</code></td><td>key=缓存键</td><td>删除指定缓存键，flush() 则清空整个 store</td></tr>
+<tr><td><code>public static CacheStore store(String name)</code></td><td>name=store 名称，如 array / file / redis</td><td>切换到指定 store 后继续链式操作</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.cache.CacheManager</b> — 缓存管理器，维护多个命名 store 的定义与实例，按需通过驱动工厂延迟创建</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public CacheStore store(String name)</code></td><td>name=store 名称，null 或空串使用默认 store</td><td>解析 store，首次访问时创建驱动并包装缓存实例</td></tr>
+<tr><td><code>public void registerDriverFactory(CacheDriverFactory factory)</code></td><td>factory=缓存驱动工厂实例</td><td>注册驱动工厂，第三方驱动只需注册为 Bean 即可被收集</td></tr>
+<tr><td><code>public void initFromConfig(CacheProperties properties)</code></td><td>properties=缓存配置（default-store / prefix / stores 等）</td><td>按配置批量注册 store 定义，并确保默认 store 一定有定义</td></tr>
+<tr><td><code>public void addStore(String name, CacheStore store)</code></td><td>name=store 名称；store=已构建的 store 实例</td><td>编程式注册 store，优先级高于同名的配置式定义</td></tr>
+<tr><td><code>public Set&lt;String&gt; storeNames()</code></td><td>无参数</td><td>返回所有已注册 store 名（含尚未实例化的定义）</td></tr>
+<tr><td><code>public static CacheStore createDefaultStore()</code></td><td>无参数</td><td>创建基于 ArrayCacheDriver 的内存 store，供未注入 CacheManager 时兜底</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.cache.CacheStore</b> — 单个命名缓存 store 的操作契约，默认实现 DefaultCacheStore 负责加键前缀</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>boolean put(String key, Object value, long ttlSeconds)</code></td><td>key=缓存键；value=缓存值；ttlSeconds=过期秒数</td><td>写入缓存条目</td></tr>
+<tr><td><code>boolean add(String key, Object value, long ttlSeconds)</code></td><td>key=缓存键；value=缓存值；ttlSeconds=过期秒数</td><td>仅当键不存在时写入，可用作简单互斥</td></tr>
+<tr><td><code>Object pull(String key)</code></td><td>key=缓存键</td><td>读取并同时删除该键，取一次性数据</td></tr>
+<tr><td><code>void putMany(Map&lt;String, Object&gt; values, long ttlSeconds)</code></td><td>values=键值对集合；ttlSeconds=统一过期秒数</td><td>批量写入缓存，getMany 为批量读取版本</td></tr>
+<tr><td><code>Object remember(String key, long ttlSeconds, Supplier&lt;Object&gt; loader)</code></td><td>key=缓存键；ttlSeconds=过期秒数；loader=未命中加载函数</td><td>缓存穿透保护式读取并回填</td></tr>
+<tr><td><code>void flush()</code></td><td>无参数</td><td>清空该 store 的全部缓存条目</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.cache.CacheDriverFactory</b> — 缓存驱动工厂契约，扩展新缓存后端（如 redis）时实现并注册为 Bean 即可</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>boolean support(String driver)</code></td><td>driver=配置中的驱动名，如 array / file / redis</td><td>声明本工厂是否支持该驱动名</td></tr>
+<tr><td><code>CacheDriver create(Map&lt;String, Object&gt; config)</code></td><td>config=该 store 的驱动配置（含顶层补充的 dir / table 等）</td><td>按配置创建具体的缓存驱动实例</td></tr>
+</table>
 </div>
 </section>
 <section id="cat-event">
@@ -939,6 +1906,26 @@ public class App {
 <li>第三步（注解式可选）：直接标注 @Component + @ListensTo(EventClass) 的监听器 Bean，由 EventListenerRegistrar 在所有单例就绪后自动注册到 Dispatcher，无需手动 listen。</li>
 <li>通过注入 Dispatcher 或 EventFacade.dispatch(event) 触发事件分发；实现 ShouldQueue 的监听器异步入队，否则按 queue-enabled 决定同步/异步。</li>
 </ol>
+<h4 id="event-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. 事件配置：全局异步开关、队列线程池、重试参数
+EventProperties props = new EventProperties();
+props.setQueueEnabled(false);            // 未实现 ShouldQueue 的监听器是否也异步
+props.getQueue().setDefaultPoolSize(4);
+props.getRetry().setMaxAttempts(3);
+props.getRetry().setDelayMs(1000);
+// 2. 队列管理器：按队列名维护独立线程池 + 共享延迟调度器
+QueueManager queueManager = new QueueManager(props);
+// 3. 事件调度器：注入队列管理器并应用全局异步开关
+EventDispatcher dispatcher = new EventDispatcher(queueManager);
+dispatcher.setQueueEnabled(props.isQueueEnabled());
+// 4. 可选：接入持久化队列后端（queue-database 提供 QueueDispatcher 实现）
+// dispatcher.setQueueDispatcher(databaseQueueDispatcher);
+// 5. 注册监听器并分发事件（实现 ShouldQueue 的监听器会走队列异步执行）
+dispatcher.listen(UserRegistered.class, (Listener&lt;UserRegistered&gt;) e -&gt; mailService.send(e.userId));
+dispatcher.dispatch(new UserRegistered(1L));
+// 6. Spring 环境下由注册器扫描 @ListensTo 的 Listener Bean 自动注册
+EventListenerRegistrar registrar = new EventListenerRegistrar(dispatcher, applicationContext);</code></pre>
 <h4 id="event-注解">注解与启发式识别</h4>
 <p>本模块使用注解（启发式）声明式注册，参数如下：</p>
 <div class="annotation">
@@ -947,6 +1934,58 @@ public class App {
 <p>标注在实现 Listener 的 @Component 类上，声明该监听器所监听的事件类型</p>
 <p>用法示例：</p>
 <pre><code>@Component @ListensTo(UserRegisteredEvent.class) public class SendWelcomeMail implements Listener&lt;UserRegisteredEvent&gt; { ... }</code></pre>
+</div>
+<h4 id="event-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>EventFacade</b> — 事件门面，对齐 Laravel Event:: 静态调用，从容器解析 Dispatcher 后转发</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static void dispatch(Event event)</code></td><td>event：实现 Event 标记接口的事件对象</td><td>分发事件，触发该事件类型注册的全部监听器</td></tr>
+<tr><td><code>public static &lt;T extends Event&gt; void listen(Class&lt;T&gt; eventClass, Listener&lt;T&gt; listener)</code></td><td>eventClass：事件类型；listener：监听器实例或 Lambda</td><td>以静态方式注册监听器到指定事件</td></tr>
+<tr><td><code>public static void clearListeners(Class&lt;? extends Event&gt; eventClass)</code></td><td>eventClass：事件类型</td><td>清除该事件类型下的全部监听器</td></tr>
+<tr><td><code>public static void clearAllListeners()</code></td><td>无参数</td><td>清空所有事件类型的监听器注册表</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>EventDispatcher</b> — Dispatcher 契约的默认实现，负责监听器注册表维护、同步/队列分发与失败重试</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public EventDispatcher(QueueManager queueManager)</code></td><td>queueManager：队列管理器，传 null 时内部创建默认实例</td><td>构造事件调度器并绑定队列管理器</td></tr>
+<tr><td><code>public void listen(Class&lt;? extends Event&gt; eventClass, Listener&lt;? extends Event&gt; listener)</code></td><td>eventClass：事件类型；listener：监听器</td><td>注册监听器，内部使用 CopyOnWriteArrayList 保证并发安全</td></tr>
+<tr><td><code>public void dispatch(Event event)</code></td><td>event：被分发的事件</td><td>遍历监听器分发：实现 ShouldQueue 的入队异步执行，否则同步执行（均含重试）</td></tr>
+<tr><td><code>public &lt;T extends Event&gt; List&lt;Listener&lt;T&gt;&gt; getListeners(Class&lt;T&gt; eventClass)</code></td><td>eventClass：事件类型</td><td>获取该事件已注册的监听器列表，无监听器时返回空列表而非 null</td></tr>
+<tr><td><code>public void setQueueEnabled(boolean queueEnabled)</code></td><td>queueEnabled：是否开启全局异步分发</td><td>设置全局异步开关，仅对未实现 ShouldQueue 的监听器生效</td></tr>
+<tr><td><code>public void setQueueDispatcher(QueueDispatcher queueDispatcher)</code></td><td>queueDispatcher：持久化队列分发器，如数据库队列实现</td><td>接入持久化队列后端，可用时优先于内存队列分发</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>QueueManager</b> — 队列管理器，为每个命名队列维护独立线程池并提供延迟提交与重试参数</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public QueueManager(EventProperties properties)</code></td><td>properties：事件配置，null 时使用默认值（线程数取 CPU 核心数）</td><td>按配置初始化默认线程池大小、各队列大小覆盖与重试参数</td></tr>
+<tr><td><code>public void submit(String queueName, Runnable task)</code></td><td>queueName：队列名；task：待执行任务</td><td>提交任务到指定队列立即异步执行</td></tr>
+<tr><td><code>public void schedule(String queueName, Runnable task, long delayMs)</code></td><td>queueName：队列名；task：待执行任务；delayMs：延迟毫秒数</td><td>延迟指定毫秒后再投递到目标队列执行，delayMs&lt;=0 时等价于 submit</td></tr>
+<tr><td><code>public ExecutorService getOrCreateExecutor(String queueName)</code></td><td>queueName：队列名，null 或空串时使用 default 队列</td><td>获取或按需创建该队列的固定大小守护线程池</td></tr>
+<tr><td><code>public int getRetryMaxAttempts()</code></td><td>无参数</td><td>获取监听器失败后的最大重试次数（不含首次执行），默认 3</td></tr>
+<tr><td><code>public void shutdown()</code></td><td>无参数</td><td>优雅关闭调度器与所有队列线程池，最多等待 5 秒后强制关闭</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>EventServiceProvider</b> — 事件服务提供者基类，业务方继承后集中声明事件与监听器的绑定关系</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>protected &lt;T extends Event&gt; void listen(Class&lt;T&gt; eventClass, Listener&lt;T&gt; listener)</code></td><td>eventClass：事件类型；listener：监听器实例</td><td>在 register() 中注册事件-监听器映射，委托给注入的 Dispatcher</td></tr>
+<tr><td><code>public abstract void register()</code></td><td>无参数</td><td>子类实现的注册钩子，由 ProviderRegistry 在单例就绪后调用</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>ShouldQueue</b> — 监听器队列化标记接口，实现后该监听器由队列异步执行</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>default String queue()</code></td><td>无参数</td><td>返回目标队列名，默认 default，不同队列拥有独立线程池</td></tr>
+<tr><td><code>default long delay()</code></td><td>无参数</td><td>返回延迟执行的毫秒数，默认 0 表示立即执行</td></tr>
+</table>
 </div>
 </section>
 <section id="cat-redis-config">
@@ -990,6 +2029,47 @@ public class App {
 <li>按需注册 redisLockProvider —— new RedisLockProviderImpl(redisManager, null)，需 classpath 存在 RedisLockProvider 且用 @ConditionalOnMissingBean。</li>
 <li>注册 redisPublishableConfig —— new RedisPublishableConfig()。</li>
 </ol>
+<h4 id="redis-config-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. 构建连接配置：host / port / database / 超时（毫秒）
+RedisProperties.ConnectionConfig conn = new RedisProperties.ConnectionConfig();
+conn.setHost("127.0.0.1");
+conn.setPort(6379);
+conn.setDatabase(0);
+// 2. 装配 RedisProperties：连接表（键为连接名）+ 全局选项（模式 / 键前缀）
+RedisProperties props = new RedisProperties();
+props.getConnections().put("default", conn);
+props.getOptions().setCluster("standalone");
+props.getOptions().setPrefix("jaravel:");
+// 3. 创建连接管理器（Lettuce 连接惰性创建，存在 "default" 时以其为默认连接）
+RedisManager redis = new RedisManager(props);
+// 4. 基于管理器创建分布式锁，第二个参数为连接名，null 表示使用默认连接
+RedisLockProvider lock = new RedisLockProviderImpl(redis, null);
+// 5. 取同步命令接口执行命令；应用关闭时 shutdown() 释放连接与共享资源
+redis.sync("default").set("k", "v");
+redis.shutdown();</code></pre>
+<h4 id="redis-config-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.redis.RedisManager</b> — Redis 连接管理器，按名称管理多个 Lettuce 连接，支持单机 / 哨兵 / 集群三种模式</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public RedisCommands&lt;String, String&gt; sync(String name)</code></td><td>name=连接名，null 或空串使用默认连接</td><td>取该连接的字符串编码同步命令接口</td></tr>
+<tr><td><code>public RedisAsyncCommands&lt;String, String&gt; async(String name)</code></td><td>name=连接名，null 或空串使用默认连接</td><td>取该连接的字符串编码异步命令接口</td></tr>
+<tr><td><code>public StatefulConnection&lt;String, String&gt; connection(String name)</code></td><td>name=连接名</td><td>取字符串编码连接对象，惰性创建后进程内复用且线程安全</td></tr>
+<tr><td><code>public StatefulConnection&lt;byte[], byte[]&gt; binaryConnection(String name)</code></td><td>name=连接名</td><td>取字节编码连接对象，用于存储序列化后的对象</td></tr>
+<tr><td><code>public Set&lt;String&gt; connectionNames()</code></td><td>无参数</td><td>列出所有已配置的连接名，getDefaultConnection() 返回默认连接名</td></tr>
+<tr><td><code>public void shutdown()</code></td><td>无参数，标注 @PreDestroy 由容器自动调用</td><td>优雅关闭全部连接、客户端与共享 ClientResources</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.redis.lock.RedisLockProvider</b> — 基于 Redis 的分布式锁契约，默认实现 RedisLockProviderImpl(RedisManager, 连接名)</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>boolean tryLock(String key, long ttlSeconds)</code></td><td>key=锁键；ttlSeconds=锁自动过期秒数，防止持有者宕机死锁</td><td>尝试获取锁，成功返回 true，不阻塞等待</td></tr>
+<tr><td><code>void unlock(String key)</code></td><td>key=锁键</td><td>释放此前获取的锁</td></tr>
+</table>
+</div>
 </section>
 <section id="cat-redis-cache">
 <h3>redis-cache — Redis 缓存</h3>
@@ -1018,6 +2098,58 @@ public class App {
 <li>注册 redisCacheDriverFactory —— new RedisCacheDriverFactory(redisManager, redisCacheProperties.getConnection())，需满足 classpath 存在 RedisCacheDriver/CacheDriverFactory/RedisManager、@Conditional(OnRedisCacheStoreCondition) 且容器已有 RedisManager。</li>
 <li>注册 redisCachePublishableConfig —— new RedisCachePublishableConfig()。</li>
 </ol>
+<h4 id="redis-cache-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. 准备 Redis 连接配置（对应 jaravel.redis.connections.cache）
+RedisProperties redisProps = new RedisProperties();
+RedisProperties.ConnectionConfig conn = new RedisProperties.ConnectionConfig();
+conn.setHost("127.0.0.1"); conn.setPort(6379); conn.setDatabase(1);
+redisProps.getConnections().put("cache", conn);
+// 2. 创建 Redis 管理器，负责提供命名连接的 RedisCommands
+RedisManager redisManager = new RedisManager(redisProps);
+// 3. 创建 Redis 缓存驱动工厂（第二个参数为 store 未指定 connection 时的回退连接名）
+RedisCacheDriverFactory factory = new RedisCacheDriverFactory(redisManager, "cache");
+// 4. 注册工厂到 CacheManager，driver=redis 的 store 将由它按需创建
+CacheManager cacheManager = new CacheManager();
+cacheManager.registerDriverFactory(factory);
+// 5. 也可绕过工厂，直接构建驱动并包装为带前缀的 store
+CacheDriver driver = new RedisCacheDriver(redisManager, "cache");
+cacheManager.addStore("redis", new DefaultCacheStore(driver, "jaravel_cache:"));
+// 6. 使用：写入 600 秒 TTL 的缓存
+cacheManager.store("redis").put("user:1", userMap, 600);</code></pre>
+<h4 id="redis-cache-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>RedisCacheDriver</b> — CacheDriver 的 Redis 实现，值以 JSON 序列化存入 Redis，天然实现多机缓存同步</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public RedisCacheDriver(RedisManager redisManager, String connectionName)</code></td><td>redisManager：Redis 管理器；connectionName：Redis 连接名，传 null 使用默认连接</td><td>基于指定命名连接构造 Redis 缓存驱动</td></tr>
+<tr><td><code>public boolean put(String key, Object value, long ttlSeconds)</code></td><td>key：缓存键；value：任意可 JSON 序列化的值；ttlSeconds：过期秒数，&lt;=0 表示永不过期</td><td>写入缓存，TTL&gt;0 用 SETEX，否则用 SET，失败返回 false</td></tr>
+<tr><td><code>public Object get(String key)</code></td><td>key：缓存键</td><td>读取缓存并反序列化为 Map/List/String/Number 等对象，不存在返回 null</td></tr>
+<tr><td><code>public boolean exists(String key)</code></td><td>key：缓存键</td><td>判断键是否存在（EXISTS）</td></tr>
+<tr><td><code>public boolean remove(String key)</code></td><td>key：缓存键</td><td>删除单个缓存键（DEL）</td></tr>
+<tr><td><code>public Collection&lt;String&gt; allKeys()</code></td><td>无参数</td><td>用 SCAN 游标遍历键空间返回全部键，避免 KEYS 阻塞 Redis</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>RedisCacheDriverFactory</b> — 识别 driver=redis 的缓存驱动工厂，供 CacheManager 按 store 配置按需创建 RedisCacheDriver</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public RedisCacheDriverFactory(RedisManager redisManager, String defaultConnection)</code></td><td>redisManager：Redis 管理器；defaultConnection：store 未配 connection 时的回退连接名，null 时取 cache</td><td>构造 Redis 缓存驱动工厂并指定默认连接名</td></tr>
+<tr><td><code>public RedisCacheDriverFactory(RedisManager redisManager)</code></td><td>redisManager：Redis 管理器</td><td>构造工厂，默认连接名固定为 cache</td></tr>
+<tr><td><code>public boolean support(String driver)</code></td><td>driver：store 配置中的驱动名</td><td>判断是否支持该驱动，仅对忽略大小写的 redis 返回 true</td></tr>
+<tr><td><code>public CacheDriver create(Map&lt;String, Object&gt; config)</code></td><td>config：store 配置项，读取其中的 connection 键</td><td>按 store 配置创建 RedisCacheDriver，未配 connection 时回退到默认连接</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>RedisCacheProperties</b> — 前缀 jaravel.cache.redis 的配置属性，控制使用的 Redis 连接与装配开关</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public String getConnection()</code></td><td>无参数</td><td>获取 Redis 连接名，默认 cache</td></tr>
+<tr><td><code>public void setConnection(String connection)</code></td><td>connection：jaravel.redis.connections 中的连接名</td><td>设置缓存使用的 Redis 连接名</td></tr>
+<tr><td><code>public Boolean getAutoRegister()</code></td><td>无参数</td><td>获取装配覆盖开关，null 表示由 stores 中是否存在 driver=redis 自动判定</td></tr>
+</table>
+</div>
 </section>
 <h2 id="cli">CLI 工具</h2>
 <p class="module-desc">Artisan 命令行、代码生成、定时任务。</p>
@@ -1050,11 +2182,10 @@ public class App {
 <li>makeAllCommand（MakeAllCommand）：make:all 批量生成器。依赖：MakeCodeProperties。</li>
 <li>keyGenerateCommand（KeyGenerateCommand）：生成 AppKey。条件：@ConditionalOnMissingBean。依赖：MakeCodeProperties。</li>
 <li>appPublishableConfig（AppPublishableConfig）：发布应用配置。条件：@ConditionalOnMissingBean。</li>
-<li>vendorPublishCommand（VendorPublishCommand）：vendor:publish 配置发布命令。条件：@ConditionalOnMissingBean。依赖：ObjectProvider&lt;PublishableConfig&gt;、MakeCodeProperties。</li>
-<li>vendorPublishStaticCommand（VendorPublishStaticCommand）：vendor:publish 静态资源发布命令。条件：@ConditionalOnMissingBean。依赖：ObjectProvider&lt;PublishableStatic&gt;、MakeCodeProperties。</li>
+<li>vendorPublishCommand（VendorPublishCommand）：vendor:publish 配置发布命令。条件：@ConditionalOnMissingBean。依赖：ObjectProvider&lt;Publishable&gt;、MakeCodeProperties。</li>
 </ol>
 <h4 id="artisan-手动装配">手动装配（无 SpringBoot 配置文件时的顺序）</h4>
-<p class="manual-note">Artisan 以自动装配为主；artisanApplication 负责扫描命令，make:* 命令统一依赖 makeCodeProperties；vendor:publish 系列依赖 PublishableConfig / PublishableStatic 的 ObjectProvider。</p>
+<p class="manual-note">Artisan 以自动装配为主；artisanApplication 负责扫描命令，make:* 命令统一依赖 makeCodeProperties；vendor:publish 系列依赖 Publishable 的 ObjectProvider。</p>
 <p class="manual-intro">本模块以 Spring Boot 自动装配为主；不使用自动配置时，自行编写 @Configuration 并按以下顺序注册 Bean：</p>
 <p>不使用自动配置时，需自行按以下顺序创建对象并注册（等价于上一步自动装配所做的事）：</p>
 <ol>
@@ -1063,9 +2194,74 @@ public class App {
 <li>3-10. 依次 new MakeControllerCommand(props)/MakeMiddlewareCommand(props)/.../MakeAllCommand(props)。</li>
 <li>keyGenerateCommand：new KeyGenerateCommand(props)。</li>
 <li>appPublishableConfig：new AppPublishableConfig()。</li>
-<li>vendorPublishCommand：new VendorPublishCommand(publishableConfigProvider.getIfAvailable(), props)。</li>
-<li>vendorPublishStaticCommand：new VendorPublishStaticCommand(publishableStaticProvider.getIfAvailable(), props)。</li>
+<li>vendorPublishCommand：new VendorPublishCommand(publishableProvider.getIfAvailable(), props)。</li>
 </ol>
+<h4 id="artisan-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. 创建 Artisan 应用，持有 Spring 容器以便自动发现命令 Bean
+ArtisanApplication app = new ArtisanApplication(applicationContext);
+// 2. 代码生成配置，绑定 jaravel.artisan.make.*，是内置命令的构造依赖
+MakeCodeProperties makeProperties = new MakeCodeProperties();
+// 3. 手动注册内置命令（也可直接声明为 Bean 交给扫描发现）
+app.register(new KeyGenerateCommand(makeProperties));
+app.register(new VendorPublishCommand(publishables, makeProperties));
+// 4. 注册自定义命令：继承 ArtisanCommand，实现 signature() 与 handle()
+app.register(new MakeControllerCommand());
+// 5. 从容器扫描所有 ArtisanCommand Bean（幂等，call() 时也会自动触发）
+app.scanCommands();
+// 6. 主类中检测 artisan 模式并分发，args[0] 为 "artisan"
+if (ArtisanRunner.isArtisanMode(args)) {
+    ArtisanRunner.runAndExit(app, args);
+}
+// 7. 也可在程序内直接调用某条命令并拿到退出码
+int exitCode = app.call("make:controller", new String[]{"UserController"});</code></pre>
+<h4 id="artisan-发布命令">vendor:publish 发布命令用法</h4>
+<p>Jaravel 用<b>统一</b>的 <code>vendor:publish</code> 命令发布资源，不再区分「配置发布」与「静态资源发布」两条命令。命令启动时<b>一次性扫描全部</b>实现了 <code>Publishable</code> 契约的 Bean（含 <code>PublishableConfig</code> 配置型与 <code>PublishableStatic</code> 静态资源型），再按参数筛选后发布。配置输出到 <code>config/</code> 包，静态资源输出到 <code>resources/static/</code>。</p>
+<table class="cfg">
+<tr><th>命令</th><th>作用</th></tr>
+<tr><td><code>vendor:publish --all</code></td><td>发布全部模块的配置与静态资源</td></tr>
+<tr><td><code>vendor:publish --tag=&lt;module&gt;</code></td><td>只发布指定模块（tag 即模块名，如 <code>--tag=aether-upload</code>、<code>--tag=wire</code>、<code>--tag=captcha</code>），该模块的配置与静态资源都会被发布</td></tr>
+<tr><td><code>vendor:publish --tag=resources</code></td><td>只发布<b>静态资源</b>（js / css / html），输出到 <code>resources/static/</code>；可用于仅更新前端资源而保留已发布的配置</td></tr>
+<tr><td><code>vendor:publish --tag=config</code></td><td>只发布<b>配置</b>（Java 配置类源码），输出到 <code>config/</code> 包</td></tr>
+<tr><td><code>vendor:publish --list</code></td><td>列出所有可发布的 tag 及其类型（<code>(config)</code> / <code>(resource)</code>），不实际发布</td></tr>
+<tr><td><code>vendor:publish --force</code></td><td>覆盖目标位置已存在的文件（默认跳过已存在文件）；可与其他筛选选项组合，如 <code>--tag=wire --force</code></td></tr>
+</table>
+<p>传入未知 <code>--tag</code> 会报错并打印全部可用 tag（含保留字 <code>resources</code> / <code>config</code>）。</p>
+<h4 id="artisan-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>ArtisanApplication</b> — Artisan 命令注册中心与调度器，负责签名解析、参数绑定与命令执行</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public ArtisanApplication(ApplicationContext applicationContext)</code></td><td>Spring 应用上下文</td><td>构造应用，后续可从容器自动发现命令 Bean</td></tr>
+<tr><td><code>public void register(ArtisanCommand command)</code></td><td>命令实例</td><td>按 commandName() 手动注册一条命令</td></tr>
+<tr><td><code>public synchronized void scanCommands()</code></td><td>无</td><td>扫描容器中全部 ArtisanCommand Bean 并注册，只执行一次</td></tr>
+<tr><td><code>public int call(String commandName, String[] args)</code></td><td>命令名、命令行参数（不含命令名本身）</td><td>解析签名并绑定参数选项后执行命令，返回退出码</td></tr>
+<tr><td><code>public Map&lt;String, ArtisanCommand&gt; all()</code></td><td>无</td><td>返回全部已注册命令的名称到实例映射</td></tr>
+<tr><td><code>public void listCommands()</code></td><td>无</td><td>在控制台打印所有可用命令及其描述</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>ArtisanCommand</b> — 命令抽象基类，对齐 Laravel Console\Command 的签名语法与参数访问方式</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public abstract String signature()</code></td><td>无</td><td>声明命令签名，如 user:cache {id} {--sync}</td></tr>
+<tr><td><code>public abstract int handle()</code></td><td>无</td><td>实现命令主体逻辑，返回 0 表示成功</td></tr>
+<tr><td><code>public String description()</code></td><td>无</td><td>返回命令描述，用于 list 输出</td></tr>
+<tr><td><code>protected String argument(String name, String defaultValue)</code></td><td>位置参数名、默认值</td><td>读取已解析的位置参数值</td></tr>
+<tr><td><code>protected String option(String name, String defaultValue)</code></td><td>选项名（不含 -- 前缀）、默认值</td><td>读取已解析的选项值，布尔选项为 true</td></tr>
+<tr><td><code>public String commandName()</code></td><td>无</td><td>从签名中截取命令名（首个空格前的部分）</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>ArtisanRunner</b> — 命令行入口辅助类，在 main 方法中识别 artisan 模式并把参数转交给应用</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static boolean isArtisanMode(String[] args)</code></td><td>main 方法命令行参数</td><td>判断 args[0] 是否为 artisan 标识</td></tr>
+<tr><td><code>public static int run(ArtisanApplication app, String[] args)</code></td><td>Artisan 应用、命令行参数</td><td>解析命令名与参数并调度执行，无命令名时列出全部命令</td></tr>
+<tr><td><code>public static void runAndExit(ArtisanApplication app, String[] args)</code></td><td>Artisan 应用、命令行参数</td><td>执行命令后以退出码调用 System.exit 结束进程</td></tr>
+</table>
+</div>
 </section>
 <section id="cat-schedule">
 <h3>schedule — 定时任务</h3>
@@ -1095,6 +2291,61 @@ public class App {
 <li>注册 scheduleRunner：new ScheduleRunner(schedule, artisanApplicationProvider, redisLockProviderProvider)。</li>
 <li>若 PublishableConfig 在 classpath，追加 schedulePublishableConfig：new SchedulePublishableConfig()。</li>
 </ol>
+<h4 id="schedule-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. 任务注册表（进程级共享，支持运行时动态添加）
+Schedule schedule = new Schedule();
+// 2. 注册命名回调任务：每天 18:30 执行，启用分布式锁（TTL 300 秒）
+schedule.call("cache-score", () -&gt; scoreService.cacheScore())
+        .dailyAt("18:30")
+        .withDistributedLock(300);
+// 3. 注册 artisan 命令任务：每小时第 5 分钟执行
+schedule.command("user:birthday:send", new String[]{"--limit=100"})
+        .hourlyAt(5)
+        .description("生日祝福推送");
+// 4. 分布式锁提供者（可选，多机去重；单机场景传 null）
+RedisLockProvider lockProvider = new RedisLockProviderImpl(redisManager, "default");
+// 5. 执行器：每分钟扫描到期任务，命中后提交线程池异步执行
+ScheduleRunner runner = new ScheduleRunner(schedule, artisanApplication, lockProvider);
+// 6. Spring 下由 @EnableScheduling 每 60 秒回调 run()，手动环境自行触发
+runner.run();</code></pre>
+<h4 id="schedule-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>Schedule</b> — 定时任务注册表，提供 Laravel 风格的 call / command 注册入口</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public ScheduledTask call(Runnable callback)</code></td><td>callback：任务执行体</td><td>注册匿名回调任务，自动生成 task-&lt;纳秒&gt; 形式的任务名</td></tr>
+<tr><td><code>public ScheduledTask call(String name, Runnable callback)</code></td><td>name：任务名，用于日志与分布式锁标识；callback：任务执行体</td><td>注册命名回调任务，返回可链式配置调度规则的任务对象</td></tr>
+<tr><td><code>public ScheduledTask command(String command)</code></td><td>command：artisan 命令名</td><td>注册无参 artisan 命令任务，由 ScheduleRunner 通过 ArtisanApplication 执行</td></tr>
+<tr><td><code>public ScheduledTask command(String command, String[] args)</code></td><td>command：artisan 命令名；args：命令行参数数组</td><td>注册带参数的 artisan 命令任务</td></tr>
+<tr><td><code>public List&lt;ScheduledTask&gt; all()</code></td><td>无参数</td><td>返回全部已注册任务的快照副本</td></tr>
+<tr><td><code>public int size()</code></td><td>无参数</td><td>返回已注册任务数量</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>ScheduledTask</b> — 单个定时任务对象，链式配置 cron 规则、分布式锁与描述</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public ScheduledTask cron(String expression)</code></td><td>expression：6 字段 cron 表达式（秒 分 时 日 月 周）</td><td>自定义调度规则，其余快捷方法最终都委托到本方法</td></tr>
+<tr><td><code>public ScheduledTask everyNMinutes(int n)</code></td><td>n：间隔分钟数</td><td>每 N 分钟执行一次，等价 cron("0 */n * * * *")</td></tr>
+<tr><td><code>public ScheduledTask dailyAt(String time)</code></td><td>time：HH:mm 格式时间，如 18:30</td><td>每天在指定时刻执行</td></tr>
+<tr><td><code>public ScheduledTask twiceDailyAt(int firstHour, int secondHour)</code></td><td>firstHour / secondHour：两个整点小时</td><td>每天在两个指定小时的 0 分执行</td></tr>
+<tr><td><code>public ScheduledTask withDistributedLock(long ttlSeconds)</code></td><td>ttlSeconds：锁持有秒数，无参重载默认 300</td><td>启用 Redis 分布式锁，保证多机部署下同一任务只被一个实例执行</td></tr>
+<tr><td><code>public ScheduledTask description(String desc)</code></td><td>desc：任务描述文本</td><td>设置任务描述，便于日志与任务清单展示</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>ScheduleRunner</b> — 定时任务执行器，每分钟扫描到期任务并在独立线程池中异步执行</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public ScheduleRunner(Schedule schedule, ArtisanApplication artisanApplication, RedisLockProvider redisLockProvider)</code></td><td>schedule：任务注册表；artisanApplication：artisan 应用，可为 null；redisLockProvider：分布式锁提供者，可为 null</td><td>构造执行器并初始化 4 线程的守护线程池</td></tr>
+<tr><td><code>public void run()</code></td><td>无参数</td><td>扫描全部任务，cron 命中当前分钟则提交线程池执行；由 @Scheduled(fixedDelay=60000, initialDelay=10000) 驱动</td></tr>
+<tr><td><code>public int getExecutedCount()</code></td><td>无参数</td><td>返回累计成功执行的任务次数</td></tr>
+<tr><td><code>public int getFailedCount()</code></td><td>无参数</td><td>返回累计执行失败的任务次数</td></tr>
+<tr><td><code>public void shutdown()</code></td><td>无参数</td><td>容器销毁时优雅关闭执行线程池，最多等待 5 秒后强制关闭</td></tr>
+</table>
+</div>
 </section>
 <h2 id="hotreload">热加载插件系统</h2>
 <p class="module-desc">JAR 插件热加载、Java 文件热编译、多租户隔离。可独立于 jaravel 使用，仅依赖 SpringBoot。</p>
@@ -1140,6 +2391,25 @@ public class App {
 <li>按需自动恢复 —— 若 autoRestore 为 true，调用 manager.loadPersistedPlugins() 并自行捕获异常。</li>
 <li>确保运行环境为 Servlet Web 应用。</li>
 </ol>
+<h4 id="plugin-jar-core-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. Bean 注册器：依赖 Spring 的 ConfigurableApplicationContext
+PluginBeanRegistrar beanRegistrar = new PluginBeanRegistrar(applicationContext);
+// 2. jaravel 集成（默认空实现，starter 可替换为自定义 PluginIntegration）
+DefaultPluginIntegration integration = new DefaultPluginIntegration();
+integration.setEnvironment(environment);
+// 3. 路由注册器：依赖 Spring MVC 的 RequestMappingHandlerMapping
+PluginRouteRegistrar routeRegistrar = new PluginRouteRegistrar(handlerMapping, beanRegistrar, integration);
+// 4. 元数据持久化：默认 JSON 文件实现，落在插件目录下
+Path pluginsDir = Paths.get("plugins");
+MetadataPersistence persistence = new JsonMetadataPersistence(pluginsDir);
+// 5. 热插件管理器，最后一个参数 autoRegister=true 表示自动注册 @PluginMapping 路由
+HotPluginManager manager = new HotPluginManager(pluginsDir, beanRegistrar, routeRegistrar, persistence, integration, true);
+// 6. 指定 core JAR 并初始化共享 ClassLoader（让插件能看到注解类与共享 API）
+manager.setCoreJarPath(Paths.get("libs/plugin-jar-core.jar"));
+manager.initSharedClassLoader(Paths.get("libs/shared-api.jar"), "1.0.0");
+// 7. 注册并启用插件
+manager.enablePlugin(manager.registerPluginFromPath(Paths.get("dist/blog.jar"), "blog", true));</code></pre>
 <h4 id="plugin-jar-core-注解">注解与启发式识别</h4>
 <p>本模块使用注解（启发式）声明式注册，参数如下：</p>
 <div class="annotation">
@@ -1201,6 +2471,88 @@ public class HelloController {
 }
 // 宿主侧：manager.registerAvailableRoute(pluginId, "/api/hello", "GET");</code></pre>
 </div>
+<h4 id="plugin-jar-core-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>HotPluginManager</b> — 热插件核心管理器，负责 JAR 插件的注册、启用、禁用、卸载、热更新与共享接口调用</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>String registerPluginFromPath(Path jarFile, String pluginId, boolean persist)</code></td><td>jarFile=JAR 文件路径；pluginId=插件 ID（空则取文件名）；persist=true 复制到插件目录并可自动恢复</td><td>从磁盘路径注册插件并返回插件 ID</td></tr>
+<tr><td><code>String registerPluginFromBytes(byte[] jarBytes, String pluginId)</code></td><td>jarBytes=JAR 字节数组；pluginId=插件 ID（空则自动生成）</td><td>从字节数组注册内存插件（不持久化，重启后丢失）</td></tr>
+<tr><td><code>boolean enablePlugin(String pluginId)</code></td><td>pluginId=插件 ID</td><td>启用插件：扫描 JAR、建插件 ClassLoader、注册 Bean 与路由并持久化</td></tr>
+<tr><td><code>boolean disablePlugin(String pluginId)</code></td><td>pluginId=插件 ID</td><td>禁用插件：注销路由与 Bean、关闭 ClassLoader</td></tr>
+<tr><td><code>boolean reloadPluginFromBytes(String pluginId, byte[] jarBytes)</code></td><td>pluginId=已注册插件 ID；jarBytes=新版本 JAR 字节数组</td><td>以内存字节热重载插件（先禁用旧版本再重新启用）</td></tr>
+<tr><td><code>Map&lt;String, Object&gt; invokeSharedInterface(String interfaceName, Map&lt;String, Object&gt; args)</code></td><td>interfaceName=全局唯一共享接口名；args=请求参数 Map</td><td>按共享接口名反射调用其他插件的方法，入参与返回值均为 Map</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>Application</b> — 插件互调静态代理类，插件代码通过它跨插件取 Bean 与调用共享接口，无需依赖 HotPluginManager</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>static &lt;T&gt; T getService(String pluginId, Class&lt;T&gt; serviceType, String beanName)</code></td><td>pluginId=目标插件 ID；serviceType=期望类型（可为 null）；beanName=Bean 名称</td><td>从指定插件容器中取出服务 Bean</td></tr>
+<tr><td><code>static boolean registerSharedInterface(String interfaceName, String pluginId, String beanName, String methodName)</code></td><td>interfaceName=共享接口名；pluginId=提供方插件 ID；beanName=Bean 名；methodName=方法名</td><td>以纯字符串方式注册一个可被全局调用的共享接口</td></tr>
+<tr><td><code>static Map&lt;String, Object&gt; invokeSharedInterface(String interfaceName, Map&lt;String, Object&gt; args)</code></td><td>interfaceName=共享接口名；args=请求参数 Map</td><td>按名称调用共享接口，返回值统一转为 Map</td></tr>
+<tr><td><code>static List&lt;SharedInterfaceDescriptor&gt; getSharedInterfaces()</code></td><td>无</td><td>列出当前所有已注册的共享接口描述</td></tr>
+<tr><td><code>static void setManagerRef(HotPluginManagerRef ref)</code></td><td>ref=管理器引用（HotPluginManager 自身）</td><td>由主程序注入管理器引用，HotPluginManager 构造时自动调用</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>PluginRouteRegistrar</b> — 插件路由动态注册器，把插件方法挂载到 Spring MVC 的 RequestMappingHandlerMapping</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>List&lt;RouteInfo&gt; registerRoutes(String pluginId, Set&lt;RouteInfo&gt; routes)</code></td><td>pluginId=插件 ID；routes=待注册路由集合</td><td>批量注册插件路由，返回实际注册成功的路由</td></tr>
+<tr><td><code>boolean registerRoute(String pluginId, RouteInfo route)</code></td><td>pluginId=插件 ID；route=单条路由信息</td><td>注册单条路由</td></tr>
+<tr><td><code>void unregisterRoutes(String pluginId)</code></td><td>pluginId=插件 ID</td><td>注销该插件注册过的全部路由</td></tr>
+<tr><td><code>boolean registerRouteAlias(String pluginId, String existingPath, String aliasPath, String httpMethod)</code></td><td>pluginId=插件 ID；existingPath=已注册路径；aliasPath=别名路径；httpMethod=HTTP 方法名</td><td>为已注册路由添加别名路径，实现一方法多路由</td></tr>
+<tr><td><code>int getRegisteredRouteCount(String pluginId)</code></td><td>pluginId=插件 ID</td><td>查询该插件当前已注册的路由条数</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>PluginBeanRegistrar</b> — 插件 Bean 动态注册器，向 Spring BeanFactory 增删插件组件 Bean</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>PluginBeanRegistrar(ConfigurableApplicationContext applicationContext)</code></td><td>applicationContext=可配置的 Spring 上下文</td><td>构造 Bean 注册器</td></tr>
+<tr><td><code>boolean registerBean(String beanName, Class&lt;?&gt; beanClass)</code></td><td>beanName=Bean 名称；beanClass=插件 ClassLoader 加载出的类</td><td>把插件类注册为 Spring 单例 Bean</td></tr>
+<tr><td><code>void unregisterBeans(Set&lt;String&gt; beanNames)</code></td><td>beanNames=待注销的 Bean 名称集合</td><td>批量注销插件 Bean（禁用插件时调用）</td></tr>
+<tr><td><code>ConfigurableApplicationContext getApplicationContext()</code></td><td>无</td><td>返回底层 Spring 上下文，用于取 Bean</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>JarBytesExecutor</b> — 免注册的一次性 JAR 执行工具：jar → 加载 → 反射调用，支持纯内存与文件两种方式</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>static Map&lt;String, Object&gt; execute(byte[] jarBytes, String mainClass, String method)</code></td><td>jarBytes=JAR 字节数组；mainClass=主类全限定名；method=方法名（空则默认 run）</td><td>纯内存加载 JAR 并反射执行指定方法</td></tr>
+<tr><td><code>static Map&lt;String, Object&gt; execute(Path jarPath, String mainClass, String method)</code></td><td>jarPath=JAR 文件路径；mainClass=主类全限定名；method=方法名</td><td>从文件路径加载 JAR 并执行</td></tr>
+<tr><td><code>static Map&lt;String, Object&gt; execute(File jarFile, String mainClass, String method, boolean inMemory)</code></td><td>jarFile=JAR 文件；mainClass=主类；method=方法名；inMemory=true 内存加载/false URLClassLoader</td><td>指定加载方式执行 JAR 方法</td></tr>
+<tr><td><code>static List&lt;String&gt; listClasses(byte[] jarBytes)</code></td><td>jarBytes=JAR 字节数组</td><td>列出 JAR 内所有类的全限定名</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>MetadataPersistence</b> — 插件元数据持久化抽象接口，默认 JsonMetadataPersistence，可由数据库模块替换</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>void save(PluginInfo info)</code></td><td>info=插件元信息（仅 persisted=true 的磁盘插件会被写入）</td><td>保存插件元数据</td></tr>
+<tr><td><code>PluginInfo load(String pluginId)</code></td><td>pluginId=插件 ID</td><td>读取单个插件元数据</td></tr>
+<tr><td><code>List&lt;PluginInfo&gt; loadAll()</code></td><td>无</td><td>读取全部已持久化插件，供启动时自动恢复</td></tr>
+<tr><td><code>void delete(String pluginId)</code></td><td>pluginId=插件 ID</td><td>删除插件元数据（卸载插件时调用）</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>PluginComponent</b> — 插件源码侧注解：把插件类标记为可被容器注册的组件 Bean</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>String value() default ""</code></td><td>value=自定义 Bean 名称，留空则用类名首字母小写</td><td>指定该插件组件在 Spring 容器中的 Bean 名称</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>PluginMapping</b> — 插件源码侧注解：把插件方法声明为 HTTP 路由（autoRegister=true 时启用插件即自动挂载）</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>String path()</code></td><td>path=路由路径，如 /blog/list</td><td>声明该方法对外暴露的 URL 路径</td></tr>
+<tr><td><code>HttpMethod method() default HttpMethod.GET</code></td><td>method=GET/POST/PUT/DELETE/PATCH/HEAD/OPTIONS 枚举</td><td>声明该路由的 HTTP 方法</td></tr>
+<tr><td><code>String produces() default "application/json"</code></td><td>produces=响应 Content-Type</td><td>声明响应内容类型</td></tr>
+</table>
+</div>
 </section>
 <section id="cat-plugin-jar-database">
 <h3>1b. 插件数据库隔离 — plugin-jar-database</h3>
@@ -1228,6 +2580,50 @@ public class HelloController {
 <li>保证该 Bean 定义先于 PluginJarAutoConfiguration 被处理（自动配置用 @AutoConfigureBefore；手写 @Configuration 天然先注册），让核心模块的 JsonMetadataPersistence 因 @ConditionalOnMissingBean 被跳过。</li>
 <li>确保 plugin_metadata 表存在（执行 Migration_2024_01_03_CreatePluginMetadataTable）。</li>
 </ol>
+<h4 id="plugin-jar-database-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. 先建表：迁移类由 jaravel migration 通过 @MigrationAnnotation 自动发现执行
+new Migration_2024_01_03_CreatePluginMetadataTable().up(schema);
+// 2. 数据库持久化实现（依赖 PluginMetadataModel 已被 Spring 作为 @Repository 注册）
+MetadataPersistence persistence = new ModelMetadataPersistence();
+// 3. 用它替换默认的 JsonMetadataPersistence 装配热插件管理器
+HotPluginManager manager = new HotPluginManager(
+        Paths.get("plugins"), beanRegistrar, routeRegistrar, persistence, integration, true);
+// 4. 之后插件的 enable/disable 都会写入 plugin_metadata 表
+manager.enablePlugin(manager.registerPluginFromPath(Paths.get("dist/blog.jar"), "blog", true));
+// 5. 也可用 Eloquent 风格直接查询插件元数据
+PluginMetadataModel one = PluginMetadataModel.self().newQuery().where("plugin_id", "blog").first().toObject();
+List&lt;PluginMetadataModel&gt; all = PluginMetadataModel.all();</code></pre>
+<h4 id="plugin-jar-database-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>ModelMetadataPersistence</b> — MetadataPersistence 的数据库实现，用 Eloquent 模型把插件元数据存进 plugin_metadata 表</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>void save(PluginInfo info)</code></td><td>info=插件元信息，persisted=false 的内存插件会被直接忽略</td><td>先物理删除同 plugin_id 记录再插入，复杂字段序列化为 JSON 存 TEXT 列</td></tr>
+<tr><td><code>PluginInfo load(String pluginId)</code></td><td>pluginId=插件 ID</td><td>按 plugin_id 查询单条元数据并还原为 PluginInfo</td></tr>
+<tr><td><code>List&lt;PluginInfo&gt; loadAll()</code></td><td>无</td><td>查询全表并过滤出 persisted=true 的磁盘插件，供启动自动恢复</td></tr>
+<tr><td><code>void delete(String pluginId)</code></td><td>pluginId=插件 ID</td><td>按 plugin_id 物理删除元数据记录</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>PluginMetadataModel</b> — plugin_metadata 表的 Eloquent 模型，同时承担实体定义与静态查询入口</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>static PluginMetadataModel self()</code></td><td>无</td><td>取 Spring 容器中的模型单例，用于执行数据库操作</td></tr>
+<tr><td><code>static QueryBuilder&lt;PluginMetadataModel, Long&gt; query()</code></td><td>无</td><td>Eloquent 风格静态查询入口，对齐 Laravel 的 Model::query()</td></tr>
+<tr><td><code>static List&lt;PluginMetadataModel&gt; all()</code></td><td>无</td><td>查询全部记录，对齐 Laravel 的 Model::all()</td></tr>
+<tr><td><code>static PluginMetadataModel find(Long id)</code></td><td>id=主键值</td><td>按主键查询单条记录，未找到返回 null</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>Migration_2024_01_03_CreatePluginMetadataTable</b> — 创建 plugin_metadata 表的迁移类，带 @MigrationAnnotation 由迁移器自动发现</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>void up(Schema schema)</code></td><td>schema=jaravel 迁移 Schema 构造器</td><td>建表：plugin_id/version/jar_path/state、三个 JSON TEXT 列、error_message、persisted 与时间戳</td></tr>
+<tr><td><code>void down(Schema schema)</code></td><td>schema=jaravel 迁移 Schema 构造器</td><td>回滚：dropIfExists 删除 plugin_metadata 表</td></tr>
+</table>
+</div>
 </section>
 <section id="cat-plugin-java-core">
 <h3>2. 热加载增强：Java 文件 — plugin-java-core</h3>
@@ -1262,6 +2658,76 @@ public class HelloController {
 <li>按需自动扫描 —— Files.list(sourceDir) 过滤子目录，对每个调用 manager.registerPlugin(pluginDir) 与 manager.enablePlugin(pluginId)。</li>
 <li>确保运行环境为 JDK（javax.tools.JavaCompiler 存在）。</li>
 </ol>
+<h4 id="plugin-java-core-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. 复用 plugin-jar-core 的 Bean 与路由注册器
+PluginBeanRegistrar beanRegistrar = new PluginBeanRegistrar(applicationContext);
+PluginRouteRegistrar routeRegistrar = new PluginRouteRegistrar(handlerMapping, beanRegistrar, integration);
+// 2. Java 源码插件管理器：源目录 + autoRegister（true 自动注册 @PluginMapping 路由）
+JavaFilePluginManager manager = new JavaFilePluginManager(
+        Paths.get("java-plugins"), beanRegistrar, routeRegistrar, true);
+// 3. 文件模式：扫描目录下的 .java，内存编译后启用
+String pluginId = manager.registerPlugin(Paths.get("java-plugins/hello"));
+manager.enablePlugin(pluginId);
+// 4. 字符串模式：源码来自数据库/网络，无需落盘
+manager.registerPluginFromSource("db-plugin", sourceCode);
+manager.enablePlugin("db-plugin");
+// 5. 热重载：内部先禁用旧版本再重新编译启用
+manager.reloadPluginFromSource("db-plugin", newSourceCode);
+// 6. 只想跑一段源码片段、不进容器时，用一次性执行器
+Map&lt;String, Object&gt; result = JavaSourceExecutor.compileAndRun(sourceCode, true);</code></pre>
+<h4 id="plugin-java-core-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>JavaFilePluginManager</b> — Java 源码插件管理器，支持目录文件与源码字符串两种输入的编译、注册、启用与热重载</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>JavaFilePluginManager(Path sourceDir, PluginBeanRegistrar beanRegistrar, PluginRouteRegistrar routeRegistrar, boolean autoRegister)</code></td><td>sourceDir=源码根目录；beanRegistrar/routeRegistrar=复用自 plugin-jar-core；autoRegister=是否自动注册 @PluginMapping 路由</td><td>构造源码插件管理器</td></tr>
+<tr><td><code>String registerPlugin(Path pluginDir)</code></td><td>pluginDir=插件目录（目录名即 pluginId）</td><td>文件模式：读取目录下全部 .java 编译为内存字节码并扫描注解</td></tr>
+<tr><td><code>String registerPluginFromSource(String pluginId, Map&lt;String, String&gt; sources)</code></td><td>pluginId=调用方指定的插件 ID；sources=文件名到源码字符串的映射</td><td>字符串模式：源码可来自数据库/网络/配置中心，全程不落盘</td></tr>
+<tr><td><code>boolean enablePlugin(String pluginId)</code></td><td>pluginId=插件 ID</td><td>加载组件类、注册 Bean，并按 autoRegister 模式处理路由</td></tr>
+<tr><td><code>boolean reloadPluginFromSource(String pluginId, Map&lt;String, String&gt; sources)</code></td><td>pluginId=插件 ID；sources=新版本源码映射</td><td>字符串模式热重载：禁用旧版本后用新源码重新编译并启用</td></tr>
+<tr><td><code>boolean registerAvailableRoute(String pluginId, String path, String httpMethod)</code></td><td>pluginId=插件 ID；path=路由路径；httpMethod=HTTP 方法名</td><td>手动模式下，从可注册路由中挑一条正式挂载到 MVC</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>JavaSourceExecutor</b> — 一次性源码执行器：源码字符串 → 编译 → 加载 → 反射调用 run()/main()，不进 Spring 容器</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>static Map&lt;String, Object&gt; compileAndRun(String sourceCode)</code></td><td>sourceCode=Java 源代码字符串</td><td>纯内存编译并执行，返回含 success/output/error 的结果 Map</td></tr>
+<tr><td><code>static Map&lt;String, Object&gt; compileAndRun(String sourceCode, boolean inMemory)</code></td><td>sourceCode=源代码；inMemory=true 纯内存编译，false 落盘到临时目录用 javac 编译</td><td>指定编译方式执行源码</td></tr>
+<tr><td><code>static boolean isCompilerAvailable()</code></td><td>无</td><td>检查当前运行环境是否为 JDK（存在系统 Java 编译器）</td></tr>
+<tr><td><code>static String parseFullClassName(String sourceCode)</code></td><td>sourceCode=源代码字符串</td><td>用正则解析 package 与类声明，推导出类全限定名</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>DynamicJavaCompiler</b> — 内存 Java 编译器，基于 JavaCompiler + MemoryJavaFileManager 把源码编译成字节码而不产生 .class 文件</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>Map&lt;String, byte[]&gt; compile(List&lt;JavaSourceFile&gt; sourceFiles, ClassLoader parentClassLoader)</code></td><td>sourceFiles=待编译源文件列表；parentClassLoader=用于构造 classpath 的父加载器</td><td>批量编译源文件，返回类名到字节码的映射</td></tr>
+<tr><td><code>JavaSourceFile(String className, String sourceCode, String fileName)</code></td><td>className=类全限定名；sourceCode=源码内容；fileName=文件名（用于日志）</td><td>内部静态类，描述一个待编译源文件</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>DynamicClassLoader</b> — 内存字节码类加载器，每个插件一个实例，卸载时关闭以释放类</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>DynamicClassLoader(ClassLoader parent, Map&lt;String, byte[]&gt; compiledClasses)</code></td><td>parent=父加载器；compiledClasses=类名到字节码的映射</td><td>基于编译产物构造类加载器</td></tr>
+<tr><td><code>byte[] getBytecode(String className)</code></td><td>className=类全限定名</td><td>取出该类的字节码</td></tr>
+<tr><td><code>Set&lt;String&gt; getCompiledClassNames()</code></td><td>无</td><td>列出本加载器持有的全部类名</td></tr>
+<tr><td><code>void close()</code></td><td>无</td><td>关闭加载器，供插件禁用/热重载时释放</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>JavaFileScanner</b> — 反射扫描器，从编译产物中找出 @PluginComponent 组件与 @PluginMapping/@PluginRoute 路由</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>ScanResult scan(ClassLoader classLoader, Set&lt;String&gt; classNames)</code></td><td>classLoader=插件的 DynamicClassLoader；classNames=待扫描类名集合</td><td>扫描注解并返回组件类、自动路由与可注册路由</td></tr>
+<tr><td><code>Set&lt;String&gt; getComponentClasses()</code></td><td>无</td><td>ScanResult 方法：返回带 @PluginComponent 的类名集合</td></tr>
+<tr><td><code>List&lt;RouteScanInfo&gt; getRouteMappings()</code></td><td>无</td><td>ScanResult 方法：返回 @PluginMapping 声明的自动注册路由</td></tr>
+<tr><td><code>List&lt;RouteScanInfo&gt; getAvailableRouteMappings()</code></td><td>无</td><td>ScanResult 方法：返回 @PluginRoute 声明的待手动注册路由</td></tr>
+</table>
+</div>
 </section>
 <section id="cat-plugin-jar-multi-tenant">
 <h3>3. 热加载再增强：多租户 — plugin-jar-multi-tenant</h3>
@@ -1300,6 +2766,67 @@ public class HelloController {
 <li>按需自动恢复。</li>
 <li>确认 Servlet Web 环境且 classpath 存在 HotPluginManager，并保证三个 Bean 定义先于 PluginJarAutoConfiguration 生效。</li>
 </ol>
+<h4 id="plugin-jar-multi-tenant-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. 租户感知 Bean 注册器：Bean 名自动加 "租户ID:" 前缀
+PluginBeanRegistrar beanRegistrar = new TenantAwarePluginBeanRegistrar(applicationContext);
+// 2. 租户感知路由注册器：路由路径自动加 "/租户ID" 前缀
+PluginRouteRegistrar routeRegistrar = new TenantAwarePluginRouteRegistrar(handlerMapping, beanRegistrar, integration);
+// 3. 租户感知管理器，最后一个参数为租户分隔符（如 "@"）
+TenantAwareHotPluginManager manager = new TenantAwareHotPluginManager(
+        Paths.get("plugins"), beanRegistrar, routeRegistrar, persistence, integration, true, "@");
+manager.setCoreJarPath(coreJarPath);
+manager.initSharedClassLoader(coreJarPath, "1.0.0");
+// 4. 按租户注册并启用，真实 pluginId 会被拼成 studentA@blog
+manager.registerPluginForTenant(Paths.get("dist/blog.jar"), "studentA", "blog", true);
+manager.enablePluginForTenant("studentA", "blog");
+// 5. 自定义扩展中可手动操作租户上下文（务必在 finally 中清理）
+TenantContext.setCurrentTenant("studentA");
+String beanName = TenantNaming.prefixBeanName("studentA", "blogController");
+TenantContext.clear();</code></pre>
+<h4 id="plugin-jar-multi-tenant-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>TenantAwareHotPluginManager</b> — 租户感知的热插件管理器，继承 HotPluginManager，按 tenantId 隔离 Bean 名与路由路径</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>TenantAwareHotPluginManager(Path pluginsDir, PluginBeanRegistrar beanRegistrar, PluginRouteRegistrar routeRegistrar, MetadataPersistence persistence, PluginIntegration integration, boolean autoRegister, String separator)</code></td><td>pluginsDir=插件目录；两个注册器应为 TenantAware 版本；persistence=持久化；integration=集成；autoRegister=是否自动注册路由；separator=租户分隔符</td><td>构造多租户插件管理器</td></tr>
+<tr><td><code>String registerPluginForTenant(Path jarFile, String tenantId, String pluginId, boolean persist)</code></td><td>jarFile=JAR 路径；tenantId=租户 ID；pluginId=基础插件 ID；persist=是否持久化</td><td>为指定租户注册插件，自动拼接成 tenantId@pluginId</td></tr>
+<tr><td><code>boolean enablePluginForTenant(String tenantId, String pluginId)</code></td><td>tenantId=租户 ID；pluginId=基础插件 ID</td><td>启用某租户的插件，内部自动注入租户上下文完成前缀化</td></tr>
+<tr><td><code>boolean disablePluginForTenant(String tenantId, String pluginId)</code></td><td>tenantId=租户 ID；pluginId=基础插件 ID</td><td>禁用某租户的插件，按前缀化名称正确注销 Bean 与路由</td></tr>
+<tr><td><code>List&lt;PluginInfo&gt; getPluginsByTenant(String tenantId)</code></td><td>tenantId=租户 ID</td><td>列出该租户名下的全部插件</td></tr>
+<tr><td><code>Object getServiceFromPlugin(String pluginId, String beanName)</code></td><td>pluginId=含租户前缀的插件 ID；beanName=原始 Bean 名</td><td>跨插件取 Bean，查找时自动改用前缀化 Bean 名</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>TenantContext</b> — 基于 ThreadLocal 的租户上下文，供注册器在注册期间感知当前租户</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>static void setCurrentTenant(String tenantId)</code></td><td>tenantId=租户 ID</td><td>设置当前线程的租户 ID</td></tr>
+<tr><td><code>static String getCurrentTenant()</code></td><td>无</td><td>读取当前线程的租户 ID，无则返回 null</td></tr>
+<tr><td><code>static void clear()</code></td><td>无</td><td>清理 ThreadLocal，必须在 finally 中调用防止泄漏</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>TenantNaming</b> — 租户命名工具，负责 pluginId 拆解与 Bean 名/路由路径的前缀化规则</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>static String extractTenant(String pluginId, String separator)</code></td><td>pluginId=完整插件 ID；separator=分隔符（如 @）</td><td>提取租户 ID，无分隔符时返回 null（退化为单租户行为）</td></tr>
+<tr><td><code>static String extractBasePluginId(String pluginId, String separator)</code></td><td>pluginId=完整插件 ID；separator=分隔符</td><td>去掉租户前缀取出基础插件 ID</td></tr>
+<tr><td><code>static String prefixBeanName(String tenantId, String beanName)</code></td><td>tenantId=租户 ID；beanName=原始 Bean 名</td><td>生成前缀化 Bean 名，如 studentA:blogController</td></tr>
+<tr><td><code>static String prefixRoutePath(String tenantId, String path)</code></td><td>tenantId=租户 ID；path=原始路由路径</td><td>生成前缀化路由路径，如 /studentA/blog/list</td></tr>
+<tr><td><code>static String buildPluginId(String tenantId, String basePluginId, String separator)</code></td><td>tenantId=租户 ID；basePluginId=基础插件 ID；separator=分隔符</td><td>拼出完整 pluginId，如 studentA@blog</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>TenantAwarePluginBeanRegistrar</b> — 租户感知的 Bean 注册器，注册/注销时按当前租户前缀化 Bean 名称</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>TenantAwarePluginBeanRegistrar(ConfigurableApplicationContext applicationContext)</code></td><td>applicationContext=可配置的 Spring 上下文</td><td>构造租户感知 Bean 注册器</td></tr>
+<tr><td><code>boolean registerBean(String beanName, Class&lt;?&gt; beanClass)</code></td><td>beanName=原始 Bean 名；beanClass=插件类</td><td>以 租户ID:Bean名 注册，避免多租户同名冲突</td></tr>
+<tr><td><code>void unregisterBeans(Set&lt;String&gt; beanNames)</code></td><td>beanNames=原始 Bean 名集合</td><td>按前缀化名称批量注销该租户的 Bean</td></tr>
+</table>
+</div>
 </section>
 <h2 id="remote">远程执行系统</h2>
 <p class="module-desc">P2SP 远程方法调用，TCP/HTTP 双模式，树形中继转发。可独立于 jaravel 和热加载使用，仅依赖 SpringBoot。</p>
@@ -1340,6 +2867,77 @@ public class HelloController {
 <li>启动监听 —— server.start()。</li>
 <li>第六步（仅 HTTP 模式）：自行编写 @RestController 调用 HttpRpcHandler.processRequest(...)。</li>
 </ol>
+<h4 id="plugin-jar-remote-server-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. Bean 解析器：无热插件时用 Spring 容器；热加载模式可写成
+//    BeanResolver resolver = (pid, bean) -&gt; hotPluginManager.getServiceFromPlugin(pid, bean);
+BeanResolver resolver = new SpringBeanResolver(applicationContext);
+// 2. 创建 TCP 服务端：端口、认证令牌、解析器、本节点 ID、是否开启中继
+RemotePluginServer server = new RemotePluginServer(9700, "auth-token", resolver, "node-1", true);
+server.setMaxHops(5);
+// 3. 树形拓扑：注册下级子节点，本地无插件时轮询转发过去
+server.registerChildNode("node-2", "192.168.1.101", 9700, "auth-token");
+// 4. 启动监听（内部使用线程池处理并发连接）
+server.start();
+// 5. 若走 HTTP 模式，在自己的 Controller 里直接处理请求体
+String responseJson = HttpRpcHandler.processRequest(resolver, "auth-token", headerToken, requestBody);
+// 6. 应用关闭时停止服务端
+server.stop();</code></pre>
+<h4 id="plugin-jar-remote-server-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>RemotePluginServer</b> — 远程插件执行服务端，监听 TCP 端口接收执行请求，本地反射调用或中继转发给子节点</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>RemotePluginServer(int port, String authToken, BeanResolver beanResolver, String nodeId, boolean relayEnabled)</code></td><td>port=监听端口；authToken=握手令牌，null 不认证；beanResolver=Bean 解析器；nodeId=本节点 ID；relayEnabled=是否开启中继转发</td><td>构造带树形中继能力的服务端</td></tr>
+<tr><td><code>void start()</code></td><td>无</td><td>启动 ServerSocket 监听，用线程池并发处理客户端连接</td></tr>
+<tr><td><code>void stop()</code></td><td>无</td><td>停止监听、关闭全部活跃连接与线程池</td></tr>
+<tr><td><code>void registerChildNode(String id, String host, int port, String authToken)</code></td><td>id=子节点 ID；host=主机；port=端口；authToken=令牌</td><td>注册下级子节点，本地无该插件时轮询转发</td></tr>
+<tr><td><code>void setRelayEnabled(boolean relayEnabled)</code></td><td>relayEnabled=是否开启中继（默认 false）</td><td>开关中继转发能力</td></tr>
+<tr><td><code>int getActiveConnectionCount()</code></td><td>无</td><td>返回当前活跃连接数，用于监控</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>HttpRpcHandler</b> — HTTP 模式下的 RPC 处理工具，供用户在自己的 Controller 中直接处理请求体，不额外暴露接口</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>static String processRequest(BeanResolver beanResolver, String authToken, String token, String requestBody)</code></td><td>beanResolver=Bean 解析器；authToken=预期令牌；token=请求头携带的令牌；requestBody=ExecuteRequest 的 JSON</td><td>校验令牌后本地执行插件方法，返回 ExecuteResponse 的 JSON</td></tr>
+<tr><td><code>static String processRequest(BeanResolver beanResolver, String requestBody)</code></td><td>beanResolver=Bean 解析器；requestBody=ExecuteRequest 的 JSON</td><td>不做认证的简化版 RPC 处理</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>BeanResolver</b> — 服务端 SPI：把 (pluginId, beanName) 解析为真实 Bean 实例，是热插件与普通 Spring Bean 的统一抽象</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>Object getBean(String pluginId, String beanName)</code></td><td>pluginId=插件 ID；beanName=Bean 名称</td><td>返回目标 Bean，可用 Lambda 直接委托给 HotPluginManager</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>SpringBeanResolver</b> — BeanResolver 的默认实现，从 Spring 容器按名称取 Bean（无热加载场景）</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>SpringBeanResolver(ApplicationContext applicationContext)</code></td><td>applicationContext=Spring 应用上下文</td><td>构造基于 Spring 容器的解析器</td></tr>
+<tr><td><code>Object getBean(String pluginId, String beanName)</code></td><td>pluginId=插件 ID（此实现忽略）；beanName=Bean 名称</td><td>直接从 Spring 容器按名称取 Bean</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>ExecuteRequest</b> — 远程执行请求协议对象，携带方法坐标、参数与树形路由防环信息</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>ExecuteRequest(String requestId, String pluginId, String beanName, String methodName, List&lt;String&gt; args, List&lt;String&gt; argTypes)</code></td><td>requestId=请求唯一 ID；pluginId/beanName/methodName=方法坐标；args=JSON 化参数值；argTypes=参数全限定类名</td><td>构造一次远程执行请求</td></tr>
+<tr><td><code>boolean canRelay(String nodeId)</code></td><td>nodeId=待转发的目标节点 ID</td><td>检查是否已访问过该节点且未超 maxHops，防止转发成环</td></tr>
+<tr><td><code>ExecuteRequest markVisited(String nodeId)</code></td><td>nodeId=本次经过的节点 ID</td><td>记录已访问节点并累加跳数后返回请求对象</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>ExecuteResponse</b> — 远程执行响应协议对象，统一封装成功结果或错误信息</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>static ExecuteResponse ok(String requestId, String result, String resultType)</code></td><td>requestId=对应请求 ID；result=JSON 化返回值；resultType=返回值类型全限定名</td><td>构造成功响应</td></tr>
+<tr><td><code>static ExecuteResponse error(String requestId, String error)</code></td><td>requestId=对应请求 ID；error=错误描述</td><td>构造失败响应</td></tr>
+<tr><td><code>boolean isSuccess()</code></td><td>无</td><td>判断本次远程调用是否成功</td></tr>
+</table>
+</div>
 </section>
 <section id="cat-plugin-jar-remote-client">
 <h3>2. HTTP 模式支持 — plugin-jar-remote-client</h3>
@@ -1378,6 +2976,78 @@ public class HelloController {
 <li>把 dispatcher 作为 @Bean 暴露，再用 dispatcher.registerSubServer(...) / execute(...) 发起远程调用。</li>
 <li>确认 classpath 上存在 RemoteExecutionDispatcher。</li>
 </ol>
+<h4 id="plugin-jar-remote-client-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. 选择传输层：TCP 长连接或 HTTP（HttpTransport 需传 endpoint 模板）
+RemoteTransport transport = new TcpTransport();
+// 2. 本地 Bean 解析器：传 null 表示只转发不本地执行
+BeanResolver localResolver = new SpringBeanResolver(applicationContext);
+// 3. 调度器：内部自动创建 SubServerRegistry 与 RequestCoordinator
+RemoteExecutionDispatcher dispatcher = new RemoteExecutionDispatcher(transport, localResolver);
+// 4. 注册子服务器节点（id、host、port、认证令牌）
+dispatcher.registerSubServer("node-1", "192.168.1.100", 9700, "auth-token");
+// 5. 可选：开启树形路由并限制最大跳数
+dispatcher.getCoordinator().setTreeRoutingEnabled(true);
+dispatcher.getCoordinator().setMaxHops(5);
+// 6. 指定节点远程执行插件方法（args/argTypes 均为 JSON 字符串列表）
+ExecuteResponse resp = dispatcher.executeOn("node-1", "blog", "blogController", "list", args, argTypes);
+// 7. 或生成接口代理，像调用本地方法一样远程调用
+BlogService svc = dispatcher.createProxy(BlogService.class, "blog", "blogController", "node-1");</code></pre>
+<h4 id="plugin-jar-remote-client-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>RemoteExecutionDispatcher</b> — 远程插件执行的统一入口：管理子服务器、选择传输层、派发执行请求、生成远程代理</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>RemoteExecutionDispatcher(RemoteTransport transport, BeanResolver localBeanResolver)</code></td><td>transport=TcpTransport 或 HttpTransport；localBeanResolver=本地 Bean 解析器，null 表示仅转发</td><td>构造调度器，内部同时建好注册表与协调器</td></tr>
+<tr><td><code>SubServerInfo registerSubServer(String id, String host, int port, String authToken)</code></td><td>id=节点唯一标识；host=主机；port=端口；authToken=认证令牌</td><td>注册一个远程子服务器节点</td></tr>
+<tr><td><code>ExecuteResponse executeOn(String subServerId, String pluginId, String beanName, String methodName, List&lt;String&gt; args, List&lt;String&gt; argTypes)</code></td><td>subServerId=目标节点；pluginId/beanName/methodName=目标方法坐标；args=JSON 化参数值；argTypes=参数全限定类名</td><td>在指定子服务器上执行插件方法</td></tr>
+<tr><td><code>ExecuteResponse execute(String pluginId, String beanName, String methodName, List&lt;String&gt; args, List&lt;String&gt; argTypes)</code></td><td>pluginId/beanName/methodName=目标方法坐标；args/argTypes=参数与类型</td><td>交由协调器决定执行位置：优先本地，本地无该插件则转发在线节点</td></tr>
+<tr><td><code>ExecuteResponse executeRound(String pluginId, String beanName, String methodName, List&lt;String&gt; args, List&lt;String&gt; argTypes)</code></td><td>pluginId/beanName/methodName=目标方法坐标；args/argTypes=参数与类型</td><td>在所有在线子服务器间轮询执行，实现简单负载均衡</td></tr>
+<tr><td><code>&lt;T&gt; T createProxy(Class&lt;T&gt; interfaceClass, String pluginId, String beanName, String subServerId)</code></td><td>interfaceClass=服务接口；pluginId=插件 ID；beanName=Bean 名；subServerId=目标节点，null 交给协调器</td><td>生成 JDK 动态代理，自动完成参数序列化与结果解包</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>SubServerRegistry</b> — 子服务器注册表，维护节点的在线状态与父子树形拓扑</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>SubServerInfo registerSubServer(String id, String host, int port, String authToken)</code></td><td>id=节点标识；host=主机；port=端口；authToken=令牌</td><td>注册根级子服务器节点</td></tr>
+<tr><td><code>SubServerInfo registerChild(String id, String host, int port, String authToken, String parentId)</code></td><td>id/host/port/authToken=节点信息；parentId=父节点 ID</td><td>注册子节点并挂到树形拓扑指定父节点下</td></tr>
+<tr><td><code>List&lt;SubServerInfo&gt; getOnlineSubServers()</code></td><td>无</td><td>列出所有在线节点，供轮询转发使用</td></tr>
+<tr><td><code>List&lt;SubServerInfo&gt; getSubtree(String rootId)</code></td><td>rootId=子树根节点 ID</td><td>取出以该节点为根的整棵子树</td></tr>
+<tr><td><code>void updateOnlineStatus(String id, boolean online)</code></td><td>id=节点 ID；online=是否在线</td><td>更新节点在线状态（执行成功/失败后自动调用）</td></tr>
+<tr><td><code>String dumpTree()</code></td><td>无</td><td>以文本形式输出当前节点树，便于排查拓扑</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>RemotePluginClient</b> — 面向单个子服务器的 TCP 长连接客户端，负责握手、发送执行请求与断线重连</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>boolean startRemoteMode(String host, int port, String authToken)</code></td><td>host=主机；port=端口；authToken=认证令牌，null 表示不认证</td><td>建立 TCP 连接并完成握手，进入远程模式</td></tr>
+<tr><td><code>ExecuteResponse executeRemotely(String host, int port, String pluginId, String beanName, String methodName, List&lt;String&gt; args, List&lt;String&gt; argTypes)</code></td><td>host/port=目标节点；pluginId/beanName/methodName=方法坐标；args/argTypes=参数与类型</td><td>同步发送执行请求并等待响应，失败时自动重连重试一次</td></tr>
+<tr><td><code>boolean isConnected(String host, int port)</code></td><td>host=主机；port=端口</td><td>检查与指定节点的连接是否仍然活跃</td></tr>
+<tr><td><code>void stopRemoteMode(String host, int port)</code></td><td>host=主机；port=端口</td><td>断开与指定子服务器的连接</td></tr>
+<tr><td><code>void stopAll()</code></td><td>无</td><td>关闭全部远程连接</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>RequestCoordinator</b> — 请求协调器，决定请求本地执行还是转发，并处理树形路由与防环</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>RequestCoordinator(SubServerRegistry registry, RemoteTransport transport, BeanResolver localBeanResolver)</code></td><td>registry=节点注册表；transport=传输层；localBeanResolver=本地解析器，null 表示不本地执行</td><td>构造协调器</td></tr>
+<tr><td><code>ExecuteResponse dispatch(ExecuteRequest request)</code></td><td>request=执行请求（含 requestId、插件坐标、参数与跳数信息）</td><td>优先本地执行，本地无该插件时转发到子服务器</td></tr>
+<tr><td><code>void setTreeRoutingEnabled(boolean treeRoutingEnabled)</code></td><td>treeRoutingEnabled=是否开启树形多级路由</td><td>开关树形路由能力</td></tr>
+<tr><td><code>void setMaxHops(int maxHops)</code></td><td>maxHops=最大跳数（默认 5）</td><td>限制转发层级，配合 visitedNodes 防止成环</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>RemoteProxy</b> — 远程服务代理工厂，把接口调用透明转换为远程执行请求</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>static &lt;T&gt; T create(Class&lt;T&gt; interfaceClass, String pluginId, String beanName, RemoteExecutionDispatcher dispatcher, String subServerId)</code></td><td>interfaceClass=服务接口；pluginId=插件 ID；beanName=Bean 名；dispatcher=调度器；subServerId=目标节点，可为 null</td><td>创建指定节点的远程服务代理</td></tr>
+<tr><td><code>static &lt;T&gt; T create(Class&lt;T&gt; interfaceClass, String pluginId, String beanName, RemoteExecutionDispatcher dispatcher)</code></td><td>interfaceClass=服务接口；pluginId=插件 ID；beanName=Bean 名；dispatcher=调度器</td><td>创建由协调器自动选节点的远程服务代理</td></tr>
+</table>
+</div>
 </section>
 <section id="cat-remote-tree">
 <h3>3. 树形拓扑</h3>
@@ -1638,6 +3308,23 @@ System.out.println(dispatcher.dumpTree());
 <li>注册 storageRegistrar —— new StorageRegistrar(applicationContext, storageManager, storageProperties)。</li>
 <li>注册 storagePublishableConfig —— new StoragePublishableConfig()（无条件）。</li>
 </ol>
+<h4 id="storage-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. 创建存储管理器（磁盘定义与实例分离，实例延迟创建后进程级共享）
+StorageManager manager = new StorageManager();
+// 2. 注册文件系统驱动（工厂模式），LocalFilesystemDriver 支持 driver = local / public
+manager.registerDriver(new LocalFilesystemDriver());
+// 3. 注册磁盘定义（延迟创建）：磁盘名 + DiskDefinition(driver, config)
+manager.registerDisk("local", DiskDefinition.local("storage/app"));
+manager.registerDisk("public", DiskDefinition.local("storage/app/public")
+        .url("/storage").visibility(Visibility.PUBLIC));
+// 4. 也可直接注册已构建的实例：磁盘名 + LocalFilesystem(name, root, urlPrefix, visibility)
+manager.registerDisk("tmp", new LocalFilesystem("tmp", "/tmp/jaravel", null, Visibility.PRIVATE));
+// 5. 设置默认磁盘名（Storage 门面中不带 disk 参数的方法都作用于它）
+manager.setDefaultDisk("public");
+// 6. 首次 disk(name) 解析时才由匹配的驱动创建 Filesystem 并缓存
+Filesystem disk = manager.disk("public");
+disk.put("logo.txt", "hello");</code></pre>
 <h4 id="storage-注解">注解与启发式识别</h4>
 <p>本模块使用注解（启发式）声明式注册，参数如下：</p>
 <div class="annotation">
@@ -1646,6 +3333,55 @@ System.out.println(dispatcher.dumpTree());
 <p>标注在 @Configuration 方法（返回 DiskDefinition 或 Filesystem），由 StorageRegistrar 扫描并按 value() 名称注册到 StorageManager，与 Spring bean name 解耦。defaultDisk=true 时覆盖 jaravel.storage.default-disk。</p>
 <p>用法示例：</p>
 <pre><code>@Configuration public class StorageConfig { @RegisterDisk(value = "public", defaultDisk = true) public DiskDefinition publicDisk() { return DiskDefinition.local("storage/app/public").url("/storage").visibility(Visibility.PUBLIC); } }</code></pre>
+</div>
+<h4 id="storage-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.storage.facade.Storage</b> — 静态门面，通过 Facade.resolve 取得 StorageManager，默认作用于默认磁盘并集成 HTTP 上传/下载</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static Filesystem disk(String name)</code></td><td>name=磁盘名称</td><td>取得指定名称的磁盘实例以便链式调用</td></tr>
+<tr><td><code>public static void put(String path, String contents)</code></td><td>path=相对路径；contents=文本内容</td><td>以 UTF-8 覆盖写入文本到默认磁盘</td></tr>
+<tr><td><code>public static String get(String path)</code></td><td>path=相对路径</td><td>从默认磁盘读取文件的文本内容</td></tr>
+<tr><td><code>public static boolean delete(String path)</code></td><td>path=相对路径</td><td>删除默认磁盘上的文件，实际删除返回 true</td></tr>
+<tr><td><code>public static String putFile(String disk, String dir, MultipartFile file) throws IOException</code></td><td>disk=磁盘名；dir=目标目录；file=HTTP 上传文件</td><td>把上传文件存入指定磁盘并返回实际写入的相对路径</td></tr>
+<tr><td><code>public static Response download(String disk, String path)</code></td><td>disk=磁盘名；path=相对路径</td><td>以附件形式下载文件，可直接作为控制器返回值，缺失时返回 404</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.storage.StorageManager</b> — 多磁盘管理器，维护磁盘定义 / 实例 / 驱动三张注册表并按名称延迟解析磁盘</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public Filesystem disk(String name)</code></td><td>name=磁盘名称，null 或空串则用默认磁盘</td><td>解析磁盘，首次访问时由驱动创建并缓存实例</td></tr>
+<tr><td><code>public void registerDisk(String name, DiskDefinition definition)</code></td><td>name=磁盘名称；definition=驱动名与配置构成的磁盘定义</td><td>注册延迟创建的磁盘定义并清除同名旧实例</td></tr>
+<tr><td><code>public void registerDisk(String name, Filesystem filesystem)</code></td><td>name=磁盘名称；filesystem=已构建好的磁盘实例</td><td>直接注册磁盘实例，优先级高于同名定义</td></tr>
+<tr><td><code>public void registerDriver(FilesystemDriver driver)</code></td><td>driver=文件系统驱动（工厂）实例</td><td>注册驱动，创建磁盘时按 support(driver) 顺序匹配</td></tr>
+<tr><td><code>public void setDefaultDisk(String name)</code></td><td>name=磁盘名称</td><td>设置默认磁盘名，初始值为 local</td></tr>
+<tr><td><code>public Set&lt;String&gt; diskNames()</code></td><td>无参数</td><td>返回所有已注册磁盘名（含尚未实例化的定义），不可变集合</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.storage.contract.Filesystem</b> — 单个磁盘的文件操作契约，本地/数据库/对象存储等驱动均实现该接口</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>byte[] read(String path)</code></td><td>path=相对路径</td><td>一次性读取文件的全部字节内容</td></tr>
+<tr><td><code>long putStream(String path, InputStream input)</code></td><td>path=相对路径；input=输入流（方法内不关闭）</td><td>流式覆盖写入大文件，返回写入字节数</td></tr>
+<tr><td><code>long writeTo(String path, OutputStream output)</code></td><td>path=相对路径；output=输出流（方法内不关闭）</td><td>把文件流式写出到输出流，返回写出字节数</td></tr>
+<tr><td><code>List&lt;FileInfo&gt; files(String directory)</code></td><td>directory=目录路径</td><td>列举目录下的文件（不递归），allFiles 为递归版本</td></tr>
+<tr><td><code>void setVisibility(String path, Visibility visibility)</code></td><td>path=相对路径；visibility=PUBLIC 或 PRIVATE</td><td>设置文件可见性，本地驱动映射为 POSIX 权限</td></tr>
+<tr><td><code>String url(String path)</code></td><td>path=相对路径</td><td>生成公开访问 URL，未配置 url 前缀时抛异常</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>com.weacsoft.jaravel.vendor.storage.contract.DiskDefinition</b> — 不可变的磁盘定义记录（driver + config），配合 @RegisterDisk 声明式注册磁盘</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static DiskDefinition local(String root)</code></td><td>root=根目录，相对运行目录或绝对路径</td><td>快速构建 local 驱动的磁盘定义</td></tr>
+<tr><td><code>public static DiskDefinition of(String driver, Map&lt;String, Object&gt; config)</code></td><td>driver=驱动名；config=驱动配置表</td><td>构建任意驱动的磁盘定义，配置会做防御性拷贝</td></tr>
+<tr><td><code>public DiskDefinition url(String url)</code></td><td>url=公开访问 URL 前缀，如 /storage</td><td>设置 url 配置项并返回新实例</td></tr>
+<tr><td><code>public DiskDefinition visibility(Visibility visibility)</code></td><td>visibility=默认可见性枚举</td><td>设置默认可见性并返回新实例</td></tr>
+<tr><td><code>public DiskDefinition with(String key, Object value)</code></td><td>key=配置键；value=配置值</td><td>追加或覆盖任意驱动配置项，返回新实例以支持链式调用</td></tr>
+</table>
 </div>
 </section>
 <section id="cat-aether-upload">
@@ -1693,6 +3429,64 @@ System.out.println(dispatcher.dumpTree());
 <li>若引入 PublishableConfig，注册 aetherUploadPublishableConfig。</li>
 <li>手动挂载路由：调用 AetherUploadRoutes.register() 或 AetherUploadRoutes.register(String prefix, Object... extraMiddleware)，内部用 Facade.resolve(...) 从容器取值并 Route.prefix(...).group(...) 挂接端点。</li>
 </ol>
+<h4 id="aether-upload-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. 模块配置：默认组、分片大小、临时目录、落盘目录、路由前缀等
+AetherUploadProperties properties = new AetherUploadProperties();
+// 2. 记录头存储依赖 cache 模块，传 null 时全部上传组降级为内存记录头
+CacheManager cacheManager = Facade.resolve(CacheManager.class);
+// 3. 落盘依赖 storage 模块，传 null 时组配置的 disk 失效并直接写本地 save-dir
+StorageManager storageManager = Facade.resolve(StorageManager.class);
+// 4. 构造管理器，构造过程按 groups 配置初始化各上传组及其记录头存储
+AetherUploadManager manager = new AetherUploadManager(properties, cacheManager, storageManager);
+// 5. 注册控制器到全局注册表，路由按 AetherUploadController::action 解析
+ControllerRegistry.registerGlobal(new AetherUploadController(manager));
+// 6. 挂载 config / prepare / chunk / progress / abort / sync 端点
+AetherUploadRoutes.register("/aether-upload", "auth");
+// 7. 业务调用：先建任务再逐片写入，identifier 相同即可断点续传
+UploadResult task = manager.prepare("file", "movie.mp4", 104857600L, "video/mp4", "uid-1", null);
+manager.writeChunk("file", task.resourceId, 0, chunkBytes);</code></pre>
+<h4 id="aether-upload-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>AetherUpload</b> — 上传门面，对齐 Laravel AetherUpload:: 静态调用风格，内部经 Facade 解析管理器</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static UploadResult prepare(String group, String filename, long size, String mimeType, String identifier, Long clientChunkSize)</code></td><td>组名、文件名、总大小、MIME、前端唯一标识、期望分片大小</td><td>创建或恢复分片上传任务</td></tr>
+<tr><td><code>public static UploadResult writeChunk(String group, String resourceId, int chunkIndex, byte[] data)</code></td><td>组名、任务 ID、分片序号、分片字节</td><td>写入一个分片并返回最新进度</td></tr>
+<tr><td><code>public static UploadResult progress(String group, String resourceId)</code></td><td>组名、任务 ID</td><td>查询上传进度与已传分片列表</td></tr>
+<tr><td><code>public static void abort(String group, String resourceId)</code></td><td>组名、任务 ID</td><td>中止上传并清理临时分片</td></tr>
+<tr><td><code>public static UploadResult uploadSync(String group, String filename, String mimeType, byte[] data)</code></td><td>组名、文件名、MIME、整文件字节</td><td>单请求同步上传整个文件</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>AetherUploadManager</b> — 上传核心管理器，管理上传组、校验规则、分片合并与事件派发</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public AetherUploadManager(AetherUploadProperties properties, CacheManager cacheManager, StorageManager storageManager)</code></td><td>模块配置、缓存管理器（可空）、存储管理器（可空）</td><td>构造管理器并按配置初始化全部上传组</td></tr>
+<tr><td><code>public UploadResult prepare(String groupName, String filename, long size, String mimeType, String identifier, Long clientChunkSize)</code></td><td>组名、文件名、总大小、MIME、唯一标识、分片大小</td><td>校验并建立上传任务，已有未完成任务时直接恢复</td></tr>
+<tr><td><code>public UploadResult writeChunk(String groupName, String resourceId, int chunkIndex, byte[] data)</code></td><td>组名、任务 ID、分片序号、分片数据</td><td>落盘单个分片，全部到齐后自动合并并落库</td></tr>
+<tr><td><code>public UploadResult uploadSync(String groupName, String filename, String mimeType, byte[] data)</code></td><td>组名、文件名、MIME、文件字节</td><td>同步上传整文件，跳过分片流程</td></tr>
+<tr><td><code>public void validate(GroupRuntime g, String filename, long size, String mimeType)</code></td><td>上传组运行时、文件名、大小、MIME</td><td>按组规则校验扩展名、体积与 MIME 类型</td></tr>
+<tr><td><code>public Map&lt;String, Object&gt; groupClientConfig(String name)</code></td><td>组名</td><td>返回前端可见的组配置，供 /config 端点下发限制项</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>AetherUploadRoutes</b> — 上传端点路由注册入口，把控制器动作挂载到指定前缀下</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static void register()</code></td><td>无</td><td>使用配置中的 route-prefix 注册全部上传路由</td></tr>
+<tr><td><code>public static void register(String prefix, Object... extraMiddleware)</code></td><td>自定义路由前缀、附加中间件（别名或类）</td><td>以自定义前缀与中间件注册上传路由</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>UploadResult</b> — 上传结果值对象，暴露任务标识、进度与落盘路径等只读字段</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public UploadResult(UploadHeader header, List&lt;Integer&gt; uploadedChunks, boolean resumed)</code></td><td>上传记录头、已上传分片序号、是否为续传</td><td>由记录头与分片状态构造结果快照</td></tr>
+<tr><td><code>public Map&lt;String, Object&gt; toMap()</code></td><td>无</td><td>转为 Map 直接作为接口 JSON 响应返回</td></tr>
+</table>
+</div>
 </section>
 <h2 id="other">其他</h2>
 <p class="module-desc">SpringBoot 适配、微信 SDK、验证码、聚合启动器。</p>
@@ -1739,6 +3533,23 @@ System.out.println(dispatcher.dumpTree());
 <li>第八步（Servlet Web）：向 RequestMappingHandlerAdapter 返回值处理器链前置 ResponseReturnValueHandler。</li>
 <li>注册 jsonPublishableConfig / viewPublishableConfig。</li>
 </ol>
+<h4 id="springboot-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. HTTP 配置：控制请求参数是否自动 URL 解码
+HttpProperties httpProperties = new HttpProperties();
+RequestFactory.setUrlDecodeAuto(httpProperties.isUrlDecodeAuto());
+// 2. 路由容器，业务在此注册 Laravel 风格路由
+Router router = new Router();
+// 3. 认证处理器：引入 auth 模块时用 AuthRouteAuthHandler，否则 no-op 兜底
+RouteAuthHandler routeAuthHandler = new DefaultRouteAuthHandler();
+// 4. 由装配类扫描 @MiddlewareAlias 中间件与控制器，并生成 Spring RouterFunction
+SpringBootRouteAutoConfiguration routeConfig = new SpringBootRouteAutoConfiguration();
+RouterFunction&lt;ServerResponse&gt; routes = routeConfig.jaravelRouterFunction(router, routeAuthHandler, applicationContext);
+// 5. 扫描 @RegisterDirective 方法，把自定义指令注册进 BladeDirectives
+BladeDirectiveRegistrar directiveRegistrar = new BladeDirectiveRegistrar(applicationContext);
+// 6. MVC 适配器：让 Controller 可直接声明 Request 参数、返回 Response
+SpringBootRequestMVCResolver argumentResolver = new SpringBootRequestMVCResolver();
+SpringBootResponseMVCResolver responseAdvice = new SpringBootResponseMVCResolver();</code></pre>
 <h4 id="springboot-注解">注解与启发式识别</h4>
 <p>本模块使用注解（启发式）声明式注册，参数如下：</p>
 <div class="annotation">
@@ -1747,6 +3558,57 @@ System.out.println(dispatcher.dumpTree());
 <p>标注在实现了 Middleware 的类上。启动时通过 classpath 扫描（非 Bean 扫描）发现并反射实例化（要求无参构造器），注册到 MiddlewareAliasRegistry。value 填别名时路由可用 '别名' 引用；留空时仅按类对象/类名识别。</p>
 <p>用法示例：</p>
 <pre><code>@MiddlewareAlias("auth") public class AuthMiddleware implements Middleware { public Response handle(Request request, NextFunction next, String... params) { return next.apply(request); } } // 路由中 router.get("/api", action).middleware("auth:api");</code></pre>
+</div>
+<h4 id="springboot-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>MiddlewareAlias</b> — 中间件别名注解，对齐 Laravel Kernel::$routeMiddleware；标注后由 classpath 扫描自动反射实例化并注册（中间件不是 Spring Bean）</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>String value() default ""</code></td><td>中间件别名，留空则只按类对象 / 类名识别</td><td>声明路由中可用的字符串别名，如 middleware("auth:api")</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>RouteAuthHandler</b> — 路由认证处理器 SPI，用于解耦 springboot 对 auth 模块的可选依赖；有 auth 时用 AuthRouteAuthHandler，无则用 DefaultRouteAuthHandler 空实现</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>void setupAuth(Request request)</code></td><td>当前 Jaravel Request 对象</td><td>请求进入中间件链前建立认证上下文（AuthContext）</td></tr>
+<tr><td><code>void clearAuth()</code></td><td>无参数</td><td>请求结束后清理认证上下文，避免线程复用串号</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>SpringBootRouteAutoConfiguration</b> — 核心装配类：把 Jaravel Router 中的路由转换为 Spring RouterFunction，并完成中间件别名扫描、控制器注册与内置 CSRF/模板辅助函数注册</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>Router baseRouter(HttpProperties httpProperties)</code></td><td>HTTP 配置属性</td><td>创建全局 Router，并把 url-decode-auto 同步给 RequestFactory</td></tr>
+<tr><td><code>RouterFunction&lt;ServerResponse&gt; jaravelRouterFunction(Router router, RouteAuthHandler routeAuthHandler, ApplicationContext applicationContext)</code></td><td>路由容器、认证处理器、Spring 上下文</td><td>扫描中间件与控制器后，把所有路由折叠为带中间件链的 Spring RouterFunction</td></tr>
+<tr><td><code>RouteAuthHandler authRouteAuthHandler(AuthManager authManager)</code></td><td>auth 模块的 AuthManager</td><td>auth 模块在 classpath 且 Bean 存在时注册真实认证处理器</td></tr>
+<tr><td><code>BladeDirectiveRegistrar bladeDirectiveRegistrar(ApplicationContext applicationContext)</code></td><td>Spring 上下文</td><td>注册 Blade 自定义指令扫描器</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>SpringBootRequestMVCResolver</b> — Spring MVC 参数解析器，使 @Controller 方法可直接声明 Jaravel Request 参数并自动注入</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>boolean supportsParameter(MethodParameter parameter)</code></td><td>Spring MVC 方法参数描述</td><td>仅当参数类型为 Request 时接管解析</td></tr>
+<tr><td><code>Object resolveArgument(MethodParameter parameter, ModelAndViewContainer mavContainer, NativeWebRequest webRequest, WebDataBinderFactory binderFactory)</code></td><td>参数描述、MV 容器、原生 Web 请求、数据绑定工厂</td><td>由 HttpServletRequest 构建 Laravel 风格 Request 对象</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>SpringBootResponseMVCResolver</b> — ResponseBodyAdvice 实现：Controller 返回 Jaravel Response 时应用其状态码/响应头/Cookie/内容，其他返回值补充安全响应头</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>boolean supports(MethodParameter returnType, Class&lt;? extends HttpMessageConverter&lt;?&gt;&gt; converterType)</code></td><td>返回值类型、消息转换器类型</td><td>对所有返回值生效（恒返回 true）</td></tr>
+<tr><td><code>Object beforeBodyWrite(Object body, MethodParameter returnType, MediaType selectedContentType, Class&lt;? extends HttpMessageConverter&lt;?&gt;&gt; selectedConverterType, ServerHttpRequest request, ServerHttpResponse response)</code></td><td>响应体、返回值类型、内容类型、转换器类型、请求、响应</td><td>展开 Response 的 status/headers/cookies，或为普通响应补 X-Frame-Options 等安全头</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>BladeDirectiveRegistrar</b> — 扫描 @RegisterDirective 注解方法并把结果注册到 BladeDirectives（指令是命名多实例组件，可注册任意多个）</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>BladeDirectiveRegistrar(ApplicationContext context)</code></td><td>Spring 应用上下文</td><td>构造注册器并绑定 RegisterDirective 注解类型</td></tr>
+<tr><td><code>void register(Object result, Method method, RegisterDirective annotation)</code></td><td>方法返回的指令实现、被注解方法、注解元数据</td><td>按 condition() 区分注册为条件指令或输出指令，指令名为空时启动报错</td></tr>
+</table>
 </div>
 </section>
 <section id="cat-wechat-sdk">
@@ -1796,6 +3658,70 @@ System.out.println(dispatcher.dumpTree());
 <li>注册 miniProgramService：new MiniProgramService(accessTokenManager, properties, okHttpClient)。</li>
 <li>若 PublishableConfig 在 classpath，追加 wechatPublishableConfig：new WechatPublishableConfig()。</li>
 </ol>
+<h4 id="wechat-sdk-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. 微信配置属性（也可由 jaravel.wechat.* 自动绑定）
+WechatProperties properties = new WechatProperties();
+// 2. HTTP 客户端，超时取自 properties.getHttp()
+long timeoutMs = (long) (properties.getHttp().getTimeout() * 1000);
+OkHttpClient httpClient = new OkHttpClient.Builder()
+        .connectTimeout(timeoutMs, TimeUnit.MILLISECONDS)
+        .readTimeout(timeoutMs, TimeUnit.MILLISECONDS)
+        .retryOnConnectionFailure(properties.getHttp().isRetry())
+        .build();
+// 3. AccessToken 管理器：基于 cache 模块缓存 token（cacheManager 可为 null，回退内存缓存）
+AccessTokenManager tokenManager = new AccessTokenManager(httpClient, cacheManager, properties.getCacheStore());
+// 4. 公众号服务（JSSDK ticket 同样走 cacheManager 缓存）
+OfficialAccountService official = new OfficialAccountService(tokenManager, properties, httpClient, cacheManager);
+// 5. 小程序服务
+MiniProgramService mini = new MiniProgramService(tokenManager, properties, httpClient);
+// 6. 调用示例：小程序 code 换 openid
+Map&lt;String, Object&gt; session = mini.jscode2session("wx7051c4a2a779d651", jsCode);</code></pre>
+<h4 id="wechat-sdk-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>AccessTokenManager</b> — 微信 access_token 管理器，自动缓存并提前 5 分钟过期，规避微信每日 2000 次刷新限制</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>AccessTokenManager(OkHttpClient httpClient, CacheManager cacheManager, String preferredStore)</code></td><td>OkHttp 客户端、缓存管理器（可为 null）、首选缓存 store 名（空为默认 store）</td><td>构造 token 管理器并解析缓存仓库</td></tr>
+<tr><td><code>String getToken(String appId, String secret)</code></td><td>微信 AppID、AppSecret</td><td>优先读缓存，未命中则调用微信 API 获取并写缓存</td></tr>
+<tr><td><code>String refreshToken(String appId, String secret)</code></td><td>微信 AppID、AppSecret</td><td>忽略缓存强制刷新 access_token</td></tr>
+<tr><td><code>void invalidateToken(String appId)</code></td><td>微信 AppID</td><td>清除指定应用的 token 缓存，下次调用重新获取</td></tr>
+<tr><td><code>void invalidateAllTokens()</code></td><td>无参数</td><td>flush 当前 store 下所有缓存（会波及同 store 其他数据，谨慎使用）</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>OfficialAccountService</b> — 微信公众号服务入口，覆盖用户管理、模板消息、菜单、标签、素材、客服消息与 JSSDK 签名；每个方法均有可指定 configName 的多公众号重载</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>Map&lt;String, Object&gt; getUserData(String openid)</code></td><td>用户 openid</td><td>获取用户基本信息（subscribe、nickname、city 等）</td></tr>
+<tr><td><code>Map&lt;String, Object&gt; sendTemplate(String templateId, String openid, Map&lt;String, Object&gt; data, String url, Map&lt;String, Object&gt; miniprogram)</code></td><td>模板 ID、接收者 openid、模板数据、点击跳转 URL（可 null）、小程序跳转信息（可 null）</td><td>发送公众号模板消息，返回含 msgid 的响应</td></tr>
+<tr><td><code>Map&lt;String, Object&gt; buildJsSdkConfig(String url, List&lt;String&gt; jsApiList, List&lt;String&gt; openTagList, boolean debug)</code></td><td>当前页面 URL、JS 接口列表、开放标签列表（可 null）、是否调试模式</td><td>取 jsapi_ticket 并做 SHA1 签名，生成前端 wx.config 所需配置</td></tr>
+<tr><td><code>Map&lt;String, Object&gt; setMenu(Object menuJson)</code></td><td>菜单结构 JSON 对象</td><td>创建/覆盖公众号自定义菜单</td></tr>
+<tr><td><code>Map&lt;String, Object&gt; uploadImageFull(String path)</code></td><td>本地图片文件路径</td><td>上传永久图片素材并返回 media_id / url</td></tr>
+<tr><td><code>Map&lt;String, Object&gt; sendMessage(Map&lt;String, Object&gt; data)</code></td><td>客服消息体（touser、msgtype 及对应内容）</td><td>发送客服消息</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>MiniProgramService</b> — 微信小程序服务入口，提供登录态换取与订阅消息下发</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>MiniProgramService(AccessTokenManager accessTokenManager, WechatProperties properties, OkHttpClient httpClient)</code></td><td>token 管理器、微信配置属性、OkHttp 客户端</td><td>构造小程序服务</td></tr>
+<tr><td><code>Map&lt;String, Object&gt; jscode2session(String appId, String code)</code></td><td>小程序 AppID、wx.login 返回的 code</td><td>用 code 换取 openid / session_key / unionid</td></tr>
+<tr><td><code>String getAccessToken(String appId)</code></td><td>小程序 AppID</td><td>按 appId 找到配置后委托 AccessTokenManager 取（带缓存的）access_token</td></tr>
+<tr><td><code>Map&lt;String, Object&gt; sendTemplateMessage(String appId, String openid, String templateId, Map&lt;String, Object&gt; data, String page)</code></td><td>小程序 AppID、接收者 openid、订阅消息模板 ID、模板数据、跳转页面路径（可 null）</td><td>发送小程序订阅消息（miniprogram_state 固定 formal）</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>WechatProperties</b> — 微信配置属性（jaravel.wechat.*），支持多公众号 / 多小程序按名索引</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>WechatProperties.OfficialAccountConfig getOfficialAccount(String configName)</code></td><td>公众号配置名（通常为 default）</td><td>取得指定公众号的 appId/secret/token/aesKey/oauth 配置</td></tr>
+<tr><td><code>WechatProperties.MiniAppConfig getMiniApp(String configName)</code></td><td>小程序配置名或 appId</td><td>取得指定小程序的 appId/secret 配置</td></tr>
+<tr><td><code>String getCacheStore()</code></td><td>无参数</td><td>返回 token / ticket 使用的缓存 store 名，空表示用 cache 模块默认 store</td></tr>
+<tr><td><code>WechatProperties.HttpConfig getHttp()</code></td><td>无参数</td><td>返回 HTTP 超时与重试配置，用于构建 OkHttpClient</td></tr>
+</table>
+</div>
 </section>
 <section id="cat-captcha">
 <h3>captcha — 验证码模块</h3>
@@ -1869,6 +3795,76 @@ System.out.println(dispatcher.dumpTree());
 <li>若引入 PublishableStatic，注册 captchaStaticPublishable。</li>
 <li>独立（非 Spring）用法：CaptchaProperties props = CaptchaProperties.createDefault(); new CaptchaManager(props, new MemoryCaptchaStore(), null)。</li>
 </ol>
+<h4 id="captcha-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. 创建核心配置（尺寸、长度、容差、加密密钥等），场景配置由它 copy() 派生
+CaptchaProperties props = CaptchaProperties.createDefault();
+props.setWidth(130);
+props.setHeight(48);
+props.setEncryptionKey("my-app-secret");
+// 2. 选择防复用存储：有 cache 模块用 CacheStore，否则用内存实现
+CaptchaStore store = new CacheStoreCaptchaStore(cacheManager.store());
+// 3. 构造管理器并注册五种生成器，全部共享同一份配置对象
+CaptchaManager manager = new CaptchaManager(store, props);
+manager.register(new NumberCaptcha(props));
+manager.register(new ArithmeticCaptcha(props));
+manager.register(new SliderCaptcha(props));
+manager.register(new RotateCaptcha(props));
+manager.register(new ClickCaptcha(props));
+// 4. 设为静态默认实例，开启 generateStatic() / verifyStatic() 静态调用
+CaptchaManager.setDefault(manager);
+// 5. 场景白名单：前端只能用 scene 名选参数，不能直接传 tolerance 等安全参数
+CaptchaSceneRegistry scenes = new CaptchaSceneRegistry(props, sceneDefinitions);
+// 6. 生成与校验：下发合并凭证 result.getKey()，格式为 type.captchaKey
+CaptchaResult result = manager.generate("slider", scenes.resolve("login"));
+boolean ok = manager.verify(result.getKey(), userInput);</code></pre>
+<h4 id="captcha-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>CaptchaManager</b> — 验证码管理器，统一注册多种验证码类型并提供生成/校验入口</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static CaptchaManager createDefault()</code></td><td>无</td><td>创建默认管理器，注册数字、算术、滑动、旋转、点选五种验证码</td></tr>
+<tr><td><code>public void register(Captcha captcha)</code></td><td>验证码实现（自身携带 type）</td><td>注册验证码类型并自动注入当前防复用存储</td></tr>
+<tr><td><code>public CaptchaResult generate(String type, CaptchaProperties overrides, String encryptionKey)</code></td><td>类型、运行时配置覆盖、运行时加密密钥</td><td>按类型生成验证码，返回图片与合并凭证</td></tr>
+<tr><td><code>public boolean verify(String key, String userInput)</code></td><td>合并凭证 type.captchaKey、用户输入</td><td>单次校验验证码，凭证自带类型故无需再传 type</td></tr>
+<tr><td><code>public VerifyResult verifyDetailed(String key, String userInput, CaptchaProperties overrides, String encryptionKey)</code></td><td>合并凭证、用户输入、配置覆盖、加密密钥</td><td>返回详细结果，可区分未通过与凭证已被使用</td></tr>
+<tr><td><code>public void setStore(CaptchaStore store)</code></td><td>防复用存储实现</td><td>替换存储并同步到所有已注册的生成器</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>CaptchaResult</b> — 验证码生成结果，承载下发给前端的图片、合并凭证与加密元信息</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public String getKey()</code></td><td>无</td><td>获取合并凭证（type.captchaKey），校验时原样回传</td></tr>
+<tr><td><code>public String getImageBase64()</code></td><td>无</td><td>获取 Base64 编码的验证码图片</td></tr>
+<tr><td><code>public long getExpireTime()</code></td><td>无</td><td>获取凭证过期时间戳</td></tr>
+<tr><td><code>public Map&lt;String, Object&gt; getExtra()</code></td><td>无</td><td>获取类型专属附加信息（滑块背景、点选文字等）</td></tr>
+<tr><td><code>public Map&lt;String, Object&gt; toMap()</code></td><td>无</td><td>转成 Map 便于直接作为 JSON 响应体返回</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>VerifyResult</b> — 验证码详细校验结果，区分通过、失败与凭证重复使用三种状态</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static VerifyResult pass()</code></td><td>无</td><td>构造校验通过的结果</td></tr>
+<tr><td><code>public static VerifyResult fail()</code></td><td>无</td><td>构造校验失败的结果</td></tr>
+<tr><td><code>public static VerifyResult alreadyUsed()</code></td><td>无</td><td>构造凭证已被消费（重放）的结果</td></tr>
+<tr><td><code>public boolean isPassed()</code></td><td>无</td><td>判断本次校验是否通过</td></tr>
+<tr><td><code>public boolean isAlreadyUsed()</code></td><td>无</td><td>判断凭证是否已被使用过</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>CaptchaSceneRegistry</b> — 验证码场景白名单注册表，让前端只能按场景名选取后端预声明的参数组合</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public CaptchaSceneRegistry(CaptchaProperties globalProperties, Map&lt;String, CaptchaSceneProperties&gt; scenes)</code></td><td>已解析的全局核心配置、场景定义映射</td><td>以全局配置为基准构建场景注册表</td></tr>
+<tr><td><code>public boolean has(String scene)</code></td><td>场景名</td><td>判断场景是否在白名单内</td></tr>
+<tr><td><code>public CaptchaProperties resolve(String scene)</code></td><td>场景名</td><td>解析场景为合并后的核心配置，结果带缓存</td></tr>
+<tr><td><code>public Set&lt;String&gt; names()</code></td><td>无</td><td>返回全部已声明的场景名</td></tr>
+<tr><td><code>public Map&lt;String, CaptchaSceneProperties&gt; definitions()</code></td><td>无</td><td>返回场景原始定义的只读视图</td></tr>
+</table>
+</div>
 </section>
 <section id="cat-wire">
 <h3>wire — Wire 渲染模块</h3>
@@ -1910,6 +3906,86 @@ System.out.println(dispatcher.dumpTree());
 <li>若 PublishableConfig 在 classpath，注册 wirePublishableConfig：new WirePublishableConfig()。</li>
 <li>在应用启动时调用 WireManager.setEngine(bladeEngine) 注入 Blade 引擎实例（通常由 springboot Starter 自动完成）。</li>
 </ol>
+<h4 id="wire-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. Wire 依赖 jblade 渲染 @section，先注入 BladeEngine（未设置时回退 ViewFacade）
+WireManager.setEngine(bladeEngine);
+// 2. 配置 wire.js 注入策略，对应 jaravel.wire.auto-inject-js / js-path
+WireManager.setAutoInjectJs(true);
+WireManager.setJsPath("/static/wire.js");
+// 3. 声明无需局部刷新的 section，渲染后自动剥离 wire:section 标记
+WireManager.addExcludedSections("head", "footer");
+// 4. 注册命名组件（名称 -&gt; 模板 + 默认参数），供 effects.components 下发
+WireComponents.register("toast", "components.toast", Map.of("duration", 3000));
+// 5. 注册 WireOutlet 中间件别名与 wire_outlet() 模板函数（组件挂载位置）
+MiddlewareAliasRegistry.getGlobal().register("WireOutlet", WireOutlet.instance());
+BladeFunctions.register("wire_outlet", args -&gt; WireOutlet.outletTag(RequestFactory.getCurrentRequest()));
+WireOutlet.setPosition(WireOutlet.POSITION_BODY_END);
+// 6. 控制器中使用：解析请求 -&gt; 填默认值 -&gt; 注册 action -&gt; 生成更新响应
+Response resp = WireService.from(request, "wire-demo", "/api/wire/demo")
+        .once("count", 0)
+        .action("increment", c -&gt; c.set("count", c.getInt("count") + 1))
+        .responseUpdate();</code></pre>
+<h4 id="wire-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>WireService</b> — Wire 流式上下文，把请求解析、默认值填充、action 分派、响应构建串成一条链式调用</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static WireService from(Request request, String templateName, String updateUrl)</code></td><td>HTTP 请求、模板名、Wire 更新 URL</td><td>从请求解析 snapshot/action/params/sections 并构建上下文</td></tr>
+<tr><td><code>public WireService once(String key, Object defaultValue)</code></td><td>字段名、默认值</td><td>字段不存在时填入默认值，链式返回自身</td></tr>
+<tr><td><code>public WireService action(String actionName, Consumer&lt;WireService&gt; handler)</code></td><td>action 名称、处理器回调</td><td>注册 action 处理器，生成响应时按当前 action 分派</td></tr>
+<tr><td><code>public Response responseWire()</code></td><td>无</td><td>生成 Wire 初始页面 HTML 响应（含快照与资源注入）</td></tr>
+<tr><td><code>public Response responseUpdate()</code></td><td>无</td><td>分派 action 后生成 section 局部更新的 JSON 响应</td></tr>
+<tr><td><code>public WireService responseComponent(String name, Map&lt;String, Object&gt; params)</code></td><td>组件名、本次参数（覆盖默认参数）</td><td>在本次响应中下发一个命名组件（toast/确认框等）</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>WireManager</b> — Wire 无状态核心工具类，负责模板渲染、section 抽取、快照编解码与资源注入</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static void setEngine(BladeEngine engine)</code></td><td>Blade 模板引擎实例</td><td>注入渲染引擎，未设置时从 ViewFacade 回退获取</td></tr>
+<tr><td><code>public static String renderWirePage(String templateName, Map&lt;String, Object&gt; data, String updateUrl)</code></td><td>模板名、模板数据、Wire 更新 URL</td><td>完整初始渲染：渲染页面并注入快照与 wire.js</td></tr>
+<tr><td><code>public static Map&lt;String, String&gt; renderSections(String templateName, List&lt;String&gt; sectionNames, Map&lt;String, Object&gt; data)</code></td><td>模板名、section 名列表、模板数据</td><td>批量渲染多个 section，模板只加载初始化一次</td></tr>
+<tr><td><code>public static String encodeSnapshot(Map&lt;String, Object&gt; data)</code></td><td>组件状态数据</td><td>剔除 __wire 内部键后编码为 Base64 JSON 快照</td></tr>
+<tr><td><code>public static Map&lt;String, Object&gt; decodeSnapshot(String base64)</code></td><td>Base64 快照字符串</td><td>把客户端回传的快照解码回状态 Map</td></tr>
+<tr><td><code>public static void addExcludedSections(String... sectionNames)</code></td><td>要排除的 section 名（可变参数）</td><td>将指定 section 排除出可更新区域，渲染后移除其 wire 标记</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>WireResponse</b> — Wire 响应工厂与构建器，产出初始页面、局部更新、重定向、事件派发等响应</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static Response wire(String templateName, Map&lt;String, Object&gt; data, String updateUrl)</code></td><td>模板名、模板数据、更新 URL</td><td>返回 Wire 初始页面 HTML 响应</td></tr>
+<tr><td><code>public static Response update(String templateName, Map&lt;String, Object&gt; data, List&lt;String&gt; sections)</code></td><td>模板名、模板数据、要刷新的 section 列表</td><td>返回含 sections 与新快照的局部更新 JSON 响应</td></tr>
+<tr><td><code>public static WireResponse of(String templateName, Map&lt;String, Object&gt; data, List&lt;String&gt; sections)</code></td><td>模板名、模板数据、section 列表</td><td>创建可继续链式追加副作用的响应构建器</td></tr>
+<tr><td><code>public WireResponse withRedirect(String url, int delayMs)</code></td><td>跳转地址、延迟毫秒数</td><td>在响应 effects 中附加延迟重定向指令</td></tr>
+<tr><td><code>public WireResponse withDispatch(String eventName, Object eventData)</code></td><td>事件名、事件数据</td><td>向前端派发自定义事件</td></tr>
+<tr><td><code>public Response build()</code></td><td>无</td><td>构建最终 Response，自动附加待下发的命名组件</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>WireComponents</b> — 命名组件注册表与本次请求的待下发队列（ThreadLocal 隔离）</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static void register(String name, String template, Map&lt;String, Object&gt; defaults)</code></td><td>组件名、模板路径、默认参数</td><td>注册一个带默认参数的命名组件</td></tr>
+<tr><td><code>public static void registerAll(Map&lt;String, String&gt; nameToTemplate)</code></td><td>组件名到模板的映射</td><td>按配置批量注册命名组件</td></tr>
+<tr><td><code>public static void push(String name, Map&lt;String, Object&gt; params)</code></td><td>组件名、本次参数</td><td>把组件压入当前请求待下发队列，本次参数优先于默认值</td></tr>
+<tr><td><code>public static List&lt;Map&lt;String, Object&gt;&gt; drain()</code></td><td>无</td><td>取出并清空待下发组件，写入响应 effects.components</td></tr>
+<tr><td><code>public static Set&lt;String&gt; names()</code></td><td>无</td><td>返回全部已注册的组件名</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>WireOutlet</b> — 命名组件加载位置中间件，负责在页面注入 outlet 容器与组件运行时 JS</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static WireOutlet instance()</code></td><td>无</td><td>获取中间件单例，用于注册到中间件别名表</td></tr>
+<tr><td><code>public static String outletTag(Request request)</code></td><td>当前 HTTP 请求</td><td>输出 outlet 容器标签，中间件未启用时返回空串</td></tr>
+<tr><td><code>public static void setPosition(String value)</code></td><td>位置常量 body-end / body-start</td><td>设置 outlet 容器在页面中的注入位置</td></tr>
+<tr><td><code>public static void setExcept(List&lt;String&gt; patterns)</code></td><td>路径匹配模式列表</td><td>设置不注入 outlet 的例外路径</td></tr>
+<tr><td><code>public Response handle(Request request, NextFunction next, String... params)</code></td><td>请求、后续处理链、中间件参数</td><td>中间件入口，在响应 HTML 中植入 outlet 与运行时脚本</td></tr>
+</table>
+</div>
 </section>
 <section id="cat-json">
 <h3>json — JSON 编解码</h3>
@@ -1932,6 +4008,66 @@ System.out.println(dispatcher.dumpTree());
 <li>直接使用 Json 门面 —— Json.stringify/Json.pretty/Json.parse/Json.parseToMap/Json.convert/Json.writeToFile/Json.readFromFile 等委托 JsonCodecHolder.codec() 完成。</li>
 <li>第三步（可选）：自定义编解码 —— new Jackson2JsonCodec() 或 new Jackson2JsonCodec(ObjectMapper) 构造 Jackson2 实现（构造时配置 FAIL_ON_EMPTY_BEANS=false），再 JsonCodecHolder.setCodec(...) 注入；Spring 环境可将其声明为 @Bean。</li>
 </ol>
+<h4 id="json-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. 复用容器中已配置好的 ObjectMapper（也可用无参构造走默认 mapper）
+ObjectMapper mapper = new ObjectMapper();
+JsonCodec codec = new Jackson2JsonCodec(mapper);
+// 2. 注入全局持有器，之后 Json 门面的所有调用都走这个实例
+JsonCodecHolder.setCodec(codec);
+// 3. 若不手动 setCodec，holder 首次调用时按 classpath 懒探测（Jackson 3 优先，回退 Jackson 2）
+JsonCodec current = JsonCodecHolder.codec();
+// 4. 业务侧统一用静态门面，不再各处 new ObjectMapper()
+String json = Json.stringify(user);
+User parsed = Json.parse(json, User.class);
+Map&lt;String, Object&gt; map = Json.parseToMap(json);
+// 5. 文件读写同样走门面，异常统一包装为 JsonCodecException
+Json.writeToPrettyFile(new File("build/user.json"), user);
+User fromFile = Json.readFromFile(new File("build/user.json"), User.class);</code></pre>
+<h4 id="json-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<p>本模块向业务代码公开以下类与方法：</p>
+<div class="api-class">
+<p><b>Json</b> — JSON 静态工具门面，一行替换原有 new ObjectMapper() 用法，全部委托给 JsonCodecHolder.codec()</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static String stringify(Object value)</code></td><td>value：待序列化对象</td><td>把对象序列化为紧凑 JSON 字符串</td></tr>
+<tr><td><code>public static String pretty(Object value)</code></td><td>value：待序列化对象</td><td>把对象序列化为带缩进的 JSON 字符串</td></tr>
+<tr><td><code>public static &lt;T&gt; T parse(String json, Class&lt;T&gt; type)</code></td><td>json：JSON 字符串；type：目标类型</td><td>反序列化为指定类型</td></tr>
+<tr><td><code>public static Map&lt;String, Object&gt; parseToMap(String json)</code></td><td>json：JSON 字符串</td><td>解析为 Map，替代 Jackson 的 readTree 场景</td></tr>
+<tr><td><code>public static &lt;T&gt; T convert(Object from, Class&lt;T&gt; toType)</code></td><td>from：源对象；toType：目标类型</td><td>基于序列化-反序列化做对象类型转换（浅拷贝）</td></tr>
+<tr><td><code>public static &lt;T&gt; T readFromFile(File file, Class&lt;T&gt; type)</code></td><td>file：JSON 文件；type：目标类型</td><td>从文件读取 JSON 并反序列化，配套 writeToFile/writeToPrettyFile</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>JsonCodec</b> — JSON 编解码 SPI 接口，统一抽象 Jackson 2 与 Jackson 3 的常用操作，使上层无需关心运行时版本</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>String toJson(Object value)</code></td><td>value：待序列化对象</td><td>序列化为 JSON 字符串，失败抛 JsonCodecException</td></tr>
+<tr><td><code>&lt;T&gt; T fromJson(String json, Class&lt;T&gt; type)</code></td><td>json：JSON 字符串；type：目标类型</td><td>反序列化为指定类型</td></tr>
+<tr><td><code>&lt;T&gt; T fromJson(String json, Type type)</code></td><td>json：JSON 字符串；type：泛型类型，配合 TypeReference.getType() 使用</td><td>反序列化为带泛型参数的类型，如 List&lt;User&gt;</td></tr>
+<tr><td><code>Map&lt;String, Object&gt; fromJsonToMap(String json)</code></td><td>json：JSON 字符串</td><td>解析为 Map 结构</td></tr>
+<tr><td><code>&lt;T&gt; T convertValue(Object from, Class&lt;T&gt; toType)</code></td><td>from：源对象；toType：目标类型</td><td>对象间类型转换</td></tr>
+<tr><td><code>void writeToPrettyFile(File file, Object value)</code></td><td>file：目标文件；value：待写入对象</td><td>序列化为带缩进的 JSON 并写入文件</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>JsonCodecHolder</b> — JsonCodec 全局持有器，优先使用 Spring 注入的实例，否则懒加载按 classpath 自动探测 Jackson 版本</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public static JsonCodec codec()</code></td><td>无参数</td><td>获取全局 JsonCodec，未设置时双重检查加锁地探测并创建（Jackson 3 优先，回退 Jackson 2，都没有则抛 IllegalStateException）</td></tr>
+<tr><td><code>public static void setCodec(JsonCodec codec)</code></td><td>codec：要设为全局的编解码实现</td><td>注入容器管理的 JsonCodec，由 Spring 自动装配调用，也可在测试中手动替换</td></tr>
+</table>
+</div>
+<div class="api-class">
+<p><b>Jackson2JsonCodec</b> — JsonCodec 的 Jackson 2 实现，SB3 运行时由 JsonCodecHolder 自动选择（Jackson3JsonCodec 为对应的 SB4 实现）</p>
+<table class="cfg">
+<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
+<tr><td><code>public Jackson2JsonCodec()</code></td><td>无参数</td><td>用全新的 ObjectMapper 构造</td></tr>
+<tr><td><code>public Jackson2JsonCodec(ObjectMapper mapper)</code></td><td>mapper：已有的 ObjectMapper，例如 Spring 容器中配置好的 Bean</td><td>复用现成 mapper 构造，并强制关闭 FAIL_ON_EMPTY_BEANS</td></tr>
+<tr><td><code>public String toJson(Object value)</code></td><td>value：待序列化对象</td><td>序列化实现，异常统一包装为 JsonCodecException</td></tr>
+<tr><td><code>public &lt;T&gt; T fromJson(String json, Type type)</code></td><td>json：JSON 字符串；type：泛型类型</td><td>通过 mapper.constructType 支持泛型反序列化</td></tr>
+</table>
+</div>
 </section>
 <section id="cat-starter">
 <h3>starter — 聚合启动器</h3>
@@ -1959,6 +4095,18 @@ System.out.println(dispatcher.dumpTree());
 <li>springContext：new SpringContext()。</li>
 <li>providerRegistry：new ProviderRegistry(serviceProviders)，注入 List&lt;ServiceProvider&gt;；它将在所有单例就绪后驱动 core 的 ServiceProvider.register()→boot()。</li>
 </ol>
+<h4 id="starter-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
+<pre><code>// 1. 配置仓库：优先级为 运行时覆盖 &gt; ConfigDefinition 代码级配置 &gt; Spring Environment
+ConfigRepository configRepository = new ConfigRepository(environment);
+// 2. 上下文持有器：所有 Facade 靠它解析容器 Bean，必须最先就绪
+SpringContext springContext = new SpringContext();
+// 3. 代码级配置注册器：单例初始化完成后把 ConfigDefinition 汇总回写 ConfigRepository
+ConfigDefinitionRegistrar registrar = new ConfigDefinitionRegistrar();
+// 4. 服务提供者注册表：聚合容器中全部 ServiceProvider 并按序执行 register/boot
+ProviderRegistry providerRegistry = new ProviderRegistry(providers);</code></pre>
+<h4 id="starter-功能说明">功能说明</h4>
+<p>starter 是 Jaravel 的聚合入口模块，本身几乎不含业务代码，而是通过 pom 依赖一次性引入 core、http、springboot、auth、database、migration、cache、storage、jblade、event、artisan、schedule 以及 spring-boot-starter-web，让应用引入单个依赖即可获得全套能力。其中 core 提供 Facade、配置体系与 ServiceProvider 生命周期，http 提供路由、控制器与中间件，auth 提供认证与守卫，database 与 migration 提供 Eloquent 风格 ORM 和迁移，cache、storage 分别提供缓存与文件存储抽象，jblade 提供 Blade 模板引擎，event、schedule、artisan 分别提供事件分发、任务调度与命令行工具。starter 自身仅由 JaravelAutoConfiguration 做辅助初始化：注册 ConfigRepository 统一配置读取、ConfigDefinitionRegistrar 收集代码级配置、SpringContext 让门面能解析容器 Bean、ProviderRegistry 聚合并引导所有 ServiceProvider。这四个 Bean 都带 @ConditionalOnMissingBean，应用可自行覆盖；各子模块的具体功能仍由各自的 AutoConfiguration 独立装配，starter 只负责保证核心底座先于它们就绪。</p>
 </section>
 <section id="cat-cluster">
 <h2>cluster — 集群部署</h2>
