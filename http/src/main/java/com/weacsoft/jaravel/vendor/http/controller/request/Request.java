@@ -196,10 +196,14 @@ public class Request {
     public String get(String key, String defaultValue) {
         String value = get(key, String.class);
         if (value == null) {
-            if (input.containsKey(key)) {
-                value = input.get(key).toString();
-            } else if (query.containsKey(key)) {
-                value = query.get(key).toString();
+            Object v = input.get(key);
+            if (v != null) {
+                value = v.toString();
+            } else {
+                v = query.get(key);
+                if (v != null) {
+                    value = v.toString();
+                }
             }
         }
         return value != null ? value : defaultValue;
@@ -288,8 +292,9 @@ public class Request {
     public String query(String key, String defaultValue) {
         String value = query(key, defaultValue.getClass());
         if (value == null) {
-            if (query.containsKey(key)) {
-                value = query.get(key).toString();
+            Object v = query.get(key);
+            if (v != null) {
+                value = v.toString();
             }
         }
         return value != null ? value : defaultValue;
@@ -338,8 +343,9 @@ public class Request {
     public String input(String key, String defaultValue) {
         String value = input(key, defaultValue.getClass());
         if (value == null) {
-            if (input.containsKey(key)) {
-                value = input.get(key).toString();
+            Object v = input.get(key);
+            if (v != null) {
+                value = v.toString();
             }
         }
         return value != null ? value : defaultValue;
@@ -419,8 +425,9 @@ public class Request {
     public String header(String key, String defaultValue) {
         String value = header(key, defaultValue.getClass());
         if (value == null) {
-            if (header.containsKey(key)) {
-                value = header.get(key).toString();
+            Object v = header.get(key);
+            if (v != null) {
+                value = v.toString();
             }
         }
         return value != null ? value : defaultValue;
@@ -545,8 +552,9 @@ public class Request {
     public String session(String key, String defaultValue) {
         String value = session(key, defaultValue.getClass());
         if (value == null) {
-            if (session.containsKey(key)) {
-                value = session.get(key).toString();
+            Object v = session.get(key);
+            if (v != null) {
+                value = v.toString();
             }
         }
         return value != null ? value : defaultValue;

@@ -31,6 +31,15 @@ class RequestTest {
     }
 
     @Test
+    void testInputNullValueReturnsDefault() {
+        Request req = new Request();
+        req.replaceInput("key", null);
+        // 之前这里会 NPE：input.containsKey(key)=true 但 get(key)=null → null.toString()
+        assertEquals("fallback", req.input("key", "fallback"));
+        assertEquals("", req.input("key"), "缺省默认值应为空串");
+    }
+
+    @Test
     void testQuery() {
         Request req = new Request();
         req.addQuery("page", 1);
