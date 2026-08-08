@@ -1,8 +1,8 @@
 /**
  * Wire Navigate — 前端无感页面切换运行时。
  *
- * 仿 PJAX 的实现模式（链接拦截 → AJAX → section diff → DOM 替换 → 历史管理），
- * 但完全独立：使用 wire:section 标记定位区域，与 PJAX 无任何耦合。
+ * 实现模式：链接拦截 → AJAX → section diff → DOM 替换 → 历史管理，
+ * 使用 wire:section 标记定位区域。
  *
  * 功能：
  * - 拦截带有 wire-navigate 属性或 data-wire 属性的 <a> 链接

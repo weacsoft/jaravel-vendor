@@ -132,8 +132,7 @@ public class ModelShadowPatcher implements ApplicationRunner {
             log.info("[model-shadow] Patched {} model(s): removed gaarason internal '{}' "
                     + "from SELECT queries (no database column needed)", patched, SHADOW_COLUMN);
         } else {
-            log.warn("[model-shadow] No models were patched! '{}' column may still appear in queries.",
-                    SHADOW_COLUMN);
+            log.info("[model-shadow] No models were patched (model_shadow already excluded by BaseModel @Column(inDatabase=false))");
         }
     }
 

@@ -276,7 +276,7 @@ public class WireOutlet implements Middleware {
      * 惰性注入的响应包装：完全委托原响应，仅在读取正文时按 Content-Type 决定是否注入。
      * <p>
      * 之所以要包装而不是直接改内容：{@code ResponseBuilder.view()} 的正文是在
-     * {@code getContent()} 被调用时才渲染的，提前取内容会破坏 PJAX 等惰性渲染链路。
+     * {@code getContent()} 被调用时才渲染的，提前取内容会破坏惰性渲染链路。
      */
     private static final class OutletResponse implements Response {
 

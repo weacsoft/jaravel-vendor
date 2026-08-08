@@ -160,9 +160,22 @@ com.weacsoft.jaravel.vendor
 │   ├── PrecompiledTemplateLoader // 预编译模板加载器（从打包文件/目录加载字节码，含 PrecompiledBundle）
 │   ├── BladePrecompilerMain     // 预编译命令行工具入口
 │   ├── BladeTemplate            // 编译后模板的抽象基类（含 PHP 辅助函数）
-│   └── BladeContext             // 执行上下文（变量/Section/组件）
-└── utils
-    ├── StringUtils              // 命名转换工具（驼峰/下划线/帕斯卡）
+│   ├── BladeContext             // 执行上下文（变量/Section/组件）
+│   ├── BladeFunctions           // 自定义 Blade 函数注册表
+│   ├── BladeDirectives          // 自定义 Blade 指令注册表
+│   ├── BladeAssetHelper         // 静态资源 URL 生成
+│   ├── LoopHelper               // 循环辅助（$loop 变量）
+│   ├── PhpExpressionTranslator  // PHP 表达式翻译器
+│   ├── ViewFacade               // 视图门面（bind/unbind）
+│   ├── view/
+│   │   ├── ViewManager          // 视图管理者
+│   │   ├── ViewRegistrar        // 视图注册器
+│   │   ├── RegisterView         // @RegisterView 注解
+│   │   └── BladeView            // BladeView 实现 core.view.View
+│   └── artisan/
+│       ├── ViewCacheCommand     // view:cache 命令
+│       └── ViewClearCommand     // view:clear 命令
+└── utils（独立模块）
     └── memory
         ├── MemoryClassLoader    // 内存类加载器（从字节码加载类）
         ├── MemoryFileManager    // 内存文件管理器（捕获编译输出）

@@ -40,8 +40,10 @@ Spring 的 bean name 全局唯一。若用 `@Bean("admin")` 注册名为 `admin`
 | `@RegisterSessionStore` | http | `SessionStore` | ❌ **全局唯一** | Session 存储（归属 http 模块） |
 | `@RegisterCacheStore` | cache | `CacheStore` | ✅ 命名多实例 | 缓存 store，`defaultStore = true` 设为默认 |
 | `@RegisterDisk` | storage | `DiskDefinition` / `Filesystem` | ✅ 命名多实例 | 文件磁盘，`defaultDisk = true` 设为默认 |
+| `@RegisterConnection` | database | `GaarasonDataSource` | ✅ 命名多实例 | 数据源连接 |
 | `@RegisterQueueDriver` | queue-database | `QueueDriver` | ❌ **全局唯一** | 队列驱动 |
 | `@RegisterDirective` | jblade | `Handler` / `Condition` | ✅ 命名多实例 | Blade 自定义指令 |
+| `@RegisterView` | jblade | `View` | ✅ 命名多实例 | 自定义视图 |
 
 **jwt 模块没有自己的注解**：它提供 `JwtGuardDriver`，通过 auth 的
 `@RegisterGuard("api")` + `GuardDefinition.of("jwt", "users")` 接入，
@@ -49,25 +51,12 @@ Spring 的 bean name 全局唯一。若用 `@Bean("admin")` 注册名为 `admin`
 
 ### 1.4 命名多实例 vs 全局唯一
 
-**命名多实例**（guard / provider / cache store / disk / directive）：
+**命名多实例**（guard / provider / cache store / disk / directive / view）：
 一个应用可注册任意多个不同名字的实例，通过名称选用，同名后注册者覆盖先注册者。
-
-```java
-@RegisterCacheStore(value = "array", defaultStore = true)
-public CacheStore arrayStore() { ... }
-
-@RegisterCacheStore("file")          // 可共存
-public CacheStore fileStore() { ... }
-```
 
 **全局唯一**（SessionStore / QueueDriver）：这类组件语义上只能有一个
 （"登录态存哪里"、"任务推到哪个队列"）。框架**强制唯一性**，
-扫描到多个时**启动直接报错**，避免隐式歧义：
-
-```
-SessionStore 只允许注册一个，但发现多个：AConfig#a 与 BConfig#b。
-如需覆盖，请在其中一个注解上设置 override = true。
-```
+扫描到多个时**启动直接报错**，避免隐式歧义。
 
 需要覆盖框架默认时，使用 `override = true`：
 
@@ -98,7 +87,7 @@ public SessionStore mySessionStore() { ... }
 |----|------|
 | `AnnotationDrivenRegistrar<A>` | 单注解扫描注册基类，提供 `beforeScan()` / `register()` / `afterScan()` 钩子 |
 | `SingletonRegistrar<A, T>` | 单实例注册基类，在上者基础上增加唯一性校验与 `applyFallback()` 回退 |
-| `AnnotationScanner` | 扫描工具，供需扫描**多种注解**或**控制扫描顺序**的场景使用（如 auth 需先扫 provider 再扫 guard） |
+| `AnnotationScanner` | 扫描工具，供需扫描**多种注解**或**控制扫描顺序**的场景使用 |
 | `RegistrarException` | 注册异常（重复注册、返回类型不匹配、方法调用失败） |
 
 扫描使用 `getMethods()` 而非 `getDeclaredMethods()`，
@@ -113,36 +102,10 @@ public SessionStore mySessionStore() { ... }
 **core 是唯一强依赖**，其余模块之间遵循"**有则使用，无则回退默认**"。
 默认实现通常采用**内存方式**（如 queue 的 sync）或**文件方式**（如 storage 的 local）。
 
-#### 2.1.1 视图与分页标准层（database 与 jblade 解耦）
+### 2.2 驱动型模块：安装 ≠ 启用
 
-为避免「用 database 就一定得依赖模板引擎」的过度耦合，框架把**视图渲染契约**与
-**分页标准**上提到 `core` 标准层，由 `jblade` 作为实现方：
-
-- `core.view.Htmlable` / `HtmlString`：免转义 HTML 值对象标记（`{{ }}` 输出时识别）。
-- `core.view.View`：视图渲染标准接口（`render` / `exists` / `name`）。
-- `core.view.ViewManager`：视图管理者标准接口；`jblade` 的 `ViewManager` 实现它。
-- `core.pagination.Paginator`：Laravel 风格分页器（实现 `Iterable` 与 `Htmlable`），
-  仅依赖 `core.view.*`，**不依赖任何具体模板引擎**。
-
-`database` 模块的 `BaseModel.paginate()` 返回的即是 `core.pagination.Paginator`，
-因此 **`database` 不再硬依赖 `jblade`**——只用数据库、不想引入模板引擎的项目可单独使用
-`database`。分页 HTML 渲染通过 `Paginator.links(viewName)` 完成：视图引擎（jblade）在启动时
-通过 `ViewFacade.bind()` 把默认 `View` 注入到 `Paginator` 的 `ViewProvider`，
-若未引入 jblade（无默认视图），`links()` 安全降级为空串（等价于「无分页视图时未执行」）。
-
-实现手段是 Maven `<optional>true</optional>` + Spring 的
-`@ConditionalOnClass` / `@ConditionalOnMissingBean` / `@ConditionalOnProperty`
-以及框架自带的 `OnDriverInUseCondition`。
-
-### 2.2 驱动型模块：安装 ≠ 启用（重要）
-
-对齐 Laravel 的心智模型，**把依赖放进 classpath 只表示"可用"，不表示"启用"**。
-凡是**驱动型模块**（auth 的 guard、jwt、storage 的 disk、cache 的 store、
-session 的存储、queue 的连接、database 的连接等），一律遵循：
-
-> **只有用户显式选用（或按兜底默认选用）了该驱动，才进行注册和配置；否则完全静默。**
-
-"完全静默"意味着：不创建任何 Bean、不连接任何外部服务、不影响应用启动。
+把依赖放进 classpath 只表示"可用"，不表示"启用"。
+只有用户显式选用（或按兜底默认选用）了该驱动，才进行注册和配置；否则完全静默。
 
 以下**所有驱动**统一通过 core 的 `OnDriverInUseCondition`（仅依赖 `spring-context`）
 判定，子类声明"驱动名 + 配置键"即可：
@@ -159,83 +122,28 @@ session 的存储、queue 的连接、database 的连接等），一律遵循：
 | **storage (local 磁盘)** | `local` / `public` | 任一 `jaravel.storage.disks.*.driver: local` 或**未写 driver（兜底）** | —（自身即兜底） |
 | **storage (database 磁盘)** | `database` | 任一 `jaravel.storage.disks.*.driver: database` | 不装配 |
 
-每个驱动模块还提供一个**覆盖开关**（优先级最高，用于特殊场景强制开关）：
+每个驱动模块还提供一个**覆盖开关**（优先级最高）：
 
 ```yaml
 jaravel:
   session:
     redis:
-      auto-register: true     # 强制启用；false 则强制关闭；不配置＝按 driver 自动判定
+      auto-register: true     # true=强制启用；false=强制关闭；不配置=按 driver 自动判定
   cache:
     redis:
-      auto-register: false    # 强制关闭
+      auto-register: false
 ```
-
-实现基类是 core 的 `OnDriverInUseCondition`，例如：
-
-```java
-public class OnRedisSessionDriverCondition extends OnDriverInUseCondition {
-    public OnRedisSessionDriverCondition() {
-        super("redis", "jaravel.session.stores.", ".driver", "jaravel.session.driver");
-        enableKey("jaravel.session.redis.auto-register");
-    }
-}
-```
-
-**兜底默认驱动**调用 `matchIfAbsent()`，表示"用户完全没有显式配置本模块任何驱动键时即装配"；
-非默认驱动（如 `jwt` / `database` / `redis`）则不认缺省，严格按需。
 
 > **不要用 `@ConditionalOnBean(DataSource.class)` 之类判断驱动是否可用。**
-> 它把模块和 Spring 的 Bean 图强绑定，时序脆弱，且无法感知
-> jaravel 自己的 `@RegisterConnection` 连接注册表。
-> 正确做法是**运行时惰性解析**：先查 jaravel 的注册表，再回退 Spring 容器
-> （见 2.4）。
-
-### 2.2.1 注册式三层优先级：声明 → 配置 → 默认
-
-驱动型模块的"按 driver 选用"并非只有一种手段，框架提供**三级并存**的注册通道，
-按以下顺序回退，越往前优先级越高：
-
-1. **声明（support）**：模块/开发者用 `@RegisterGuard` / `@RegisterProvider` /
-   `@RegisterCacheStore` / `@RegisterDisk` / `@RegisterQueueDriver` /
-   `@RegisterSessionStore` 等注解自我声明"我实现了哪个 driver"（对应 `support(driverName)`）。
-   开发者**不动核心代码**即可在业务工程中注册额外扩展。
-   > 例如：`@RegisterGuard(driver = "jwt")` 把 JWT 守卫接入 auth，即使框架没内置也行。
-2. **配置（yaml）**：用户在 `jaravel.<模块>.guards/disks/stores/...` 里写 `driver` 名选用。
-3. **默认（兜底）**：用户写了该模块的配置块、但没写具体 `driver` 时，由对应 Module 的
-   `Registrar` 填上**模块默认驱动**保证基本可用（见 2.2.2）。
-
-**关于"别名"**：`guard` 的 `driver` / `provider` 参数都接受字符串。传入的字符串在运行时
-按 `support()` 匹配对应驱动对象（类似数据库多兼容）。特别地，**`provider` 不是一种 driver**——
-同一个 `EloquentUserProvider` 类可对应多个对象（不同 model 类要用不同 provider 实例），
-此时把"model 类 + provider"合并看成一个具名实例，称为**别名**（alias），通过
-`@RegisterProvider("users")` 声明，`AuthManager` 按别名解析而非按类解析。
-
-### 2.2.2 兜底默认值（写了模块但没写 driver）
-
-| 模块 | 默认驱动 | 说明 |
-|------|---------|------|
-| **auth** | `session` | 写了 `guards` 没写 `driver` → 用 `session` 守卫 |
-| **cache** | `array` | 内存驱动，重启丢失 |
-| **storage** | `local` | 文件驱动，根目录 `storage/app` |
-| **session** | `cookie` | `CookieSessionStore`（Servlet HttpSession） |
-| **queue** | `array`/`sync` | 同步执行，当前线程立即执行 |
-| **database** | **无兜底，直接报错** | 底层基础设施，没写连接即报错（不静默回退） |
-| **JWT** | **不在兜底** | 额外实现，只有显式 `driver: jwt` 才装配 |
-
-> 兜底发生在 **Registrar 读取配置阶段**（做法 X）：若某 guard/disk 的 `driver` 为空，
-> 补成模块默认值；condition 层据此看到的是已填好的默认值，从而按需装配默认驱动 Bean。
+> 正确做法是**运行时惰性解析**：先查 jaravel 的注册表，再回退 Spring 容器。
 
 ### 2.3 功能型模块：默认启用
 
 不需要外部资源的**功能模块**（wire、storage 的 local、schedule、captcha、
 plugin-* 等）默认启用，通过 `jaravel.<模块>.enabled: false` 关闭。
-它们没有"连不上就崩"的风险，因此不适用 2.2 的规则。
 
-> **发布配置独立于运行开关**：各模块的 `PublishableConfig`（供 `vendor:publish` 发布配置模板）
-> 注册在独立的 `*PublishAutoConfiguration` 中，**不受 `jaravel.<模块>.enabled` 控制**。
-> 因此即使关闭模块运行能力，仍可在开发期发布对应 `Config.java`。storage 即采用此模式
-> （`StoragePublishAutoConfiguration` 与受 `enabled` 控制的 `StorageAutoConfiguration` 解耦）。
+> **发布配置独立于运行开关**：各模块的 `PublishableConfig` 注册在独立的
+> `*PublishAutoConfiguration` 中，**不受 `jaravel.<模块>.enabled` 控制**。
 
 ### 2.4 数据源解析顺序：先框架，后 Spring
 
@@ -245,15 +153,9 @@ plugin-* 等）默认启用，通过 `jaravel.<模块>.enabled: false` 关闭。
 1. **jaravel `ConnectionManager` 注册表** —— 由 `@RegisterConnection` 声明的连接；
 2. **Spring 容器** —— 同名 Bean → 主 `DataSource` Bean。
 
-这与 Model 的连接解析语义完全一致。反过来，为了让 Spring 生态
-（`DataSourceTransactionManager`、`JdbcTemplate` 及第三方
-`@ConditionalOnBean(DataSource.class)`）也能工作，database 模块会把
-**默认连接**以 `JaravelDataSource`（惰性委托）的形式注册为 Spring Bean：
-
-- 标记 `@RegisterConnection(defaultConnection = true)` 的连接即默认连接；
-- **若一个都没标记，则第一个注册的连接自动成为默认连接**；
-- 该 Bean 惰性求值，因此不会与 `@RegisterConnection` 的扫描时机冲突；
-- 若业务工程自己定义了 `DataSource` Bean，框架自动让位（`@ConditionalOnMissingBean`）。
+默认连接：标记了 `@RegisterConnection(defaultConnection = true)` 的连接即为默认连接；
+若一个都没标记，则第一个注册的连接自动成为默认连接。
+该默认连接会以 `JaravelDataSource`（惰性委托）的形式注册为 Spring Bean。
 
 ### 2.5 各模块回退矩阵
 
@@ -263,7 +165,7 @@ plugin-* 等）默认启用，通过 `jaravel.<模块>.enabled: false` 关闭。
 | **storage** | `database` 磁盘（有连接，自动建表） | **local 文件驱动**，根目录 `storage/app` |
 | **queue** | `driver=redis` + redis / `driver=database` + 数据库连接 | **sync 同步模式**，任务在当前线程立即执行 |
 | **session** | 引入 session-redis **且** `driver=redis` → `RedisSessionStore`（多机同步） | **CookieSessionStore**（Servlet HttpSession） |
-| **auth** | 引入 jwt → `jwt` 守卫驱动可用（严格按需，不在兜底） | 仅 `session` 守卫驱动（写了 guards 但未写 driver 时兜底为 session） |
+| **auth** | 引入 jwt → `jwt` 守卫驱动可用（严格按需） | 仅 `session` 守卫驱动（写了 guards 但未写 driver 时兜底为 session） |
 | **artisan** | 引入 artisan → 各模块注册各自命令 | **不注册任何命令**，不影响 HTTP 服务 |
 | **migration** | 引入 migration → `migrate` 系列命令可用 | 无连接时仅告警，**不阻断启动** |
 | **schedule** | 引入 redis-config → Redis 分布式锁防多机重复执行 | 单机执行，无锁 |
@@ -274,10 +176,8 @@ plugin-* 等）默认启用，通过 `jaravel.<模块>.enabled: false` 关闭。
 artisan 在各模块的 pom 中均为 `optional`。模块注册命令的方式是
 `@ConditionalOnClass(ArtisanCommand.class)`：
 
-- **引入了 artisan** → 注册该模块的命令（如 `queue:table`、`migrate`）
+- **引入了 artisan** → 注册该模块的命令
 - **没引入 artisan** → 相关 `@Bean` 不装配，模块其余功能照常工作
-
-因此**完全可以不使用 artisan**，只是失去命令行能力。
 
 ### 2.7 vendor:publish 的可选依赖处理
 
@@ -287,81 +187,12 @@ artisan 在各模块的 pom 中均为 `optional`。模块注册命令的方式�
 
 ---
 
-## 三、artisan vendor:publish 发布配置类
-
-### 3.1 用途
-
-对齐 Laravel `php artisan vendor:publish`，把框架内置的配置类模板
-**发布为业务工程中的 Java 源码**，之后用户可自由修改。
-
-### 3.2 用法
-
-```bash
-artisan vendor:publish                      # 列出可发布项并提示用法
-artisan vendor:publish --list               # 仅列出可发布项
-artisan vendor:publish --all                # 发布全部
-artisan vendor:publish --tag=cache          # 只发布 cache 模块
-artisan vendor:publish --tag=cache --force  # 覆盖已存在文件
-```
-
-**默认不覆盖**已存在的文件（避免冲掉用户修改），需显式 `--force`。
-未指定 `--all` / `--tag` 时只列清单不写文件。
-
-### 3.3 发布目标目录
-
-发布到 `<outputDir>/<基础包>/config/`，即与 `app/` 包**同级**的 `config/` 包。
-
-复用 `make:*` 系列命令的配置项：
-
-```yaml
-jaravel:
-  artisan:
-    make:
-      base-package: com.example.demo    # 基础包名
-      output-dir: src/main/java         # 源码根目录
-```
-
-上例发布到 `src/main/java/com/example/demo/config/`。
-
-### 3.4 可发布清单
-
-| tag | 生成文件 | 内容 |
-|-----|---------|------|
-| `app` | `AppConfig.java` | 应用中央配置：`@Import` 功能开关 + 服务别名 + `auth()` / `cache()` / `config()` / `event()` / `session()` / `router()` / `route()` 全部访问器 |
-| `database` | `DatabaseConfig.java` | 全局唯一 `ContainerBootstrap` + `@RegisterConnection`（多连接别名） |
-| `auth` | `AuthConfig.java` | `@RegisterGuard` / `@RegisterProvider` / `@RegisterSessionStore` |
-| `cache` | `CacheConfig.java` | `@RegisterCacheStore`（array / file） |
-| `storage` | `StorageConfig.java` | `@RegisterDisk`（local / public / database 注释示例） |
-| `queue` | `QueueConfig.java` | `@RegisterQueueDriver` 示例与回退说明 |
-| `view` | `ViewConfig.java` | `@RegisterDirective`（输出指令 / 条件指令） |
-
-> `app` 与 `database` 是应用骨架，`artisan vendor:publish --all` 会一并发布。
-> 若 `AppConfig` 的 `@Import` 中引用了尚未发布的配置类（如 `AuthConfig`），
-> 请先发布对应 tag，或先注释掉该行以免编译报错。
-
-### 3.5 为模块新增可发布配置
-
-实现 `core` 的 `PublishableConfig` 并注册为 Bean 即可：
-
-```java
-public class MyPublishableConfig implements PublishableConfig {
-    public String tag()       { return "mymodule"; }
-    public String className() { return "MyModuleConfig"; }
-    public String description() { return "我的模块配置"; }
-    public String source(String basePackage) {
-        return "package " + basePackage + ".config;\n ...";
-    }
-}
-```
-
----
-
-## 四、artisan 命令与数据库表要求
+## 三、artisan 命令与数据库表要求
 
 > **重要**：以下要求**仅在使用对应功能时才需要满足**。
-> 不使用 artisan、不使用 migration 也能正常运行框架，只是需要手动完成相应工作。
+> 不使用 artisan、不使用 migration 也能正常运行框架。
 
-### 4.1 storage 模块
+### 3.1 storage 模块
 
 **artisan 命令**：无。
 
@@ -373,181 +204,50 @@ public class MyPublishableConfig implements PublishableConfig {
 
 > **注意**：这两张表由 `DatabaseFilesystem` 在磁盘首次使用时
 > **自动幂等创建**（`CREATE TABLE IF NOT EXISTS`），
-> 因此**即使没有 migration 也能直接工作**，无需手动建表。
+> 因此**即使没有 migration 也能直接工作**。
 
-`storage_file`（文件元数据）：
+### 3.2 queue-database 模块
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `disk` | VARCHAR(64) NOT NULL | 磁盘名，联合主键 |
-| `path` | VARCHAR(1024) NOT NULL | 文件路径，联合主键 |
-| `visibility` | VARCHAR(16) NOT NULL DEFAULT 'private' | `public` / `private` |
-| `mime_type` | VARCHAR(255) | MIME 类型 |
-| `size` | BIGINT NOT NULL DEFAULT 0 | 字节数 |
-| `chunk_count` | INTEGER NOT NULL DEFAULT 0 | 分片数 |
-| `created_at` | BIGINT | 创建时间戳 |
-| `updated_at` | BIGINT | 更新时间戳 |
-
-主键：`(disk, path)`
-
-`storage_file_chunk`（文件内容分片）：
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `disk` | VARCHAR(64) NOT NULL | 磁盘名，联合主键 |
-| `path` | VARCHAR(1024) NOT NULL | 文件路径，联合主键 |
-| `chunk_index` | INTEGER NOT NULL | 分片序号，联合主键 |
-| `content` | LONGBLOB / LONGTEXT | 分片内容，列名由 `contentColumn` 决定（默认 `content`）；类型由 `binary` 决定 |
-| `size` | INTEGER NOT NULL DEFAULT 0 | 分片字节数 |
-| `created_at` | BIGINT | 创建时间戳 |
-| `updated_at` | BIGINT | 更新时间戳 |
-
-主键：`(disk, path, chunk_index)`
-
-### 4.2 queue-database 模块
-
-**artisan 命令**（需引入 artisan，否则不注册）：
-
-| 命令 | 说明 |
-|------|------|
-| `queue:table` | 创建 `jobs` / `failed_jobs` 表（仅 database 驱动需要） |
-
-> **注意**：队列消费者 `DatabaseQueueWorker` 是**后台 Bean**，
-> 由 `jaravel.queue.worker.enabled` 控制随应用启动，
-> **不是** artisan 命令（无 `queue:work`）。
-> 失败任务的重试/清理通过 `QueueDriver` 的 API 完成。
+**artisan 命令**（需引入 artisan）：`queue:table`
 
 **数据库表要求**：仅在 `driver=database` 时需要。
 使用 `sync`（默认回退）或 `redis` 时**不需要数据库**。
 
-`jobs` 表（表名由 `jaravel.queue.database.table` 配置，默认 `jobs`）：
+队列消费者 `DatabaseQueueWorker` 是**后台 Bean**，
+由 `jaravel.queue.worker.enabled` 控制随应用启动，**不是** artisan 命令。
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `id` | BIGINT AUTO_INCREMENT PRIMARY KEY | 主键 |
-| `queue` | VARCHAR(255) NOT NULL | 队列名，另建索引 `jobs_queue_index` |
-| `payload` | TEXT NOT NULL | 任务载荷（JSON） |
-| `attempts` | INT NOT NULL DEFAULT 0 | 已尝试次数 |
-| `reserved_at` | BIGINT NULL | 保留时间戳，NULL 表示可消费 |
-| `available_at` | BIGINT NOT NULL | 可执行时间戳（延迟任务） |
-| `created_at` | BIGINT NOT NULL | 创建时间戳 |
+### 3.3 auth 模块
 
-`failed_jobs` 表：
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `id` | BIGINT AUTO_INCREMENT PRIMARY KEY | 主键 |
-| `queue` | VARCHAR(255) NOT NULL | 队列名，另建索引 |
-| `payload` | TEXT NOT NULL | 任务载荷 |
-| `exception` | TEXT | 异常堆栈 |
-| `attempts` | INT NOT NULL DEFAULT 0 | 尝试次数 |
-| `failed_at` | BIGINT NOT NULL | 失败时间戳 |
-
-**有 artisan 时**：`artisan queue:table` 直接建表（内部调用
-`DatabaseQueueDriver.createTable()`，不依赖 migration）。
-**无 artisan 时**：手动执行上述建表 SQL。
-
-### 4.3 auth 模块
-
-**artisan 命令**：无。
-
-**数据库表要求**：取决于所用的 `UserProvider` 实现。
+**artisan 命令**：无。**数据库表要求**取决于所用的 `UserProvider` 实现。
 使用内存或自定义 Provider 时**不需要数据库**。
-使用数据库 Provider 时，用户表需包含标识列与密码列（列名可配置）。
 
-### 4.4 cache 模块
+### 3.4 cache 模块
 
-**artisan 命令**（需引入 artisan，否则不注册）：
-
-| 命令 | 说明 |
-|------|------|
-| `cache:table` | 创建缓存表（仅 database 驱动需要） |
+**artisan 命令**（需引入 artisan）：`cache:table`
 
 **数据库表要求**：仅在使用 `database` 缓存驱动时需要。
 `array`（默认回退）、`file`、`redis` 驱动**均不需要数据库**。
 
-**装配时机**：`database` 缓存驱动工厂只有在配置里出现了
-`jaravel.cache.stores.*.driver: database` 时才注册（见 2.2）。
-未选用时，即使 classpath 上有 `spring-jdbc`、容器里没有任何数据源，也不影响启动。
-数据源在真正创建驱动时才解析，顺序为「jaravel 连接注册表 → Spring 容器」（见 2.4），
-可用 store 的 `connection` 字段指定连接别名：
+数据源在真正创建驱动时才解析，顺序为「jaravel 连接注册表 → Spring 容器」。
 
-```yaml
-jaravel:
-  cache:
-    stores:
-      database:
-        driver: database
-        connection: primary       # 可选，缺省用默认连接
-        table: jaravel_cache
-```
+### 3.5 session 模块
 
-缓存表（默认 `jaravel_cache`，表名可配置）：
+**artisan 命令**：无。**数据库表要求**：无。
+默认 `CookieSessionStore` 基于 Servlet HttpSession；`session-redis` 基于 Redis。
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `cache_key` | VARCHAR(255) NOT NULL PRIMARY KEY | 缓存键 |
-| `cache_value` | TEXT | 缓存值（JSON 字符串） |
-| `expires_at` | BIGINT NOT NULL DEFAULT 0 | 过期时间戳（毫秒），`0` = 永不过期 |
+### 3.6 migration 模块
 
-自动适配 MySQL / PostgreSQL / SQLite / H2 / SQL Server 方言。
+**artisan 命令**：`migrate` / `migrate:rollback` / `migrate:reset` / `migrate:refresh` / `migrate:status` / `make:model-from-table` / `make:model-from-migration`
 
-### 4.5 session 模块
-
-**artisan 命令**：无。
-
-**数据库表要求**：无。默认 `CookieSessionStore` 基于 Servlet HttpSession；
-`session-redis` 基于 Redis。**均不需要数据库表**。
-
-**启用 Redis Session**：引入 `jaravel-session-redis` 依赖后，还必须**显式选用**驱动：
-
-```yaml
-jaravel:
-  session:
-    driver: redis            # ← 不写这行，session-redis 完全不装配
-    redis:
-      connection: session
-      prefix: laravel_session
-      lifetime: 30
-```
-
-只引入依赖而不配置 `driver: redis` 时，模块保持静默、不连接 Redis，
-Session 回退到 `CookieSessionStore`——因此**无 Redis 环境也能正常启动**。
-
-### 4.6 migration 模块
-
-**artisan 命令**：
-
-| 命令 | 说明 |
-|------|------|
-| `migrate {--force}` | 执行待运行迁移 |
-| `migrate:rollback {--step=1}` | 回滚最近 N 批 |
-| `migrate:reset` | 回滚全部 |
-| `migrate:refresh` | 回滚全部后重新执行 |
-| `migrate:status` | 查看迁移状态 |
-| `make:model-from-table {table}` | 由现有表反向生成 Model |
-| `make:model-from-migration {table?} {--all}` | 由迁移文件生成 Model |
-
-> 无 `migrate:fresh` 命令；如需重建请使用 `migrate:refresh`。
-
-**数据库表要求**：迁移记录表 `migrations`，由
+**数据库表要求**：迁移记录表 `migrations` 由
 `MigrationRepository.createRepository()` **自动创建**，无需手动建表。
 
-| 字段 | 说明 |
-|------|------|
-| `id` | 自增主键 |
-| `migration` | 迁移名称 |
-| `batch` | 批次号，用于按批回滚 |
-
-建表 SQL 由 `Dialect.createRepositoryTableSql()` 按方言生成，
-支持 MySQL / SQLite / H2 / SQL Server / PostgreSQL / Oracle。
-
-### 4.7 完全不使用 artisan / migration 的场景
+### 3.7 完全不使用 artisan / migration 的场景
 
 框架**不强制**使用 artisan 与 migration。若不引入：
 
 - 所有 `@ConditionalOnClass(ArtisanCommand.class)` 的命令 Bean 不装配
-- 队列、存储等功能若需要数据库表，需**手动建表**（表结构见上文）
+- 队列、存储等功能若需要数据库表，需**手动建表**
 - 其余功能（路由、认证、缓存、模板、Wire 等）完全不受影响
 
 最小可用组合：仅 `core` + `http` + `springboot`，
@@ -556,7 +256,7 @@ Session 回退到 `CookieSessionStore`——因此**无 Redis 环境也能正常
 
 ---
 
-## 五、快速对照：Laravel → Jaravel
+## 四、快速对照：Laravel → Jaravel
 
 | Laravel | Jaravel |
 |---------|---------|
@@ -565,8 +265,9 @@ Session 回退到 `CookieSessionStore`——因此**无 Redis 环境也能正常
 | `config/cache.php` stores | `@RegisterCacheStore` |
 | `config/filesystems.php` disks | `@RegisterDisk` |
 | `config/queue.php` connections | `@RegisterQueueDriver` |
+| `config/database.php` connections | `@RegisterConnection` |
 | `Blade::directive()` | `@RegisterDirective` |
 | `Blade::if()` | `@RegisterDirective(condition = true)` |
 | `php artisan vendor:publish` | `artisan vendor:publish` |
 | `php artisan migrate` | `artisan migrate` |
-| `php artisan queue:work` | 无对应命令：消费由后台 Bean `DatabaseQueueWorker` 承担，由 `jaravel.queue.database.auto-start` 控制随应用启动 |
+| `php artisan queue:work` | 无对应命令：消费由后台 Bean `DatabaseQueueWorker` 承担 |

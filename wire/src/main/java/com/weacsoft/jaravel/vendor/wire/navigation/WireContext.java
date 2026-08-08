@@ -8,7 +8,6 @@ import java.util.Map;
  * Wire 导航请求的 ThreadLocal 上下文。
  *
  * <p>WireMiddleware 在请求进入时写入，ResponseBuilder 或 WireRenderer 在处理响应时读取。
- * 类比 PJAX 的 PjaxContext，但 Wire 是完全独立的系统，与 PJAX 无任何耦合。
  */
 public class WireContext {
 

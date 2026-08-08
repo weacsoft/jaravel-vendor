@@ -3,7 +3,7 @@
  *
  * 设计要点：
  *  - 首屏：后端在 HTML 注入 <script type="application/json" wire:components data-wire-outlet="..."> 引导数据，
- *          本运行时在 DOMContentLoaded 时扫描并挂载。PJAX 局部响应则经 pjax.js 委派 mountAll。
+ *          本运行时在 DOMContentLoaded 时扫描并挂载。
  *  - 更新：Wire 响应 effects.components 由 wire.js 委派 mountAll，开发者无感。
  *  - 隔离：每个实例用 new Function 独立求值生命周期脚本，得到独立闭包（同名组件多开互不覆盖）。
  *  - 生命周期：onCreate(el, wire) → 插入 DOM → onStart(el, wire) → [wire.stop()] → onStop(el, wire) → 移除 DOM → onDestroy(el, wire)
@@ -138,7 +138,7 @@
         }
     }
 
-    /** 批量挂载（首屏 bootstrap / Wire 更新 effects / PJAX 切换通用入口） */
+    /** 批量挂载（首屏 bootstrap / Wire 更新 effects 通用入口） */
     function mountAll(payloads, outletId) {
         if (!payloads || !payloads.length) return;
         for (var i = 0; i < payloads.length; i++) {
@@ -159,7 +159,7 @@
                 console.error('[WireComponent] 首屏引导数据解析失败', e);
             }
             mountAll(list, outletId);
-            // 移除标签，避免 PJAX 重扫时重复挂载
+            // 移除标签，避免重复挂载
             if (tag.parentNode) tag.parentNode.removeChild(tag);
         }
     }

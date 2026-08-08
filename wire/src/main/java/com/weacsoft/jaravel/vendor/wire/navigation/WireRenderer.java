@@ -18,7 +18,7 @@ import java.util.regex.Pattern;
  *   <li>生成 JSON 响应：{@code {"sections":{...},"hashes":{...},"title":"...","url":"..."}}</li>
  * </ol>
  *
- * <p>与 PJAX 的关键区别：Wire 发送的是 <b>diff</b>（只含变化的 section），
+ * <p>Wire 发送的是 <b>diff</b>（只含变化的 section），
  * 不是全量 section 信封。未变化的 section 完全不传输，前端也不触碰对应 DOM。
  */
 public class WireRenderer {

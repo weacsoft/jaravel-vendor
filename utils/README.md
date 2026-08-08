@@ -1,6 +1,6 @@
 # utils 模块
 
-> Jaravel-Vendor 的通用工具模块，提供内存编译基础设施。包含 `MemoryClassLoader`、`MemoryFileManager`、`SourceCodeJavaFileObject` 三个核心类，用于在运行时将 Java 源代码字符串编译为字节码并加载到内存中，无需写入磁盘。包名统一为 `com.weacsoft.jaravel.vendor.utils.memory`。
+> Jaravel-Vendor 的通用工具模块，提供内存编译基础设施与常用工具类。核心类包括 `MemoryClassLoader`、`MemoryFileManager`、`SourceCodeJavaFileObject`（内存编译），以及 `Maps`（不可变Map构造器）、`RuntimeClasspath`（fat-jar classpath解析）、`WireMode`（Wire渲染模式标记）、`IpMatcher`（IP匹配）。包名统一为 `com.weacsoft.jaravel.vendor.utils`（部分类在 `memory` 子包）。
 
 ---
 
@@ -65,13 +65,17 @@
 ## 3. 类总览
 
 ```
-com.weacsoft.jaravel.vendor.utils.memory
-├── SourceCodeJavaFileObject    // 包装源代码字符串的 JavaFileObject（编译输入）
-├── MemoryFileManager           // 拦截编译器输出到内存的 JavaFileManager（编译输出）
-└── MemoryClassLoader           // 从内存字节码加载类的 ClassLoader（类加载）
-
 com.weacsoft.jaravel.vendor.utils
-└── Maps                        // 不可变 Map 便捷构造器（替代 Map.of，支持空键值）
+├── memory
+│   ├── SourceCodeJavaFileObject    // 包装源代码字符串的 JavaFileObject（编译输入）
+│   ├── MemoryFileManager           // 拦截编译器输出到内存的 JavaFileManager（编译输出）
+│   ├── MemoryClassLoader           // 从内存字节码加载类的 ClassLoader（类加载）
+│   └── ClassFileJavaFileObject     // 字节码文件对象（内存中的 .class，内部类）
+├── Maps                            // 不可变 Map 便捷构造器（替代 Map.of，支持空键值）
+├── RuntimeClasspath                // fat-jar classpath 解析（嵌套 jar 支持）
+├── WireMode                        // Wire 渲染模式标记（ThreadLocal）
+└── net
+    └── IpMatcher                   // IP 地址匹配工具
 ```
 
 ### 三类协作关系

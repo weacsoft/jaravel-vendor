@@ -1000,7 +1000,7 @@ public class WireDemoController {
 }
 ```
 
-对应模板 `wire-demo.blade.php`：
+对应模板 `wire-demo.blade.java`：
 
 ```blade
 @extends('layouts.app')
@@ -1327,21 +1327,9 @@ router.serveStatic("/static", "classpath:/static/", 3600);
 
 ## 17. 透明导航（Transparent Navigation）
 
-> 在「Wire 组件（Livewire 风格）」之外，wire 模块还提供了一套**页面级透明导航**能力：拦截带 `wire-navigate` 的链接 → 发起 AJAX → 服务端只回传**变化的 section（最小 diff）** → 前端按 `<!--wire:section-start:NAME-->` 标记局部替换 DOM → 同步 `pushState` 历史。它借鉴了 PJAX 的「链接拦截 → 局部刷新」思路，但完全独立实现，并深度结合 jblade 的 `@section` / `@yield` 模板继承，实现跨控制器、跨模板的**无感刷新**。
+> 在「Wire 组件（Livewire 风格）」之外，wire 模块还提供了一套**页面级透明导航**能力：拦截带 `wire-navigate` 的链接 → 发起 AJAX → 服务端只回传**变化的 section（最小 diff）** → 前端按 `<!--wire:section-start:NAME-->` 标记局部替换 DOM → 同步 `pushState` 历史。该功能深度结合 jblade 的 `@section` / `@yield` 模板继承，实现跨控制器、跨模板的**无感刷新**。
 
-### 17.1 与 PJAX 的本质区别
-
-| 维度 | PJAX | Wire 透明导航 |
-| --- | --- | --- |
-| 传输内容 | 全量 section 信封（所有 region 都返回） | **最小 diff**（只返回 hash 变化的 section） |
-| 标记体系 | `X-Pjax` / `X-Pjax-Region` + `<!--pjax:start-->` | `X-Wire-Navigate` / `X-Wire-Hashes` + `<!--wire:section-start:NAME-->` |
-| 后端写法 | 需判断 PJAX 头、可能走不同渲染分支 | **标准 `ResponseBuilder.view()`，零改动** |
-| 依赖关系 | 自成体系 | 复用 jblade 的 `@section`/`@yield` 继承，共享布局的部分天然无感 |
-| 首屏 | 普通整页 | 普通整页 + 注入 `window.__wireHashes`（首屏即用服务端同口径 hash） |
-
-> **关键原则**：后端控制器**不需要任何 Wire 专用代码**。只要模板用 `@yield`/`@section` 划分区域（layout 负责 `@yield`，子模板负责 `@section`），导航中间件就会自动把两次渲染的差异抽成 diff 下发。
-
-### 17.2 架构与数据流
+### 17.1 架构与数据流
 
 ```
 浏览器                                    服务端
@@ -1371,7 +1359,7 @@ XHR 收到 JSON diff
 | `utils/WireMode` | `ThreadLocal` 标记当前是否为 Wire 渲染模式（`ResponseBuilder.view()` 读取以决定是否注入 `X-Template-Name` 等） |
 | `static/wire-navigate.js` | 前端运行时：拦截 `wire-navigate` 链接、计算/上报 hash、应用 diff、管理 `pushState`/`popstate` |
 
-### 17.3 首屏 hash 注入（消除 hash 口径差）
+### 17.2 首屏 hash 注入（消除 hash 口径差）
 
 最早版本让前端用 DOM 序列化计算 section hash，而服务端用原始 HTML 子串哈希，两者口径不一致 → 每次导航都误判「全部变化」。修复方式：
 
@@ -1381,7 +1369,7 @@ XHR 收到 JSON diff
   ```
 - 前端 `wire-navigate.js` 的 `computeHashes()` 首屏**优先**使用 `window.__wireHashes`，不再依赖 DOM 序列化，从而与服务端完全一致。
 
-### 17.4 最小 diff 算法（FNV-1a 32-bit）
+### 17.3 最小 diff 算法（FNV-1a 32-bit）
 
 `WireRenderer.hash()` 与前端 `wire-navigate.js` 使用**完全相同**的算法：
 
@@ -1412,7 +1400,7 @@ for (var e : allSections.entrySet()) {        // allSections 来自服务端本�
 
 > 例：仪表盘 → 记录列表导航，二者共享 layout，`head`/`scripts` 区域完全相同（hash `58488b10`/`66fcc582` 一致），因此服务端**只回传 `title`/`sidebar`/`content` 三个变化区域**，`head`/`scripts` 完全不传输、前端也不触碰对应 DOM —— 这就是「无感刷新」。
 
-### 17.5 协议细节
+### 17.4 协议细节
 
 **请求头**（前端 `wire-navigate.js` 发出）：
 
@@ -1444,17 +1432,19 @@ for (var e : allSections.entrySet()) {        // allSections 来自服务端本�
 3. **链接加 `wire-navigate`**：`<a href="/other" wire-navigate>导航</a>`，前端运行时自动拦截并走 diff 导航。
 4. **直访即整页**：不带 `X-Wire-Navigate` 头直接访问 URL → 返回完整 HTML（并注入 `window.__wireHashes`），行为与普通页面完全一致，SEO/刷新友好。
 
-### 17.7 演示（jaravel demo）
+### 17.6 演示（jaravel demo）
 
 `jaravel` 工程提供跨控制器、跨模板的无感导航演示：
 
 | 路由 | 控制器 | 模板 | 说明 |
 | --- | --- | --- | --- |
-| `/wire-dashboard` | `WireDashboardController` | `wire-dashboard.blade.java` | 仪表盘（含统计卡片、命名组件入口按钮） |
-| `/wire-records` | `WireRecordsController` | `wire-records.blade.java` | 记录列表（8 行种子数据） |
-| `/wire-component-demo` | `WireComponentDemoController` | `wire-component-demo.blade.java` | 命名组件（message 式提示框插入即自毁）演示 |
+| `/wire` | `WireShowcaseController` | `wire/index.blade.java` | 仪表盘（含统计卡片、快速导航） |
+| `/wire/records` | `WireShowcaseController` | `wire/records.blade.java` | 记录列表（与仪表盘共享 layout） |
+| `/wire/spa` | `WireSpaController` | `wire/spa-overview.blade.java` | SPA 导航（左侧菜单切换） |
+| `/wire/tasks` | `WireListController` | `wire/task-list.blade.java` | CRUD 任务列表（真实数据库） |
+| `/wire/components` | `WireComponentController` | `wire/component-demo.blade.java` | 命名组件（toast/confirm）演示 |
 
-三者共用 `wire-layout.blade.java`（`@yield` 出 `title`/`head`/`sidebar`/`content`/`scripts` 五个区域）。在仪表盘点击顶栏「记录列表」，即可观察到：标题、`sidebar`、`content` 三个区域被 diff 替换，而 `head`/`scripts`（JS/CSS 容器）**纹丝不动**——脚本不会重新执行、无闪烁，实现真正无感。
+以上页面共用 `wire-layout.blade.java`（`@yield` 出 `title`/`content` 等区域）。点击导航链接即可观察到 section diff 替换效果。
 
 ---
 

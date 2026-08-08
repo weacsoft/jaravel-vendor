@@ -24,16 +24,13 @@
 - [14. ForeignKeyDefinition —— 外键定义](#14-foreignkeydefinition--外键定义)
 - [15. Migrator —— 迁移引擎](#15-migrator--迁移引擎)
 - [16. MigrationRepository —— 迁移记录仓库](#16-migrationrepository--迁移记录仓库)
-- [17. MigrationExecutor —— 迁移执行器](#17-migrationexecutor--迁移执行器)
-- [18. MigrationRunner —— SpringBoot 适配器](#18-migrationrunner--springboot-适配器)
-- [19. MigrationCLI —— 独立命令行入口](#19-migrationcli--独立命令行入口)
-- [20. JdbcExecutor —— 轻量 JDBC 执行器](#20-jdbcexecutor--轻量-jdbc-执行器)
-- [21. Dialect —— 数据库方言接口](#21-dialect--数据库方言接口)
-- [22. TableMigrator —— 跨库表迁移工具](#22-tablemigrator--跨库表迁移工具)
-- [23. MigrationAutoConfiguration —— 自动装配](#23-migrationautoconfiguration--自动装配)
-- [24. 配置选项](#24-配置选项)
-- [25. 预编译 —— 开发阶段预编译工具](#25-预编译--开发阶段预编译工具)
-- [26. 线程安全说明](#26-线程安全说明)
+- [17. MigrationRunner —— 命令行运行器](#17-migrationrunner--命令行运行器)
+- [18. Dialect —— 数据库方言接口](#18-dialect--数据库方言接口)
+- [19. TableMigrator —— 跨库表迁移工具](#19-tablemigrator--跨库表迁移工具)
+- [20. MigrationAutoConfiguration —— 自动装配](#20-migrationautoconfiguration--自动装配)
+- [21. 配置选项](#21-配置选项)
+- [22. 预编译 —— 开发阶段预编译工具](#22-预编译--开发阶段预编译工具)
+- [23. 线程安全说明](#23-线程安全说明)
 
 ---
 
@@ -586,7 +583,7 @@ public class Migration_2024_02_01_CreateBlogTables implements Migration {
 
 ---
 
-## 7. MigrationAnnotation —— 迁移标记注解
+## 8. MigrationAnnotation —— 迁移标记注解
 
 `com.weacsoft.jaravel.vendor.migration.MigrationAnnotation`
 
@@ -752,7 +749,7 @@ try {
 
 ---
 
-## 9. MigrationGenerator —— 迁移类源码生成器
+## 10. MigrationGenerator —— 迁移类源码生成器
 
 `com.weacsoft.jaravel.vendor.migration.MigrationGenerator`
 
@@ -958,7 +955,7 @@ java -jar app.jar artisan make:model-from-migration --all --force
 
 ---
 
-## 10. Schema —— 表结构构建器
+## 11. Schema —— 表结构构建器
 
 `com.weacsoft.jaravel.vendor.migration.Schema`
 
@@ -1162,7 +1159,7 @@ schema.create("orders", table -> {
 
 ---
 
-## 12. ColumnDefinition —— 列定义
+## 13. ColumnDefinition —— 列定义
 
 `com.weacsoft.jaravel.vendor.migration.ColumnDefinition`
 
@@ -1238,7 +1235,7 @@ schema.table("products", table -> {
 
 ---
 
-## 13. ForeignKeyDefinition —— 外键定义
+## 14. ForeignKeyDefinition —— 外键定义
 
 `com.weacsoft.jaravel.vendor.migration.ForeignKeyDefinition`
 
@@ -1345,7 +1342,7 @@ try {
 
 ---
 
-## 15. MigrationRepository —— 迁移记录仓库
+## 16. MigrationRepository —— 迁移记录仓库
 
 `com.weacsoft.jaravel.vendor.migration.MigrationRepository`
 
@@ -1386,7 +1383,7 @@ try {
 
 ---
 
-## 16. MigrationRunner —— 命令行运行器
+## 17. MigrationRunner —— 命令行运行器
 
 `com.weacsoft.jaravel.vendor.migration.MigrationRunner`
 
@@ -1443,7 +1440,7 @@ java -jar app.jar --jaravel.migration-status
 
 ---
 
-## 21. Dialect —— 数据库方言接口
+## 18. Dialect —— 数据库方言接口
 
 `com.weacsoft.jaravel.vendor.migration.Dialect`
 
@@ -1602,7 +1599,7 @@ Per table: tableName + columnDefs + primaryKey + rowCount + rowData
 
 ---
 
-## 23. MigrationAutoConfiguration —— 自动装配
+## 20. MigrationAutoConfiguration —— 自动装配
 
 `com.weacsoft.jaravel.vendor.migration.MigrationAutoConfiguration`
 
@@ -1624,7 +1621,7 @@ Bean 带 `@ConditionalOnMissingBean`，允许业务方自定义替换。通过 `
 
 ---
 
-## 24. 配置选项
+## 21. 配置选项
 
 配置前缀为 `jaravel.migration`，对应 `MigrationProperties` 类。
 
@@ -1702,7 +1699,7 @@ jaravel:
 
 ---
 
-## 25. 预编译 —— 开发阶段预编译工具
+## 22. 预编译 —— 开发阶段预编译工具
 
 `migration` 模块提供预编译工具，在开发阶段（有 JDK）将迁移 `.java` 文件预编译为字节码，生成 zip 包或散乱 class 文件。预编译产物部署到生产环境（仅需 JRE）后，通过 `PACKAGED` 或 `DIRECTORY_CLASSES` 模式加载，避免生产环境依赖 JDK。
 
@@ -1848,7 +1845,7 @@ java -cp migration.jar:utils.jar:mysql-connector.jar \
 
 ---
 
-## 26. 线程安全说明
+## 23. 线程安全说明
 
 | 类 | 线程安全性 | 说明 |
 | --- | --- | --- |
