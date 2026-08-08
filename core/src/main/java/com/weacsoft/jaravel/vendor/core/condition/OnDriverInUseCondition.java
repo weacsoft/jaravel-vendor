@@ -1,5 +1,7 @@
 package com.weacsoft.jaravel.vendor.core.condition;
 
+import org.springframework.beans.factory.config.BeanDefinition;
+import org.springframework.beans.factory.support.BeanDefinitionRegistry;
 import org.springframework.context.annotation.Condition;
 import org.springframework.context.annotation.ConditionContext;
 import org.springframework.core.env.ConfigurableEnvironment;
@@ -7,6 +9,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.core.env.EnumerablePropertySource;
 import org.springframework.core.env.PropertySource;
 import org.springframework.core.type.AnnotatedTypeMetadata;
+import org.springframework.beans.factory.annotation.AnnotatedBeanDefinition;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -88,6 +91,13 @@ public abstract class OnDriverInUseCondition implements Condition {
     private boolean matchIfAbsent = false;
 
     /**
+     * 声明式注册注解的全限定名。存在被其标注的方法时命中。
+     *
+     * @see #matchIfDeclaredBy(String...)
+     */
+    private String[] declarativeAnnotations = new String[0];
+
+    /**
      * 设置显式开关键，例如 {@code jaravel.session.redis.auto-register}。
      * <p>
      * 该键优先级最高：显式 {@code true} 强制装配，显式 {@code false} 强制不装配，
@@ -116,10 +126,48 @@ public abstract class OnDriverInUseCondition implements Condition {
         return this;
     }
 
+    /**
+     * 「声明式注册在用即命中」标志，用于<b>驱动名写在方法返回值里、注解属性中读不到</b>的场景。
+     *
+     * <h3>为什么需要</h3>
+     * jaravel 的声明式注册（{@code @RegisterGuard} / {@code @RegisterCacheStore} /
+     * {@code @RegisterSessionStore} / {@code @RegisterDisk} 等）只在注解里写<b>名字</b>，
+     * 真正的驱动名在方法体返回的定义对象里，例如：
+     * <pre>
+     * &#64;RegisterGuard("api")
+     * public GuardDefinition apiGuard() {
+     *     return GuardDefinition.of("jwt", "users");   // ← 驱动名是运行时值
+     * }
+     * </pre>
+     * Spring {@link Condition} 在 Bean 定义阶段求值，<b>无法执行方法体</b>，因此仅凭
+     * 配置属性（{@code jaravel.auth.guards.*.driver}）无法判定 jwt 是否被用上。
+     * 结果就是：用注解声明 jwt 守卫的应用，驱动 Bean 永远不装配，
+     * 所有 jwt 守卫路由在运行期抛「未知 guard driver: jwt」。
+     *
+     * <h3>判定策略</h3>
+     * 一旦发现容器中存在被这些注解标注的方法，说明<b>驱动是以声明式方式配置的</b>，
+     * 静态属性检查不再充分，此时采取<b>宽松策略</b>予以装配。
+     * 装配后是否真正被使用，仍由运行期的驱动匹配（如 {@code driver.support(name)}）决定，
+     * 未被选中的驱动只是一个惰性对象，不产生任何副作用。
+     *
+     * <h3>适用边界（重要）</h3>
+     * 仅可用于<b>不持有外部资源</b>的驱动（如 jwt：只做签名/校验，不连任何中间件）。
+     * 对 redis 等<b>会建立外部连接</b>的驱动<b>禁止</b>使用本策略，
+     * 否则会退化成「装了依赖就连 Redis」，正是本类要避免的反例；
+     * 那类模块应继续走 {@link #enableKey(String)} 显式开关。
+     *
+     * @param annotationClassNames 声明式注册注解的全限定类名
+     * @return this，便于链式调用
+     */
+    protected OnDriverInUseCondition matchIfDeclaredBy(String... annotationClassNames) {
+        this.declarativeAnnotations =
+                annotationClassNames == null ? new String[0] : annotationClassNames;
+        return this;
+    }
+
     @Override
     public boolean matches(ConditionContext context, AnnotatedTypeMetadata metadata) {
-        Environment env = context.getEnvironment();
-        boolean matched = evaluate(env);
+        boolean matched = evaluate(context);
         if (logger.isDebugEnabled()) {
             logger.debug("[vendor] 驱动 [{}] {}装配（判定依据：{}）", driverName,
                     matched ? "" : "不", describe());
@@ -130,10 +178,11 @@ public abstract class OnDriverInUseCondition implements Condition {
     /**
      * 执行判定。
      *
-     * @param env Spring 环境
+     * @param context 条件求值上下文
      * @return 是否应当装配
      */
-    private boolean evaluate(Environment env) {
+    private boolean evaluate(ConditionContext context) {
+        Environment env = context.getEnvironment();
         // 1) 显式开关优先级最高
         if (enableKey != null) {
             String flag = env.getProperty(enableKey);
@@ -158,11 +207,58 @@ public abstract class OnDriverInUseCondition implements Condition {
             }
         }
 
-        // 4) 兜底默认驱动：用户完全未显式配置本模块任何驱动键时命中
+        // 4) 声明式注册在用：驱动名在方法返回值里，属性检查不充分，宽松装配
+        if (declarativeAnnotations.length > 0 && hasDeclarativeRegistration(context)) {
+            return true;
+        }
+
+        // 5) 兜底默认驱动：用户完全未显式配置本模块任何驱动键时命中
         if (matchIfAbsent && !hasAnyExplicitDriverKey(env)) {
             return true;
         }
 
+        return false;
+    }
+
+    /**
+     * 判断容器中是否存在被声明式注册注解标注的方法。
+     * <p>
+     * 基于 Bean 定义的 {@link org.springframework.core.type.AnnotationMetadata}（ASM 读取，
+     * 不触发类加载）扫描，因此不会因为提前加载类而影响启动。
+     * <p>
+     * 时序说明：Spring Boot 的自动配置由 {@code DeferredImportSelector} 导入，
+     * 在<b>所有用户 {@code @Configuration} 类注册完毕之后</b>才求值，
+     * 因此此处能够看到应用侧（如 {@code AuthConfig}）的 Bean 定义。
+     *
+     * @param context 条件求值上下文
+     * @return 存在任一标注方法返回 true
+     */
+    private boolean hasDeclarativeRegistration(ConditionContext context) {
+        BeanDefinitionRegistry registry = context.getRegistry();
+        if (registry == null) {
+            return false;
+        }
+        for (String beanName : registry.getBeanDefinitionNames()) {
+            BeanDefinition bd;
+            try {
+                bd = registry.getBeanDefinition(beanName);
+            } catch (RuntimeException ignored) {
+                continue;
+            }
+            if (!(bd instanceof AnnotatedBeanDefinition)) {
+                continue;
+            }
+            try {
+                var metadata = ((AnnotatedBeanDefinition) bd).getMetadata();
+                for (String annotation : declarativeAnnotations) {
+                    if (!metadata.getAnnotatedMethods(annotation).isEmpty()) {
+                        return true;
+                    }
+                }
+            } catch (RuntimeException | LinkageError ignored) {
+                // 元数据读取失败（如缺失可选依赖）时跳过该 Bean 定义，不影响整体判定
+            }
+        }
         return false;
     }
 
@@ -199,6 +295,9 @@ public abstract class OnDriverInUseCondition implements Condition {
         }
         if (mapKeyPrefix != null) {
             sb.append(mapKeyPrefix).append('*').append(mapKeySuffix == null ? "" : mapKeySuffix);
+        }
+        for (String annotation : declarativeAnnotations) {
+            sb.append(" @").append(annotation.substring(annotation.lastIndexOf('.') + 1));
         }
         return sb.toString().trim();
     }
