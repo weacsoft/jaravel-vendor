@@ -2,6 +2,7 @@ package com.weacsoft.jaravel.vendor.schedule;
 
 import com.weacsoft.jaravel.vendor.artisan.ArtisanApplication;
 import com.weacsoft.jaravel.vendor.core.lock.LockProvider;
+import com.weacsoft.jaravel.vendor.core.lock.LockProviderManager;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,8 +21,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * 每分钟检查所有注册的 {@link ScheduledTask}，若 cron 表达式匹配当前时间则执行。
  * <p>
  * <b>分布式锁</b>：当任务启用 {@link ScheduledTask#withDistributedLock()} 时，
- * 通过 {@link LockProvider} 抽象接口实现分布式锁，确保多机环境下同一任务同一时间只执行一次。
- * 默认无锁实现（单机安全），引入 redis 模块后自动装配 Redis 分布式锁。
+ * 通过 {@link LockProviderManager} 获取锁提供者实现分布式锁。
+ * 未注册任何 provider 时自动兜底为同步锁（单机执行），
+ * 引入 Redis 模块后通过 {@code @RegisterLockProvider} 注册 Redis 分布式锁。
  *
  * <h3>执行策略</h3>
  * <ul>
@@ -35,29 +37,20 @@ public class ScheduleRunner {
 
     private static final Logger logger = LoggerFactory.getLogger(ScheduleRunner.class);
 
-    /** 任务调度器 */
     private final Schedule schedule;
-
-    /** Artisan 应用（可选，用于执行 artisan 命令任务） */
     private final ArtisanApplication artisanApplication;
-
-    /** 分布式锁提供者（可选，用于分布式锁） */
-    private final LockProvider lockProvider;
-
-    /** 任务执行线程池 */
+    private final LockProviderManager lockProviderManager;
     private final ExecutorService executor;
-
-    /** 统计：已执行任务数 */
     private final AtomicInteger executedCount = new AtomicInteger(0);
-
-    /** 统计：执行失败任务数 */
     private final AtomicInteger failedCount = new AtomicInteger(0);
 
     public ScheduleRunner(Schedule schedule, ArtisanApplication artisanApplication,
-                          LockProvider lockProvider) {
+                          LockProviderManager lockProviderManager) {
         this.schedule = schedule;
         this.artisanApplication = artisanApplication;
-        this.lockProvider = lockProvider != null ? lockProvider : new SyncLockProvider();
+        this.lockProviderManager = lockProviderManager != null
+                ? lockProviderManager
+                : new LockProviderManager();
         this.executor = Executors.newFixedThreadPool(4, r -> {
             Thread t = new Thread(r, "jaravel-schedule-" + System.nanoTime());
             t.setDaemon(true);
@@ -66,11 +59,6 @@ public class ScheduleRunner {
         logger.info("[schedule] ScheduleRunner 初始化: {} 个任务", schedule.size());
     }
 
-    /**
-     * 每分钟检查并执行到期任务。
-     * <p>
-     * 延迟 10 秒启动，避免与整点任务的高峰冲突。
-     */
     @Scheduled(fixedDelay = 60000, initialDelay = 10000)
     public void run() {
         LocalDateTime now = LocalDateTime.now().withSecond(0).withNano(0);
@@ -83,16 +71,13 @@ public class ScheduleRunner {
         }
     }
 
-    /** 判断任务是否在当前时间到期 */
     private boolean isDue(ScheduledTask task, LocalDateTime now) {
         String cron = task.getCronExpression();
         if (cron == null || cron.isEmpty()) {
             return false;
         }
         try {
-            // Spring CronExpression 使用 6 字段：秒 分 时 日 月 周
             CronExpression cronExpr = CronExpression.parse(cron);
-            // 检查上一分钟是否匹配
             LocalDateTime lastMinute = now.minusMinutes(1);
             LocalDateTime next = cronExpr.next(lastMinute);
             return next != null && next.equals(now);
@@ -102,14 +87,13 @@ public class ScheduleRunner {
         }
     }
 
-    /** 执行单个任务 */
     private void executeTask(ScheduledTask task) {
         String taskName = task.getName();
         try {
-            // 分布式锁
             if (task.isDistributedLock()) {
+                LockProvider provider = lockProviderManager.provider();
                 String lockKey = "schedule:lock:" + taskName;
-                if (!lockProvider.tryLock(lockKey, task.getLockTtlSeconds())) {
+                if (!provider.tryLock(lockKey, task.getLockTtlSeconds())) {
                     logger.info("[schedule] 任务 '{}' 未获取分布式锁，跳过执行", taskName);
                     return;
                 }
@@ -119,13 +103,11 @@ public class ScheduleRunner {
             long start = System.currentTimeMillis();
 
             if (task.isArtisanCommand() && artisanApplication != null) {
-                // artisan 命令任务
                 int exitCode = artisanApplication.call(task.getArtisanCommand(), task.getArtisanArgs());
                 if (exitCode != 0) {
                     throw new RuntimeException("artisan 命令返回非零退出码: " + exitCode);
                 }
             } else {
-                // 回调任务
                 task.getCallback().run();
             }
 
@@ -137,20 +119,18 @@ public class ScheduleRunner {
             failedCount.incrementAndGet();
             logger.error("[schedule] 任务 '{}' 执行失败: {}", taskName, e.getMessage(), e);
         } finally {
-            // 释放分布式锁
             if (task.isDistributedLock()) {
+                LockProvider provider = lockProviderManager.provider();
                 String lockKey = "schedule:lock:" + taskName;
-                lockProvider.unlock(lockKey);
+                provider.unlock(lockKey);
             }
         }
     }
 
-    /** @return 已执行任务数 */
     public int getExecutedCount() {
         return executedCount.get();
     }
 
-    /** @return 执行失败任务数 */
     public int getFailedCount() {
         return failedCount.get();
     }

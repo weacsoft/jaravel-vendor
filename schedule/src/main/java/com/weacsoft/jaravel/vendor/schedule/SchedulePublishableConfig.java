@@ -62,7 +62,7 @@ public class SchedulePublishableConfig implements PublishableConfig {
                  *
                  * <h3>说明</h3>
                  * <ul>
-                 *   <li>本类只提供任务注册入口，<b>不会</b>产生额外的 Spring Bean 冲突。</li>
+                 *   <li>本类只提供任务注册入口，不产生额外的 Spring Bean 冲突。</li>
                  *   <li>删除本文件不影响启动。</li>
                  * </ul>
                  */

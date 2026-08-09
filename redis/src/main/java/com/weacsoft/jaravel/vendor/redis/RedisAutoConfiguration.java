@@ -1,25 +1,21 @@
 package com.weacsoft.jaravel.vendor.redis;
 
-import com.weacsoft.jaravel.vendor.redis.lock.RedisLockProvider;
 import com.weacsoft.jaravel.vendor.core.lock.LockProvider;
+import com.weacsoft.jaravel.vendor.core.lock.RegisterLockProvider;
 import com.weacsoft.jaravel.vendor.redis.lock.RedisLockProviderImpl;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 
 /**
- * Redis 自动装配，对齐 Laravel Redis 服务提供者。
+ * Redis 自动配置：连接管理 + 分布式锁。
  * <p>
- * 当 classpath 存在 {@link RedisManager} 且配置了 {@code jaravel.redis.connections.*} 时，
- * 创建 {@link RedisManager} bean。所有连接在首次访问时惰性创建，进程生命周期内复用。
+ * 当 Redis 依赖存在且 {@code jaravel.redis.connections} 配置存在时自动启用。
  * <p>
- * 该模块是其他 Redis 相关模块（redis-cache、session-redis）的基础依赖，
- * 提供统一的 Redis 连接管理能力，避免每个模块各自创建连接池。
- * <p>
- * 同时提供 {@link RedisLockProvider} 实现，供 schedule 模块的分布式锁使用。
+ * Redis 分布式锁通过 {@code @RegisterLockProvider} 注解注册到
+ * {@link com.weacsoft.jaravel.vendor.core.lock.LockProviderManager}，不进入 Spring 容器。
  */
 @AutoConfiguration
 @ConditionalOnClass(RedisManager.class)
@@ -29,24 +25,17 @@ public class RedisAutoConfiguration {
 
     /**
      * Redis 管理器 bean：管理所有命名连接。
-     * <p>
-     * 以 {@code @ConditionalOnMissingBean} 暴露，便于业务方覆盖。
      */
     @Bean
-    @ConditionalOnMissingBean
     public RedisManager redisManager(RedisProperties properties) {
         return new RedisManager(properties);
     }
 
     /**
-     * Redis 分布式锁提供者 bean。
-     * <p>
-     * 实现 core 模块的 {@link LockProvider} 接口，使用默认 Redis 连接。
-     * 供 {@code schedule} 模块的定时任务分布式锁使用（通过 {@code ObjectProvider} 可选注入）。
-     * 若 schedule 模块不存在，此 bean 不会造成副作用，仅占用极少量内存。
+     * 通过 {@code @RegisterLockProvider} 注解注册分布式锁提供者，
+     * 不进入 Spring 容器，避免 bean name 冲突。
      */
-    @Bean
-    @ConditionalOnMissingBean
+    @RegisterLockProvider(value = "redis", defaultProvider = true)
     public LockProvider redisLockProvider(RedisManager redisManager) {
         return new RedisLockProviderImpl(redisManager, null);
     }

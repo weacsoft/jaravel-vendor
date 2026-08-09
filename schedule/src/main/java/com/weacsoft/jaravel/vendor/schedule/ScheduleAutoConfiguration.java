@@ -1,7 +1,8 @@
 package com.weacsoft.jaravel.vendor.schedule;
 
 import com.weacsoft.jaravel.vendor.artisan.ArtisanApplication;
-import com.weacsoft.jaravel.vendor.core.lock.LockProvider;
+import com.weacsoft.jaravel.vendor.core.lock.LockProviderManager;
+import com.weacsoft.jaravel.vendor.core.lock.LockProviderRegistrar;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -14,15 +15,11 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 /**
  * 定时任务自动装配。
  * <p>
- * 创建 {@link Schedule} 和 {@link ScheduleRunner} bean，
+ * 创建 {@link Schedule}、{@link LockProviderManager} 和 {@link ScheduleRunner} bean，
  * 启用 Spring {@link EnableScheduling} 驱动 {@link ScheduleRunner#run()} 定期执行。
  * <p>
- * 配置项：
- * <pre>
- * jaravel:
- *   schedule:
- *     enabled: true    # 是否启用定时任务调度
- * </pre>
+ * 锁提供者通过 {@code @RegisterLockProvider} 注解注册到 {@link LockProviderManager}，
+ * 不进入 Spring 容器。未注册任何 provider 时自动兜底为同步锁（单机执行）。
  * <p>
  * 业务方通过 {@link RegisterSchedule} 注解注册任务（推荐）：
  * <pre>
@@ -44,50 +41,40 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableScheduling
 public class ScheduleAutoConfiguration {
 
-    /**
-     * Schedule bean：任务注册表。
-     */
     @Bean
     @ConditionalOnMissingBean
     public Schedule schedule() {
         return new Schedule();
     }
 
-    /**
-     * ScheduleRegistrar bean：扫描 {@link RegisterSchedule} 注解方法并注册任务。
-     */
     @Bean
     @ConditionalOnMissingBean
     public ScheduleRegistrar scheduleRegistrar(ApplicationContext context, Schedule schedule) {
         return new ScheduleRegistrar(context, schedule);
     }
 
-    /**
-     * 默认同步锁提供者：单机模式下所有任务直接执行。
-     * <p>
-     * 引入 Redis 模块后，{@code RedisLockProviderImpl} 会自动覆盖此兜底实现。
-     */
     @Bean
-    @ConditionalOnMissingBean(LockProvider.class)
-    public LockProvider syncLockProvider() {
-        return new SyncLockProvider();
+    @ConditionalOnMissingBean
+    public LockProviderManager lockProviderManager() {
+        return new LockProviderManager();
     }
 
-    /**
-     * ScheduleRunner bean：任务执行器。
-     * <p>
-     * 通过 {@link LockProvider} 抽象接口实现分布式锁，未引入 Redis 时使用
-     * 默认 {@link SyncLockProvider}（单机执行）。
-     */
+    @Bean
+    @ConditionalOnMissingBean
+    public LockProviderRegistrar lockProviderRegistrar(ApplicationContext context,
+                                                        LockProviderManager lockProviderManager) {
+        return new LockProviderRegistrar(context, lockProviderManager);
+    }
+
     @Bean
     @ConditionalOnMissingBean
     public ScheduleRunner scheduleRunner(Schedule schedule,
                                           org.springframework.beans.factory.ObjectProvider<ArtisanApplication> artisanProvider,
-                                          LockProvider lockProvider) {
+                                          LockProviderManager lockProviderManager) {
         return new ScheduleRunner(
                 schedule,
                 artisanProvider.getIfAvailable(),
-                lockProvider
+                lockProviderManager
         );
     }
 }

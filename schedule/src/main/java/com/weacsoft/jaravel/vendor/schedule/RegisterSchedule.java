@@ -22,7 +22,7 @@ import java.lang.annotation.Target;
  * public class MyScheduleConfig {
  *     @RegisterSchedule
  *     public ScheduledTask cacheScore(Schedule schedule) {
- *         return schedule.call("cacheScore", () -> scoreService.cacheScore())
+ *         return schedule.createTask("cacheScore", () -> scoreService.cacheScore())
  *                        .dailyAt("18:30")
  *                        .withDistributedLock();
  *     }
