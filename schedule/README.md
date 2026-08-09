@@ -10,7 +10,7 @@ Cron 定时任务调度器，对齐 Laravel `Illuminate\Console\Scheduling`。�
 - `spring-context` — `CronExpression` 解析
 - `slf4j-api` — 日志
 
-> 分布式锁通过 `RedisLockProvider` 接口抽象，由 `redis-config` 模块提供实现。schedule 模块本身不直接依赖 redis-config，当 redis-config 不存在时分布式锁任务降级为单机执行。
+> 分布式锁通过 `LockProvider` 接口抽象，由 `redis` 模块提供可选实现。schedule 模块本身不直接依赖 redis，当 redis 不存在时分布式锁任务降级为单机执行。
 
 ## 核心接口
 
@@ -62,7 +62,7 @@ public class ScheduledTask {
 ```java
 public class ScheduleRunner {
     public ScheduleRunner(Schedule schedule, ArtisanApplication artisanApplication,
-                          RedisLockProvider redisLockProvider);
+                          LockProvider lockProvider);
 
     @Scheduled(fixedDelay = 60000, initialDelay = 10000)
     public void run();                  // 每分钟检查并执行到期任务
@@ -79,12 +79,12 @@ public class ScheduleRunner {
 - Artisan 命令任务通过 `ArtisanApplication` 调度
 - 分布式锁任务通过 Redis 抢占，未获取锁的实例跳过执行
 
-### RedisLockProvider
+### LockProvider
 
-Redis 分布式锁提供者接口。抽象分布式锁实现，使 schedule 模块不直接依赖 redis-config 模块。
+分布式锁提供者接口（定义于 core 模块）。抽象分布式锁实现，使 schedule 模块不直接依赖 redis 模块。redis 模块提供可选实现。
 
 ```java
-public interface RedisLockProvider {
+public interface LockProvider {
     boolean tryLock(String key, long ttlSeconds);   // 尝试获取锁
     void unlock(String key);                         // 释放锁
 }
@@ -133,4 +133,4 @@ public Schedule schedule(Schedule schedule) {
 
 创建的 bean：
 - `Schedule` — 任务注册表（`@ConditionalOnMissingBean`）
-- `ScheduleRunner` — 任务执行器（`@ConditionalOnMissingBean`），通过 `ObjectProvider` 可选注入 `ArtisanApplication` 和 `RedisLockProvider`，当二者不存在时对应功能降级。
+- `ScheduleRunner` — 任务执行器（`@ConditionalOnMissingBean`），通过 `ObjectProvider` 可选注入 `ArtisanApplication` 和 `LockProvider`，当二者不存在时对应功能降级。

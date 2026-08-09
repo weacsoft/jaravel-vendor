@@ -1,7 +1,7 @@
 package com.weacsoft.jaravel.vendor.schedule;
 
 import com.weacsoft.jaravel.vendor.artisan.ArtisanApplication;
-import com.weacsoft.jaravel.vendor.redis.lock.RedisLockProvider;
+import com.weacsoft.jaravel.vendor.core.lock.LockProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -53,13 +53,13 @@ public class ScheduleAutoConfiguration {
     /**
      * ScheduleRunner bean：任务执行器。
      * <p>
-     * 当 {@link RedisLockProvider} 存在时启用分布式锁，否则分布式锁任务降级为单机执行。
+     * 当 {@link LockProvider} 存在时启用分布式锁，否则分布式锁任务降级为单机执行。
      */
     @Bean
     @ConditionalOnMissingBean
     public ScheduleRunner scheduleRunner(Schedule schedule,
                                           org.springframework.beans.factory.ObjectProvider<ArtisanApplication> artisanProvider,
-                                          org.springframework.beans.factory.ObjectProvider<RedisLockProvider> lockProvider) {
+                                          org.springframework.beans.factory.ObjectProvider<LockProvider> lockProvider) {
         return new ScheduleRunner(
                 schedule,
                 artisanProvider.getIfAvailable(),

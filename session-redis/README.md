@@ -1,6 +1,6 @@
 # session-redis
 
-Redis Session 存储模块，提供 `RedisSessionStore`（实现 `SessionStore` 接口），对齐 Laravel 的 `RedisSessionHandler`。基于 `redis-config` 模块将 Session 数据存储在共享 Redis 中，实现多机 Session 同步——用户在任一节点登录后，其他节点可通过同一 Session ID 读取登录态。
+Redis Session 存储模块，提供 `RedisSessionStore`（实现 `SessionStore` 接口），对齐 Laravel 的 `RedisSessionHandler`。基于 `redis` 模块将 Session 数据存储在共享 Redis 中，实现多机 Session 同步——用户在任一节点登录后，其他节点可通过同一 Session ID 读取登录态。
 
 本模块**不再是 Guard**，而是 `SessionStore` 实现。auth 模块的 `SessionGuard`（由 `SessionGuardDriver` 创建）通过 `SessionStore` 接口抽象存储后端。**Session 存储是全局配置，不与 Guard 绑定**：`RedisSessionStore` 通过 `@RegisterSessionStore(override = true)` 注册为全局唯一的 `SessionStore`（由 http 模块的 `SessionStoreRegistrar` 统一扫描保证唯一性），`SessionGuardDriver` 注入 http 提供的 `SessionStoreHolder` 用于创建所有 `session` 驱动的守卫。
 
@@ -10,7 +10,7 @@ Redis Session 存储模块，提供 `RedisSessionStore`（实现 `SessionStore` 
 
 - `core` — 基础设施
 - `http` — 提供 `SessionStore` 接口、`Request`（读取 Cookie、添加 Cookie）、`@RegisterSessionStore` 注册机制与默认 `CookieSessionStore`
-- `redis-config` — 提供 `RedisManager` 命名连接管理
+- `redis` — 提供 `RedisManager` 命名连接管理
 - `spring-boot-autoconfigure` — 自动装配
 - `jakarta.servlet-api` — Cookie（provided）
 - `jackson-databind` — Session 属性 JSON 序列化
@@ -120,7 +120,7 @@ jaravel:
         provider: users            # Session 存储由全局 SessionStore Bean 决定，无需在此指定
 ```
 
-配合 redis-config 模块配置连接：
+配合 redis 模块配置连接：
 
 ```yaml
 jaravel:

@@ -31,7 +31,7 @@
 > 设计对齐 Laravel：**starter 只聚合基础必选组件，不假设用户一定有 Redis 或一定使用微信/队列**。Redis、微信、Wire、数据库队列、JWT 等均为**可选扩展模块**，由用户按需单独引入。
 >
 > - **`storage`（文件存储）**：Laravel 的 `Storage` 门面（local/public/framework 磁盘）属于框架基础能力，已默认聚合进 starter，无需单独引入。
-> - **Redis 相关**（`redis-config` / `redis-cache` / `session-redis`）：Laravel 中 Redis 同样属于额外驱动，本框架不内建，需用户显式引入并选用驱动。
+> - **Redis 相关**（`redis` / `redis-cache` / `session-redis`）：Laravel 中 Redis 同样属于额外驱动，本框架不内建，需用户显式引入并选用驱动。
 > - **`wechat-sdk`**：对齐 `overtrue/laravel-wechat`，属于业务扩展，非框架基础。
 > - **`wire`**：对齐 `laravel-livewire`，属于 UI 部分更新扩展，非框架基础。
 > - **`queue-database`**：Laravel 因无原生多线程而强制依赖数据库或 sync 队列；Java 拥有原生多线程，队列驱动为可选扩展，用户按需启用。
@@ -69,7 +69,7 @@
 | 事件 | `event` | 事件分发器、监听器注册、队列支持 | ✅ 是 |
 | 命令行工具 | `artisan` | Artisan CLI 命令框架 | ✅ 是 |
 | 定时任务 | `schedule` | 定时任务调度器 | ✅ 是 |
-| Redis 配置 | `redis-config` | Redis 连接管理（多机 session/缓存同步基础） | ❌ 可选，按需引入 |
+| Redis 配置 | `redis` | Redis 连接管理（多机 session/缓存同步基础） | ❌ 可选，按需引入 |
 | Redis 缓存 | `redis-cache` | Redis 缓存驱动（多机缓存同步） | ❌ 可选，按需引入 |
 | Redis Session | `session-redis` | Redis Session 守卫（多机 Session 同步） | ❌ 可选，按需引入 |
 | 部分更新 | `wire` | Laravel Livewire 风格的部分更新模块 | ❌ 可选，按需引入 |
@@ -276,7 +276,7 @@ router.post("/users", request -> {
 
 | 模块 | 自动装配内容 |
 | --- | --- |
-| redis-config | Redis 连接配置、连接池管理（多机同步基础） |
+| redis | Redis 连接配置、连接池管理（多机同步基础） |
 | redis-cache | Redis 缓存驱动（多机缓存同步） |
 | session-redis | Redis Session 守卫（多机 Session 同步） |
 | wire | Laravel Livewire 风格的部分更新组件 |

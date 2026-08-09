@@ -1,4 +1,4 @@
-# redis-config
+﻿# redis
 
 Redis 连接管理模块，对齐 Laravel `RedisManager`（`Illuminate\Redis\RedisManager`）。基于 Lettuce 客户端管理多个命名连接（default / cache / session / model-cache 等），支持 standalone、sentinel、cluster 三种部署模式，是 redis-cache、session-redis 等模块的基础依赖。
 

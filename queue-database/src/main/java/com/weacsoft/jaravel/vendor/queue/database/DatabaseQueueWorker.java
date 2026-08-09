@@ -1,5 +1,9 @@
 package com.weacsoft.jaravel.vendor.queue.database;
 
+import com.weacsoft.jaravel.vendor.core.queue.QueueDriver;
+import com.weacsoft.jaravel.vendor.core.queue.QueuedJob;
+
+
 import com.weacsoft.jaravel.vendor.json.Json;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;

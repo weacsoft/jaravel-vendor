@@ -1,7 +1,7 @@
 package com.weacsoft.jaravel.vendor.schedule;
 
 import com.weacsoft.jaravel.vendor.artisan.ArtisanApplication;
-import com.weacsoft.jaravel.vendor.redis.lock.RedisLockProvider;
+import com.weacsoft.jaravel.vendor.core.lock.LockProvider;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,14 +20,15 @@ import java.util.concurrent.atomic.AtomicInteger;
  * 每分钟检查所有注册的 {@link ScheduledTask}，若 cron 表达式匹配当前时间则执行。
  * <p>
  * <b>分布式锁</b>：当任务启用 {@link ScheduledTask#withDistributedLock()} 时，
- * 通过 Redis SET NX EX 实现分布式锁，确保多机环境下同一任务同一时间只执行一次。
+ * 通过 {@link LockProvider} 抽象接口实现分布式锁，确保多机环境下同一任务同一时间只执行一次。
+ * 默认无锁实现（单机安全），引入 redis 模块后自动装配 Redis 分布式锁。
  *
  * <h3>执行策略</h3>
  * <ul>
  *   <li>每分钟（整 10 秒后）扫描所有任务，避免与整点任务冲突</li>
  *   <li>到期任务提交到独立线程池异步执行，不阻塞调度线程</li>
  *   <li>artisan 命令任务通过 {@link ArtisanApplication} 调度</li>
- *   <li>分布式锁任务通过 Redis 抢占，未获取锁的实例跳过执行</li>
+ *   <li>分布式锁任务通过 LockProvider 抢占，未获取锁的实例跳过执行</li>
  * </ul>
  */
 public class ScheduleRunner {
@@ -40,8 +41,8 @@ public class ScheduleRunner {
     /** Artisan 应用（可选，用于执行 artisan 命令任务） */
     private final ArtisanApplication artisanApplication;
 
-    /** Redis 命令执行器（可选，用于分布式锁） */
-    private final RedisLockProvider redisLockProvider;
+    /** 分布式锁提供者（可选，用于分布式锁） */
+    private final LockProvider lockProvider;
 
     /** 任务执行线程池 */
     private final ExecutorService executor;
@@ -53,10 +54,10 @@ public class ScheduleRunner {
     private final AtomicInteger failedCount = new AtomicInteger(0);
 
     public ScheduleRunner(Schedule schedule, ArtisanApplication artisanApplication,
-                          RedisLockProvider redisLockProvider) {
+                          LockProvider lockProvider) {
         this.schedule = schedule;
         this.artisanApplication = artisanApplication;
-        this.redisLockProvider = redisLockProvider;
+        this.lockProvider = lockProvider;
         this.executor = Executors.newFixedThreadPool(4, r -> {
             Thread t = new Thread(r, "jaravel-schedule-" + System.nanoTime());
             t.setDaemon(true);
@@ -106,9 +107,9 @@ public class ScheduleRunner {
         String taskName = task.getName();
         try {
             // 分布式锁
-            if (task.isDistributedLock() && redisLockProvider != null) {
+            if (task.isDistributedLock() && lockProvider != null) {
                 String lockKey = "schedule:lock:" + taskName;
-                if (!redisLockProvider.tryLock(lockKey, task.getLockTtlSeconds())) {
+                if (!lockProvider.tryLock(lockKey, task.getLockTtlSeconds())) {
                     logger.info("[schedule] 任务 '{}' 未获取分布式锁，跳过执行", taskName);
                     return;
                 }
@@ -137,9 +138,9 @@ public class ScheduleRunner {
             logger.error("[schedule] 任务 '{}' 执行失败: {}", taskName, e.getMessage(), e);
         } finally {
             // 释放分布式锁
-            if (task.isDistributedLock() && redisLockProvider != null) {
+            if (task.isDistributedLock() && lockProvider != null) {
                 String lockKey = "schedule:lock:" + taskName;
-                redisLockProvider.unlock(lockKey);
+                lockProvider.unlock(lockKey);
             }
         }
     }

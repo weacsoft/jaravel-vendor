@@ -17,8 +17,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 多数据库迁移测试：验证不同迁移按 connection() 落到不同数据源，
- * 且默认 "primary" 别名回退到主数据源。
+ * 多数据库迁移测试：验证不同迁移按 connection() 落到不同数据源。
+ * <p>
+ * 默认连接名已从 "primary" 改为 "sqlite"，本测试中三个迁移均显式指定 connection()，
+ * 不依赖默认连接名。
  */
 public class MigratorMultiDbTest {
 

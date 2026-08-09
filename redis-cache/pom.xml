@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+﻿<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
@@ -12,7 +12,7 @@
 
     <artifactId>redis-cache</artifactId>
     <name>redis-cache</name>
-    <description>Redis 缓存驱动：基于 redis-config 实现 CacheDriver 接口，支持多机缓存同步</description>
+    <description>Redis 缓存驱动：基于 redis 实现 CacheDriver 接口，支持多机缓存同步</description>
 
     <dependencies>
         <dependency>
@@ -25,7 +25,7 @@
         </dependency>
         <dependency>
             <groupId>io.github.lijialong1313</groupId>
-            <artifactId>redis-config</artifactId>
+            <artifactId>redis</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

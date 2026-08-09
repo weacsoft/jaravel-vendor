@@ -49,7 +49,7 @@ public class MigrationExecutor {
     /**
      * 构造迁移执行器（多数据库）。
      *
-     * @param dataSources 连接别名 → DataSource 映射（至少应包含 {@code primary}）
+     * @param dataSources 连接别名 → DataSource 映射（至少应包含 {@code sqlite}）
      * @param properties  迁移配置
      */
     public MigrationExecutor(Map<String, DataSource> dataSources, MigrationProperties properties) {
@@ -60,14 +60,14 @@ public class MigrationExecutor {
     /**
      * 构造迁移执行器（单数据库，兼容旧用法）。
      * <p>
-     * 等价于以 {@code primary} 为别名注册唯一数据源。
+     * 等价于以 {@code sqlite} 为别名注册唯一数据源。
      *
      * @param dataSource 数据源（用于创建 Schema 和 MigrationRepository）
      * @param properties 迁移配置
      */
     public MigrationExecutor(DataSource dataSource, MigrationProperties properties) {
         this.dataSources = new LinkedHashMap<>();
-        this.dataSources.put("primary", dataSource);
+        this.dataSources.put("sqlite", dataSource);
         this.properties = properties;
     }
 

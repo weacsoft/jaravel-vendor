@@ -1,5 +1,9 @@
 package com.weacsoft.jaravel.vendor.queue.database;
 
+import com.weacsoft.jaravel.vendor.core.queue.QueueDriver;
+import com.weacsoft.jaravel.vendor.core.queue.QueuedJob;
+
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;

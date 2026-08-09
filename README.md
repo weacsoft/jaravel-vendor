@@ -42,7 +42,7 @@ Java 版 Laravel 框架核心库，在 Spring Boot 3.2.5 基础上近乎 100% �
 | database | `database` | BaseModel(Eloquent合并模式)/@DataSource多数据源 | [README](database/README.md) |
 | migration | `migration` | Blueprint/Schema/Migrator/方言分包（运行时编译，3种源模式，MySQL/SQLite/H2/SQL Server/PostgreSQL/Oracle，跨库表迁移） | [README](migration/README.md) |
 | event | `event` | Dispatcher/Listener/QueueManager（多队列+重试） | [README](event/README.md) |
-| redis-config | `redis-config` | RedisManager/RedisProperties（多命名连接，standalone/sentinel/cluster，分布式锁） | [README](redis-config/README.md) |
+| redis | `redis` | RedisManager/RedisProperties（多命名连接，standalone/sentinel/cluster，分布式锁） | [README](redis/README.md) |
 | redis-cache | `redis-cache` | RedisCacheDriver（CacheDriver实现，多机缓存同步） | [README](redis-cache/README.md) |
 | session-redis | `session-redis` | RedisSessionStore（多机Session同步，基于 http 的 SessionStore） | [README](session-redis/README.md) |
 | artisan | `artisan` | ArtisanApplication/ArtisanCommand/ArtisanRunner（CLI命令框架，签名解析） | [README](artisan/README.md) |
@@ -406,7 +406,7 @@ jaravel:
 - captcha 测试：修复 NumberCaptchaTest 验证码一次性使用语义（testVerifyReusable -> testVerifySingleUse）
 - springboot：解耦对 auth 模块的 optional 依赖，使用 ObjectProvider 延迟获取
 - wechat-sdk：移除对 cache 具体实现类的直接依赖，改为通过 CacheManager 接口或 utils 内存 fallback
-- redis-config：RedisLockProvider 接口从 schedule 模块移至 redis-config 模块，修正依赖方向
+- redis：RedisLockProvider 接口从 schedule 模块移至 redis 模块，修正依赖方向
 - plugin-jar-core/plugin-java-core：提取公共 invokeAndSetResult 方法到 PluginExecutionHelper
 
 遵循语义化版本规范（SemVer）：

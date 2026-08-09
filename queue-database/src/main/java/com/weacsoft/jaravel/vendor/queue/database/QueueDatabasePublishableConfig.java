@@ -1,5 +1,8 @@
 package com.weacsoft.jaravel.vendor.queue.database;
 
+import com.weacsoft.jaravel.vendor.core.queue.QueueDriver;
+
+
 import com.weacsoft.jaravel.vendor.core.publish.PublishableConfig;
 
 /**
@@ -29,10 +32,12 @@ public class QueueDatabasePublishableConfig implements PublishableConfig {
     @Override
     public String source(String basePackage) {
         return "package " + basePackage + ".config;\n"
+                + "\n"
+                + "import com.weacsoft.jaravel.vendor.core.queue.QueueDriver;\n"
                 + """
 
                 import com.weacsoft.jaravel.vendor.queue.database.QueueDatabaseProperties;
-                import com.weacsoft.jaravel.vendor.queue.database.QueueProperties;
+                import com.weacsoft.jaravel.vendor.core.queue.QueueProperties;
                 import org.springframework.beans.factory.ObjectProvider;
                 import org.springframework.context.annotation.Bean;
                 import org.springframework.context.annotation.Configuration;

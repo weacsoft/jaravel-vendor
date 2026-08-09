@@ -169,7 +169,7 @@ plugin-* 等）默认启用，通过 `jaravel.<模块>.enabled: false` 关闭。
 | **auth** | 引入 jwt → `jwt` 守卫驱动可用（严格按需） | 仅 `session` 守卫驱动（写了 guards 但未写 driver 时兜底为 session） |
 | **artisan** | 引入 artisan → 各模块注册各自命令 | **不注册任何命令**，不影响 HTTP 服务 |
 | **migration** | 引入 migration → `migrate` 系列命令可用 | 无连接时仅告警，**不阻断启动** |
-| **schedule** | 引入 redis-config → Redis 分布式锁防多机重复执行 | 单机执行，无锁 |
+| **schedule** | 引入 redis → Redis 分布式锁防多机重复执行 | 单机执行，无锁 |
 | **model-cache** | 引入 cache → 模型查询缓存生效 | 不缓存，直接查库 |
 
 ### 2.6 artisan 的可选性

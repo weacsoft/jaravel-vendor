@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+﻿<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
@@ -58,7 +58,7 @@
         <module>model-cache</module>
         <module>event</module>
         <!-- Redis 连接管理（多机 session/缓存同步基础） -->
-        <module>redis-config</module>
+        <module>redis</module>
         <module>redis-cache</module>
         <module>session-redis</module>
         <!-- Artisan CLI 命令框架 -->
@@ -178,7 +178,7 @@
             </dependency>
             <dependency>
                 <groupId>io.github.lijialong1313</groupId>
-                <artifactId>redis-config</artifactId>
+                <artifactId>redis</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

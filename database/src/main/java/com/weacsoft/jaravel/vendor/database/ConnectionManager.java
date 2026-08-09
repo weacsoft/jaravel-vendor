@@ -36,7 +36,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class ConnectionManager {
 
     /** 默认连接别名，对齐 Laravel 的 {@code database.default}。 */
-    public static final String DEFAULT_CONNECTION = "primary";
+    public static final String DEFAULT_CONNECTION = "sqlite";
 
     /** 别名 → 连接。使用 LinkedHashMap 保持注册顺序，便于 {@code db:list} 之类命令输出。 */
     private static final Map<String, GaarasonDataSource> CONNECTIONS =
@@ -377,7 +377,7 @@ public final class ConnectionManager {
         // 3.3 同名的 javax.sql.DataSource bean → 用全局 Container 包装
         javax.sql.DataSource raw = SpringContext.beanOrNull(alias, javax.sql.DataSource.class);
         if (raw == null && DEFAULT_CONNECTION.equals(alias)) {
-            // "primary" 特殊照顾：回退到容器中唯一/主 DataSource
+            // "sqlite" 特殊照顾：回退到容器中唯一/主 DataSource
             raw = SpringContext.beanOrNull(javax.sql.DataSource.class);
         }
         if (raw instanceof JaravelDataSource) {

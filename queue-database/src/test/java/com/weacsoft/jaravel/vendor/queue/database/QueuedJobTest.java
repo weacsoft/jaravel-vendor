@@ -1,5 +1,8 @@
 package com.weacsoft.jaravel.vendor.queue.database;
 
+import com.weacsoft.jaravel.vendor.core.queue.QueuedJob;
+
+
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

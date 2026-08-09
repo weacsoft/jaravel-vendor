@@ -12,7 +12,7 @@ import java.lang.annotation.Target;
  * &#64;Table(name = "products")
  * public class Product extends BaseModel&lt;Product, Long&gt; { ... }
  * </pre>
- * 未标注此注解的 Model 使用默认连接（{@code primary}）。
+ * 未标注此注解的 Model 使用默认连接（{@code sqlite}）。
  *
  * <h3>别名解析顺序</h3>
  * 这里填写的是<b>连接别名</b>而非 Spring bean name。

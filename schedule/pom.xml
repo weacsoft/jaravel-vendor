@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+﻿<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
@@ -12,7 +12,7 @@
 
     <artifactId>schedule</artifactId>
     <name>schedule</name>
-    <description>定时任务调度器：cron 表达式 / Laravel 风格调度方法 / Redis 分布式锁防多机重复执行</description>
+    <description>定时任务调度器：cron 表达式 / Laravel 风格调度方法 / 分布式锁防多机重复执行（通过 LockProvider 接口，可选 Redis 实现）</description>
 
     <dependencies>
         <dependency>
@@ -22,10 +22,6 @@
         <dependency>
             <groupId>io.github.lijialong1313</groupId>
             <artifactId>artisan</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.github.lijialong1313</groupId>
-            <artifactId>redis-config</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

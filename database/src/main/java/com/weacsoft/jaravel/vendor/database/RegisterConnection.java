@@ -28,8 +28,8 @@ import java.lang.annotation.Target;
  * public class DatabaseConfig {
  *
  *     // 主连接：defaultConnection = true，Model 未指定别名时使用
- *     &#64;RegisterConnection(value = "primary", defaultConnection = true)
- *     public GaarasonDataSource primaryConnection(ContainerBootstrap bootstrap, Environment env) {
+ *     &#64;RegisterConnection(value = "sqlite", defaultConnection = true)
+ *     public GaarasonDataSource sqliteConnection(ContainerBootstrap bootstrap, Environment env) {
  *         DruidDataSource druid = new DruidDataSource();
  *         druid.setUrl(env.getProperty("spring.datasource.url"));
  *         return GaarasonDataSourceBuilder.build(druid, bootstrap);

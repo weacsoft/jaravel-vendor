@@ -11,7 +11,7 @@
 - [1. 概述](#1-概述)
 - [2. Session 共享（session-redis 模块）](#2-session-共享session-redis-模块)
 - [3. 缓存共享（redis-cache 模块）](#3-缓存共享redis-cache-模块)
-- [4. Redis 基础设施（redis-config 模块）](#4-redis-基础设施redis-config-模块)
+- [4. Redis 基础设施（redis 模块）](#4-redis-基础设施redis-模块)
 - [5. 完整集群配置示例](#5-完整集群配置示例)
 - [6. 部署检查清单](#6-部署检查清单)
 - [7. 集群中的模型缓存](#7-集群中的模型缓存)
@@ -37,10 +37,10 @@
 | --- | --- | --- |
 | 用户登录态（Session） | Redis | `session-redis` |
 | 业务缓存 | Redis 或 数据库 | `redis-cache` / `cache` |
-| Redis 连接配置 | 统一配置（指向同一 Redis） | `redis-config` |
-| 分布式锁 | Redis | `redis-config`（`RedisLockProvider`） |
+| Redis 连接配置 | 统一配置（指向同一 Redis） | `redis` |
+| 分布式锁 | Redis | `redis`（`LockProvider`） |
 | 模型查询缓存 | Redis 或 数据库 | `model-cache` + `cache` |
-| 定时任务互斥 | Redis 分布式锁 | `schedule` + `redis-config` |
+| 定时任务互斥 | Redis 分布式锁 | `schedule` + `redis` |
 
 ### 1.3 集群部署的核心原则
 
@@ -157,7 +157,7 @@ Auth.guard("web").logout();             // 登出，销毁 Redis Session
 | 登录态可见性 | 仅当前节点可见 | 任一节点登录，全节点可见 |
 | 适用场景 | 单机部署、本地开发 | 集群部署、多机负载均衡 |
 | 过期机制 | 容器管理 | Redis TTL 滑动过期 |
-| 依赖 | 无额外依赖 | 依赖 `redis-config` 模块 |
+| 依赖 | 无额外依赖 | 依赖 `redis` 模块 |
 
 > **集群部署必须使用 `redis-session` 驱动**。若仍使用基础 SessionGuard，用户在节点切换时会丢失登录态。
 
@@ -167,7 +167,7 @@ Auth.guard("web").logout();             // 登出，销毁 Redis Session
 
 ### 3.1 工作原理
 
-`redis-cache` 模块提供 `RedisCacheDriver`，实现 `CacheDriver` 接口，底层通过 `redis-config` 模块的 `RedisManager` 获取指定命名连接的 Redis 命令接口。
+`redis-cache` 模块提供 `RedisCacheDriver`，实现 `CacheDriver` 接口，底层通过 `redis` 模块的 `RedisManager` 获取指定命名连接的 Redis 命令接口。
 
 #### 序列化策略
 
@@ -275,9 +275,9 @@ jaravel:
 
 ---
 
-## 4. Redis 基础设施（redis-config 模块）
+## 4. Redis 基础设施（redis 模块）
 
-`redis-config` 是 `redis-cache`、`session-redis` 等模块的基础依赖，提供统一的 Redis 连接管理能力，避免每个模块各自创建连接池。
+`redis` 是 `redis-cache`、`session-redis` 等模块的基础依赖，提供统一的 Redis 连接管理能力，避免每个模块各自创建连接池。
 
 ### 4.1 RedisManager：多命名连接管理
 
@@ -311,7 +311,7 @@ public class RedisManager {
 
 ### 4.2 三种部署模式
 
-`redis-config` 支持 standalone、sentinel、cluster 三种部署模式，通过 `jaravel.redis.options.cluster` 配置切换。
+`redis` 支持 standalone、sentinel、cluster 三种部署模式，通过 `jaravel.redis.options.cluster` 配置切换。
 
 #### 模式一：standalone（单机/主从）
 
@@ -412,12 +412,12 @@ jaravel:
 | 哨兵 | `sentinel` | 是（自动故障转移） | 否 | 中规模生产 | `sentinelMaster` + `sentinels` |
 | 集群 | `cluster` | 是（分片容错） | 是（分片） | 大规模生产 | `clusterNodes`（无 database 隔离） |
 
-### 4.3 分布式锁（RedisLockProvider）
+### 4.3 分布式锁（LockProvider）
 
-`redis-config` 提供基于 Redis 的分布式锁实现 `RedisLockProviderImpl`，对齐 Laravel `Illuminate\Cache\RedisLock`，实现 `schedule` 模块的 `RedisLockProvider` 接口。
+`redis` 模块提供基于 Redis 的分布式锁实现 `RedisLockProviderImpl`，对齐 Laravel `Illuminate\Cache\RedisLock`，实现 core 模块的 `LockProvider` 接口。schedule 通过 `LockProvider` 接口抽象，redis 模块提供可选实现。
 
 ```java
-public class RedisLockProviderImpl implements RedisLockProvider {
+public class RedisLockProviderImpl implements LockProvider {
     public boolean tryLock(String key, long ttlSeconds);   // SET key value NX EX ttl
     public void unlock(String key);                         // DEL key
 }
@@ -431,11 +431,11 @@ public class RedisLockProviderImpl implements RedisLockProvider {
 
 分布式锁是集群部署的关键组件，主要用于：
 
-1. **定时任务互斥**：`schedule` 模块使用 `RedisLockProvider` 确保同一定时任务在集群中只有一个节点执行，避免重复处理。
+1. **定时任务互斥**：`schedule` 模块使用 `LockProvider` 确保同一定时任务在集群中只有一个节点执行，避免重复处理。
 
 ```java
 @Autowired
-private RedisLockProvider lockProvider;
+private LockProvider lockProvider;
 
 public void executeWithLock(String taskName) {
     String lockKey = "schedule:lock:" + taskName;
@@ -451,7 +451,7 @@ public void executeWithLock(String taskName) {
 
 2. **业务幂等控制**：防止并发操作导致的数据重复处理。
 
-> `RedisLockProvider` bean 使用默认 Redis 连接（`default` 命名连接）。当 `schedule` 模块不存在时（`RedisLockProvider` 类不在 classpath），此 bean 不会被创建。
+> `LockProvider` bean 使用默认 Redis 连接（`default` 命名连接）。当 `redis` 模块不存在时（`LockProvider` 实现类不在 classpath），此 bean 不会被创建。
 
 ### 4.4 自动装配
 
@@ -459,7 +459,7 @@ public void executeWithLock(String taskName) {
 
 创建的 bean：
 - `RedisManager` — Redis 管理器（`@ConditionalOnMissingBean`，便于业务方覆盖）
-- `RedisLockProvider` — Redis 分布式锁提供者，使用默认 Redis 连接，供 `schedule` 模块使用
+- `LockProvider` — 分布式锁提供者，使用默认 Redis 连接，供 `schedule` 模块使用
 
 ---
 
@@ -601,7 +601,7 @@ jaravel:
 ### 6.2 依赖引入
 
 - [ ] **引入 starter**：确认 `pom.xml` 中已引入 `starter` 基础依赖。
-- [ ] **（集群必需）单独引入 Redis 三件套**：`redis-config`、`redis-cache`、`session-redis` 为可选扩展模块，**不再由 starter 自动聚合**（对齐 Laravel，框架不假设用户一定有 Redis）。需显式引入这三个依赖以启用多机同步能力。
+- [ ] **（集群必需）单独引入 Redis 三件套**：`redis`、`redis-cache`、`session-redis` 为可选扩展模块，**不再由 starter 自动聚合**（对齐 Laravel，框架不假设用户一定有 Redis）。需显式引入这三个依赖以启用多机同步能力。
 
 ```xml
 <dependency>
@@ -769,18 +769,18 @@ ModelCache.invalidate(User.class, 1L);      // 仅失效主键查询键
 
 ```
 starter（聚合入口）
-├── redis-config ──────────── Redis 连接管理（基础依赖）
-│   └── RedisLockProvider ─── 分布式锁（供 schedule 使用）
+├── redis ─────────────────── Redis 连接管理（基础依赖）
+│   └── LockProvider ───────── 分布式锁（供 schedule 使用）
 ├── redis-cache ───────────── Redis 缓存驱动
-│   └── 依赖 redis-config
+│   └── 依赖 redis
 ├── session-redis ─────────── Redis Session 守卫
-│   └── 依赖 redis-config
+│   └── 依赖 redis
 ├── cache ─────────────────── 缓存基础设施（Array/File/Database 驱动）
 ├── model-cache（可选）────── 模型查询缓存
 │   └── 依赖 cache（复用 CacheStore）
 ├── schedule ──────────────── 定时任务
-│   └── 使用 RedisLockProvider（来自 redis-config）
+│   └── 使用 LockProvider（来自 redis）
 └── ...（其他模块）
 ```
 
-> **集群部署的核心三件套**：`redis-config`（连接管理）+ `redis-cache`（缓存共享）+ `session-redis`（Session 共享）。这三者为**可选扩展模块，不再由 starter 自动聚合**，需在使用集群部署时显式引入，再选用对应的 `redis` 驱动即可获得全部集群能力。
+> **集群部署的核心三件套**：`redis`（连接管理）+ `redis-cache`（缓存共享）+ `session-redis`（Session 共享）。这三者为**可选扩展模块，不再由 starter 自动聚合**，需在使用集群部署时显式引入，再选用对应的 `redis` 驱动即可获得全部集群能力。

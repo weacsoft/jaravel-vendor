@@ -32,8 +32,8 @@ public class QueuePublishableConfig implements PublishableConfig {
     public String source(String basePackage) {
         return "package " + basePackage + ".config;\n"
                 + "\n"
-                + "import com.weacsoft.jaravel.vendor.queue.database.QueueDriver;\n"
-                + "import com.weacsoft.jaravel.vendor.queue.database.RegisterQueueDriver;\n"
+                + "import com.weacsoft.jaravel.vendor.core.queue.QueueDriver;\n"
+                + "import com.weacsoft.jaravel.vendor.core.queue.RegisterQueueDriver;\n"
                 + "import org.springframework.context.annotation.Configuration;\n"
                 + "\n"
                 + "/**\n"

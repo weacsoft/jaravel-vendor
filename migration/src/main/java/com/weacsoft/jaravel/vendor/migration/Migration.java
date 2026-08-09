@@ -84,7 +84,7 @@ public interface Migration {
      * 声明本迁移使用的数据库连接别名（多数据库支持）。
      * <p>
      * 返回的别名对应 Spring 容器中 {@code DataSource} 的 bean 名称（例如 {@code gaarasonDataSource}、
-     * {@code mysql}、{@code sqlite}、{@code oracle}、{@code pg} 等）。默认值为 {@code "primary"}，
+     * {@code mysql}、{@code sqlite}、{@code oracle}、{@code pg} 等）。默认值为 {@code "sqlite"}，
      * 映射到被 {@code @Primary} 标记的主数据源，因此绝大多数迁移无需重写即可使用主库。
      * <p>
      * 通过重写本方法，即可实现「多个迁移各自连接不同的数据库」——例如某个迁移连接 MySQL、
@@ -101,6 +101,6 @@ public interface Migration {
      * @return 数据库连接别名
      */
     default String connection() {
-        return "primary";
+        return "sqlite";
     }
 }

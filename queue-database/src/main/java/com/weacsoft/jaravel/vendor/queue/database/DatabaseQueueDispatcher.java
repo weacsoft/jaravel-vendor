@@ -1,5 +1,8 @@
 package com.weacsoft.jaravel.vendor.queue.database;
 
+import com.weacsoft.jaravel.vendor.core.queue.QueueDriver;
+
+
 import com.weacsoft.jaravel.vendor.event.Event;
 import com.weacsoft.jaravel.vendor.event.Listener;
 import com.weacsoft.jaravel.vendor.event.QueueDispatcher;

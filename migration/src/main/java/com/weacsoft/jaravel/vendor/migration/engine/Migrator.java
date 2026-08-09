@@ -49,7 +49,7 @@ public class Migrator {
     /**
      * 构造迁移引擎。
      *
-     * @param dataSources     连接别名 → DataSource 映射（应至少包含 {@code primary}）
+     * @param dataSources     连接别名 → DataSource 映射（应至少包含 {@code sqlite}）
      * @param migrationsTable 迁移记录表名（如 {@code migrations}）
      * @param scanner         迁移扫描器（已编译完成的迁移文件）
      */
@@ -59,16 +59,16 @@ public class Migrator {
         this.scanner = scanner;
     }
 
-    /** 按别名获取 DataSource，未知别名回退到 primary */
+    /** 按别名获取 DataSource，未知别名回退到 sqlite 默认连接 */
     private DataSource resolveDataSource(String alias) {
         DataSource ds = dataSources.get(alias);
         if (ds == null) {
-            ds = dataSources.get("primary");
+            ds = dataSources.get("sqlite");
             if (ds == null) {
                 throw new IllegalStateException("未找到数据库连接别名: " + alias
-                        + "，且不存在 primary 默认连接。已配置别名: " + dataSources.keySet());
+                        + "，且不存在 sqlite 默认连接。已配置别名: " + dataSources.keySet());
             }
-            log.warn("[migration] 未找到数据库连接别名 '{}'，回退使用 primary 默认连接。", alias);
+            log.warn("[migration] 未找到数据库连接别名 '{}'，回退使用 sqlite 默认连接。", alias);
         }
         return ds;
     }

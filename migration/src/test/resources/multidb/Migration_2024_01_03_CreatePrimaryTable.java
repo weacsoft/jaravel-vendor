@@ -7,7 +7,12 @@ import com.weacsoft.jaravel.vendor.migration.Schema;
 @MigrationAnnotation
 public class Migration_2024_01_03_CreatePrimaryTable implements Migration {
 
-    // 不重写 connection()，使用默认 "primary" 别名（回退到主数据源）
+    // 显式指定 "primary" 连接，不依赖默认连接名
+    @Override
+    public String connection() {
+        return "primary";
+    }
+
     @Override
     public void up(Schema schema) {
         schema.create("primary_table", table -> {

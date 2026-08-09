@@ -1,5 +1,9 @@
 package com.weacsoft.jaravel.vendor.queue.database;
 
+import com.weacsoft.jaravel.vendor.core.queue.QueueDriver;
+import com.weacsoft.jaravel.vendor.core.queue.QueuedJob;
+
+
 import com.weacsoft.jaravel.vendor.json.Json;
 import com.weacsoft.jaravel.vendor.redis.RedisManager;
 import io.lettuce.core.MapScanCursor;
@@ -40,8 +44,8 @@ import java.util.Map;
  * 的任务会在下次 pop 时被迁移回就绪队列重新消费，attempts 递增。
  *
  * <h3>依赖</h3>
- * 必须依赖 {@code redis-config} 模块提供 {@link RedisManager}。构造时 redisManager 为 null 将抛出异常。
- * 该驱动通过条件装配按需启用（{@link RedisQueueAutoConfiguration}），未引入 redis-config 时自动回退到 database 驱动。
+ * 必须依赖 {@code redis} 模块提供 {@link RedisManager}。构造时 redisManager 为 null 将抛出异常。
+ * 该驱动通过条件装配按需启用（{@link RedisQueueAutoConfiguration}），未引入 redis 时自动回退到 database 驱动。
  */
 public class RedisQueueDriver implements QueueDriver {
 
@@ -76,7 +80,7 @@ public class RedisQueueDriver implements QueueDriver {
     public RedisQueueDriver(RedisManager redisManager, String connectionName,
                             long retryAfterSeconds, int failedJobRetentionDays) {
         if (redisManager == null) {
-            throw new IllegalArgumentException("RedisQueueDriver 需要 RedisManager，请引入 redis-config 模块");
+            throw new IllegalArgumentException("RedisQueueDriver 需要 RedisManager，请引入 redis 模块");
         }
         this.redisManager = redisManager;
         this.connectionName = connectionName;

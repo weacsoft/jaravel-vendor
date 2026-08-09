@@ -243,7 +243,7 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
      * 默认优先级：若类上标注了 {@link DataSource @DataSource} 注解则返回其 {@code value()}，
      * 否则返回 {@link ConnectionManager#defaultConnectionName()}（即被
      * {@code @RegisterConnection(defaultConnection = true)} 设为默认的别名，
-     * 默认值是 {@code "primary"}，但业务可改为 {@code sqlite} 等任意名称）。
+     * 默认值是 {@code "sqlite"}，但业务可改为其他任意名称）。
      * <p>
      * 业务 Model 可重写本方法以切换到其它数据库，例如：
      * <pre>

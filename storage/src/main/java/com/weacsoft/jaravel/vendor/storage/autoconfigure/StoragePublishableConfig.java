@@ -70,10 +70,12 @@ public class StoragePublishableConfig implements PublishableConfig {
                 + "                .visibility(Visibility.PUBLIC);\n"
                 + "    }\n"
                 + "\n"
-                + "    // 数据库磁盘：需要 DataSource，磁盘实例创建时会自动建表 storage_file 与 storage_file_chunk\n"
+                + "    // 数据库磁盘：需要 DataSource，通过 table-prefix 指定表前缀（默认 storage_，\n"
+                + "    //   即 storage_file 与 storage_file_chunk 两张表），由 storage:table 命令生成迁移。\n"
+                + "    //   也可通过 datasource 指定独立的数据源 Bean 名称（用于多机同步场景）。\n"
                 + "    // @RegisterDisk(\"database\")\n"
                 + "    // public DiskDefinition databaseDisk() {\n"
-                + "    //     return DiskDefinition.of(\"database\").with(\"table\", \"storage_file\");\n"
+                + "    //     return DiskDefinition.of(\"database\").with(\"table-prefix\", \"storage_\");\n"
                 + "    // }\n"
                 + "}\n";
     }

@@ -10,7 +10,7 @@
 - `spring-jdbc` — `JdbcTemplate` 数据库操作
 - `jackson-databind` — 任务负载 JSON 序列化
 - `slf4j-api` — 日志
-- `redis-config`（**optional**）— Redis 驱动按需依赖，未引入时 `RedisQueueDriver` 根本不装配（严格按需，不回退到 database）
+- `redis`（**optional**）— Redis 驱动按需依赖，未引入时 `RedisQueueDriver` 根本不装配（严格按需，不回退到 database）
 
 ## 驱动选择
 
@@ -20,7 +20,7 @@
 | --- | --- | --- | --- |
 | `sync`（默认） | 内存队列（QueueManager） | 无 | 无 |
 | `database` | `DatabaseQueueDriver` | `DataSource` | `failed_jobs` 表 |
-| `redis` | `RedisQueueDriver` | `RedisManager`（redis-config） | `jaravel:queue:failed` List |
+| `redis` | `RedisQueueDriver` | `RedisManager`（redis） | `jaravel:queue:failed` List |
 
 **sync 模式（默认）**：当 `driver=sync`（或完全不配置 `jaravel.queue.driver`）时，不创建任何 `QueueDriver` Bean，`EventDispatcher` 自动降级为内存队列（`QueueManager`），不会创建数据库表，无需额外配置。对齐 Laravel 的 `sync` 队列驱动。
 
@@ -217,7 +217,7 @@ queueDriver.createTable();  // 创建 jobs 和 failed_jobs 表
 
 ### 启用 Redis 驱动
 
-引入 `redis-config` 依赖后，设置 `jaravel.queue.driver=redis`：
+引入 `redis` 依赖后，设置 `jaravel.queue.driver=redis`：
 
 ```yaml
 jaravel:
@@ -268,7 +268,7 @@ public void dispatchAsync(String queueName, Object listener, Object event) {
 通过 `@AutoConfiguration` 注册，自动配置类在 `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` 中声明：
 
 - `RedisQueueAutoConfiguration`（先处理）：受 `@Conditional(OnRedisQueueDriverCondition.class)` 约束，仅当
-  `redis-config` 在类路径、存在 `RedisManager` bean、且 `jaravel.queue.driver=redis` 时注册 `RedisQueueDriver`
+  `redis` 在类路径、存在 `RedisManager` bean、且 `jaravel.queue.driver=redis` 时注册 `RedisQueueDriver`
 - `QueueDatabaseAutoConfiguration`：受 `@Conditional(OnDatabaseQueueDriverCondition.class)` 约束，仅当
   `jaravel.queue.driver=database` 且存在 `DataSource` bean 时注册 `DatabaseQueueDriver`、`DatabaseQueueWorker`、`DatabaseQueueDispatcher`
 - 当 `jaravel.queue.driver` 为 `sync`（默认）或完全未配置时，两个驱动条件都不命中，不创建 `QueueDriver` Bean，

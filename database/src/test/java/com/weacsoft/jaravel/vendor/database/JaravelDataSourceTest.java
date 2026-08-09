@@ -61,7 +61,7 @@ class JaravelDataSourceTest {
         Connection conn = mock(Connection.class);
         when(raw.getConnection()).thenReturn(conn);
 
-        ConnectionManager.addConnection("primary", mock(GaarasonDataSource.class), raw);
+        ConnectionManager.addConnection("sqlite", mock(GaarasonDataSource.class), raw);
 
         JaravelDataSource ds = new JaravelDataSource();
         assertSame(conn, ds.getConnection(), "应委托到默认连接的原始数据源");

@@ -1,6 +1,6 @@
 # redis-cache 模块
 
-> Jaravel-Vendor 的 Redis 缓存驱动模块，对齐 Laravel `Illuminate\Cache\RedisStore`。提供 `RedisCacheDriverFactory` 驱动工厂（实现 `CacheDriverFactory`，按需创建），由 `CacheManager` 在配置了 `redis` store 时按需创建 `RedisCacheDriver` 实例。底层通过 `redis-config` 模块的 `RedisManager` 获取指定命名连接的 Redis 命令接口，所有缓存键值以 JSON 序列化存储，TTL 通过 Redis `SETEX`/`EXPIRE` 实现。包名统一为 `com.weacsoft.jaravel.vendor.redis.cache`。
+> Jaravel-Vendor 的 Redis 缓存驱动模块，对齐 Laravel `Illuminate\Cache\RedisStore`。提供 `RedisCacheDriverFactory` 驱动工厂（实现 `CacheDriverFactory`，按需创建），由 `CacheManager` 在配置了 `redis` store 时按需创建 `RedisCacheDriver` 实例。底层通过 `redis` 模块的 `RedisManager` 获取指定命名连接的 Redis 命令接口，所有缓存键值以 JSON 序列化存储，TTL 通过 Redis `SETEX`/`EXPIRE` 实现。包名统一为 `com.weacsoft.jaravel.vendor.redis.cache`。
 
 ---
 
@@ -34,7 +34,7 @@
 CacheManager（cache 模块，按配置按需创建 store）
   └── CacheDriverFactory（驱动工厂，support + create）
         └── RedisCacheDriverFactory   → RedisCacheDriver（Redis 缓存驱动）
-                                          └── RedisManager（redis-config 模块，命名连接管理）
+                                          └── RedisManager（redis 模块，命名连接管理）
 ```
 
 采用**工厂模式 + 配置驱动按需创建**（对齐 cache 模块的设计）：`RedisCacheDriverFactory` 注册为 Spring Bean，`CacheManager` 在配置了 `redis` store 时才调用 `factory.create(config)` 创建驱动实例，不会预创建。
@@ -58,7 +58,7 @@ CacheManager（cache 模块，按配置按需创建 store）
 | 依赖 | 用途 |
 | --- | --- |
 | `cache` | 提供 `CacheDriver` 接口、`CacheDriverFactory` 工厂契约与 `CacheManager` |
-| `redis-config` | 提供 `RedisManager` 命名连接管理 |
+| `redis` | 提供 `RedisManager` 命名连接管理 |
 | `spring-boot-autoconfigure` | 自动装配 |
 | `jackson-databind` | 缓存值 JSON 序列化 |
 | `slf4j-api` | 日志门面 |
@@ -248,7 +248,7 @@ jaravel:
         connection: cache        # 可覆盖顶层 jaravel.cache.redis.connection 配置
 ```
 
-### 配合 redis-config 模块配置连接
+### 配合 redis 模块配置连接
 
 ```yaml
 jaravel:

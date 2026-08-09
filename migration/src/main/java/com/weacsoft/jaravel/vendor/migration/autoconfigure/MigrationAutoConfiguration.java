@@ -96,12 +96,12 @@ public class MigrationAutoConfiguration {
             dataSources.forEach(aliasMap::putIfAbsent);
         }
 
-        // 3) 兜底：确保存在 primary 别名，指向容器中的主数据源
-        if (!aliasMap.containsKey("primary") && dataSources != null && !dataSources.isEmpty()) {
+        // 3) 兜底：确保存在 sqlite 别名，指向容器中的主数据源
+        if (!aliasMap.containsKey("sqlite") && dataSources != null && !dataSources.isEmpty()) {
             DataSource fallback = dataSources.containsKey("dataSource")
                     ? dataSources.get("dataSource")
                     : dataSources.values().iterator().next();
-            aliasMap.put("primary", fallback);
+            aliasMap.put("sqlite", fallback);
         }
 
         if (aliasMap.isEmpty()) {

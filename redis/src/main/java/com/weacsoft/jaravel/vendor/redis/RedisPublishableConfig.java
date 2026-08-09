@@ -3,8 +3,8 @@ package com.weacsoft.jaravel.vendor.redis;
 import com.weacsoft.jaravel.vendor.core.publish.PublishableConfig;
 
 /**
- * redis-config 模块的可发布配置类模板，
- * 由 {@code artisan vendor:publish --tag=redis-config} 发布。
+ * redis 模块的可发布配置类模板，
+ * 由 {@code artisan vendor:publish --tag=redis} 发布。
  * <p>
  * 发布后在业务工程生成 {@code config/RedisConfig.java}，
  * 内含 {@code jaravel.redis.*} 配置项说明。
@@ -13,7 +13,7 @@ public class RedisPublishableConfig implements PublishableConfig {
 
     @Override
     public String tag() {
-        return "redis-config";
+        return "redis";
     }
 
     @Override
@@ -41,7 +41,7 @@ public class RedisPublishableConfig implements PublishableConfig {
                 /**
                  * Redis 配置，对齐 Laravel config/database.php 的 redis 段。
                  * <p>
-                 * 由 {@code artisan vendor:publish --tag=redis-config} 发布生成，可自由修改。
+                 * 由 {@code artisan vendor:publish --tag=redis} 发布生成，可自由修改。
                  *
                  * <h3>配置项（application.yml）</h3>
                  * <pre>

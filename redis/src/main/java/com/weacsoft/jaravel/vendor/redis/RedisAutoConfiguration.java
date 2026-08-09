@@ -1,6 +1,7 @@
 package com.weacsoft.jaravel.vendor.redis;
 
 import com.weacsoft.jaravel.vendor.redis.lock.RedisLockProvider;
+import com.weacsoft.jaravel.vendor.core.lock.LockProvider;
 import com.weacsoft.jaravel.vendor.redis.lock.RedisLockProviderImpl;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -40,13 +41,13 @@ public class RedisAutoConfiguration {
     /**
      * Redis 分布式锁提供者 bean。
      * <p>
-     * 使用默认 Redis 连接，供 {@code schedule} 模块的定时任务分布式锁使用。
-     * 当 schedule 模块不存在时，此 bean 不会被创建（{@code @ConditionalOnClass} 控制）。
+     * 实现 core 模块的 {@link LockProvider} 接口，使用默认 Redis 连接。
+     * 供 {@code schedule} 模块的定时任务分布式锁使用（通过 {@code ObjectProvider} 可选注入）。
+     * 若 schedule 模块不存在，此 bean 不会造成副作用，仅占用极少量内存。
      */
     @Bean
     @ConditionalOnMissingBean
-    @org.springframework.boot.autoconfigure.condition.ConditionalOnClass(RedisLockProvider.class)
-    public RedisLockProvider redisLockProvider(RedisManager redisManager) {
+    public LockProvider redisLockProvider(RedisManager redisManager) {
         return new RedisLockProviderImpl(redisManager, null);
     }
 }
