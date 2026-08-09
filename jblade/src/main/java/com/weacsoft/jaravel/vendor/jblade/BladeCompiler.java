@@ -73,7 +73,8 @@ public class BladeCompiler {
         if (file.isFile()) {
             return new FileInputStream(file);
         }
-        return new ClassPathResource(templatePath.replace(File.separator, "/")).getInputStream();
+        String cpPath = "/" + templatePath.replace(File.separator, "/");
+        return new ClassPathResource(cpPath).getInputStream();
     }
 
     /**
@@ -86,7 +87,8 @@ public class BladeCompiler {
         if (file.isFile()) {
             return true;
         }
-        return new ClassPathResource(templatePath.replace(File.separator, "/")).exists();
+        String cpPath = "/" + templatePath.replace(File.separator, "/");
+        return new ClassPathResource(cpPath).exists();
     }
 
     /**

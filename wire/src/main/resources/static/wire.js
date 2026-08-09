@@ -1,176 +1,90 @@
 /**
- * Wire.js — Laravel Livewire 风格的部分更新前端运行时
+ * Wire.js — 单一运行时：Laravel Livewire 风格部分更新 + 命名组件 + 透明导航。
  * <p>
- * 功能：
- * - 自动扫描 wire: 属性并绑定事件（wire:click, wire:submit, wire:model, wire:change, wire:keydown）
- * - 支持自定义 update URL（wire:update 属性或 data-wire-update 配置）
- * - section 级局部更新（仅替换 [wire:section="name"] 的内容）
- * - wire:model 双向绑定（防抖 150ms，wire:model.lazy 延迟到 blur）
- * - wire:loading 加载状态显示/隐藏
- * - wire:target 指定要更新的 section
- * - Wire.on/off 事件系统（beforeRequest/afterRequest/beforeUpdate/afterUpdate），支持 mdui 等框架在 DOM 更新后刷新组件
- * - 请求生命周期：beforeRequest → afterRequest → beforeUpdate → afterUpdate
- * - Wire.scan() 幂等重扫：透明导航 / 局部更新替换 DOM 后重新识别组件与事件，无需整页刷新
+ * 本文件合并了三个历史文件：wire.js、wire-component.js、wire-navigate.js。
+ * 三者同域同页共存，单一 IIFE 挂载：
+ *   window.Wire            — Livewire 局部更新
+ *   window.WireComponent   — 命名组件（toast / confirm 等）
+ *   window.WireNavigate    — 透明导航（链接拦截 → 局部刷新 → pushState）
+ * <p>
+ * 幂等守卫：已加载过任一命名空间时立即返回，避免重复注册监听器。
+ *
+ * 主要功能：
+ * - wire:click / wire:submit / wire:model / wire:change / wire:keydown 自动绑定
+ * - 组件级 section 局部更新（wire:section / wire:target / wire:lazy / wire:loading）
+ * - wire:config 声明式懒加载；wire:update 局部覆盖；wire:pagination 分页拦截
+ * - Wire.on/off 事件：beforeRequest / afterRequest / beforeUpdate / afterUpdate
+ * - 命名组件四生命周期（onCreate/onStart/onStop/onDestroy），wire.stop() 结束实例
+ * - 透明导航（X-Wire-Navigate + X-Wire-Hashes），最小 diff，只换变化的 section
+ * - 首屏脚本回放（DOMContentLoaded 类回调在 section 替换后重放）
  * - 零外部依赖，自包含
  */
 (function () {
     'use strict';
 
     // ===== 幂等守卫 =====
-    // 同一页面可能多次加载本脚本：宿主模板手动 <script src>、框架中间件自动注入、
-    // 透明导航替换 DOM 后 activateScripts 重新激活外链脚本。若不拦截，事件与组件会被
-    // 重复注册 —— 表现为「点一次按钮发两次请求、弹两个 toast」。
-    // 已加载过就直接返回，保留先前实例（其上已挂载的监听器与组件不受影响）。
-    if (window.Wire && window.Wire.__runtime === 'wire.js') {
-        return;
-    }
+    if (window.Wire && window.Wire.__runtime === 'wire-merged') return;
+    if (window.WireComponent && window.WireComponent.__runtime === 'wire-merged') return;
+    if (window.WireNavigate && window.WireNavigate.__runtime === 'wire-merged') return;
+
+    // ======================== Wire（Livewire 核心） ========================
 
     var Wire = {
-        /** 运行时指纹，供幂等守卫识别 */
-        __runtime: 'wire.js',
+        __runtime: 'wire-merged',
         components: [],
         debounceTimers: {},
-        // 全局事件监听器
         _listeners: {}
     };
-
-    /** 已触发过懒加载的占位元素（重扫时不重复拉取） */
     var lazyFired = new WeakSet();
 
-    /**
-     * 注册事件监听器。
-     * <p>
-     * 支持的事件：
-     * <ul>
-     *   <li>{@code beforeRequest} — 发起 HTTP 请求前触发，参数：{@code (component, action, params)}</li>
-     *   <li>{@code afterRequest} — 收到 HTTP 响应后、数据处理前触发，参数：{@code (component, data)}</li>
-     *   <li>{@code beforeUpdate} — 数据处理前触发（兼容旧版，与 beforeRequest 同时触发）</li>
-     *   <li>{@code afterUpdate} — DOM 更新完成后触发，参数：{@code (component, data, sections)}</li>
-     * </ul>
-     * <p>
-     * 典型用法（mdui 等框架在 DOM 更新后需要重新初始化组件）：
-     * <pre>
-     * Wire.on('afterUpdate', function(component, data, sections) {
-     *     mdui.mutation();  // 重新扫描并初始化 mdui 组件
-     * });
-     * </pre>
-     *
-     * @param {string} event 事件名
-     * @param {Function} callback 回调函数
-     * @returns {Wire} Wire 对象（链式）
-     */
-    Wire.on = function(event, callback) {
+    Wire.on = function (event, callback) {
         if (typeof callback !== 'function') return Wire;
-        if (!Wire._listeners[event]) {
-            Wire._listeners[event] = [];
-        }
-        Wire._listeners[event].push(callback);
+        (Wire._listeners[event] = Wire._listeners[event] || []).push(callback);
         return Wire;
     };
-
-    /**
-     * 移除事件监听器。
-     *
-     * @param {string} event 事件名
-     * @param {Function} callback 要移除的回调（不传则移除该事件的所有监听器）
-     * @returns {Wire} Wire 对象（链式）
-     */
-    Wire.off = function(event, callback) {
+    Wire.off = function (event, callback) {
         if (!Wire._listeners[event]) return Wire;
-        if (!callback) {
-            Wire._listeners[event] = [];
-        } else {
-            Wire._listeners[event] = Wire._listeners[event].filter(function(fn) {
-                return fn !== callback;
-            });
-        }
+        Wire._listeners[event] = callback
+            ? Wire._listeners[event].filter(function (f) { return f !== callback; })
+            : [];
         return Wire;
     };
-
-    /**
-     * 触发事件，调用所有注册的监听器。
-     */
-    function emit(event) {
-        var listeners = Wire._listeners[event];
-        if (!listeners) return;
+    function wireEmit(event) {
+        var arr = Wire._listeners[event];
+        if (!arr) return;
         var args = Array.prototype.slice.call(arguments, 1);
-        for (var i = 0; i < listeners.length; i++) {
-            try {
-                listeners[i].apply(null, args);
-            } catch (e) {
-                console.error('[Wire] 事件监听器异常 (' + event + '):', e);
-            }
+        for (var i = 0; i < arr.length; i++) {
+            try { arr[i].apply(null, args); } catch (e) { console.error('[Wire] 事件监听器异常 (' + event + '):', e); }
         }
     }
 
-    // ===== 初始化 =====
-
-    function init() {
-        // 清理 <head> 中原始文本元素（title/style/script）的 wire 标记。
-        // 服务端 WireAnchorRewriter 已在渲染出口消除这些标记，此处仅作为旧版模板/第三方渲染的兜底。
-        cleanHeadWireMarkers();
-        Wire.scan();
-    }
-
-    /**
-     * 收集所有 wire:config / wire:snapshot 标记的配置节点。
-     * <p>
-     * 注意：用属性选择器 [wire\:config] 查询 <script> 标签在部分浏览器/解析引擎下
-     * 不可靠（<script> 尤其 type="application/json" 时），因此这里优先尝试选择器，
-     * 失败（或为空）时退化为遍历所有 <script> 标签按属性判定，确保组件一定能初始化。
-     */
     function collectConfigElements() {
         var configs = [];
         try {
-            var bySelector = document.querySelectorAll('[wire\\:config]');
-            for (var s = 0; s < bySelector.length; s++) configs.push(bySelector[s]);
-        } catch (e) { /* 选择器不被支持时忽略 */ }
+            var bySel = document.querySelectorAll('[wire\\:config]');
+            for (var s = 0; s < bySel.length; s++) configs.push(bySel[s]);
+        } catch (e) { /* */ }
         if (configs.length === 0) {
             var scripts = document.querySelectorAll('script');
             for (var i = 0; i < scripts.length; i++) {
                 var sc = scripts[i];
-                if (sc.hasAttribute('wire:config') || sc.hasAttribute('wire:snapshot')) {
-                    configs.push(sc);
-                }
+                if (sc.hasAttribute('wire:config') || sc.hasAttribute('wire:snapshot')) configs.push(sc);
             }
         }
         return configs;
     }
 
-    /**
-     * 淘汰已从文档中移除的组件。
-     * <p>
-     * 透明导航会整体替换 scripts section，旧页面的 wire:config 节点随之离开文档。
-     * 若不淘汰，旧组件仍持有上一页的 updateUrl，且其 element 是共享的 document.body，
-     * 重新绑定时会把新页面的按钮也绑到旧地址上，造成「请求打到上一页接口」和重复请求。
-     */
     function pruneComponents() {
         var alive = [];
         for (var i = 0; i < Wire.components.length; i++) {
             var c = Wire.components[i];
-            if (!c.configElement || document.contains(c.configElement)) {
-                alive.push(c);
-            }
+            if (!c.configElement || document.contains(c.configElement)) alive.push(c);
         }
         Wire.components = alive;
     }
 
-    /**
-     * 幂等重扫当前文档：识别新组件、淘汰失效组件、为新出现的元素补绑事件。
-     * <p>
-     * 首屏由 init() 调用一次；此后每当 DOM 被<b>整体替换</b>（wire-navigate 透明导航、
-     * 宿主框架局部渲染等）都应再调用一次。多次调用安全：
-     * <ul>
-     *   <li>组件按 wire:config 节点身份去重，不会重复创建；</li>
-     *   <li>事件绑定按元素身份去重（component.boundElements），不会重复绑定 → 不会重复发请求；</li>
-     *   <li>懒加载 section 只触发一次。</li>
-     * </ul>
-     *
-     * @returns {Wire} Wire 对象（链式）
-     */
     Wire.scan = function () {
         pruneComponents();
-
         var configs = collectConfigElements();
         for (var i = 0; i < configs.length; i++) {
             var cfg = configs[i];
@@ -178,413 +92,217 @@
             for (var k = 0; k < Wire.components.length; k++) {
                 if (Wire.components[k].configElement === cfg) { known = true; break; }
             }
-            if (!known) {
-                initComponent(cfg);   // initComponent 内部会完成首次 bindEvents
-            }
+            if (!known) initComponent(cfg);
         }
-
-        // 已存在的组件：为局部更新后新插入的元素补绑（boundElements 保证不重复）
-        for (var j = 0; j < Wire.components.length; j++) {
-            bindEvents(Wire.components[j]);
-        }
-
-        // 声明式懒加载 wire:lazy —— 新页面可能带来新的 lazy 占位
+        for (var j = 0; j < Wire.components.length; j++) bindEvents(Wire.components[j]);
         initLazy();
         return Wire;
     };
 
-    /**
-     * 声明式懒加载（Laravel Livewire lazy 风格）：
-     * 模板用 <div wire:section="x" wire:lazy> 标记后，首次渲染由后端给出占位（如 spinner），
-     * 前端在页面 load 后对该 section 发一次 $refresh（等价于 Wire.refresh(['x'])），
-     * 后端从权威数据源（DB/慢接口）取真实数据返回。全程后端无需 if/else 分支。
-     */
     function initLazy() {
         var all = document.querySelectorAll('[wire\\:lazy]');
-        // 只处理没触发过的占位元素：Wire.scan() 可能被多次调用（透明导航后重扫），
-        // 已经拉取过的 lazy section 不应再次发请求。
         var lazyEls = [];
         for (var q = 0; q < all.length; q++) {
-            if (!lazyFired.has(all[q])) {
-                lazyFired.add(all[q]);
-                lazyEls.push(all[q]);
-            }
+            if (!lazyFired.has(all[q])) { lazyFired.add(all[q]); lazyEls.push(all[q]); }
         }
         if (!lazyEls.length) return;
-        function fire() {
+        var fire = function () {
             for (var i = 0; i < lazyEls.length; i++) {
                 var name = lazyEls[i].getAttribute('wire:section');
-                if (name) {
-                    Wire.refresh([name]);
-                }
+                if (name) Wire.refresh([name]);
             }
-        }
-        if (document.readyState === 'complete') {
-            fire();
-        } else {
-            window.addEventListener('load', fire);
-        }
+        };
+        if (document.readyState === 'complete') fire();
+        else window.addEventListener('load', fire);
     }
 
-    /**
-     * 清理 <head> 中原始文本元素的 wire section 标记。
-     * <p>
-     * HTML 原始文本元素（title, style, script）不解析 HTML 注释，
-     * <!--wire:section-start:name--> 会被当作纯文本显示。
-     * 此方法在初始化时提取真实内容并设置到对应元素上。
-     * 同时处理属性值中的 wire 标记（如 <meta content="@yield('desc')">）。
-     */
     function cleanHeadWireMarkers() {
-        // 1. 处理原始文本元素：title, style, script
-        var rawTextEls = document.querySelectorAll('title, style, script');
-        for (var i = 0; i < rawTextEls.length; i++) {
-            var el = rawTextEls[i];
+        var rawEls = document.querySelectorAll('title, style, script');
+        for (var i = 0; i < rawEls.length; i++) {
+            var el = rawEls[i];
             var content = el.textContent || '';
-            // 提取所有 wire section 标记中的内容
             var regex = /<!--wire:section-start:([\s\S]+?)-->([\s\S]*?)<!--wire:section-end:\1-->/g;
-            var match;
-            var cleaned = content;
-            while ((match = regex.exec(content)) !== null) {
-                cleaned = cleaned.replace(match[0], match[2]);
-            }
+            var match, cleaned = content;
+            while ((match = regex.exec(content))) { cleaned = cleaned.replace(match[0], match[2]); }
             if (cleaned !== content) {
-                if (el.tagName === 'TITLE') {
-                    document.title = cleaned;
-                } else {
-                    el.textContent = cleaned;
-                }
+                if (el.tagName === 'TITLE') document.title = cleaned;
+                else el.textContent = cleaned;
             }
         }
-
-        // 2. 处理属性值中的 wire 标记（如 <meta content="<!--wire:section-start:desc-->val<!--wire:section-end:desc-->">）
-        var allEls = document.head ? document.head.querySelectorAll('*') : [];
-        for (var j = 0; j < allEls.length; j++) {
-            var elem = allEls[j];
-            for (var attrIdx = 0; attrIdx < elem.attributes.length; attrIdx++) {
-                var attr = elem.attributes[attrIdx];
-                var attrVal = attr.value;
-                var attrRegex = /<!--wire:section-start:([\s\S]+?)-->([\s\S]*?)<!--wire:section-end:\1-->/g;
-                var attrMatch;
-                var attrCleaned = attrVal;
-                while ((attrMatch = attrRegex.exec(attrVal)) !== null) {
-                    attrCleaned = attrCleaned.replace(attrMatch[0], attrMatch[2]);
-                }
-                if (attrCleaned !== attrVal) {
-                    elem.setAttribute(attr.name, attrCleaned);
-                }
+        var headEls = document.head ? document.head.querySelectorAll('*') : [];
+        for (var j = 0; j < headEls.length; j++) {
+            var elem = headEls[j];
+            for (var a = 0; a < elem.attributes.length; a++) {
+                var attr = elem.attributes[a];
+                var val = attr.value;
+                var areg = /<!--wire:section-start:([\s\S]+?)-->([\s\S]*?)<!--wire:section-end:\1-->/g;
+                var amatch, clean = val;
+                while ((amatch = areg.exec(val))) { clean = clean.replace(amatch[0], amatch[2]); }
+                if (clean !== val) elem.setAttribute(attr.name, clean);
             }
         }
     }
 
-    /**
-     * 向上查找最近的、带有指定 wire: 属性的祖先（含自身）。
-     */
-    function closestAttr(el, attrName) {
+    function closestAttr(el, name) {
         var node = el;
         while (node && node !== document) {
-            if (node.getAttribute && node.getAttribute(attrName) !== null) {
-                return node;
-            }
+            if (node.getAttribute && node.getAttribute(name) !== null) return node;
             node = node.parentNode;
         }
         return null;
     }
-
-    /** 读取 cookie 值（用于 CSRF token 自动注入）。 */
     function getCookie(name) {
-        var match = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/([.$?*|{}()\[\]\\/+^])/g, '\\$1') + '=([^;]*)'));
-        return match ? match[1] : null;
+        var re = new RegExp('(?:^|; )' + name.replace(/([.$?*|{}()\[\]\\/+^])/g, '\\$1') + '=([^;]*)');
+        var m = document.cookie.match(re);
+        return m ? m[1] : null;
     }
-
-    /** SPA 导航：高亮当前菜单项（移除同组其它项的 active 类，给当前项加 active）。 */
     function highlightNav(el) {
         try {
             var group = closestAttr(el, 'wire:nav-menu') || el.parentNode;
             if (!group) return;
             var items = group.querySelectorAll('[wire\\:nav]');
-            for (var i = 0; i < items.length; i++) {
-                items[i].classList.remove('wire-nav-active');
-            }
+            for (var i = 0; i < items.length; i++) items[i].classList.remove('wire-nav-active');
             el.classList.add('wire-nav-active');
-        } catch (e) { /* 忽略高亮异常，不影响功能 */ }
+        } catch (e) { /* */ }
     }
 
     function initComponent(configEl) {
-        var updateUrl = configEl.getAttribute('data-wire-update') || '/wire/update';
-        var snapshot = configEl.getAttribute('wire:snapshot') || '';
-
         var component = {
             element: document.body,
             configElement: configEl,
-            updateUrl: updateUrl,
-            snapshot: snapshot,
+            updateUrl: configEl.getAttribute('data-wire-update') || '/wire/update',
+            snapshot: configEl.getAttribute('wire:snapshot') || '',
             id: 'wire-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
-            // 已绑定事件的元素集合，防止重复绑定
             boundElements: new Set()
         };
-
         Wire.components.push(component);
         bindEvents(component);
     }
 
-    // ===== 事件绑定 =====
-
-    function bindEvents(component) {
-        bindClick(component);
-        bindSubmit(component);
-        bindModel(component);
-        bindChange(component);
-        bindKeydown(component);
-        bindPagination(component);
+    function bindEvents(comp) {
+        bindClick(comp); bindSubmit(comp); bindModel(comp);
+        bindChange(comp); bindKeydown(comp); bindPagination(comp);
     }
-
-    /**
-     * 标记元素为已绑定，返回 true 表示这是第一次绑定（需要绑定），false 表示已绑定过（跳过）。
-     */
-    function markBound(component, el) {
-        if (component.boundElements.has(el)) {
-            return false;
-        }
-        component.boundElements.add(el);
+    function markBound(comp, el) {
+        if (comp.boundElements.has(el)) return false;
+        comp.boundElements.add(el);
         return true;
     }
 
-    /**
-     * 查找所有以 wire: 开头的属性，返回 {name, value, baseName} 列表。
-     * baseName 是去掉修饰符的基础名（如 wire:model.live → wire:model）。
-     */
-    function findWireAttrs(el, prefix) {
-        var results = [];
-        for (var i = 0; i < el.attributes.length; i++) {
-            var attr = el.attributes[i];
-            if (attr.name.indexOf(prefix) === 0) {
-                results.push({
-                    name: attr.name,
-                    value: attr.value,
-                    baseName: attr.name
-                });
-            }
-        }
-        return results;
-    }
-
-    function bindClick(component) {
-        var elements = component.element.querySelectorAll('[wire\\:click], [wire\\:nav]');
-        for (var i = 0; i < elements.length; i++) {
-            (function (el) {
-                if (!markBound(component, el)) return;
-                el.addEventListener('click', function (e) {
-                    // SPA 导航拦截（第3点）：wire:nav="pageKey" 菜单项，只刷新右侧内容 section，不整页跳转。
-                    var navKey = el.getAttribute('wire:nav');
-                    if (navKey) {
-                        e.preventDefault();
-                        // 找到本组件内承载内容的 section（默认 content），只刷新它
-                        var navTarget = closestAttr(el, 'wire:nav-content');
-                        var targetName = navTarget
-                            ? (navTarget.getAttribute('wire:section') || 'content')
-                            : 'content';
-                        // 约定动作 $nav，参数 page=目标页；复用统一请求通道
-                        sendRequest(component, '$nav', { page: navKey }, el, [targetName]);
-                        // 高亮当前菜单项
-                        highlightNav(el);
-                        return;
-                    }
-
+    function bindClick(comp) {
+        var els = comp.element.querySelectorAll('[wire\\:click], [wire\\:nav]');
+        for (var i = 0; i < els.length; i++) (function (el) {
+            if (!markBound(comp, el)) return;
+            el.addEventListener('click', function (e) {
+                var navKey = el.getAttribute('wire:nav');
+                if (navKey) {
                     e.preventDefault();
-                    var action = el.getAttribute('wire:click');
-                    var params = collectParams(el);
-                    sendRequest(component, action, params, el);
-                });
-            })(elements[i]);
-        }
-    }
-
-    /**
-     * 分页器拦截：为 [wire:pagination] 容器内的 a[href*="?page=N"] 绑定点击拦截，
-     * 阻止浏览器整页跳转，改为发 $paginate 请求并只精准刷新目标 section。
-     * 注意：分页链接是 <a> 标签、不带 wire:click/wire:nav，因此必须由本函数单独绑定，
-     * 不能放进 bindClick（bindClick 只处理 wire:click/wire:nav 元素）。
-     */
-    function bindPagination(component) {
-        var containers = component.element.querySelectorAll('[wire\\:pagination]');
-        for (var c = 0; c < containers.length; c++) {
-            (function (container) {
-                var links = container.querySelectorAll('a[href]');
-                for (var i = 0; i < links.length; i++) {
-                    (function (el) {
-                        if (!markBound(component, el)) return;
-                        el.addEventListener('click', function (e) {
-                            var href = el.getAttribute('href') || '';
-                            var m = href.match(/[?&]page=(\d+)/);
-                            if (!m) return; // 非分页链接，放行默认行为
-                            e.preventDefault();
-                            var target = container.getAttribute('wire:target') || '';
-                            // 分页字段统一用 pageNum（与导航字段 page 解耦，避免冲突）
-                            var pparams = { pageNum: parseInt(m[1], 10) };
-                            var perMatch = href.match(/[?&]perPage=(\d+)/);
-                            if (perMatch) pparams.perPage = parseInt(perMatch[1], 10);
-                            // 复用统一请求通道：约定动作 $paginate（后端仅读取 pageNum/perPage 并重渲染）
-                            sendRequest(component, '$paginate', pparams, el, target ? [target] : null);
-                        });
-                    })(links[i]);
-                }
-            })(containers[c]);
-        }
-    }
-
-    function bindSubmit(component) {
-        var forms = component.element.querySelectorAll('form[wire\\:submit]');
-        for (var i = 0; i < forms.length; i++) {
-            (function (form) {
-                if (!markBound(component, form)) return;
-                form.addEventListener('submit', function (e) {
-                    e.preventDefault();
-                    var action = form.getAttribute('wire:submit');
-                    var params = collectFormData(form);
-                    sendRequest(component, action, params, form);
-                });
-            })(forms[i]);
-        }
-    }
-
-    function bindModel(component) {
-        // 遍历所有元素，查找 wire:model 开头的属性
-        var allElements = component.element.querySelectorAll('input, textarea, select');
-        for (var i = 0; i < allElements.length; i++) {
-            (function (input) {
-                // 查找 wire:model 或 wire:model.xxx 属性
-                var modelAttr = null;
-                var modelValue = null;
-                for (var j = 0; j < input.attributes.length; j++) {
-                    var attr = input.attributes[j];
-                    if (attr.name === 'wire:model' || attr.name.indexOf('wire:model.') === 0) {
-                        modelAttr = attr.name;
-                        modelValue = attr.value;
-                        break;
-                    }
-                }
-                if (!modelAttr) return;
-
-                if (!markBound(component, input)) return;
-
-                var field = modelValue;
-                var isLazy = modelAttr.indexOf('.lazy') !== -1;
-                var isLive = modelAttr.indexOf('.live') !== -1;
-
-                input.setAttribute('data-wire-field', field);
-                input.setAttribute('data-wire-model-attr', modelAttr);
-
-                // 行内输入框（位于 [data-wire-key] 行内）属于「每行独立数据」，
-                // 不能把值同步到组件级同名字段（否则会污染新增表单的同名字段、
-                // 并导致 restoreFocus 把焦点跳到页面上第一个同名输入框）。
-                // 这类输入框只做「就地编辑」，值由 collectParams 在点击行内按钮时按行收集。
-                if (closestAttr(input, 'data-wire-key') || closestAttr(input, 'wire:key')) {
-                    input.setAttribute('data-wire-row-scoped', '1');
+                    var target = closestAttr(el, 'wire:nav-content');
+                    var targetName = target ? (target.getAttribute('wire:section') || 'content') : 'content';
+                    sendRequest(comp, '$nav', { page: navKey }, el, [targetName]);
+                    highlightNav(el);
                     return;
                 }
-
-                if (isLazy) {
-                    input.addEventListener('change', function () {
-                        var params = {};
-                        params[field] = getInputValue(input);
-                        sendRequest(component, '$sync', params, input);
-                    });
-                } else if (isLive) {
-                    input.addEventListener('input', function () {
-                        var params = {};
-                        params[field] = getInputValue(input);
-                        sendRequest(component, '$sync', params, input);
-                    });
-                } else {
-                    input.addEventListener('input', function () {
-                        var key = component.id + '-' + field;
-                        clearTimeout(Wire.debounceTimers[key]);
-                        Wire.debounceTimers[key] = setTimeout(function () {
-                            var params = {};
-                            params[field] = getInputValue(input);
-                            sendRequest(component, '$sync', params, input);
-                        }, 150);
-                    });
+                e.preventDefault();
+                sendRequest(comp, el.getAttribute('wire:click'), collectParams(el), el);
+            });
+        })(els[i]);
+    }
+    function bindPagination(comp) {
+        var containers = comp.element.querySelectorAll('[wire\\:pagination]');
+        for (var c = 0; c < containers.length; c++) (function (container) {
+            var links = container.querySelectorAll('a[href]');
+            for (var i = 0; i < links.length; i++) (function (el) {
+                if (!markBound(comp, el)) return;
+                el.addEventListener('click', function (e) {
+                    var href = el.getAttribute('href') || '';
+                    var m = href.match(/[?&]page=(\d+)/);
+                    if (!m) return;
+                    e.preventDefault();
+                    var target = container.getAttribute('wire:target') || '';
+                    var pparams = { pageNum: parseInt(m[1], 10) };
+                    var per = href.match(/[?&]perPage=(\d+)/);
+                    if (per) pparams.perPage = parseInt(per[1], 10);
+                    sendRequest(comp, '$paginate', pparams, el, target ? [target] : null);
+                });
+            })(links[i]);
+        })(containers[c]);
+    }
+    function bindSubmit(comp) {
+        var forms = comp.element.querySelectorAll('form[wire\\:submit]');
+        for (var i = 0; i < forms.length; i++) (function (form) {
+            if (!markBound(comp, form)) return;
+            form.addEventListener('submit', function (e) {
+                e.preventDefault();
+                sendRequest(comp, form.getAttribute('wire:submit'), collectFormData(form), form);
+            });
+        })(forms[i]);
+    }
+    function bindModel(comp) {
+        var all = comp.element.querySelectorAll('input, textarea, select');
+        for (var i = 0; i < all.length; i++) (function (input) {
+            var modelAttr = null, modelValue = null;
+            for (var j = 0; j < input.attributes.length; j++) {
+                var attr = input.attributes[j];
+                if (attr.name === 'wire:model' || attr.name.indexOf('wire:model.') === 0) {
+                    modelAttr = attr.name; modelValue = attr.value; break;
                 }
-            })(allElements[i]);
-        }
+            }
+            if (!modelAttr || !markBound(comp, input)) return;
+            var field = modelValue;
+            var isLazy = modelAttr.indexOf('.lazy') !== -1;
+            var isLive = modelAttr.indexOf('.live') !== -1;
+            input.setAttribute('data-wire-field', field);
+            input.setAttribute('data-wire-model-attr', modelAttr);
+            if (closestAttr(input, 'data-wire-key') || closestAttr(input, 'wire:key')) {
+                input.setAttribute('data-wire-row-scoped', '1'); return;
+            }
+            var sync = function () {
+                var params = {}; params[field] = getInputValue(input);
+                sendRequest(comp, '$sync', params, input);
+            };
+            if (isLazy) input.addEventListener('change', sync);
+            else if (isLive) input.addEventListener('input', sync);
+            else input.addEventListener('input', function () {
+                var key = comp.id + '-' + field;
+                clearTimeout(Wire.debounceTimers[key]);
+                Wire.debounceTimers[key] = setTimeout(sync, 150);
+            });
+        })(all[i]);
+    }
+    function bindChange(comp) {
+        var els = comp.element.querySelectorAll('[wire\\:change]');
+        for (var i = 0; i < els.length; i++) (function (el) {
+            if (!markBound(comp, el)) return;
+            el.addEventListener('change', function () {
+                sendRequest(comp, el.getAttribute('wire:change'), collectParams(el), el);
+            });
+        })(els[i]);
+    }
+    function bindKeydown(comp) {
+        var els = comp.element.querySelectorAll('[wire\\:keydown]');
+        var keyMap = { 'enter':'Enter','escape':'Escape','tab':'Tab','space':' ','arrowup':'ArrowUp','arrowdown':'ArrowDown' };
+        for (var i = 0; i < els.length; i++) (function (el) {
+            var attr = el.getAttribute('wire:keydown');
+            el.addEventListener('keydown', function (e) {
+                var parts = attr.split('.');
+                if (parts.length === 1) { e.preventDefault(); sendRequest(comp, parts[0], collectParams(el), el); }
+                else if (e.key === (keyMap[parts[1].toLowerCase()] || parts[1].toLowerCase())) {
+                    e.preventDefault(); sendRequest(comp, parts[0], collectParams(el), el);
+                }
+            });
+        })(els[i]);
     }
 
-    function bindChange(component) {
-        var elements = component.element.querySelectorAll('[wire\\:change]');
-        for (var i = 0; i < elements.length; i++) {
-            (function (el) {
-                if (!markBound(component, el)) return;
-                el.addEventListener('change', function (e) {
-                    var action = el.getAttribute('wire:change');
-                    var params = collectParams(el);
-                    sendRequest(component, action, params, el);
-                });
-            })(elements[i]);
-        }
-    }
-
-    function bindKeydown(component) {
-        var elements = component.element.querySelectorAll('[wire\\:keydown]');
-        for (var i = 0; i < elements.length; i++) {
-            (function (el) {
-                if (!markBound(component, el)) return;
-                var attr = el.getAttribute('wire:keydown');
-                el.addEventListener('keydown', function (e) {
-                    var parts = attr.split('.');
-                    if (parts.length === 1) {
-                        e.preventDefault();
-                        var params = collectParams(el);
-                        sendRequest(component, parts[0], params, el);
-                    } else {
-                        var key = parts[0];
-                        var modifier = parts[1].toLowerCase();
-                        var keyMap = {
-                            'enter': 'Enter', 'escape': 'Escape', 'tab': 'Tab',
-                            'space': ' ', 'arrowup': 'ArrowUp', 'arrowdown': 'ArrowDown'
-                        };
-                        if (e.key === (keyMap[modifier] || modifier)) {
-                            e.preventDefault();
-                            var params = collectParams(el);
-                            sendRequest(component, key, params, el);
-                        }
-                    }
-                });
-            })(elements[i]);
-        }
-    }
-
-    // ===== 请求发送 =====
-
-    // 防止并发请求：记录正在进行的请求
     var pendingRequests = {};
-
-    function sendRequest(component, action, params, triggerEl, targetSections) {
+    function sendRequest(comp, action, params, triggerEl, targetSections) {
         var isSync = action === '$sync';
-
-        // 解析 update URL：优先使用元素上的 wire:update 覆盖
-        var updateUrl = component.updateUrl;
+        var updateUrl = comp.updateUrl;
         var el = triggerEl;
-        while (el && el !== document) {
-            if (el.hasAttribute && el.hasAttribute('wire:update')) {
-                updateUrl = el.getAttribute('wire:update');
-                break;
-            }
-            el = el.parentElement;
-        }
-
-        // 收集要更新的 section 列表（允许调用方显式覆盖，用于 Wire.refresh / 分页器精准刷新）
+        while (el && el !== document) { if (el.hasAttribute && el.hasAttribute('wire:update')) { updateUrl = el.getAttribute('wire:update'); break; } el = el.parentElement; }
         var sections;
-        if (targetSections && targetSections.length) {
-            sections = targetSections;
-        } else {
-            sections = getTargetSections(component, triggerEl);
-            if (sections.length === 0) {
-                sections = getAllSections(component);
-            }
-        }
-
-        // 对于 $sync 请求，在发送前保存输入框状态（DOM 替换后需要恢复）
+        if (targetSections && targetSections.length) sections = targetSections;
+        else { sections = getTargetSections(comp, triggerEl); if (!sections.length) sections = getAllSections(comp); }
         var inputState = null;
         if (isSync && triggerEl && triggerEl.tagName) {
             inputState = {
@@ -596,772 +314,718 @@
                 isFocused: document.activeElement === triggerEl
             };
         }
-
-        // 显示 loading
-        showLoading(component, action);
-
-        // 触发 beforeRequest 事件（发起 HTTP 请求前）
-        emit('beforeRequest', component, action, params);
-
-        // 触发 beforeUpdate 事件（数据处理前，保留兼容旧版）
-        emit('beforeUpdate', component, action, params);
-
-        // 构建请求体
-        var wireData = JSON.stringify({
-            snapshot: component.snapshot,
-            action: action,
-            params: params || {},
-            sections: sections
-        });
-        var body = 'wire_body=' + encodeURIComponent(wireData);
-
-        // 发送请求
-        var headers = {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'X-Wire-Request': 'true'
-        };
-        // CSRF：从 XSRF-TOKEN cookie 读取并放入 X-XSRF-TOKEN header（Laravel/Axios 标准做法）
+        showLoading(comp, action);
+        wireEmit('beforeRequest', comp, action, params);
+        wireEmit('beforeUpdate', comp, action, params);
+        var body = 'wire_body=' + encodeURIComponent(JSON.stringify({
+            snapshot: comp.snapshot, action: action, params: params || {}, sections: sections
+        }));
+        var headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Wire-Request': 'true' };
         var csrf = getCookie('XSRF-TOKEN');
-        if (csrf) {
-            headers['X-XSRF-TOKEN'] = decodeURIComponent(csrf);
-        }
+        if (csrf) headers['X-XSRF-TOKEN'] = decodeURIComponent(csrf);
         fetch(updateUrl, {
-            method: 'POST',
-            headers: headers,
-            body: body,
-            credentials: 'same-origin', // 显式声明发送同源 Cookie（JSESSIONID/XSRF-TOKEN），避免某些浏览器默认不携带
-            redirect: 'manual' // 不自动跟随重定向，由我们手动处理（用于检测 302 登录跳转）
-        }).then(function (response) {
-            // 情况1: 401 未认证 — 中间件拦截，返回 JSON {message, redirect}
-            if (response.status === 401) {
-                return response.json().then(function (errData) {
-                    var loginUrl = (errData && errData.redirect) || '/login';
-                    redirectToLogin(loginUrl);
-                    throw new Error('AUTH_EXPIRED');
-                }).catch(function (e) {
-                    if (e.message === 'AUTH_EXPIRED') throw e;
-                    // JSON 解析失败，直接跳登录
-                    redirectToLogin('/login');
-                    throw new Error('AUTH_EXPIRED');
-                });
-            }
-            // 情况2: 302 重定向 — 非 API 路径的中间件返回重定向（fetch manual 模式下 response.type === 'opaqueredirect'）
-            if (response.status === 0 || response.type === 'opaqueredirect') {
-                redirectToLogin('/login');
-                throw new Error('AUTH_EXPIRED');
-            }
-            // 情况3: 419 CSRF token 过期 — 服务端已刷新 XSRF-TOKEN cookie，
-            // 重新加载页面即可获取新 token，用户无感知（对齐 Laravel 419 Page Expired）
-            if (response.status === 419) {
-                window.location.reload();
-                throw new Error('CSRF_EXPIRED');
-            }
-            if (!response.ok) {
-                throw new Error('Wire 请求失败: ' + response.status);
-            }
-            return response.json();
+            method: 'POST', headers: headers, body: body,
+            credentials: 'same-origin', redirect: 'manual'
+        }).then(function (resp) {
+            if (resp.status === 401) return resp.json().then(function (d) { redirectToLogin((d && d.redirect) || '/login'); throw new Error('AUTH_EXPIRED'); })
+                .catch(function (e) { if (e.message !== 'AUTH_EXPIRED') { redirectToLogin('/login'); } throw new Error('AUTH_EXPIRED'); });
+            if (resp.status === 0 || resp.type === 'opaqueredirect') { redirectToLogin('/login'); throw new Error('AUTH_EXPIRED'); }
+            if (resp.status === 419) { window.location.reload(); throw new Error('CSRF_EXPIRED'); }
+            if (!resp.ok) throw new Error('Wire 请求失败: ' + resp.status);
+            return resp.json();
         }).then(function (data) {
-            // 触发 afterRequest 事件（收到响应后，数据处理前）
-            emit('afterRequest', component, data);
-
-            handleResponse(component, data);
-            hideLoading(component, action);
-
-            // 对于 $sync 请求，恢复输入框的焦点和光标位置
+            wireEmit('afterRequest', comp, data);
+            handleResponse(comp, data);
+            hideLoading(comp, action);
             if (inputState && inputState.field && inputState.modelAttr) {
-                // 精确查找触发 $sync 的那个输入框（通过 modelAttr 区分 wire:model 和 wire:model.live）
-                var newEl = findModelInput(component.element, inputState.field, inputState.modelAttr);
-                if (newEl) {
-                    // 服务端返回的 HTML 已包含 value="{{$message}}"，不需要手动设置值
-                    // 只恢复焦点和光标位置
-                    if (inputState.isFocused) {
-                        newEl.focus();
-                        var len = newEl.value ? newEl.value.length : 0;
-                        var pos = inputState.selectionStart !== null ? inputState.selectionStart : len;
-                        try { newEl.setSelectionRange(pos, pos); } catch(e) {}
-                    }
+                var newEl = findModelInput(comp.element, inputState.field, inputState.modelAttr);
+                if (newEl && inputState.isFocused) {
+                    newEl.focus();
+                    try { newEl.setSelectionRange(inputState.selectionStart || newEl.value.length, inputState.selectionStart || newEl.value.length); } catch (e) { /* */ }
                 }
             }
-        }).catch(function (error) {
-            // AUTH_EXPIRED 是认证过期，已经在上面处理了重定向，不需要额外日志
-            // CSRF_EXPIRED 是 token 过期，已经在上面处理了页面刷新，不需要额外日志
-            if (error.message !== 'AUTH_EXPIRED' && error.message !== 'CSRF_EXPIRED') {
-                console.error('Wire 错误:', error);
-            }
-            hideLoading(component, action);
+        }).catch(function (e) {
+            if (e.message !== 'AUTH_EXPIRED' && e.message !== 'CSRF_EXPIRED') console.error('Wire 错误:', e);
+            hideLoading(comp, action);
         });
     }
 
-    function handleResponse(component, data) {
-        // 更新 snapshot
+    function handleResponse(comp, data) {
         if (data.snapshot) {
-            component.snapshot = data.snapshot;
-            if (component.configElement) {
-                component.configElement.setAttribute('wire:snapshot', data.snapshot);
-            }
+            comp.snapshot = data.snapshot;
+            if (comp.configElement) comp.configElement.setAttribute('wire:snapshot', data.snapshot);
         }
-
-        // 替换 section 内容
         if (data.sections) {
-            for (var sectionName in data.sections) {
-                if (data.sections.hasOwnProperty(sectionName)) {
-                    replaceSection(component, sectionName, data.sections[sectionName]);
-                }
+            for (var name in data.sections) {
+                if (data.sections.hasOwnProperty(name)) replaceSection(comp, name, data.sections[name]);
             }
         }
-
-        // 处理 effects
         if (data.effects) {
-            if (data.effects.redirect) {
-                var redirect = data.effects.redirect;
-                // 兼容两种格式：
-                //   字符串: "redirect": "/login"
-                //   对象:   "redirect": {"url": "/login", "delay": 1500}
-                var redirectUrl, redirectDelay;
-                if (typeof redirect === 'string') {
-                    redirectUrl = redirect;
-                    redirectDelay = 0;
-                } else {
-                    redirectUrl = redirect.url;
-                    redirectDelay = redirect.delay || 0;
-                }
-                if (redirectDelay > 0) {
-                    setTimeout(function() {
-                        window.location.href = redirectUrl;
-                    }, redirectDelay);
-                } else {
-                    window.location.href = redirectUrl;
-                }
+            var r = data.effects.redirect;
+            if (r) {
+                var url, delay = 0;
+                if (typeof r === 'string') { url = r; } else { url = r.url; delay = r.delay || 0; }
+                if (delay > 0) setTimeout(function () { window.location.href = url; }, delay);
+                else window.location.href = url;
             }
-            if (data.effects.dispatch && data.effects.dispatch.length > 0) {
+            if (data.effects.dispatch) {
                 for (var i = 0; i < data.effects.dispatch.length; i++) {
-                    var event = data.effects.dispatch[i];
-                    window.dispatchEvent(new CustomEvent(event.name, { detail: event.data }));
+                    window.dispatchEvent(new CustomEvent(data.effects.dispatch[i].name, { detail: data.effects.dispatch[i].data }));
                 }
             }
-            // 命名组件（toast / confirm 等）：委托给 wire-component.js 无感挂载
-            if (data.effects.components && data.effects.components.length > 0) {
-                if (window.WireComponent && typeof window.WireComponent.mountAll === 'function') {
-                    window.WireComponent.mountAll(data.effects.components);
-                } else {
-                    console.warn('[Wire] 收到 effects.components 但前端运行时 wire-component.js 未加载');
-                }
-            }
+            if (data.effects.components && window.WireComponent) window.WireComponent.mountAll(data.effects.components);
         }
-
-        // 触发 afterUpdate 事件（DOM 更新完成后）
-        // 适用于 mdui 等框架在 DOM 更新后需要重新初始化组件的场景
-        emit('afterUpdate', component, data, data.sections || {});
+        wireEmit('afterUpdate', comp, data, data.sections || {});
     }
 
-    // ===== 工具方法 =====
-
-    /** 读取单个 wire:model / wire:model.* 输入元素的当前值。 */
     function getInputValue(input) {
-        var tag = input.tagName ? input.tagName.toLowerCase() : '';
+        var tag = (input.tagName || '').toLowerCase();
         if (tag === 'input') {
-            var type = (input.getAttribute('type') || '').toLowerCase();
-            if (type === 'checkbox') return input.checked;
-            if (type === 'radio') return input.checked ? input.value : '';
+            var t = (input.getAttribute('type') || '').toLowerCase();
+            if (t === 'checkbox') return input.checked;
+            if (t === 'radio') return input.checked ? input.value : '';
             return input.value;
         }
         if (tag === 'select') {
-            if (input.type === 'select-multiple') {
-                var values = [];
-                for (var i = 0; i < input.selectedOptions.length; i++) {
-                    values.push(input.selectedOptions[i].value);
-                }
-                return values;
-            }
+            if (input.type === 'select-multiple') { var v = []; for (var i = 0; i < input.selectedOptions.length; i++) v.push(input.selectedOptions[i].value); return v; }
             return input.value;
         }
-        if (tag === 'textarea') return input.value;
         return input.value;
     }
-
-    /**
-     * 收集元素的 wire:param-* 字面量参数。
-     * 此外：若触发元素位于某个 [data-wire-key] 行内（列表场景），则额外收集该行内
-     * 所有 wire:model.* 输入框的【当前值】，作为同名参数传入。
-     * 这样列表内的「改名/勾选」按钮点击时，能拿到用户实时输入，而不是服务端旧值。
-     */
     function collectParams(el) {
         var params = {};
         if (!el || !el.attributes) return params;
         for (var i = 0; i < el.attributes.length; i++) {
             var attr = el.attributes[i];
             if (attr.name.indexOf('wire:param-') === 0) {
-                var key = attr.name.substring(11);
-                var raw = attr.value;
+                var key = attr.name.substring(11), raw = attr.value;
                 if (raw === '') raw = '1';
                 else if (raw === 'true') raw = true;
                 else if (raw === 'false') raw = false;
                 params[key] = raw;
             }
         }
-        // 行级收集：找到触发元素所在的数据行，把行内 wire:model 的当前值收集进来
         var row = closestAttr(el, 'data-wire-key') || closestAttr(el, 'wire:key');
         if (row) {
             var models = row.querySelectorAll('[wire\\:model]');
             for (var j = 0; j < models.length; j++) {
                 var mk = (models[j].getAttribute('wire:model') || '').split('.')[0];
-                if (mk && !(mk in params)) {
-                    params[mk] = getInputValue(models[j]);
-                }
+                if (mk && !(mk in params)) params[mk] = getInputValue(models[j]);
             }
         }
         return params;
     }
-
-    function collectFormData(form) {
-        var params = {};
-        var formData = new FormData(form);
-        formData.forEach(function (value, key) {
-            params[key] = value;
-        });
-        return params;
-    }
-
-    function getTargetSections(component, triggerEl) {
+    function collectFormData(form) { var p = {}; var fd = new FormData(form); fd.forEach(function (v, k) { p[k] = v; }); return p; }
+    function getTargetSections(comp, triggerEl) {
         var targetAttr = triggerEl.getAttribute('wire:target');
         if (!targetAttr) {
             var el = triggerEl.parentElement;
-            while (el && el !== component.element) {
-                if (el.hasAttribute && el.hasAttribute('wire:target')) {
-                    targetAttr = el.getAttribute('wire:target');
-                    break;
-                }
-                el = el.parentElement;
-            }
+            while (el && el !== comp.element) { if (el.hasAttribute && el.hasAttribute('wire:target')) { targetAttr = el.getAttribute('wire:target'); break; } el = el.parentElement; }
         }
-        if (targetAttr) {
-            return targetAttr.split(',').map(function (s) { return s.trim(); });
-        }
-        return [];
+        return targetAttr ? targetAttr.split(',').map(function (s) { return s.trim(); }) : [];
     }
-
-    function getAllSections(component) {
-        var sections = [];
-        // 1. 搜索整个文档中的 [wire:section] 元素（body + head）
-        var sectionEls = document.documentElement.querySelectorAll('[wire\\:section]');
-        for (var i = 0; i < sectionEls.length; i++) {
-            var name = sectionEls[i].getAttribute('wire:section');
-            if (sections.indexOf(name) === -1) {
-                sections.push(name);
-            }
-        }
-        // 2. 搜索整个文档中的注释标记（body 中的正常注释）
+    function getAllSections(comp) {
+        var secs = [];
+        var els = document.documentElement.querySelectorAll('[wire\\:section]');
+        for (var i = 0; i < els.length; i++) { var n = els[i].getAttribute('wire:section'); if (secs.indexOf(n) === -1) secs.push(n); }
         var walker = document.createTreeWalker(document.documentElement, NodeFilter.SHOW_COMMENT, null, null);
         var comment;
-        while (comment = walker.nextNode()) {
-            var text = comment.nodeValue;
-            var match = text.match(/^wire:section-start:(.+)$/);
-            if (match && sections.indexOf(match[1]) === -1) {
-                sections.push(match[1]);
-            }
-        }
-        // 3. 搜索原始文本元素（title, style, script）中的文本 wire 标记
-        var rawTextEls = document.querySelectorAll('title, style, script');
-        for (var r = 0; r < rawTextEls.length; r++) {
-            var rawContent = rawTextEls[r].textContent || '';
-            var rawRegex = /<!--wire:section-start:([\s\S]+?)-->/g;
-            var rawMatch;
-            while ((rawMatch = rawRegex.exec(rawContent)) !== null) {
-                if (sections.indexOf(rawMatch[1]) === -1) {
-                    sections.push(rawMatch[1]);
-                }
-            }
-        }
-        // 4. 搜索 head 中元素属性值里的 wire 标记（如 <meta content="@yield('desc')">）
-        var headEls = document.head ? document.head.querySelectorAll('*') : [];
-        for (var h = 0; h < headEls.length; h++) {
-            for (var ha = 0; ha < headEls[h].attributes.length; ha++) {
-                var attrVal = headEls[h].attributes[ha].value;
-                var attrMatch = attrVal.match(/<!--wire:section-start:([\s\S]+?)-->/);
-                if (attrMatch && sections.indexOf(attrMatch[1]) === -1) {
-                    sections.push(attrMatch[1]);
-                }
-            }
-        }
-        return sections;
+        while ((comment = walker.nextNode())) { var m = comment.nodeValue.match(/^wire:section-start:(.+)$/); if (m && secs.indexOf(m[1]) === -1) secs.push(m[1]); }
+        return secs;
     }
 
-    /**
-     * 替换 section 内容。
-     * 支持四种标记方式：
-     * 1. <div wire:section="name">...</div> — 替换 innerHTML（body 或 head）
-     * 2. <!--wire:section-start:name-->...<!--wire:section-end:name--> — 替换注释间的所有节点
-     * 3. 原始文本元素（title, style, script）中的文本标记 — 替换 textContent
-     * 4. 元素属性值中的标记（如 <meta content="...">） — 替换属性值
-     */
-    function replaceSection(component, sectionName, html) {
-        // 提取纯内容（去除 wire 标记）
-        var cleanContent = html
-            .replace(/<!--wire:section-start:[\s\S]+?-->/g, '')
-            .replace(/<!--wire:section-end:[\s\S]+?-->/g, '');
-
-        // 方式1: [wire:section] 元素属性（搜索整个文档）
+    function replaceSection(comp, sectionName, html) {
+        var cleanContent = html.replace(/<!--wire:section-start:[\s\S]+?-->/g, '').replace(/<!--wire:section-end:[\s\S]+?-->/g, '');
         var sectionEl = document.documentElement.querySelector('[wire\\:section="' + sectionName + '"]');
         if (sectionEl) {
-            // 列表交互稳定性（第2点）：若子节点带 data-wire-key，做基于 key 的最小化 diff，
-            // 复用 DOM 以保留输入框/勾选框等交互状态，避免整段 innerHTML 替换丢失状态。
-            if (hasKeyedChildren(sectionEl, html)) {
-                var focusInfoK = saveFocus(sectionEl);
-                replaceSectionKeyed(sectionEl, html);
-                restoreFocus(focusInfoK);
-                rebindSection(component, sectionEl);
-                return;
-            }
-            var focusInfo = saveFocus(sectionEl);
-            sectionEl.innerHTML = html;
-            restoreFocus(focusInfo);
-            rebindSection(component, sectionEl);
+            if (hasKeyedChildren(sectionEl, html)) { var f1 = saveFocus(sectionEl); replaceSectionKeyed(sectionEl, html); restoreFocus(f1); rebindSection(comp, sectionEl); return; }
+            var f = saveFocus(sectionEl); sectionEl.innerHTML = html; restoreFocus(f); rebindSection(comp, sectionEl); return;
+        }
+        var start = findComment(document.documentElement, 'wire:section-start:' + sectionName);
+        var end = findComment(document.documentElement, 'wire:section-end:' + sectionName);
+        if (start && end) {
+            var toRemove = [], node = start.nextSibling;
+            while (node && node !== end) { toRemove.push(node); node = node.nextSibling; }
+            var parent = start.parentNode;
+            var f2 = saveFocus(parent);
+            for (var i = 0; i < toRemove.length; i++) parent.removeChild(toRemove[i]);
+            var tmpl = document.createElement('template'); tmpl.innerHTML = html;
+            parent.insertBefore(tmpl.content, end);
+            restoreFocus(f2);
+            activateScriptsInContext(parent);
+            replayReadyScripts(parent);
+            rebindSection(comp, parent);
             return;
         }
-
-        // 方式2: HTML 注释标记（搜索整个文档）
-        var startComment = findComment(document.documentElement, 'wire:section-start:' + sectionName);
-        var endComment = findComment(document.documentElement, 'wire:section-end:' + sectionName);
-        if (startComment && endComment) {
-            var nodesToRemove = [];
-            var node = startComment.nextSibling;
-            while (node && node !== endComment) {
-                nodesToRemove.push(node);
-                node = node.nextSibling;
-            }
-            var parent = startComment.parentNode;
-            var focusInfo2 = saveFocus(parent);
-            for (var i = 0; i < nodesToRemove.length; i++) {
-                parent.removeChild(nodesToRemove[i]);
-            }
-            var template = document.createElement('template');
-            template.innerHTML = html;
-            parent.insertBefore(template.content, endComment);
-            restoreFocus(focusInfo2);
-            rebindSection(component, parent);
-            return;
-        }
-
-        // 方式3: 原始文本元素（title, style, script）中的文本标记
-        var rawTextEls = document.querySelectorAll('title, style, script');
-        for (var r = 0; r < rawTextEls.length; r++) {
-            var el = rawTextEls[r];
-            var content = el.textContent || '';
-            var startMarker = '<!--wire:section-start:' + sectionName + '-->';
-            var endMarker = '<!--wire:section-end:' + sectionName + '-->';
-            var startIdx = content.indexOf(startMarker);
-            if (startIdx >= 0) {
-                var endIdx = content.indexOf(endMarker, startIdx);
-                if (endIdx >= 0) {
-                    if (el.tagName === 'TITLE') {
-                        document.title = cleanContent;
-                    } else {
-                        el.textContent = cleanContent;
-                    }
+        var rawEls = document.querySelectorAll('title, style, script');
+        for (var r = 0; r < rawEls.length; r++) {
+            var el = rawEls[r]; var content = el.textContent || '';
+            var startMk = '<!--wire:section-start:' + sectionName + '-->';
+            var endMk = '<!--wire:section-end:' + sectionName + '-->';
+            var si = content.indexOf(startMk);
+            if (si >= 0) {
+                var ei = content.indexOf(endMk, si);
+                if (ei >= 0) {
+                    if (el.tagName === 'TITLE') document.title = cleanContent;
+                    else el.textContent = cleanContent;
                     return;
                 }
             }
         }
-
-        // 方式4: 元素属性值中的标记（如 <meta content="@yield('desc')">）
         var allEls = document.documentElement.querySelectorAll('*');
         for (var a = 0; a < allEls.length; a++) {
             var elem = allEls[a];
-            for (var attrIdx = 0; attrIdx < elem.attributes.length; attrIdx++) {
-                var attr = elem.attributes[attrIdx];
-                var attrVal = attr.value;
-                var attrStartMarker = '<!--wire:section-start:' + sectionName + '-->';
-                if (attrVal.indexOf(attrStartMarker) >= 0) {
-                    var attrEndMarker = '<!--wire:section-end:' + sectionName + '-->';
-                    var newAttrVal = attrVal.replace(
-                        new RegExp('<!--wire:section-start:' + sectionName + '-->([\\s\\S]*?)<!--wire:section-end:' + sectionName + '-->'),
-                        cleanContent
-                    );
-                    elem.setAttribute(attr.name, newAttrVal);
+            for (var ai = 0; ai < elem.attributes.length; ai++) {
+                var attr = elem.attributes[ai];
+                if (attr.value.indexOf('<!--wire:section-start:' + sectionName + '-->') >= 0) {
+                    elem.setAttribute(attr.name, attr.value.replace(new RegExp('<!--wire:section-start:' + sectionName + '-->([\\s\\S]*?)<!--wire:section-end:' + sectionName + '-->'), cleanContent));
                     return;
                 }
             }
         }
     }
 
-    /**
-     * 判断 section 容器是否应使用 keyed diff：新内容里存在带 data-wire-key 的元素，
-     * 且容器内也有带 data-wire-key 的直接子节点（说明是带交互状态的列表）。
-     */
-    function hasKeyedChildren(sectionEl, html) {
-        // 只有当「新旧内容里 data-wire-key 元素的父容器路径一致」时才可做 keyed diff。
-        // 注意：绝不能用 `[data-wire-key]`（任意层级）来判断，
-        // 因为 keyed diff 只处理 direct children；若 key 元素其实深藏在
-        // div > table > tbody > tr 里，section 的直接子节点全都没有 key，
-        // 就会全部走 appendChild 分支 —— 表现为「原内容没被替换，又多出一份新的」。
-        return findKeyedContainerPair(sectionEl, html) !== null;
-    }
-
-    /**
-     * 找到「承载 data-wire-key 直接子节点」的容器在新旧 DOM 中的对应关系。
-     * 返回 { oldContainer, newContainer, newRoot } 或 null（表示不适合 keyed diff）。
-     */
+    function hasKeyedChildren(sectionEl, html) { return findKeyedContainerPair(sectionEl, html) !== null; }
     function findKeyedContainerPair(sectionEl, html) {
-        var tmp = document.createElement('div');
-        tmp.innerHTML = html;
-
+        var tmp = document.createElement('div'); tmp.innerHTML = html;
         var newKeyed = tmp.querySelector('[data-wire-key]');
         if (!newKeyed || !newKeyed.parentNode) return null;
-
         var newContainer = newKeyed.parentNode;
-
-        // 计算 newContainer 相对 tmp 根的索引路径
         var path = [];
         var cur = newContainer;
-        while (cur && cur !== tmp) {
-            var parent = cur.parentNode;
-            if (!parent) return null;
-            path.unshift(Array.prototype.indexOf.call(parent.children, cur));
-            cur = parent;
-        }
+        while (cur && cur !== tmp) { var p = cur.parentNode; if (!p) return null; path.unshift(Array.prototype.indexOf.call(p.children, cur)); cur = p; }
         if (cur !== tmp) return null;
-
-        // 用同样的路径在旧 DOM（sectionEl）里定位容器
         var oldContainer = sectionEl;
-        for (var i = 0; i < path.length; i++) {
-            var idx = path[i];
-            if (!oldContainer.children || idx >= oldContainer.children.length) return null;
-            oldContainer = oldContainer.children[idx];
-        }
-
-        // 旧容器必须确实含有带 key 的直接子节点，否则没有可复用的状态，
-        // 直接走 innerHTML 整体替换更安全。
+        for (var i = 0; i < path.length; i++) { if (!oldContainer.children || path[i] >= oldContainer.children.length) return null; oldContainer = oldContainer.children[path[i]]; }
         if (!oldContainer.querySelector) return null;
-        var hasOldKeyedChild = false;
-        for (var c = 0; c < oldContainer.children.length; c++) {
-            if (oldContainer.children[c].getAttribute &&
-                oldContainer.children[c].getAttribute('data-wire-key')) {
-                hasOldKeyedChild = true;
-                break;
-            }
-        }
-        if (!hasOldKeyedChild) return null;
-
-        // 标签名一致才认为是同一个容器
+        var hasKey = false;
+        for (var c = 0; c < oldContainer.children.length; c++) { if (oldContainer.children[c].getAttribute && oldContainer.children[c].getAttribute('data-wire-key')) { hasKey = true; break; } }
+        if (!hasKey) return null;
         if (oldContainer.tagName !== newContainer.tagName) return null;
-
         return { oldContainer: oldContainer, newContainer: newContainer, newRoot: tmp };
     }
-
-    /**
-     * 基于 data-wire-key 的精确 diff 替换：
-     * - key 相同的节点：复用旧 DOM（保留交互状态），仅更新其属性与子文本
-     * - 新内容里多出的 key：新增到正确位置
-     * - 旧内容里消失的 key：删除节点
-     */
     function replaceSectionKeyed(sectionEl, html) {
         var pair = findKeyedContainerPair(sectionEl, html);
-        if (!pair) {
-            // 兜底：结构对不上就整体替换，绝不能走「逐个 append」，否则会重复出现旧内容。
-            sectionEl.innerHTML = html;
-            return;
-        }
-
+        if (!pair) { sectionEl.innerHTML = html; return; }
         var oldContainer = pair.oldContainer;
-        var newContainer = pair.newContainer;
-
-        // 1) 先把 keyed 行从新内容中「摘出来」，把 section 里除行容器以外的部分整体更新。
-        //    这样分页器、标题（共 N 项 / 第几页）等非 keyed 内容才会真正刷新，
-        //    而不是保持旧值或被追加一份。
-        var keptRows = {};
-        var oldRows = Array.prototype.slice.call(oldContainer.children);
-        for (var i = 0; i < oldRows.length; i++) {
-            var k = oldRows[i].getAttribute && oldRows[i].getAttribute('data-wire-key');
-            if (k) keptRows[k] = oldRows[i];
-        }
-
-        // 记录行容器在 section 中的位置路径，替换后重新定位
-        var pathFromSection = [];
-        var cur = oldContainer;
-        while (cur && cur !== sectionEl) {
-            var p = cur.parentNode;
-            if (!p) break;
-            pathFromSection.unshift(Array.prototype.indexOf.call(p.children, cur));
-            cur = p;
-        }
-
-        // 用新 HTML 整体替换 section（非 keyed 部分随之刷新）
+        var keptRows = {}, oldRows = Array.prototype.slice.call(oldContainer.children);
+        for (var i = 0; i < oldRows.length; i++) { var k = oldRows[i].getAttribute && oldRows[i].getAttribute('data-wire-key'); if (k) keptRows[k] = oldRows[i]; }
+        var path = []; var cur = oldContainer;
+        while (cur && cur !== sectionEl) { var p = cur.parentNode; if (!p) break; path.unshift(Array.prototype.indexOf.call(p.children, cur)); cur = p; }
         sectionEl.innerHTML = html;
-
-        // 重新定位到新的行容器
-        var freshContainer = sectionEl;
-        for (var s = 0; s < pathFromSection.length; s++) {
-            if (!freshContainer.children || pathFromSection[s] >= freshContainer.children.length) {
-                freshContainer = null;
-                break;
-            }
-            freshContainer = freshContainer.children[pathFromSection[s]];
-        }
-        if (!freshContainer) return;
-
-        // 2) 对行做 key 级别复用：把旧行的交互状态（输入值/勾选）迁移到新行上。
-        //    这里复用「状态」而不是复用「DOM 节点」，可以天然保证顺序与数量都以服务端为准，
-        //    不会出现重复行。
-        var freshRows = Array.prototype.slice.call(freshContainer.children);
-        for (var r = 0; r < freshRows.length; r++) {
-            var nk = freshRows[r].getAttribute && freshRows[r].getAttribute('data-wire-key');
-            if (!nk) continue;
-            var oldRow = keptRows[nk];
-            if (oldRow) {
-                carryOverRowState(oldRow, freshRows[r]);
-            }
-        }
+        var fresh = sectionEl;
+        for (var s = 0; s < path.length; s++) { if (!fresh.children || path[s] >= fresh.children.length) { fresh = null; break; } fresh = fresh.children[path[s]]; }
+        if (!fresh) return;
+        var rows = Array.prototype.slice.call(fresh.children);
+        for (var r = 0; r < rows.length; r++) { var nk = rows[r].getAttribute && rows[r].getAttribute('data-wire-key'); if (nk && keptRows[nk]) carryOverRowState(keptRows[nk], rows[r]); }
     }
-
-    /**
-     * 把旧行里「用户正在编辑的状态」迁移到新行对应控件上。
-     * 仅在该控件是行内输入（row-scoped）且服务端值未变化时保留用户输入，
-     * 避免用旧值覆盖服务端刚更新的权威值（如改名成功后应显示新名字）。
-     */
     function carryOverRowState(oldRow, newRow) {
-        var oldInputs = oldRow.querySelectorAll('input, textarea, select');
-        var newInputs = newRow.querySelectorAll('input, textarea, select');
-        if (oldInputs.length !== newInputs.length) return;
-
-        for (var i = 0; i < oldInputs.length; i++) {
-            var o = oldInputs[i];
-            var n = newInputs[i];
-            var type = (n.getAttribute('type') || '').toLowerCase();
-
-            if (type === 'checkbox' || type === 'radio') {
-                // 勾选状态以服务端为准（新 DOM 的 checked 属性），不做迁移
-                continue;
-            }
-            if (type === 'file') continue;
-
-            // 服务端值 = 新节点的 value 属性；旧节点 value 属性 = 上一次服务端值
-            var oldServerVal = o.getAttribute('value');
-            var newServerVal = n.getAttribute('value');
-            var userVal = o.value;
-
-            // 用户确实改动过（当前值 != 上次服务端值），且服务端这次没有给出新值时，
-            // 才保留用户输入，避免覆盖服务端权威更新。
-            if (userVal !== oldServerVal && oldServerVal === newServerVal) {
-                n.value = userVal;
-            }
+        var oldIn = oldRow.querySelectorAll('input, textarea, select');
+        var newIn = newRow.querySelectorAll('input, textarea, select');
+        if (oldIn.length !== newIn.length) return;
+        for (var i = 0; i < oldIn.length; i++) {
+            var o = oldIn[i], n = newIn[i]; var type = (n.getAttribute('type') || '').toLowerCase();
+            if (type === 'checkbox' || type === 'radio' || type === 'file') continue;
+            if (o.value !== o.getAttribute('value') && o.getAttribute('value') === n.getAttribute('value')) n.value = o.value;
         }
     }
 
-    function syncAttributes(oldEl, newEl) {
-        // 移除旧的有、新没有的属性（保留 data-wire-key）
-        for (var i = 0; i < oldEl.attributes.length; i++) {
-            var a = oldEl.attributes[i].name;
-            if (a === 'data-wire-key') continue;
-            if (newEl.getAttribute(a) === null) oldEl.removeAttribute(a);
-        }
-        // 设置/更新新的属性值
-        for (var j = 0; j < newEl.attributes.length; j++) {
-            var name = newEl.attributes[j].name;
-            if (name === 'data-wire-key') continue;
-            oldEl.setAttribute(name, newEl.attributes[j].value);
-        }
-        // 表单控件：同步 value/checked 这种 property（attribute 不能反映输入框实时值）。
-        // 否则 keyed diff 复用旧节点时，改名/勾选后输入框会显示旧值（还原问题）。
-        var tag = oldEl.tagName ? oldEl.tagName.toLowerCase() : '';
-        if (tag === 'input') {
-            var type = (oldEl.getAttribute('type') || '').toLowerCase();
-            if (type === 'checkbox' || type === 'radio') {
-                oldEl.checked = !!newEl.checked;
-            } else if (type !== 'file') {
-                oldEl.value = newEl.value;
-            }
-        } else if (tag === 'textarea' || tag === 'select') {
-            oldEl.value = newEl.value;
-        }
-    }
-
-    function syncTextNodes(oldEl, newEl) {
-        // 仅当子节点结构都为纯文本时同步文本，避免破坏交互子元素
-        if (oldEl.childNodes.length === newEl.childNodes.length) {
-            for (var i = 0; i < oldEl.childNodes.length; i++) {
-                if (oldEl.childNodes[i].nodeType === 3 && newEl.childNodes[i].nodeType === 3) {
-                    if (oldEl.childNodes[i].textContent !== newEl.childNodes[i].textContent) {
-                        oldEl.childNodes[i].textContent = newEl.childNodes[i].textContent;
-                    }
-                }
-            }
-        }
-    }
-
-    function findComment(root, text) {        var walker = document.createTreeWalker(root, NodeFilter.SHOW_COMMENT, null, null);
+    function findComment(root, text) {
+        var walker = document.createTreeWalker(root, NodeFilter.SHOW_COMMENT, null, null);
         var comment;
-        while (comment = walker.nextNode()) {
-            if (comment.nodeValue === text) {
-                return comment;
-            }
-        }
+        while ((comment = walker.nextNode())) { if (comment.nodeValue === text) return comment; }
         return null;
     }
-
-    /**
-     * 精确查找 wire:model 输入框：同时匹配 data-wire-field 和 data-wire-model-attr。
-     * 这样可以区分 wire:model="message" 和 wire:model.live="message" 两个不同的输入框。
-     */
     function findModelInput(container, field, modelAttr) {
         if (!container || !field || !modelAttr) return null;
         var els = container.querySelectorAll('[data-wire-field="' + field + '"]');
-        for (var i = 0; i < els.length; i++) {
-            if (els[i].getAttribute('data-wire-model-attr') === modelAttr) {
-                return els[i];
-            }
-        }
+        for (var i = 0; i < els.length; i++) if (els[i].getAttribute('data-wire-model-attr') === modelAttr) return els[i];
         return null;
     }
 
-    function showLoading(component, action) {
-        var loadingEls = component.element.querySelectorAll('[wire\\:loading]');
-        for (var i = 0; i < loadingEls.length; i++) {
-            var el = loadingEls[i];
-            var target = el.getAttribute('wire:target');
-            if (!target || target === action) {
-                el.style.display = '';
-                el.setAttribute('wire:loading-active', 'true');
-            }
-        }
-        var triggerEls = component.element.querySelectorAll('[wire\\:click="' + action + '"], [wire\\:submit="' + action + '"]');
-        for (var j = 0; j < triggerEls.length; j++) {
-            triggerEls[j].setAttribute('wire:loading', 'true');
-        }
+    function showLoading(comp, action) {
+        var els = comp.element.querySelectorAll('[wire\\:loading]');
+        for (var i = 0; i < els.length; i++) { var el = els[i]; var t = el.getAttribute('wire:target'); if (!t || t === action) { el.style.display = ''; el.setAttribute('wire:loading-active', 'true'); } }
+        var triggers = comp.element.querySelectorAll('[wire\\:click="' + action + '"], [wire\\:submit="' + action + '"]');
+        for (var j = 0; j < triggers.length; j++) triggers[j].setAttribute('wire:loading', 'true');
     }
-
-    function hideLoading(component, action) {
-        // 先清除触发按钮的 wire:loading 属性（由 showLoading 设置），
-        // 避免后续 [wire:loading] 查询误把触发按钮当作加载指示器而 display:none
-        // 同时清除可能被误设的 display:none，确保按钮始终可见
-        var triggerEls = component.element.querySelectorAll('[wire\\:click="' + action + '"], [wire\\:submit="' + action + '"]');
-        for (var j = 0; j < triggerEls.length; j++) {
-            triggerEls[j].removeAttribute('wire:loading');
-            triggerEls[j].style.display = '';
-        }
-        // 再隐藏加载指示器（原始 HTML 中带 wire:loading 的元素）
-        var loadingEls = component.element.querySelectorAll('[wire\\:loading]');
-        for (var i = 0; i < loadingEls.length; i++) {
-            var el = loadingEls[i];
-            var target = el.getAttribute('wire:target');
-            if (!target || target === action) {
-                el.style.display = 'none';
-                el.removeAttribute('wire:loading-active');
-            }
-        }
+    function hideLoading(comp, action) {
+        var triggers = comp.element.querySelectorAll('[wire\\:click="' + action + '"], [wire\\:submit="' + action + '"]');
+        for (var j = 0; j < triggers.length; j++) { triggers[j].removeAttribute('wire:loading'); triggers[j].style.display = ''; }
+        var els = comp.element.querySelectorAll('[wire\\:loading]');
+        for (var i = 0; i < els.length; i++) { var el = els[i]; var t = el.getAttribute('wire:target'); if (!t || t === action) { el.style.display = 'none'; el.removeAttribute('wire:loading-active'); } }
     }
-
     function saveFocus(container) {
         var active = document.activeElement;
-        if (!active || !container.contains(active)) {
-            return null;
-        }
-        var path = '';
-        var el = active;
+        if (!active || !container.contains(active)) return null;
+        var path = '', el = active;
         while (el && el !== container) {
-            var selector = el.tagName.toLowerCase();
-            var rowKey = el.getAttribute('data-wire-key');
-            if (el.id) {
-                selector += '#' + el.id;
-            } else if (rowKey) {
-                // 行节点用 key 定位，保证同名字段能定位到「本行」而不是页面第一个同名输入框
-                selector += '[data-wire-key="' + rowKey + '"]';
-            } else if (el.getAttribute('data-wire-field')) {
-                selector += '[data-wire-field="' + el.getAttribute('data-wire-field') + '"]';
-            } else if (el.name) {
-                selector += '[name="' + el.name + '"]';
-            } else {
-                var parent = el.parentElement;
-                if (parent) {
-                    var siblings = parent.children;
-                    var index = Array.prototype.indexOf.call(siblings, el);
-                    selector += ':nth-child(' + (index + 1) + ')';
-                }
-            }
-            path = path ? selector + ' > ' + path : selector;
+            var sel = el.tagName.toLowerCase();
+            var rk = el.getAttribute('data-wire-key');
+            if (el.id) sel += '#' + el.id;
+            else if (rk) sel += '[data-wire-key="' + rk + '"]';
+            else if (el.getAttribute('data-wire-field')) sel += '[data-wire-field="' + el.getAttribute('data-wire-field') + '"]';
+            else if (el.name) sel += '[name="' + el.name + '"]';
+            else { var parent = el.parentElement; if (parent) sel += ':nth-child(' + (Array.prototype.indexOf.call(parent.children, el) + 1) + ')'; }
+            path = path ? sel + ' > ' + path : sel;
             el = el.parentElement;
         }
-        var selectionStart = null;
-        var selectionEnd = null;
-        if (active.type !== 'checkbox' && active.type !== 'radio' && active.selectionStart !== undefined) {
-            selectionStart = active.selectionStart;
-            selectionEnd = active.selectionEnd;
-        }
-        return { path: path, container: container, selectionStart: selectionStart, selectionEnd: selectionEnd };
+        var ss = null, se = null;
+        if (active.type !== 'checkbox' && active.type !== 'radio' && active.selectionStart !== undefined) { ss = active.selectionStart; se = active.selectionEnd; }
+        return { path: path, container: container, selectionStart: ss, selectionEnd: se };
+    }
+    function restoreFocus(info) {
+        if (!info || !info.path) return;
+        try {
+            var scope = (info.container && info.container.querySelector) ? info.container : document;
+            var el = scope.querySelector(info.path);
+            if (el && el.focus) { el.focus(); if (info.selectionStart !== null && el.setSelectionRange) el.setSelectionRange(info.selectionStart, info.selectionEnd); }
+        } catch (e) { /* */ }
+    }
+    function rebindSection(comp, sectionEl) { bindEvents(comp); }
+
+    function redirectToLogin(loginUrl) {
+        var url = window.location.href;
+        if (window.location.pathname === loginUrl) return;
+        window.location.href = loginUrl + ((loginUrl.indexOf('?') >= 0) ? '&' : '?') + 'redirect=' + encodeURIComponent(url);
     }
 
-    function restoreFocus(focusInfo) {
-        if (!focusInfo || !focusInfo.path) return;
+    // ======================== WireComponent（命名组件） ========================
+
+    var compInstances = {};
+    var compInited = false;
+
+    function parseLifecycle(src) {
+        if (!src) return {};
         try {
-            // path 是相对 container 生成的，必须在 container 内查找。
-            // 否则同名字段（如列表行和新增表单都用 wire:model="name"）会命中文档里第一个，导致焦点乱跳。
-            var scope = (focusInfo.container && focusInfo.container.querySelector)
-                ? focusInfo.container
-                : document;
-            var el = scope.querySelector(focusInfo.path);
-            if (el && el.focus) {
-                el.focus();
-                if (focusInfo.selectionStart !== null && el.setSelectionRange) {
-                    el.setSelectionRange(focusInfo.selectionStart, focusInfo.selectionEnd);
+            var factory = new Function(src + ';return {onCreate:typeof onCreate==="function"?onCreate:null,onStart:typeof onStart==="function"?onStart:null,onStop:typeof onStop==="function"?onStop:null,onDestroy:typeof onDestroy==="function"?onDestroy:null};');
+            return factory() || {};
+        } catch (e) { console.error('[WireComponent] 生命周期脚本解析失败:', e); return {}; }
+    }
+    function getOutlet(outletId) {
+        if (outletId) { var by = document.getElementById(outletId); if (by) return by; }
+        return document.querySelector('[wire\\:outlet]') || document.getElementById('wire-outlet');
+    }
+    function callLife(inst, name, el, wire) {
+        var fn = inst.api[name]; if (typeof fn !== 'function') return undefined;
+        try { return fn(el, wire); } catch (e) { console.error('[WireComponent] ' + inst.name + '.' + name + ' 执行异常', e); }
+        return undefined;
+    }
+    function compMount(payload, outletId) {
+        if (!payload || !payload.id) return null;
+        if (compInstances[payload.id]) return compInstances[payload.id];
+        var outlet = getOutlet(outletId || payload.outlet);
+        if (!outlet) { console.error('[WireComponent] 找不到 outlet 容器，无法挂载组件 [' + payload.name + ']'); return null; }
+        var wrap = document.createElement('div'); wrap.innerHTML = payload.html || '';
+        var el = wrap.firstElementChild || wrap;
+        var api = parseLifecycle(payload.script);
+        var inst = { id: payload.id, name: payload.name, el: el, params: payload.params || {}, api: api, removing: false, wire: null };
+        var wire = { id: payload.id, name: payload.name, params: inst.params, el: el, stop: function () { compStop(inst); } };
+        inst.wire = wire; compInstances[payload.id] = inst;
+        callLife(inst, 'onCreate', el, wire);
+        outlet.appendChild(el);
+        callLife(inst, 'onStart', el, wire);
+        return inst;
+    }
+    function compStop(inst) {
+        if (!inst || inst.removing) return;
+        inst.removing = true;
+        var ret = callLife(inst, 'onStop', inst.el, inst.wire);
+        var finish = function () { if (inst.el && inst.el.parentNode) inst.el.parentNode.removeChild(inst.el); callLife(inst, 'onDestroy', inst.el, inst.wire); delete compInstances[inst.id]; };
+        if (typeof ret === 'number') setTimeout(finish, ret);
+        else if (ret && typeof ret.then === 'function') ret.then(finish, finish);
+        else finish();
+    }
+    function compMountAll(payloads, outletId) { for (var i = 0; i < payloads.length; i++) compMount(payloads[i], outletId); }
+    function compMountBootstrapTags() {
+        var tags = document.querySelectorAll('script[type="application/json"][wire\\:components]');
+        for (var i = 0; i < tags.length; i++) {
+            var tag = tags[i]; var outletId = tag.getAttribute('data-wire-outlet') || 'wire-outlet';
+            var list = []; try { list = JSON.parse(tag.textContent || '[]'); } catch (e) { console.error('[WireComponent] 首屏引导数据解析失败', e); }
+            compMountAll(list, outletId);
+            if (tag.parentNode) tag.parentNode.removeChild(tag);
+        }
+    }
+    function compInit() { if (compInited) return; compInited = true; compMountBootstrapTags(); }
+
+    window.WireComponent = {
+        __runtime: 'wire-merged',
+        mount: compMount, mountAll: compMountAll,
+        stop: function (id) { compStop(compInstances[id]); },
+        init: compInit,
+        scan: compMountBootstrapTags,
+        version: '1.2'
+    };
+
+    // ======================== WireNavigate（透明导航） ========================
+
+    var navUrl = location.href;
+    var navHashes = {};
+    var navListeners = {};
+
+    function navOn(evt, fn) { (navListeners[evt] = navListeners[evt] || []).push(fn); }
+    function navOff(evt, fn) { navListeners[evt] = (navListeners[evt] || []).filter(function (f) { return f !== fn; }); }
+    function navEmit(evt, detail) {
+        document.dispatchEvent(new CustomEvent('wire:navigate:' + evt, { detail: detail }));
+        if (navListeners[evt]) navListeners[evt].forEach(function (fn) { try { fn(detail); } catch (e) { console.error(e); } });
+    }
+
+    window.WireNavigate = {
+        __runtime: 'wire-merged',
+        on: navOn, off: navOff, visit: visit,
+        rescan: function () { refreshRuntimes(); },
+        currentUrl: function () { return navUrl; }
+    };
+
+    // --- 合并后统一的 FNV-1a 32-bit hash（与 Java 端 WireRenderer.hash 完全一致） ---
+    function wireHash(str) {
+        if (!str) return '00000000';
+        var h = 0x811c9dc5;
+        for (var i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = (h * 0x01000193) | 0; }
+        return (h >>> 0).toString(16).padStart(8, '0');
+    }
+
+    // 收集当前文档中所有已知 section 名（用于计算哈希时剥离嵌套）
+    var knownSectionNames = {};
+
+    function collectKnownSectionNames() {
+        knownSectionNames = {};
+        var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_COMMENT, null, false);
+        var comment;
+        while ((comment = walker.nextNode())) {
+            var m = comment.nodeValue.match(/^wire:section-start:([a-zA-Z0-9_-]+)$/);
+            if (m) knownSectionNames[m[1]] = true;
+        }
+    }
+
+    // 对 section 内容计算 hash：剥离嵌套子 section，与 Java 端同口径。
+    function hashSectionContent(content, ownName) {
+        if (!content) return '00000000';
+        var needsNormalize = false;
+        for (var s in knownSectionNames) {
+            if (s !== ownName && content.indexOf('<!--wire:section-start:' + s + '-->') >= 0) { needsNormalize = true; break; }
+        }
+        if (!needsNormalize) return wireHash(content);
+        var normalized = content.replace(/<!--wire:section-start:([a-zA-Z0-9_-]+)-->.*?<!--wire:section-end:\1-->/gs,
+            function (full, childName) {
+                if (childName === ownName) return full;
+                if (knownSectionNames[childName]) return 'WIRE_SECTION_PLACEHOLDER:' + childName;
+                return full;
+            }
+        );
+        return wireHash(normalized);
+    }
+
+    function navComputeHashes() {
+        if (window.__wireHashes) { navHashes = Object.assign({}, window.__wireHashes); return; }
+        collectKnownSectionNames();
+        var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_COMMENT, null, false);
+        var open = {}; var comment; navHashes = {};
+        while ((comment = walker.nextNode())) {
+            var text = comment.nodeValue || '';
+            var startMatch = /^wire:section-start:([a-zA-Z0-9_-]+)$/.exec(text);
+            if (startMatch) { open[startMatch[1]] = comment; continue; }
+            var endMatch = /^wire:section-end:([a-zA-Z0-9_-]+)$/.exec(text);
+            if (endMatch && open[endMatch[1]]) {
+                var name = endMatch[1];
+                var sc = getSectionContentFromNodes(open[name], comment);
+                navHashes[name] = hashSectionContent(sc, name);
+                delete open[name];
+            }
+        }
+    }
+
+    function navInit() {
+        navComputeHashes();
+        navEmit('ready', { url: navUrl, hashes: navHashes });
+    }
+
+    function walkSections(fn) {
+        collectKnownSectionNames();
+        var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_COMMENT, null, false);
+        var open = {}; var node;
+        while ((node = walker.nextNode())) {
+            var text = node.textContent || '';
+            var sm = /^wire:section-start:([a-zA-Z0-9_-]+)$/.exec(text);
+            if (sm) { open[sm[1]] = node; continue; }
+            var em = /^wire:section-end:([a-zA-Z0-9_-]+)$/.exec(text);
+            if (em && open[em[1]]) { fn(em[1], { startNode: open[em[1]], endNode: node, name: em[1] }); delete open[em[1]]; }
+        }
+    }
+    function getSectionContentFromNodes(startNode, endNode) {
+        var parts = []; var node = startNode.nextSibling;
+        while (node && node !== endNode) {
+            if (node.nodeType === Node.ELEMENT_NODE) parts.push(node.outerHTML);
+            else if (node.nodeType === Node.TEXT_NODE) parts.push(node.textContent);
+            node = node.nextSibling;
+        }
+        return parts.join('');
+    }
+    function replaceSectionContent(section, newHtml) {
+        var parentNode = section.startNode.parentNode;
+        if (!parentNode) return;
+        var node = section.startNode.nextSibling;
+        while (node && node !== section.endNode) { var next = node.nextSibling; node.parentNode.removeChild(node); node = next; }
+        var temp = document.createElement('div'); temp.innerHTML = newHtml;
+        while (temp.firstChild) { parentNode.insertBefore(temp.firstChild, section.endNode); }
+        section.parentNode = parentNode;
+        return parentNode;
+    }
+
+    /**
+     * 激活新插入的 script 标签（innerHTML 插入的 <script> 不执行，需替换为真实 script 节点）。
+     */
+    function activateScriptsInContext(root) {
+        if (!root || !root.querySelectorAll) return;
+        var scripts = root.querySelectorAll('script');
+        for (var i = 0; i < scripts.length; i++) {
+            var old = scripts[i];
+            var type = (old.getAttribute('type') || '').toLowerCase();
+            var isDataOnly = old.hasAttribute('wire:config') || old.hasAttribute('wire:snapshot')
+                || old.hasAttribute('wire:components') || type === 'application/json';
+            if (isDataOnly) continue;
+            var src = old.getAttribute('src');
+            if (src) {
+                var fresh = document.createElement('script');
+                for (var a = 0; a < old.attributes.length; a++) {
+                    var attr = old.attributes[a];
+                    if (attr.name !== 'type') fresh.setAttribute(attr.name, attr.value);
+                }
+                fresh.type = 'application/javascript';
+                old.parentNode.replaceChild(fresh, old);
+                continue;
+            }
+            var text = old.textContent || '';
+            if (!text.trim()) continue;
+            try {
+                (function (body) { eval(body); })(text);
+            } catch (e) { console.error('[Wire] 内联脚本执行失败:', e); }
+            if (old.parentNode) old.parentNode.removeChild(old);
+        }
+    }
+
+    var readyCallbacks = [];
+    var readyCallbackIds = {};
+
+    function _registerReady(fn) { readyCallbacks.push(fn); if (typeof fn === 'function') readyCallbackIds[fn.toString()] = true; }
+    function _unregisterReady(fn) {
+        var i = readyCallbacks.indexOf(fn);
+        if (i >= 0) readyCallbacks.splice(i, 1);
+        if (typeof fn === 'function') delete readyCallbackIds[fn.toString()];
+    }
+    window.__wireReady = { on: _registerReady, off: _unregisterReady };
+
+    var _jQueryReady = null, _MDuiReady = null;
+    function _hookReadyFunctions() {
+        try {
+            if (window.jQuery) {
+                var _jq = window.jQuery.fn;
+                if (_jq.ready && !_jq.ready.__wireHooked) {
+                    _jq.ready.__wireHooked = true;
+                    var _origReady = _jq.ready;
+                    _jq.ready = function (fn) { _registerReady(fn); return _origReady.apply(this, arguments); };
+                }
+                if (window.jQuery.readyList) {
+                    for (var i = 0; i < window.jQuery.readyList.length; i++) {
+                        var cb = window.jQuery.readyList[i];
+                        if (typeof cb === 'function' && readyCallbacks.indexOf(cb) === -1) {
+                            _registerReady(cb);
+                        }
+                    }
                 }
             }
-        } catch (e) {
+            if (window.mdui && mdui.$) {
+                var _md = mdui.$.fn || mdui.$;
+                if (_md.ready && !_md.ready.__wireHooked) {
+                    _md.ready.__wireHooked = true;
+                    var _origMdReady = _md.ready;
+                    _md.ready = function (fn) { _registerReady(fn); return _origMdReady.apply(this, arguments); };
+                }
+            }
+        } catch (e) { /* */ }
+    }
+    _hookReadyFunctions();
+
+    function _rewriteDollarReady() {
+        try {
+            if (window.$ && window.$.fn && window.$.fn.ready) {
+                var _orig = window.$.fn.ready;
+                window.$.fn.ready = function (fn) {
+                    _registerReady(fn);
+                    if (document.readyState === 'complete' && typeof fn === 'function') {
+                        try { fn(document); } catch (e) { /* */ }
+                    }
+                    return _orig.apply(this, arguments);
+                };
+            }
+        } catch (e) { /* */ }
+    }
+    _rewriteDollarReady();
+
+    function replayReadyScripts(root) {
+        setTimeout(function () {
+            for (var i = 0; i < readyCallbacks.length; i++) {
+                try { readyCallbacks[i].call && readyCallbacks[i].call(document); }
+                catch (e) { console.error('[Wire] ready 回调重放失败:', e); }
+            }
+        }, 0);
+    }
+
+    function applyAnchors(anchors) {
+        if (!anchors) return;
+        for (var key in anchors) {
+            var value = anchors[key];
+            if (key.indexOf('text:') === 0) {
+                var section = key.slice(5);
+                var el = document.querySelector('[wire\\:section-text~="' + section + '"]');
+                if (el) { if (el.tagName === 'TITLE') document.title = value; else el.textContent = value; }
+            } else if (key.indexOf('attr:') === 0) {
+                var token = key.slice(5); var colon = token.indexOf(':');
+                if (colon > 0) {
+                    var attrName = token.slice(0, colon);
+                    var target = document.querySelector('[wire\\:section-attr~="' + token + '"]');
+                    if (target) target.setAttribute(attrName, value);
+                }
+            }
         }
     }
 
-    function rebindSection(component, sectionEl) {
-        bindClick(component);
-        bindSubmit(component);
-        bindModel(component);
-        bindChange(component);
-        bindKeydown(component);
-        // 必须重绑分页：section 更新后分页器 <a> 是全新 DOM，未绑定则会走浏览器默认跳转（整页刷新）
-        bindPagination(component);
+    function visit(url) {
+        if (!url) return;
+        navEmit('before', { url: url });
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', url, true);
+        xhr.setRequestHeader('X-Wire-Navigate', 'true');
+        var parts = [];
+        for (var k in navHashes) { if (navHashes.hasOwnProperty(k)) parts.push(k + '=' + navHashes[k]); }
+        xhr.setRequestHeader('X-Wire-Hashes', parts.join(','));
+        xhr.setRequestHeader('Accept', 'application/json, text/html');
+        xhr.onload = function () {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                var ct = xhr.getResponseHeader('Content-Type') || '';
+                if (ct.indexOf('application/json') >= 0) {
+                    try { var payload = JSON.parse(xhr.responseText); applyDiff(payload, url); }
+                    catch (e) { console.error('[wire-navigate] JSON parse error:', e); hardNavigate(url); }
+                } else hardNavigate(url);
+            } else if (xhr.status === 302 || xhr.status === 301) { var loc = xhr.getResponseHeader('Location'); if (loc) visit(loc); }
+            else hardNavigate(url);
+        };
+        xhr.onerror = function () { hardNavigate(url); };
+        xhr.send();
     }
 
-    // ===== 认证过期处理 =====
-
-    /**
-     * 重定向到登录页，携带当前页面 URL 作为回跳地址。
-     * 用户登录成功后可以回到之前的页面，实现"无感"体验。
-     */
-    function redirectToLogin(loginUrl) {
-        var currentUrl = window.location.href;
-        // 避免重复重定向
-        if (window.location.pathname === loginUrl) return;
-        // 拼接 redirect 参数
-        var separator = loginUrl.indexOf('?') !== -1 ? '&' : '?';
-        window.location.href = loginUrl + separator + 'redirect=' + encodeURIComponent(currentUrl);
+    function applyDiff(payload, url) {
+        var sections = payload.sections || {};
+        var hashes = payload.hashes || {};
+        var changedCount = 0;
+        var activatedParents = [];
+        var changedKeys = [];
+        walkSections(function (name, section) {
+            var newHtml = sections[name];
+            if (newHtml !== undefined) {
+                changedKeys.push(name);
+                var parent = replaceSectionContent(section, newHtml);
+                if (parent) activatedParents.push(parent);
+                changedCount++;
+            }
+            if (hashes[name] !== undefined) navHashes[name] = hashes[name];
+        });
+        console.warn('[wire] 导航到 ' + url + '，替换 section: ' + changedKeys.join(',') + '，共 ' + changedCount + ' 个');
+        // 只执行替换区域内新增的 script（避免重复执行其他 section 的脚本）
+        for (var r = 0; r < activatedParents.length; r++) {
+            activateScriptsInSection(activatedParents[r]);
+        }
+        applyAnchors(payload.anchors);
+        if (payload.title) document.title = payload.title;
+        refreshRuntimes();
+        replayReadyScripts(document.body);
+        var finalUrl = payload.url || url;
+        if (finalUrl && finalUrl !== navUrl) { history.pushState({ wireUrl: finalUrl }, '', finalUrl); navUrl = finalUrl; }
+        navEmit('success', { url: finalUrl, payload: payload, changedCount: changedCount });
+        navEmit('complete', { url: finalUrl });
     }
 
-    // ===== 启动 =====
+    function activateScriptsInSection(parentNode) {
+        if (!parentNode) return;
+        // 遍历所有 section，只激活已替换区域内的 script
+        var sectionsToActivate = [];
+        walkSections(function (name, section) {
+            sectionsToActivate.push(section);
+        });
+        for (var i = 0; i < sectionsToActivate.length; i++) {
+            var sec = sectionsToActivate[i];
+            var scripts = [];
+            var n = sec.startNode.nextSibling;
+            while (n && n !== sec.endNode) {
+                if (n.nodeType === Node.ELEMENT_NODE && n.tagName === 'SCRIPT') scripts.push(n);
+                n = n.nextSibling;
+            }
+            for (var s = 0; s < scripts.length; s++) {
+                var old = scripts[s];
+                var type = (old.getAttribute('type') || '').toLowerCase();
+                var isDataOnly = old.hasAttribute('wire:config') || old.hasAttribute('wire:snapshot')
+                    || old.hasAttribute('wire:components') || type === 'application/json';
+                if (isDataOnly) continue;
+                var src = old.getAttribute('src');
+                if (src) {
+                    var fresh = document.createElement('script');
+                    for (var a = 0; a < old.attributes.length; a++) {
+                        var attr = old.attributes[a];
+                        if (attr.name !== 'type') fresh.setAttribute(attr.name, attr.value);
+                    }
+                    fresh.type = 'application/javascript';
+                    old.parentNode.replaceChild(fresh, old);
+                    continue;
+                }
+                var text = old.textContent || '';
+                if (!text.trim()) continue;
+                try {
+                    (function (body) { eval(body); })(text);
+                } catch (e) { console.error('[Wire] 内联脚本执行失败:', e); }
+                if (old.parentNode) old.parentNode.removeChild(old);
+            }
+        }
+    }
+
+    function refreshRuntimes() {
+        try { if (window.Wire && typeof window.Wire.scan === 'function') window.Wire.scan(); }
+        catch (e) { console.error('[wire-navigate] Wire.scan() 失败', e); }
+        try { if (window.WireComponent && typeof window.WireComponent.scan === 'function') window.WireComponent.scan(); }
+        catch (e) { console.error('[wire-navigate] WireComponent.scan() 失败', e); }
+        navEmit('rescan', { url: navUrl });
+    }
+    function hardNavigate(url) { window.location.assign(url); }
+
+    document.addEventListener('click', function (e) {
+        var el = e.target.closest('a');
+        if (!el || !el.href) return;
+        if (!el.hasAttribute('wire-navigate') && !el.hasAttribute('data-wire')) return;
+        if (el.host !== location.host) return;
+        if (!/^https?:/.test(el.protocol)) return;
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        if (el.hasAttribute('target') || el.hasAttribute('download') || el.getAttribute('href') === '#') return;
+        e.preventDefault();
+        visit(el.href);
+    });
+    window.addEventListener('popstate', function (e) {
+        var url = (e.state && e.state.wireUrl) || location.href;
+        if (url !== navUrl) visit(url);
+    });
+
+    function wireInit() { cleanHeadWireMarkers(); Wire.scan(); }
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
+        document.addEventListener('DOMContentLoaded', function () { wireInit(); compInit(); navInit(); });
     } else {
-        init();
+        wireInit(); compInit(); navInit();
     }
 
-    // ===== 公开 API：精准刷新（第1点 / 第7点懒加载扩展）=====
-    /**
-     * 手动刷新一个或多个 section。
-     * @param {string[]|string} sections  要刷新的 section 名；为空/省略=全部；传 'list' 等=只刷该组件
-     * @param {string} [action]           后端 action，默认 '$refresh'（不改动数据，仅重渲染）
-     * @param {object} [params]           附加参数（如 {page:2}）
-     *
-     * 说明：后端不需要为"全页刷新"单独写代码。无论传哪些 section，后端都走同一个
-     * update 通道：基于当前快照执行 action，再把指定 section 渲染返回。
-     * 使用者已知某组件（如 list）在后端被别人更新时，调用 Wire.refresh(['list']) 即可精准拉取。
-     */
     Wire.refresh = function (sections, action, params) {
-        var comp = Wire.components[0];
-        if (!comp) return;
-        var targetSections = null;
-        if (typeof sections === 'string') {
-            targetSections = sections ? [sections] : null;
-        } else if (Array.isArray(sections)) {
-            targetSections = sections.length ? sections : null;
-        }
-        sendRequest(comp, action || '$refresh', params || {}, null, targetSections);
+        var comp = Wire.components[0]; if (!comp) return;
+        var target = null;
+        if (typeof sections === 'string') target = sections ? [sections] : null;
+        else if (Array.isArray(sections)) target = sections.length ? sections : null;
+        sendRequest(comp, action || '$refresh', params || {}, null, target);
     };
 
     window.Wire = Wire;

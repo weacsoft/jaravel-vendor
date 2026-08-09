@@ -3,8 +3,7 @@ package com.weacsoft.jaravel.vendor.wire.navigation;
 import com.weacsoft.jaravel.vendor.jblade.WireAnchorRewriter;
 import com.weacsoft.jaravel.vendor.json.Json;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -14,10 +13,11 @@ import java.util.regex.Pattern;
  * <h3>工作流程</h3>
  * <ol>
  *   <li>从 HTML 中按 {@code <!--wire:section-start:NAME-->...<!--wire:section-end:NAME-->} 提取每个 section；</li>
- *   <li>计算每个 section 的 FNV-1a 32-bit hash；</li>
+ *   <li>计算每个 section 的 FNV-1a 32-bit hash —— 对父 section 计算 hash 时会剥离其内嵌的
+ *       子 section（含起止注释），因此父 section 不会因为子 section 内容不同而被误判为变更；</li>
  *   <li>对比客户端上报的 hash（来自 WireContext），只保留变化过的 section；</li>
  *   <li>抽取锚点值：{@code <title>} 文本、{@code class} 等<b>注释非法位置</b>由标记属性定位，
- *       服务端直接下发渲染后的完整值（见 {@link WireAnchorRewriter}）；</li>
+ *       服务端直接下发渲染后的完整新值（见 {@link WireAnchorRewriter}）；</li>
  *   <li>生成 JSON 响应：{@code {"sections":{...},"hashes":{...},"anchors":{...},"title":"...","url":"..."}}</li>
  * </ol>
  *
@@ -29,6 +29,11 @@ public class WireRenderer {
     /** Wire section 标记正则（不 trim 内容，与服务端/前端 hash 计算保持一致） */
     private static final Pattern SECTION_PATTERN = Pattern.compile(
             "<!--wire:section-start:([a-zA-Z0-9_-]+)-->(.*?)<!--wire:section-end:\\1-->",
+            Pattern.DOTALL);
+
+    /** 用于剥离所有嵌套的 section 标记（起止注释本身），保留非嵌套的文本/HTML 结构。 */
+    private static final Pattern NESTED_SECTION_STRIP = Pattern.compile(
+            "<!--wire:section-start:[a-zA-Z0-9_-]+-->.*?<!--wire:section-end:[a-zA-Z0-9_-]+-->",
             Pattern.DOTALL);
 
     /** title 提取正则 */
@@ -57,15 +62,17 @@ public class WireRenderer {
                     .trim();
         }
 
-        // 提取所有 section 并计算 hash
+        // 提取所有 section 并计算 hash（含嵌套子 section 时，父 section 的 hash 基于剥离了子 section 后的内容）
         Map<String, String> allSections = new LinkedHashMap<>();
         Map<String, String> allHashes = new LinkedHashMap<>();
+        Set<String> sectionNames = new LinkedHashSet<>();
         Matcher sm = SECTION_PATTERN.matcher(html);
         while (sm.find()) {
             String name = sm.group(1);
             String content = sm.group(2);
             allSections.put(name, content);
-            allHashes.put(name, hash(content));
+            sectionNames.add(name);
+            allHashes.put(name, hashNormalized(content, sectionNames, name));
         }
 
         // 对比客户端 hash，只保留变化的 section
@@ -111,11 +118,58 @@ public class WireRenderer {
     public static Map<String, String> computeHashes(String html) {
         Map<String, String> hashes = new LinkedHashMap<>();
         if (html == null || html.isEmpty()) return hashes;
+        Set<String> sectionNames = new LinkedHashSet<>();
         Matcher sm = SECTION_PATTERN.matcher(html);
+        while (sm.find()) sectionNames.add(sm.group(1));
+        sm = SECTION_PATTERN.matcher(html);
         while (sm.find()) {
-            hashes.put(sm.group(1), hash(sm.group(2)));
+            hashes.put(sm.group(1), hashNormalized(sm.group(2), sectionNames, sm.group(1)));
         }
         return hashes;
+    }
+
+    /**
+     * 规范化 hash 输入：把 name 内的嵌套子 section（含其起止注释）替换为一个恒定占位符
+     * {@code WIRE_SECTION_PLACEHOLDER}，使父 section 的 hash 与嵌套子 section 的具体内容
+     * 解耦。嵌套子 section 各自有独立的 hash 键，客户端/服务端都会根据子 section 的 hash 决定是否下发；
+     * 父 section 只在它自己独有内容（不含子 section）真正变化时才被认为变更。
+     *
+     * <p>对于叶子 section（其内部不再嵌套其它 section），本方法退化为直接返回原 content。
+     *
+     * @param content    section 原始内容
+     * @param allNames   整页所有已知 section 名（用于判断哪些是 name 的直接子 section）
+     * @param name       当前正在计算的 section 名（把自己排除，避免误替换同名注释）
+     * @return 规范化后的字符串
+     */
+    static String normalizeNestedSections(String content, Set<String> allNames, String name) {
+        if (content == null || content.isEmpty()) return content;
+        // 只有当 content 里含有其它 section 的起始注释时才需要做替换（否则直接返回原引用）
+        for (String s : allNames) {
+            if (!s.equals(name) && content.indexOf("<!--wire:section-start:" + s + "-->") >= 0) {
+                return doNormalize(content, allNames, name);
+            }
+        }
+        return content;
+    }
+
+    private static String doNormalize(String content, Set<String> allNames, String name) {
+        StringBuilder out = new StringBuilder(content.length());
+        Matcher m = SECTION_PATTERN.matcher(content);
+        int last = 0;
+        while (m.find()) {
+            String childName = m.group(1);
+            if (childName.equals(name)) continue; // 不替换自身
+            if (!allNames.contains(childName)) continue; // 保守：仅在已登记的 section 集里替换
+            out.append(content, last, m.start());
+            out.append("WIRE_SECTION_PLACEHOLDER:").append(childName);
+            last = m.end();
+        }
+        out.append(content, last, content.length());
+        return out.length() == content.length() ? content : out.toString();
+    }
+
+    private static String hashNormalized(String content, Set<String> allNames, String name) {
+        return hash(normalizeNestedSections(content, allNames, name));
     }
 
     /** FNV-1a 32-bit hash（与前端 wire-navigate.js 完全相同的算法）。 */
