@@ -31,12 +31,10 @@ public class SchedulePublishableConfig implements PublishableConfig {
         return "package " + basePackage + ".config;\n"
                 + """
 
+                import com.weacsoft.jaravel.vendor.schedule.RegisterSchedule;
                 import com.weacsoft.jaravel.vendor.schedule.Schedule;
-                import org.springframework.beans.factory.ObjectProvider;
-                import org.springframework.context.annotation.Bean;
+                import com.weacsoft.jaravel.vendor.schedule.ScheduledTask;
                 import org.springframework.context.annotation.Configuration;
-
-                import java.util.LinkedHashMap;
 
                 /**
                  * 定时任务配置，对齐 Laravel 的 Console Kernel schedule。
@@ -51,35 +49,31 @@ public class SchedulePublishableConfig implements PublishableConfig {
                  * </pre>
                  *
                  * <h3>如何注册任务</h3>
-                 * 注入框架的 {@code Schedule} Bean 后调用其注册方法即可，例如在
-                 * {@code @PostConstruct} 或 {@code ApplicationRunner} 中：
+                 * 使用 {@code @RegisterSchedule} 注解标记方法，方法返回
+                 * {@link ScheduledTask} 实例，框架会自动扫描并注册：
                  * <pre>{@code
-                 * schedule.command("inspire").everyMinute();
+                 * @RegisterSchedule
+                 * public ScheduledTask inspire(Schedule schedule) {
+                 *     return schedule.createTask("inspire", () -> {
+                 *         System.out.println("Inspire!");
+                 *     }).everyMinute();
+                 * }
                  * }</pre>
                  *
                  * <h3>说明</h3>
                  * <ul>
-                 *   <li>本类只读取配置生成一份快照，<b>不会</b>覆盖框架自动装配的 Schedule / ScheduleRunner。</li>
+                 *   <li>本类只提供任务注册入口，<b>不会</b>产生额外的 Spring Bean 冲突。</li>
                  *   <li>删除本文件不影响启动。</li>
                  * </ul>
                  */
                 @Configuration
                 public class ScheduleConfig {
 
-                    /**
-                     * 定时任务模块生效状态快照。
-                     *
-                     * @param provider Schedule 提供者（模块未启用时为空）
-                     * @return 解析后的配置键值对
-                     */
-                    @Bean
-                    public LinkedHashMap<String, Object> scheduleConfigMetadata(ObjectProvider<Schedule> provider) {
-                        LinkedHashMap<String, Object> metadata = new LinkedHashMap<>();
-                        Schedule schedule = provider.getIfAvailable();
-                        metadata.put("jaravel.schedule.enabled", schedule != null);
-                        metadata.put("jaravel.schedule.registry",
-                                schedule == null ? "未装配（schedule 模块未启用）" : schedule.getClass().getName());
-                        return metadata;
+                    @RegisterSchedule
+                    public ScheduledTask inspire(Schedule schedule) {
+                        return schedule.createTask("inspire", () -> {
+                            System.out.println("Inspire!");
+                        }).everyMinute();
                     }
                 }
                 """;

@@ -165,7 +165,7 @@ class ScheduleTest {
         CountDownLatch latch = new CountDownLatch(1);
         schedule.call("runner-test", () -> latch.countDown()).everyMinute();
 
-        ScheduleRunner runner = new ScheduleRunner(schedule, null, null);
+        ScheduleRunner runner = new ScheduleRunner(schedule, null, new SyncLockProvider());
         try {
             runner.run();
             assertTrue(latch.await(5, TimeUnit.SECONDS), "everyMinute 任务应在 run() 后执行");

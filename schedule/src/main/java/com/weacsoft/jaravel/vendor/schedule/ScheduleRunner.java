@@ -57,7 +57,7 @@ public class ScheduleRunner {
                           LockProvider lockProvider) {
         this.schedule = schedule;
         this.artisanApplication = artisanApplication;
-        this.lockProvider = lockProvider;
+        this.lockProvider = lockProvider != null ? lockProvider : new SyncLockProvider();
         this.executor = Executors.newFixedThreadPool(4, r -> {
             Thread t = new Thread(r, "jaravel-schedule-" + System.nanoTime());
             t.setDaemon(true);
@@ -107,7 +107,7 @@ public class ScheduleRunner {
         String taskName = task.getName();
         try {
             // 分布式锁
-            if (task.isDistributedLock() && lockProvider != null) {
+            if (task.isDistributedLock()) {
                 String lockKey = "schedule:lock:" + taskName;
                 if (!lockProvider.tryLock(lockKey, task.getLockTtlSeconds())) {
                     logger.info("[schedule] 任务 '{}' 未获取分布式锁，跳过执行", taskName);
@@ -138,7 +138,7 @@ public class ScheduleRunner {
             logger.error("[schedule] 任务 '{}' 执行失败: {}", taskName, e.getMessage(), e);
         } finally {
             // 释放分布式锁
-            if (task.isDistributedLock() && lockProvider != null) {
+            if (task.isDistributedLock()) {
                 String lockKey = "schedule:lock:" + taskName;
                 lockProvider.unlock(lockKey);
             }

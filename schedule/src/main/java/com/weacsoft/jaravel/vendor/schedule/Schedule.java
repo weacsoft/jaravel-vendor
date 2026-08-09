@@ -10,15 +10,25 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * 维护任务注册表，提供 Laravel 风格的调度方法（{@code call} / {@code command}）。
  * 由 {@link ScheduleRunner} 定期检查并执行到期任务。
  *
- * <h3>使用方式</h3>
+ * <h3>使用方式（@RegisterSchedule 注解，推荐）</h3>
+ * <pre>
+ * &#64;Configuration
+ * public class MyScheduleConfig {
+ *     &#64;RegisterSchedule
+ *     public ScheduledTask cacheScore(Schedule schedule) {
+ *         return schedule.createTask("cacheScore", () -> scoreService.cacheScore())
+ *                        .dailyAt("18:30")
+ *                        .withDistributedLock();
+ *     }
+ * }
+ * </pre>
+ *
+ * <h3>使用方式（直接 Bean 注入，不推荐）</h3>
  * <pre>
  * &#64;Bean
  * public Schedule schedule(Schedule schedule) {
  *     schedule.call(() -> scoreService.cacheScore())
  *            .dailyAt("18:30")
- *            .withDistributedLock();
- *     schedule.command("user:birthday:send")
- *            .dailyAt("11:50")
  *            .withDistributedLock();
  *     return schedule;
  * }
@@ -53,6 +63,37 @@ public class Schedule {
         ScheduledTask task = new ScheduledTask(name, callback);
         tasks.add(task);
         return task;
+    }
+
+    /**
+     * 创建一个不自动注册的任务（供 {@link RegisterSchedule} 注解方法使用）。
+     * <p>
+     * 与 {@link #call(String, Runnable)} 的区别在于：本方法只创建任务实例，
+     * 不将其加入 {@link Schedule} 的内部注册表。任务将由 {@link ScheduleRegistrar}
+     * 在扫描完成后统一注册，避免重复注册。
+     *
+     * @param name     任务名称（用于日志和分布式锁）
+     * @param callback 任务执行体
+     * @return 任务对象（尚未注册，需通过 {@link #register(ScheduledTask)} 注册）
+     * @see RegisterSchedule
+     * @see ScheduleRegistrar
+     */
+    public ScheduledTask createTask(String name, Runnable callback) {
+        return new ScheduledTask(name, callback);
+    }
+
+    /**
+     * 注册一个已创建的任务（供 {@link ScheduleRegistrar} 使用）。
+     * <p>
+     * 将 {@link #createTask(String, Runnable)} 创建的任务加入内部注册表。
+     * 重复注册同一名称的任务会覆盖旧任务（先移除再添加）。
+     *
+     * @param task 任务实例
+     */
+    public void register(ScheduledTask task) {
+        // 移除同名旧任务，避免重复注册
+        tasks.removeIf(t -> t.getName().equals(task.getName()));
+        tasks.add(task);
     }
 
     /**

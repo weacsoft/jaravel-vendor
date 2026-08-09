@@ -7,6 +7,7 @@ import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
@@ -23,14 +24,16 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  *     enabled: true    # 是否启用定时任务调度
  * </pre>
  * <p>
- * 业务方通过注入 {@link Schedule} 注册任务：
+ * 业务方通过 {@link RegisterSchedule} 注解注册任务（推荐）：
  * <pre>
- * &#64;Bean
- * public Schedule schedule(Schedule schedule) {
- *     schedule.call(() -> scoreService.cacheScore())
- *            .dailyAt("18:30")
- *            .withDistributedLock();
- *     return schedule;
+ * &#64;Configuration
+ * public class MyScheduleConfig {
+ *     &#64;RegisterSchedule
+ *     public ScheduledTask cacheScore(Schedule schedule) {
+ *         return schedule.createTask("cacheScore", () -> scoreService.cacheScore())
+ *                        .dailyAt("18:30")
+ *                        .withDistributedLock();
+ *     }
  * }
  * </pre>
  */
@@ -51,19 +54,40 @@ public class ScheduleAutoConfiguration {
     }
 
     /**
+     * ScheduleRegistrar bean：扫描 {@link RegisterSchedule} 注解方法并注册任务。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public ScheduleRegistrar scheduleRegistrar(ApplicationContext context, Schedule schedule) {
+        return new ScheduleRegistrar(context, schedule);
+    }
+
+    /**
+     * 默认同步锁提供者：单机模式下所有任务直接执行。
+     * <p>
+     * 引入 Redis 模块后，{@code RedisLockProviderImpl} 会自动覆盖此兜底实现。
+     */
+    @Bean
+    @ConditionalOnMissingBean(LockProvider.class)
+    public LockProvider syncLockProvider() {
+        return new SyncLockProvider();
+    }
+
+    /**
      * ScheduleRunner bean：任务执行器。
      * <p>
-     * 当 {@link LockProvider} 存在时启用分布式锁，否则分布式锁任务降级为单机执行。
+     * 通过 {@link LockProvider} 抽象接口实现分布式锁，未引入 Redis 时使用
+     * 默认 {@link SyncLockProvider}（单机执行）。
      */
     @Bean
     @ConditionalOnMissingBean
     public ScheduleRunner scheduleRunner(Schedule schedule,
                                           org.springframework.beans.factory.ObjectProvider<ArtisanApplication> artisanProvider,
-                                          org.springframework.beans.factory.ObjectProvider<LockProvider> lockProvider) {
+                                          LockProvider lockProvider) {
         return new ScheduleRunner(
                 schedule,
                 artisanProvider.getIfAvailable(),
-                lockProvider.getIfAvailable()
+                lockProvider
         );
     }
 }
