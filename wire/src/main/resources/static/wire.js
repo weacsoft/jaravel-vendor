@@ -616,22 +616,36 @@
         if (compInstances[payload.id]) return compInstances[payload.id];
         var outlet = getOutlet(outletId || payload.outlet);
         if (!outlet) { console.error('[WireComponent] 找不到 outlet 容器，无法挂载组件 [' + payload.name + ']'); return null; }
+        var params = payload.params || {};
+        wireEmit('beforeRequest', { id: payload.id, name: payload.name }, 'component:mount', params);
+        wireEmit('beforeUpdate', { id: payload.id, name: payload.name }, 'component:mount', params);
         var wrap = document.createElement('div'); wrap.innerHTML = payload.html || '';
         var el = wrap.firstElementChild || wrap;
         var api = parseLifecycle(payload.script);
-        var inst = { id: payload.id, name: payload.name, el: el, params: payload.params || {}, api: api, removing: false, wire: null };
+        var inst = { id: payload.id, name: payload.name, el: el, params: params, api: api, removing: false, wire: null };
         var wire = { id: payload.id, name: payload.name, params: inst.params, el: el, stop: function () { compStop(inst); } };
         inst.wire = wire; compInstances[payload.id] = inst;
         callLife(inst, 'onCreate', el, wire);
         outlet.appendChild(el);
         callLife(inst, 'onStart', el, wire);
+        wireEmit('afterRequest', inst.wire, { id: payload.id, name: payload.name, mounted: true });
+        wireEmit('afterUpdate', inst.wire, { id: payload.id, name: payload.name, mounted: true }, { component: inst });
         return inst;
     }
     function compStop(inst) {
         if (!inst || inst.removing) return;
         inst.removing = true;
-        var ret = callLife(inst, 'onStop', inst.el, inst.wire);
-        var finish = function () { if (inst.el && inst.el.parentNode) inst.el.parentNode.removeChild(inst.el); callLife(inst, 'onDestroy', inst.el, inst.wire); delete compInstances[inst.id]; };
+        var wire = inst.wire;
+        wireEmit('beforeRequest', wire, 'component:stop', { id: inst.id, name: inst.name });
+        wireEmit('beforeUpdate', wire, 'component:stop', { id: inst.id, name: inst.name });
+        var ret = callLife(inst, 'onStop', inst.el, wire);
+        var finish = function () {
+            if (inst.el && inst.el.parentNode) inst.el.parentNode.removeChild(inst.el);
+            callLife(inst, 'onDestroy', inst.el, wire);
+            delete compInstances[inst.id];
+            wireEmit('afterRequest', wire, { id: inst.id, name: inst.name, stopped: true });
+            wireEmit('afterUpdate', wire, { id: inst.id, name: inst.name, stopped: true }, { component: null });
+        };
         if (typeof ret === 'number') setTimeout(finish, ret);
         else if (ret && typeof ret.then === 'function') ret.then(finish, finish);
         else finish();
