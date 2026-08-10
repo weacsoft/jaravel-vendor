@@ -893,6 +893,9 @@
     function visit(url) {
         if (!url) return;
         navEmit('before', { url: url });
+        // 透明导航与 Livewire 局部更新共用同一套 Wire 事件，保证 Wire.on('beforeRequest'/'beforeUpdate') 也被触发
+        wireEmit('beforeRequest', null, 'navigate', { url: url });
+        wireEmit('beforeUpdate', null, 'navigate', { url: url });
         var xhr = new XMLHttpRequest();
         xhr.open('GET', url, true);
         xhr.setRequestHeader('X-Wire-Navigate', 'true');
@@ -920,6 +923,8 @@
         var changedCount = 0;
         var activatedParents = [];
         var changedKeys = [];
+        // 收到响应后、DOM 更新前触发 afterRequest（与 Livewire 局部更新语义一致）
+        wireEmit('afterRequest', null, payload);
         walkSections(function (name, section) {
             var newHtml = sections[name];
             if (newHtml !== undefined) {
@@ -941,6 +946,8 @@
         replayReadyScripts(document.body);
         var finalUrl = payload.url || url;
         if (finalUrl && finalUrl !== navUrl) { history.pushState({ wireUrl: finalUrl }, '', finalUrl); navUrl = finalUrl; }
+        // DOM 更新完成后触发 afterUpdate（第三个参数为 sections，便于第三方 UI 框架刷新）
+        wireEmit('afterUpdate', null, payload, payload.sections || {});
         navEmit('success', { url: finalUrl, payload: payload, changedCount: changedCount });
         navEmit('complete', { url: finalUrl });
     }
