@@ -22,11 +22,10 @@ import org.springframework.context.annotation.Bean;
  * <p>
  * 因此本类<b>只保留 {@code @ConditionalOnClass(PublishableConfig.class)} 这一个条件</b>，
  * 不含任何运行时条件，确保任何情况下都能执行 {@code artisan vendor:publish --tag=wire}
- * （含其配置类与全部静态前端资源：wire.js / wire-component.js / wire-navigate.js）。
+ * （含其配置类与前端静态资源 wire.js）。
  * <p>
- * 说明：wire.js 与 wire-component.js 的静态发布声明保留在各自的运行期自动配置中；
- * wire-navigate.js 的静态发布声明放在本类（构建期），以便关闭 Wire 运行能力时仍可发布。
- * 三者统一由 {@code vendor:publish} 一条命令扫描发布，不再区分通道。
+ * 说明：wire.js 已将 wire-component.js 与 wire-navigate.js 合并为单一文件，
+ * 前端静态资源发布由 {@link WireStaticPublishable} 统一处理，不再区分三个文件。
  */
 @AutoConfiguration
 @ConditionalOnClass(PublishableConfig.class)
@@ -43,19 +42,5 @@ public class WirePublishAutoConfiguration {
     @ConditionalOnMissingBean(WirePublishableConfig.class)
     public WirePublishableConfig wirePublishableConfig() {
         return new WirePublishableConfig();
-    }
-
-    /**
-     * 声明 wire 模块的「透明导航」静态前端资源（wire-navigate.js），
-     * 供 {@code artisan vendor:publish --tag=wire} 或 {@code --tag=resources} 发布。
-     * <p>
-     * 放在构建期自动配置中，确保关闭 Wire 运行能力时仍能发布导航运行时。
-     *
-     * @return 静态资源发布声明
-     */
-    @Bean
-    @ConditionalOnMissingBean(WireNavigateStaticPublishable.class)
-    public WireNavigateStaticPublishable wireNavigateStaticPublishable() {
-        return new WireNavigateStaticPublishable();
     }
 }

@@ -8,13 +8,14 @@ import com.weacsoft.jaravel.vendor.wire.component.WireOutlet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.context.annotation.Bean;
 
 /**
- * Wire 命名组件自动装配（Outlet 中间件 + 注册表 + 前端运行时发布）。
+ * Wire 命名组件自动装配（Outlet 中间件 + 注册表）。
+ * <p>
+ * wire.js 已合并 wire-component.js 与 wire-navigate.js 为单一文件，
+ * 前端运行时发布由 {@link WireStaticPublishable} 统一处理，本类不再单独发布。
  * <p>
  * 与 {@link WireAutoConfiguration} 同属 wire 模块自动装配，在本模块配置就绪后执行：
  * <ul>
@@ -22,8 +23,7 @@ import org.springframework.context.annotation.Bean;
  *       应用只需在 Web 路由组引用 {@code "WireOutlet"} 即可启用）；</li>
  *   <li>注册 {@code wire_outlet()} 模板辅助函数，输出加载位置容器；</li>
  *   <li>按 {@code jaravel.wire.components} 配置批量注册命名组件；</li>
- *   <li>应用 {@code jaravel.wire.outlet} 子配置（位置 / 例外 / 是否注入 js / js 路径）；</li>
- *   <li>声明 {@code wire-component.js} 为可发布静态资源（{@code vendor:publish:static --tag=wire}）。</li>
+ *   <li>应用 {@code jaravel.wire.outlet} 子配置（位置 / 例外 / 是否注入 js / js 路径）。</li>
  * </ul>
  */
 @AutoConfiguration(after = WireAutoConfiguration.class)
@@ -62,13 +62,4 @@ public class WireComponentAutoConfiguration {
                 WireComponents.names(), outlet.getPosition(), outlet.getExcept());
     }
 
-    /**
-     * 声明 {@code wire-component.js} 为可发布静态资源（tag 复用 {@code wire}，
-     * 与 {@code wire.js} 一起通过 {@code vendor:publish:static --tag=wire} 发布）。
-     */
-    @Bean
-    @ConditionalOnMissingBean(WireComponentStaticPublishable.class)
-    public WireComponentStaticPublishable wireComponentStaticPublishable() {
-        return new WireComponentStaticPublishable();
-    }
 }
