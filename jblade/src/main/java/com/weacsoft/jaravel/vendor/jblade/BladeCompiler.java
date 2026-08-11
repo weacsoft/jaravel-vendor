@@ -3,7 +3,6 @@ package com.weacsoft.jaravel.vendor.jblade;
 import com.weacsoft.jaravel.vendor.utils.memory.MemoryClassLoader;
 import com.weacsoft.jaravel.vendor.utils.memory.MemoryFileManager;
 import com.weacsoft.jaravel.vendor.utils.memory.SourceCodeJavaFileObject;
-import org.springframework.core.io.ClassPathResource;
 
 import javax.tools.*;
 import java.io.*;
@@ -74,9 +73,6 @@ public class BladeCompiler {
             return new FileInputStream(file);
         }
         String cpPath = templatePath.replace(File.separator, "/");
-        // 在 Spring Boot fat JAR 下，ClassPathResource 使用默认 ClassLoader 可能无法
-        // 访问 BOOT-INF/classes 下的资源。使用线程上下文 ClassLoader（即 Spring
-        // 的 LaunchedURLClassLoader），它能看到 fat JAR 内的所有资源。
         ClassLoader ctxLoader = Thread.currentThread().getContextClassLoader();
         if (ctxLoader != null) {
             InputStream is = ctxLoader.getResourceAsStream(cpPath);

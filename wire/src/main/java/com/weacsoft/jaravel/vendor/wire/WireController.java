@@ -204,6 +204,12 @@ public abstract class WireController {
                 }
             }
 
+            // 调用 mount() 重建嵌套对象(如 Admin setting 从 Map→真实对象)
+            mount(data);
+
+            // 批量赋值：将合并后的 data 交给子类处理
+            fill(data);
+
             // 反射调用 action 方法(所有参数视为 String)
             if (action != null && !action.isEmpty()) {
                 invokeAction(action, params);

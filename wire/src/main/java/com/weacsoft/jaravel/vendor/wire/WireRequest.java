@@ -2,7 +2,9 @@ package com.weacsoft.jaravel.vendor.wire;
 
 import com.weacsoft.jaravel.vendor.json.Json;
 import com.weacsoft.jaravel.vendor.http.controller.request.Request;
-
+import jakarta.servlet.http.HttpServletRequest;
+import java.io.*;
+import java.net.URLDecoder;
 import java.util.*;
 
 /**
@@ -41,11 +43,12 @@ public class WireRequest {
     @SuppressWarnings("unchecked")
     public static WireRequest from(Request request) {
         try {
-            // wire_body 由 HTTP 层（RequestFactory.handleFormUrlEncodedRequest）
-            // 统一解析并写入 request.input，这里只信任该字段，不做额外兜底。
             String body = request.input("wire_body");
             if (body == null || body.isEmpty()) {
                 body = request.get("wire_body", "");
+            }
+            if (body == null || body.isEmpty()) {
+                body = readWireBodyFromInputStream(request);
             }
             if (body == null || body.isEmpty()) {
                 throw new IllegalStateException("缺少 wire_body 参数");
@@ -60,6 +63,39 @@ public class WireRequest {
             return new WireRequest(snapshot, action, params, sections);
         } catch (Exception e) {
             throw new RuntimeException("解析 Wire 请求失败", e);
+        }
+    }
+
+    private static String readWireBodyFromInputStream(Request request) {
+        try {
+            HttpServletRequest httpReq = request.getRequest();
+            if (httpReq == null) return null;
+            String contentType = httpReq.getContentType();
+            if (contentType == null || !contentType.contains("application/x-www-form-urlencoded")) {
+                return null;
+            }
+            InputStream is = httpReq.getInputStream();
+            byte[] buf = new byte[4096];
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            int n;
+            while ((n = is.read(buf)) != -1) {
+                baos.write(buf, 0, n);
+            }
+            String raw = baos.toString("UTF-8");
+            String[] pairs = raw.split("&");
+            for (String pair : pairs) {
+                int eq = pair.indexOf('=');
+                if (eq > 0) {
+                    String key = URLDecoder.decode(pair.substring(0, eq), "UTF-8");
+                    String val = URLDecoder.decode(pair.substring(eq + 1), "UTF-8");
+                    if ("wire_body".equals(key)) {
+                        return val;
+                    }
+                }
+            }
+            return null;
+        } catch (Exception e) {
+            return null;
         }
     }
 

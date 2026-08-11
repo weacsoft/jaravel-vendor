@@ -4,6 +4,8 @@ import com.weacsoft.jaravel.vendor.json.Json;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletInputStream;
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.multipart.MultipartHttpServletRequest;
@@ -41,6 +43,7 @@ public class RequestFactory {
 
     /** 是否自动 URL 解码（默认开启），通过 jaravel.http.url-decode-auto 配置 */
     private static volatile boolean urlDecodeAuto = true;
+    private static final Logger log = LoggerFactory.getLogger(RequestFactory.class);
 
     /** 设置是否自动 URL 解码（由自动装配调用） */
     public static void setUrlDecodeAuto(boolean flag) {
@@ -70,6 +73,11 @@ public class RequestFactory {
                     handleJsonRequest(baseRequest, request);
                 } else if (contentType.contains("application/x-www-form-urlencoded")) {
                     handleFormUrlEncodedRequest(request);
+                    // Spring Boot 4 / Tomcat 11 可能在 RequestFactory 调用之前就已经消费了
+                    // getInputStream()，导致 readBodyRaw 返回空。此时回退到 getParameterMap()。
+                    if (request.input().isEmpty()) {
+                        fallbackToParameterMap(baseRequest, request);
+                    }
                 }
             }
             // contentType 为 null 时不尝试解析 body（如 GET 请求）
@@ -183,9 +191,6 @@ public class RequestFactory {
         if (httpServletRequest == null) {
             return;
         }
-        // 统一从 inputStream 一次性读取并缓存 body，避免被 getReader()/getParameterMap()
-        // 消费后无法再读（这是 wire_body 丢失、翻页/改名失效的根因）。
-        // 读取后立即写入 request.input，使 body 中的字段（含 wire_body）可被上层直接读取。
         try {
             String raw = readBodyRaw(httpServletRequest);
             if (raw != null && !raw.isEmpty()) {
@@ -194,12 +199,9 @@ public class RequestFactory {
                 generateParam(result, pairs);
                 result.forEach((name, values) -> values.forEach(v -> request.addInput(name, v)));
             } else {
-                // Body 为空（可能已被 Servlet 容器/Filter 链解析消费了 inputStream），
-                // 退回 getParameterMap() 兜底，确保 wire_body 等表单字段不丢失。
                 fallbackToParameterMap(httpServletRequest, request);
             }
-        } catch (Exception ignored) {
-            // 读取失败时退回 Servlet 容器已解析的参数，作为兜底
+        } catch (Exception e) {
             fallbackToParameterMap(httpServletRequest, request);
         }
     }
