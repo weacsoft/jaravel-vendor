@@ -13,19 +13,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class StrTest {
 
     @Test
-    void startsAndEndsWith() {
-        assertTrue(Str.startsWith("hello world", "hello"));
-        assertFalse(Str.startsWith(null, "x"));
-        assertTrue(Str.endsWith("hello.jar", ".jar"));
-
-        // 多前缀匹配
+    void startsWithMultiPrefix() {
         assertTrue(Str.startsWith("GET /users", "GET", "POST"));
         assertFalse(Str.startsWith("DELETE /users", "GET", "POST"));
+        assertFalse(Str.startsWith(null, "x"));
     }
 
     @Test
-    void containsChecks() {
-        assertTrue(Str.contains("abc.def", "."));
+    void containsMultiNeedle() {
         assertTrue(Str.contains("abc.def", "x", "."));
         assertFalse(Str.contains("abc", "x", "y"));
         assertFalse(Str.contains(null, "x"));

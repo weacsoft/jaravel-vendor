@@ -54,7 +54,7 @@ import java.util.Set;
  * SpringBoot 路由自动装配（核心）：将 Jaravel {@link Router} 中注册的路由转换为
  * Spring {@link RouterFunction}，并在请求处理时执行中间件链。
  * <p>
- * 适配 Spring Boot 3.2.5 / Spring 6.x（jakarta.servlet、{@code org.springframework.web.servlet.function}）。
+ * 适配 Spring Boot 3.2.12 / Spring 6.x（jakarta.servlet、{@code org.springframework.web.servlet.function}）。
  * <p>
  * 同时负责：
  * <ul>

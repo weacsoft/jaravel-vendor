@@ -15,7 +15,7 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
  * Spring MVC 响应处理器：当 Controller 方法返回 {@link Response} 时，
  * 应用其状态码、响应头、Cookie 与内容；其余返回值补充安全响应头。
  * <p>
- * 适配 Spring Boot 3.2.5 / Jakarta Servlet。使用 Spring 6.x 的
+ * 适配 Spring Boot 3.2.12 / Jakarta Servlet。使用 Spring 6.x 的
  * {@code @org.springframework.web.bind.annotation.ControllerAdvice}（jakarta 版本）。
  */
 @org.springframework.web.bind.annotation.ControllerAdvice

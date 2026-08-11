@@ -79,7 +79,7 @@ TTL 单位统一为**秒**（对齐 Laravel），`ttl <= 0` 表示永不过期�
 | `org.springframework:spring-jdbc`（optional） | `DatabaseCacheDriver` 的数据库操作（`JdbcTemplate`）；仅使用 array/file 驱动时无需引入 |
 | `org.slf4j:slf4j-api` | 日志门面 |
 
-> 运行环境要求：JDK 17+，Spring Boot 3.2.5（Spring 6.x）。
+> 运行环境要求：JDK 17+，Spring Boot 3.2.12（Spring 6.x）。
 >
 > **使用 database 驱动**时，应用需自行引入 `spring-jdbc`（如 `spring-boot-starter-jdbc`）并准备一个数据库连接。
 >

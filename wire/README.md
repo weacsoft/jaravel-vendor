@@ -127,7 +127,7 @@ resources/static/
 | `com.fasterxml.jackson.core:jackson-databind` | compile | JSON 解析（snapshot 编解码、Wire 请求体解析） |
 | `org.springframework:spring-webmvc` | compile | `MultipartFile` 等基础类型 |
 
-> 运行环境要求：JDK 17+，Spring Boot 3.2.5（Jakarta Servlet）。使用前需通过 `WireManager.setEngine(bladeEngine)` 注入 Blade 引擎实例（通常由 `springboot` 模块的 Starter 自动完成）。
+> 运行环境要求：JDK 17+，Spring Boot 3.2.12（Jakarta Servlet）。使用前需通过 `WireManager.setEngine(bladeEngine)` 注入 Blade 引擎实例（通常由 `springboot` 模块的 Starter 自动完成）。
 
 ---
 

@@ -76,18 +76,4 @@ class ArrTest {
         assertEquals(Map.of("id", 1, "name", "n"), Arr.only(map, "id", "name"));
         assertEquals(Map.of("age", 9), Arr.except(map, "id", "name"));
     }
-
-    @Test
-    void pluckAndMapTransformCollections() {
-        Map<String, Object> r1 = new LinkedHashMap<>();
-        r1.put("k", "v1");
-        Map<String, Object> r2 = new LinkedHashMap<>();
-        r2.put("k", "v2");
-
-        List<String> plucked = Arr.pluck(List.of(r1, r2), "k");
-        assertEquals(List.of("v1", "v2"), plucked);
-
-        List<Integer> mapped = Arr.map(List.of("a", "bb"), String::length);
-        assertEquals(List.of(1, 2), mapped);
-    }
 }

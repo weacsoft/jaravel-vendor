@@ -92,7 +92,7 @@ Laravel 的 `laravel-model-caching` 通常依赖 Redis 的 tag 机制实现缓�
 | `com.fasterxml.jackson.core:jackson-databind` | 必需 | 序列化兼容（file/database store 使用） |
 | `org.slf4j:slf4j-api` | 必需 | 日志门面 |
 
-> 运行环境要求：JDK 17+，Spring Boot 3.2.5（Spring 6.x）。需同时引入 `cache` 模块并完成其自动装配（容器中存在 `CacheManager` Bean）。
+> 运行环境要求：JDK 17+，Spring Boot 3.2.12（Spring 6.x）。需同时引入 `cache` 模块并完成其自动装配（容器中存在 `CacheManager` Bean）。
 
 ---
 

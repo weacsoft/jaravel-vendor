@@ -23,7 +23,7 @@
 
 ## 1. 模块概述
 
-`springboot` 模块是 Jaravel-Vendor 与 Spring Boot 3.2.5 / Spring 6.x 的适配层，对齐 Laravel 的以下集成特性：
+`springboot` 模块是 Jaravel-Vendor 与 Spring Boot 3.2.12 / Spring 6.x 的适配层，对齐 Laravel 的以下集成特性：
 
 | Laravel 特性 | springboot 对应实现 | 说明 |
 | --- | --- | --- |
@@ -236,7 +236,7 @@ router.middleware(AppTrimStrings.class).middleware(AppConvertEmptyStringsToNull.
 
 `com.weacsoft.jaravel.vendor.springboot.SpringBootRouteAutoConfiguration`
 
-核心自动装配类，将 Jaravel `Router` 中注册的路由转换为 Spring `RouterFunction`，并在请求处理时执行中间件链。适配 Spring Boot 3.2.5 / Spring 6.x（`jakarta.servlet`、`org.springframework.web.servlet.function`）。
+核心自动装配类，将 Jaravel `Router` 中注册的路由转换为 Spring `RouterFunction`，并在请求处理时执行中间件链。适配 Spring Boot 3.2.12 / Spring 6.x（`jakarta.servlet`、`org.springframework.web.servlet.function`）。
 
 ### 注册的 Bean
 
@@ -458,7 +458,7 @@ body 是 Response 类型？
 
 `com.weacsoft.jaravel.vendor.springboot.ResponseReturnValueHandler`
 
-Spring MVC `HandlerMethodReturnValueHandler` 实现，处理 Controller 方法直接返回 `Response` 类型的返回值，将状态码、响应头、Cookie 与响应体写入 Servlet 响应。适配 Spring Boot 3.2.5 / Jakarta Servlet。
+Spring MVC `HandlerMethodReturnValueHandler` 实现，处理 Controller 方法直接返回 `Response` 类型的返回值，将状态码、响应头、Cookie 与响应体写入 Servlet 响应。适配 Spring Boot 3.2.12 / Jakarta Servlet。
 
 ### 方法文档
 

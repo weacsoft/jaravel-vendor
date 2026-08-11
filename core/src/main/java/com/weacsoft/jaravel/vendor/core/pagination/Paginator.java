@@ -223,17 +223,23 @@ public class Paginator<T> implements Iterable<T>, Htmlable {
      * </ul>
      * 形如 [{"type":"page","page":1,...}, {"type":"separator",...}, {"type":"page","page":5,...}]。
      *
-     * @param onEachSide 当前页两侧保留的页数
      * @return 元素 Map 列表
      */
-    public List<Map<String, Object>> elements(int onEachSide) {
+    public List<Map<String, Object>> elements() {
         long last = lastPage();
         if (last <= 1) {
             return new ArrayList<>();
         }
-        if (onEachSide < 0) {
-            onEachSide = 3;
+        List<Map<String, Object>> raw = elementsRaw(last, currentPage, 3);
+        for (Map<String, Object> item : raw) {
+            if ("page".equals(item.get("type"))) {
+                item.put("url", url((int) item.get("page")));
+            }
         }
+        return raw;
+    }
+
+    private static List<Map<String, Object>> elementsRaw(long last, int currentPage, int onEachSide) {
         List<Map<String, Object>> result = new ArrayList<>();
         long windowStart = Math.max(1, (long) currentPage - onEachSide);
         long windowEnd = Math.min(last, (long) currentPage + onEachSide);
@@ -256,16 +262,12 @@ public class Paginator<T> implements Iterable<T>, Htmlable {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("type", "page");
             item.put("page", (int) page);
-            item.put("url", url((int) page));
+            item.put("url", null); // 由调用方填充
             item.put("active", page == currentPage);
             result.add(item);
             previous = page;
         }
         return result;
-    }
-
-    public List<Map<String, Object>> elements() {
-        return elements(3);
     }
 
     /**

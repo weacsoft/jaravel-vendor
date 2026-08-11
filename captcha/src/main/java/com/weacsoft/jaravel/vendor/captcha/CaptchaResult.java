@@ -69,69 +69,29 @@ public class CaptchaResult {
         this.extra = extra != null ? extra : new HashMap<>();
     }
 
-    public String getCaptchaKey() {
-        return captchaKey;
-    }
+    public String getCaptchaKey() { return captchaKey; }
+    public void setCaptchaKey(String captchaKey) { this.captchaKey = captchaKey; }
 
-    public void setCaptchaKey(String captchaKey) {
-        this.captchaKey = captchaKey;
-    }
+    public String getKey() { return key; }
+    public void setKey(String key) { this.key = key; }
 
-    public String getKey() {
-        return key;
-    }
+    public String getType() { return type; }
+    public void setType(String type) { this.type = type; }
 
-    public void setKey(String key) {
-        this.key = key;
-    }
+    public String getImageBase64() { return imageBase64; }
+    public void setImageBase64(String imageBase64) { this.imageBase64 = imageBase64; }
 
-    public String getType() {
-        return type;
-    }
+    public long getExpireTime() { return expireTime; }
+    public void setExpireTime(long expireTime) { this.expireTime = expireTime; }
 
-    public void setType(String type) {
-        this.type = type;
-    }
+    public String getEncType() { return encType; }
+    public void setEncType(String encType) { this.encType = encType; }
 
-    public String getImageBase64() {
-        return imageBase64;
-    }
+    public String getEncKey() { return encKey; }
+    public void setEncKey(String encKey) { this.encKey = encKey; }
 
-    public void setImageBase64(String imageBase64) {
-        this.imageBase64 = imageBase64;
-    }
-
-    public long getExpireTime() {
-        return expireTime;
-    }
-
-    public void setExpireTime(long expireTime) {
-        this.expireTime = expireTime;
-    }
-
-    public String getEncType() {
-        return encType;
-    }
-
-    public void setEncType(String encType) {
-        this.encType = encType;
-    }
-
-    public String getEncKey() {
-        return encKey;
-    }
-
-    public void setEncKey(String encKey) {
-        this.encKey = encKey;
-    }
-
-    public Map<String, Object> getExtra() {
-        return extra;
-    }
-
-    public void setExtra(Map<String, Object> extra) {
-        this.extra = extra;
-    }
+    public Map<String, Object> getExtra() { return extra; }
+    public void setExtra(Map<String, Object> extra) { this.extra = extra; }
 
     /**
      * 将结果转为 {@link Map}，便于 JSON 序列化。

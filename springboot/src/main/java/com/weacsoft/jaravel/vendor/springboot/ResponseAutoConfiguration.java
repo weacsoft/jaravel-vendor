@@ -13,7 +13,7 @@ import java.util.List;
  * {@link RequestMappingHandlerAdapter} 的返回值处理器链，使 Controller 方法
  * 可直接返回 {@link com.weacsoft.jaravel.vendor.http.controller.response.Response}。
  * <p>
- * 适配 Spring Boot 3.2.5 / Jakarta Servlet。
+ * 适配 Spring Boot 3.2.12 / Jakarta Servlet。
  */
 @AutoConfiguration
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)

@@ -83,7 +83,7 @@
 | --- | --- | --- |
 | `org.springframework.boot:spring-boot-starter-web` | optional | Web 应用支持（用户应用通常已引入） |
 
-> 运行环境要求：JDK 17+，Spring Boot 3.2.5（Spring 6.x）。
+> 运行环境要求：JDK 17+，Spring Boot 3.2.12（Spring 6.x）。
 
 ---
 

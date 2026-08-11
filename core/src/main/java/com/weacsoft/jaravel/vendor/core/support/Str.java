@@ -11,10 +11,9 @@ public final class Str {
     private Str() {
     }
 
-    public static boolean startsWith(String s, String prefix) {
-        return s != null && s.startsWith(prefix);
-    }
-
+    /**
+     * 多前缀匹配：只要 s 以任意一个 prefix 开头即返回 true。
+     */
     public static boolean startsWith(String s, String... prefixes) {
         if (s == null) return false;
         for (String p : prefixes) {
@@ -23,14 +22,9 @@ public final class Str {
         return false;
     }
 
-    public static boolean endsWith(String s, String suffix) {
-        return s != null && s.endsWith(suffix);
-    }
-
-    public static boolean contains(String s, CharSequence needle) {
-        return s != null && s.contains(needle);
-    }
-
+    /**
+     * 多子串匹配：只要 s 包含任意一个 needle 即返回 true。
+     */
     public static boolean contains(String s, String... needles) {
         if (s == null) return false;
         for (String n : needles) {

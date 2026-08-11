@@ -63,7 +63,7 @@ CacheManager（cache 模块，按配置按需创建 store）
 | `jackson-databind` | 缓存值 JSON 序列化 |
 | `slf4j-api` | 日志门面 |
 
-> 运行环境要求：JDK 17+，Spring Boot 3.2.5（Spring 6.x）。
+> 运行环境要求：JDK 17+，Spring Boot 3.2.12（Spring 6.x）。
 
 ---
 

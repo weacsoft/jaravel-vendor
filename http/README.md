@@ -84,7 +84,7 @@
 | `org.springframework:spring-webmvc` | compile | `MultipartFile`、`ServerRequest` 等 |
 | `com.fasterxml.jackson.core:jackson-databind` | compile | JSON 解析 |
 
-> 运行环境要求：JDK 17+，Spring Boot 3.2.5（Jakarta Servlet）。
+> 运行环境要求：JDK 17+，Spring Boot 3.2.12（Jakarta Servlet）。
 
 ---
 

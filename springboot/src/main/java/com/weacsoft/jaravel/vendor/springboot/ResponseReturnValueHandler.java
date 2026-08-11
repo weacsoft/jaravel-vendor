@@ -13,7 +13,7 @@ import org.springframework.web.method.support.ModelAndViewContainer;
  * 处理 Controller 方法直接返回 {@link Response} 类型的返回值，
  * 将状态码、响应头、Cookie 与响应体写入 Servlet 响应。
  * <p>
- * 适配 Spring Boot 3.2.5 / Jakarta Servlet。
+ * 适配 Spring Boot 3.2.12 / Jakarta Servlet。
  */
 public class ResponseReturnValueHandler implements HandlerMethodReturnValueHandler {
     @Override

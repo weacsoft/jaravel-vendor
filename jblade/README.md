@@ -144,7 +144,7 @@ BladeEngine.render("users.list", variables)
 | `org.springframework:spring-core` | `ClassPathResource` 读取 classpath 模板文件 |
 
 > 运行环境要求：
-> - **运行时编译模式**：JDK 17+（需使用 JDK 而非 JRE，因为依赖 `javax.tools.JavaCompiler`），Spring Boot 3.2.5（Spring 6.x）
+> - **运行时编译模式**：JDK 17+（需使用 JDK 而非 JRE，因为依赖 `javax.tools.JavaCompiler`），Spring Boot 3.2.12（Spring 6.x）
 > - **预编译模式**：生产环境仅需 JRE 17+（通过 `BladeEngine.fromPrecompiledPackage()` 或 `BladeEngine.fromPrecompiledClasses()` 加载预编译产物）；预编译阶段仍需 JDK
 
 ---

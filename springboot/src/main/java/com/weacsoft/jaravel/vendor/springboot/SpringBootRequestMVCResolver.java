@@ -12,7 +12,7 @@ import org.springframework.web.method.support.ModelAndViewContainer;
 /**
  * Spring MVC 参数解析器，使 Controller 方法可直接声明 {@link Request} 类型参数并自动注入。
  * <p>
- * 适配 Spring Boot 3.2.5 / Jakarta Servlet。
+ * 适配 Spring Boot 3.2.12 / Jakarta Servlet。
  * <p>
  * 不标注 {@code @Component}，由 {@link SpringBootRouteAutoConfiguration} 通过 {@code @Bean} 注册，
  * 与同模块其他解析器（如 {@code ResponseReturnValueHandler}）风格统一。

@@ -1,6 +1,6 @@
 # Jaravel-Vendor
 
-Java 版 Laravel 框架核心库，在 Spring Boot 3.2.5 基础上近乎 100% 模拟 Laravel 的开发体验。
+Java 版 Laravel 框架核心库，在 Spring Boot 3.2.12 基础上近乎 100% 模拟 Laravel 的开发体验。
 
 **同时支持 Spring Boot 3.x（Jackson 2）和 Spring Boot 4.x（Jackson 3）**，无需消费端额外配置 Jackson 版本。通过内置 `JsonCodec` SPI 自动检测 classpath 中的 Jackson 版本（`com.fasterxml.jackson` 或 `tools.jackson`），选择对应实现。
 
@@ -375,8 +375,8 @@ jaravel:
 
 ## 技术栈
 
-- Java 17 / Spring Boot 3.2.5 / Jakarta EE
-- jjwt 0.11.5 (JWT)
+- Java 17 / Spring Boot 3.2.12 / Jakarta EE
+- jjwt 0.12.6 (JWT)
 - Druid (数据库连接池)
 - gaarason/database-core (Eloquent ORM)
 - Jackson (JSON)
@@ -386,7 +386,7 @@ jaravel:
 
 | 资源 | 路径 | 说明 |
 |------|------|------|
-| API 文档站点 | [https://weacsoft.github.io/jaravel-vendor/](https://weacsoft.github.io/jaravel-vendor/) | 25 个模块完整 API 参考（GitHub Pages） |
+| API 文档站点 | [https://weacsoft.github.io/jaravel-vendor/](https://weacsoft.github.io/jaravel-vendor/) | 32 个模块完整 API 参考（GitHub Pages） |
 | Demo 项目 | `../jaravel/` | 展示全部 jaravel 能力的前后端分离示例项目（Laravel 文档风格） |
 
 ## 版本

@@ -169,7 +169,7 @@ public DataSource mysqlConnection() {
 | `org.springframework.boot:spring-boot-autoconfigure` | 自动装配 |
 | `org.slf4j:slf4j-api` | 日志门面 |
 
-> 运行环境要求：JDK 17+（DIRECTORY 模式）或 JRE 17+（DIRECTORY_CLASSES / PACKAGED / JAR / CLASSPATH 模式），Spring Boot 3.2.5（Spring 6.x）。
+> 运行环境要求：JDK 17+（DIRECTORY 模式）或 JRE 17+（DIRECTORY_CLASSES / PACKAGED / JAR / CLASSPATH 模式），Spring Boot 3.2.12（Spring 6.x）。
 > 至少需要一个可用的数据库连接——由 `@RegisterConnection` 声明，或容器中存在 `javax.sql.DataSource` Bean。
 
 ---

@@ -1,11 +1,7 @@
 package com.weacsoft.jaravel.vendor.core.support;
 
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
 
 /**
  * 数组/集合工具，对齐 Laravel {@code Arr::} 常用方法。
@@ -81,20 +77,6 @@ public final class Arr {
             }
         }
         return true;
-    }
-
-    public static <T> List<T> pluck(Collection<Map<String, Object>> list, String key) {
-        List<T> result = new ArrayList<>(list.size());
-        for (Map<String, Object> m : list) {
-            result.add((T) get(m, key));
-        }
-        return result;
-    }
-
-    public static <T, R> List<R> map(Collection<T> list, Function<T, R> mapper) {
-        List<R> result = new ArrayList<>(list.size());
-        for (T t : list) result.add(mapper.apply(t));
-        return result;
     }
 
     @SuppressWarnings("unchecked")

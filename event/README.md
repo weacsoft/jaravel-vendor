@@ -72,7 +72,7 @@
 | `org.springframework.boot:spring-boot-autoconfigure` | 自动装配 |
 | `org.slf4j:slf4j-api` | 日志门面 |
 
-> 运行环境要求：JDK 17+，Spring Boot 3.2.5（Spring 6.x）。
+> 运行环境要求：JDK 17+，Spring Boot 3.2.12（Spring 6.x）。
 
 ---
 
