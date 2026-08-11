@@ -73,8 +73,21 @@ public class BladeCompiler {
         if (file.isFile()) {
             return new FileInputStream(file);
         }
-        String cpPath = "/" + templatePath.replace(File.separator, "/");
-        return new ClassPathResource(cpPath).getInputStream();
+        String cpPath = templatePath.replace(File.separator, "/");
+        // 在 Spring Boot fat JAR 下，ClassPathResource 使用默认 ClassLoader 可能无法
+        // 访问 BOOT-INF/classes 下的资源。使用线程上下文 ClassLoader（即 Spring
+        // 的 LaunchedURLClassLoader），它能看到 fat JAR 内的所有资源。
+        ClassLoader ctxLoader = Thread.currentThread().getContextClassLoader();
+        if (ctxLoader != null) {
+            InputStream is = ctxLoader.getResourceAsStream(cpPath);
+            if (is != null) return is;
+        }
+        ClassLoader appLoader = BladeCompiler.class.getClassLoader();
+        if (appLoader != null) {
+            InputStream is = appLoader.getResourceAsStream(cpPath);
+            if (is != null) return is;
+        }
+        throw new IOException("Template not found on classpath: " + cpPath);
     }
 
     /**
@@ -87,8 +100,16 @@ public class BladeCompiler {
         if (file.isFile()) {
             return true;
         }
-        String cpPath = "/" + templatePath.replace(File.separator, "/");
-        return new ClassPathResource(cpPath).exists();
+        String cpPath = templatePath.replace(File.separator, "/");
+        ClassLoader ctxLoader = Thread.currentThread().getContextClassLoader();
+        if (ctxLoader != null && ctxLoader.getResource(cpPath) != null) {
+            return true;
+        }
+        ClassLoader appLoader = BladeCompiler.class.getClassLoader();
+        if (appLoader != null && appLoader.getResource(cpPath) != null) {
+            return true;
+        }
+        return false;
     }
 
     /**
