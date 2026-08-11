@@ -3882,7 +3882,7 @@ public class MyController extends WireController {
     @Override
     protected WireView render() {
         return wireView("pages.item")
-                .extends("layouts.app")
+                .bladeExtends("layouts.app")
                 .section("content");
     }
 
@@ -3900,6 +3900,14 @@ public class MyController extends WireController {
 <h4>路由注册</h4>
 <pre><code>Route.get("/items", "MyController::index");
 Route.post("/items", "MyController::update");</code></pre>
+
+<h4>三种请求处理</h4>
+<table class="cfg">
+<tr><th>请求类型</th><th>触发条件</th><th>处理流程</th></tr>
+<tr><td>直访 GET</td><td>无 wire_body</td><td>mount → render → getLayout → 渲染整页 → 注入 wire assets</td></tr>
+<tr><td>Wire POST</td><td>含 wire_body</td><td>decodeSnapshot → merge params → mount → invokeAction → renderSections → JSON</td></tr>
+<tr><td>传统表单 POST</td><td>无 wire_body 的 POST</td><td>request.all() → mount → fill → invokeAction("save") → redirect</td></tr>
+</table>
 
 <h4>废弃的类</h4>
 <p>旧版 <code>WireService</code>、<code>WireResponse</code>、<code>WireComponents</code>、<code>WireComponentDefinition</code>、<code>WireComponentPayload</code>、<code>WireComponentRenderer</code>、<code>WireOutlet</code>、<code>WireComponentAutoConfiguration</code>、<code>WirePublishableConfig</code>、<code>WirePublishAutoConfiguration</code>、<code>WireStaticPublishable</code> 已全部删除。</p>
