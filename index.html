@@ -3868,8 +3868,7 @@ boolean ok = manager.verify(result.getKey(), userInput);</code></pre>
 </section>
 <section id="cat-wire">
 <h3>wire — Wire 组件系统 <span class="badge-new" style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:#dcfce7;color:#059669;margin-left:8px;">v2.0 全新重写</span></h3>
-<p class="module-desc">Laravel Livewire 风格全页组件，WireController 基类，render/mount/fill</p>
-<p><a href="wire.html" target="_blank">📖 查看完整的 Wire 组件系统文档（v2.0）</a> — 包含快速开始、WireController API、临时组件、jblade 新指令、安全性等</p>
+<p class="module-desc">Laravel Livewire 风格全页组件，WireController 基类，render/mount/fill/refresh</p>
 
 <p><strong>核心变化：</strong>Component 组件和 Navigation 导航功能完全统一到 <code>WireController</code> 基类。
 废弃了旧版 <code>WireService</code> / <code>WireResponse</code> / <code>WireComponents</code> 等 11 个类，
@@ -4022,6 +4021,110 @@ Response resp = WireService.from(request, "wire-demo", "/api/wire/demo")
 <tr><td><code>public Response handle(Request request, NextFunction next, String... params)</code></td><td>请求、后续处理链、中间件参数</td><td>中间件入口，在响应 HTML 中植入 outlet 与运行时脚本</td></tr>
 </table>
 </div>
+
+<h4>WireController 生命周期</h4>
+<table class="cfg">
+<tr><th>方法</th><th>默认行为</th><th>说明</th></tr>
+<tr><td><code>mount(Map)</code></td><td>空实现</td><td>首次 GET 时调用，重建嵌套对象（如 Admin setting 从 Map→真实对象）</td></tr>
+<tr><td><code>fill(Map)</code></td><td>反射赋值</td><td>将数据填充到 public 字段（子类可在 mount 中主动调用）</td></tr>
+<tr><td><code>refresh(Map)</code></td><td>空实现</td><td><code>$refresh</code> action 时调用，子类覆盖以从数据库重新加载数据</td></tr>
+<tr><td><code>getLayout()</code></td><td>返回 null</td><td>直访场景的父模板</td></tr>
+<tr><td><code>getWireLayout()</code></td><td>同 getLayout()</td><td>wire 触发场景的父模板（Dialog 等）</td></tr>
+</table>
+
+<h4>前端 wire.js API</h4>
+<table class="cfg">
+<tr><th>方法</th><th>说明</th></tr>
+<tr><td><code>Wire.refresh()</code></td><td>刷新全部 sections（重新渲染组件）</td></tr>
+<tr><td><code>Wire.refresh('form')</code></td><td>只刷新指定的 form section</td></tr>
+<tr><td><code>Wire.on(event, callback)</code></td><td>监听 Wire 事件：beforeRequest / afterRequest / beforeUpdate / afterUpdate</td></tr>
+<tr><td><code>Wire.off(event, callback)</code></td><td>取消监听</td></tr>
+</table>
+
+<h4>wire.js 前端指令</h4>
+<table class="cfg">
+<tr><th>指令</th><th>说明</th></tr>
+<tr><td><code>wire:click="actionName"</code></td><td>点击触发指定 action</td></tr>
+<tr><td><code>wire:submit="actionName"</code></td><td>表单提交或按钮提交触发指定 action</td></tr>
+<tr><td><code>wire:model="fieldName"</code></td><td>输入框双向绑定</td></tr>
+<tr><td><code>wire:section="name"</code></td><td>标记可局部更新的 section</td></tr>
+<tr><td><code>wire:lazy</code></td><td>懒加载 section（滚动到可视区域时加载）</td></tr>
+<tr><td><code>wire:loading</code></td><td>加载中样式（action 执行期间显示）</td></tr>
+</table>
+
+<h4>错误项目参考实现</h4>
+<p>error 项目的 <code>AdminController</code> 展示了完整的迁移过程：</p>
+<pre><code>// 关键设计：保留 $setting 变量，兼容原有 item.jblade 模板
+@Controller
+public class AdminController extends WireController {
+    public Admin setting;
+
+    @Override
+    protected WireView render() {
+        return wireView("mdui.admin.admin.item")
+                .bladeExtends("layouts.mdui.form")
+                .with("setting", setting)
+                .title(setting != null ? "修改管理员信息" : "新增管理员信息");
+    }
+
+    @Override
+    protected String getLayout() {
+        return "layouts.mdui.form";
+    }
+
+    @Override
+    protected String getWireLayout() {
+        return "layouts.mdui.form.dialog";
+    }
+
+    // mount: 仅首次 GET 调用，重建 setting 对象
+    @Override
+    protected void mount(Map&lt;String, Object&gt; params) {
+        if (params != null && params.get("setting") instanceof Map) {
+            Map&lt;?, ?&gt; settingMap = (Map&lt;?, ?&gt;) params.get("setting");
+            Object id = settingMap.get("id");
+            if (id != null &amp;&amp; !id.toString().isEmpty()) {
+                setting = Admin.self().find(id.toString()).toObject();
+            } else {
+                setting = new Admin();
+                // 填充 setting Map 中的字段
+                Map&lt;String, Object&gt; fillData = new LinkedHashMap&lt;&gt;();
+                for (Map.Entry&lt;?, ?&gt; e : settingMap.entrySet()) {
+                    if (e.getKey() instanceof String) fillData.put((String) e.getKey(), e.getValue());
+                }
+                setting.fill(fillData);
+            }
+        } else if (params != null &amp;&amp; params.get("id") != null) {
+            setting = Admin.self().find(params.get("id").toString()).toObject();
+        } else if (setting == null) {
+            setting = new Admin();
+        }
+        // 将 top-level params（表单提交的数据）也填入 setting
+        if (setting != null &amp;&amp; params != null) {
+            Map&lt;String, Object&gt; topLevelData = new LinkedHashMap&lt;&gt;();
+            for (Map.Entry&lt;String, Object&gt; entry : params.entrySet()) {
+                if (!"setting".equals(entry.getKey()) &amp;&amp; entry.getValue() != null) {
+                    topLevelData.put(entry.getKey(), entry.getValue());
+                }
+            }
+            if (!topLevelData.isEmpty()) setting.fill(topLevelData);
+        }
+    }
+
+    // refresh: 前端 Wire.refresh() 时重新从数据库加载
+    @Override
+    protected void refresh(Map&lt;String, Object&gt; params) {
+        if (setting != null &amp;&amp; setting.getId() != null) {
+            Admin loaded = Admin.self().find(setting.getId().toString()).toObject();
+            if (loaded != null) setting = loaded;
+        }
+    }
+
+    public void save() {
+        setting.save();
+        wire().component("toast", Map.of("message", "保存成功", "type", "success"));
+    }
+}</code></pre>
 </section>
 <section id="cat-json">
 <h3>json — JSON 编解码</h3>
