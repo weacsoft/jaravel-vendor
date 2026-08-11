@@ -1132,6 +1132,7 @@
         var target = null;
         if (typeof sections === 'string') target = sections ? [sections] : null;
         else if (Array.isArray(sections)) target = sections.length ? sections : null;
+        // 支持 Wire.refresh(null, null, {reload: true}) 重新加载嵌套对象数据
         sendRequest(comp, action || '$refresh', params || {}, null, target);
     };
 

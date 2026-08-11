@@ -334,7 +334,10 @@ public abstract class WireController {
     }
 
     private void invokeAction(String action, Map<String, Object> params) {
-        if ("$refresh".equals(action)) return;
+        if ("$refresh".equals(action)) {
+            refresh(params);
+            return;
+        }
         if (action.startsWith("$")) {
             log.warn("未知 magic action: " + action);
             return;
@@ -363,6 +366,16 @@ public abstract class WireController {
         } catch (Exception e) {
             throw new RuntimeException("action 方法调用失败: " + action, e);
         }
+    }
+
+    /**
+     * 刷新方法，当 action 为 $refresh 时调用。
+     * <p>
+     * 子类可覆盖此方法以重新加载数据（如从数据库查询最新值）。
+     *
+     * @param params 请求参数
+     */
+    protected void refresh(Map<String, Object> params) {
     }
 
     private Method findPublicMethod(Class<?> clazz, String name) {
