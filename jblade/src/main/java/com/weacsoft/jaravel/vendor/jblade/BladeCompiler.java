@@ -61,41 +61,39 @@ public class BladeCompiler {
     }
 
     /**
-     * 解析模板输入流，优先从文件系统 {@code ./resources/} 目录加载，回退到 ClassPath。
+     * 解析模板输入流，从 ClassPath 加载。
+     * <p>
+     * 注意：{@code templatePath} 参数已经包含了完整路径（如 {@code views/layouts/mdui/form.jblade}），
+     * 本方法直接从 ClassPath 查找，不再拼接 templateDir。
      *
-     * @param templatePath 模板相对路径（如 {@code templates/layout.blade.java}）
+     * @param templatePath 模板相对路径（如 {@code views/layouts/mdui/form.jblade}）
      * @return 模板内容的输入流
-     * @throws IOException 如果两个位置都找不到模板文件
+     * @throws IOException 如果找不到模板文件
      */
     private InputStream resolveTemplateStream(String templatePath) throws IOException {
-        File file = new File("resources" + File.separator + templatePath);
-        if (file.isFile()) {
-            return new FileInputStream(file);
-        }
+        // 直接从 ClassPath 加载（支持 fat-jar 等打包形态）
         String cpPath = templatePath.replace(File.separator, "/");
-        ClassLoader ctxLoader = Thread.currentThread().getContextClassLoader();
-        if (ctxLoader != null) {
-            InputStream is = ctxLoader.getResourceAsStream(cpPath);
-            if (is != null) return is;
-        }
-        ClassLoader appLoader = BladeCompiler.class.getClassLoader();
-        if (appLoader != null) {
-            InputStream is = appLoader.getResourceAsStream(cpPath);
-            if (is != null) return is;
+        // 尝试多个 ClassLoader
+        ClassLoader[] loaders = {
+            Thread.currentThread().getContextClassLoader(),
+            BladeCompiler.class.getClassLoader(),
+            ClassLoader.getSystemClassLoader()
+        };
+        for (ClassLoader loader : loaders) {
+            if (loader != null) {
+                InputStream is = loader.getResourceAsStream(cpPath);
+                if (is != null) return is;
+            }
         }
         throw new IOException("Template not found on classpath: " + cpPath);
     }
 
     /**
-     * 判断模板是否存在（文件系统 resources/ 或 ClassPath）。
+     * 判断模板是否存在（ClassPath）。
      */
     public boolean templateExists(String templateName) {
         String templatePath = templateDir + File.separator
                 + templateName.replace(".", File.separator) + suffix;
-        File file = new File("resources" + File.separator + templatePath);
-        if (file.isFile()) {
-            return true;
-        }
         String cpPath = templatePath.replace(File.separator, "/");
         ClassLoader ctxLoader = Thread.currentThread().getContextClassLoader();
         if (ctxLoader != null && ctxLoader.getResource(cpPath) != null) {
@@ -115,13 +113,101 @@ public class BladeCompiler {
      * @return 编译后的类全限定名
      */
     public String compile(String templateName) throws IOException {
-        String templatePath = templateDir + File.separator + templateName.replace(".", File.separator) + suffix;
-        InputStream resource = resolveTemplateStream(templatePath);
-        String content;
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(resource, java.nio.charset.StandardCharsets.UTF_8))) {
-            content = reader.lines().collect(Collectors.joining("\n"));
+        // 注意：模板文件名本身可能包含点号（如 form.dialog.jblade），
+        // 不能简单把所有点都替换成目录分隔符。先尝试标准做法，失败后用回退策略。
+        try {
+            String templatePath = templateDir + File.separator + templateName.replace(".", File.separator) + suffix;
+            InputStream resource = resolveTemplateStream(templatePath);
+            String content;
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(resource, java.nio.charset.StandardCharsets.UTF_8))) {
+                content = reader.lines().collect(Collectors.joining("\n"));
+            }
+            return compileSource(templateName, content);
+        } catch (IOException e) {
+            // 标准路径失败，尝试保留文件名中的点号
+            InputStream resource = resolveTemplateByTemplateName(templateName);
+            String content;
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(resource, java.nio.charset.StandardCharsets.UTF_8))) {
+                content = reader.lines().collect(Collectors.joining("\n"));
+            }
+            return compileSource(templateName, content);
         }
-        return compileSource(templateName, content);
+    }
+
+    /**
+     * 从 ClassPath 加载模板输入流（多路径回退）。
+     * <p>
+     * 某些模板文件名本身包含点号（如 {@code form.dialog.jblade}），不能简单地把点号
+     * 全部替换成斜杠。本方法枚举所有可能的目录/文件分割方式，尝试从 ClassPath 加载。
+     * <p>
+     * 例如 {@code layouts.mdui.form.dialog} 对应的实际文件可能是：
+     * <ul>
+     *   <li>{@code views/layouts/mdui/form/dialog.jblade}（全部点→斜杠）</li>
+     *   <li>{@code views/layouts/mdui/form.dialog.jblade}（最后一个点保留在文件名中）</li>
+     *   <li>{@code views/layouts/mdui.form.dialog.jblade}（只第一个点→斜杠）</li>
+     * </ul>
+     *
+     * @param templateName 模板名（点分路径，如 {@code layouts.mdui.form.dialog}）
+     * @return 模板输入流
+     * @throws IOException 如果所有路径都找不到
+     */
+    private InputStream resolveTemplateByTemplateName(String templateName) throws IOException {
+        Set<String> candidates = new LinkedHashSet<>();
+
+        // 把所有点的位置找出来
+        List<Integer> dotPositions = new ArrayList<>();
+        for (int i = 0; i < templateName.length(); i++) {
+            if (templateName.charAt(i) == '.') {
+                dotPositions.add(i);
+            }
+        }
+
+        // 枚举：选择哪些点作为目录分隔符，哪些保留在文件名中
+        // 策略：把最后一个点保留，其余全换；把最后两个点保留，其余全换；依此类推
+        // 这样覆盖了所有合理的文件命名方式
+        int numDots = dotPositions.size();
+        for (int keepCount = 0; keepCount <= numDots; keepCount++) {
+            // 保留最后 keepCount 个点作为文件名的一部分
+            // 替换前面的 (numDots - keepCount) 个点
+            StringBuilder path = new StringBuilder(templateDir).append("/");
+            for (int i = 0; i < templateName.length(); i++) {
+                char c = templateName.charAt(i);
+                if (c == '.') {
+                    // 计算这是第几个点（从 1 开始）
+                    int dotIdx = dotPositions.indexOf(i);
+                    // 如果要替换的点数量 = numDots - keepCount
+                    // 当前点是第 (dotIdx + 1) 个点
+                    // 如果 dotIdx + 1 <= numDots - keepCount，则替换为 "/"
+                    if (dotIdx + 1 <= numDots - keepCount) {
+                        path.append('/');
+                    } else {
+                        path.append('.');
+                    }
+                } else {
+                    path.append(c);
+                }
+            }
+            candidates.add(path.toString() + suffix);
+        }
+
+        // 逐个 ClassLoader 逐个路径尝试
+        ClassLoader[] loaders = {
+            Thread.currentThread().getContextClassLoader(),
+            BladeCompiler.class.getClassLoader(),
+            ClassLoader.getSystemClassLoader()
+        };
+
+        StringBuilder tried = new StringBuilder();
+        for (String cpPath : candidates) {
+            tried.append("\n  - ").append(cpPath);
+            for (ClassLoader loader : loaders) {
+                if (loader != null) {
+                    InputStream is = loader.getResourceAsStream(cpPath);
+                    if (is != null) return is;
+                }
+            }
+        }
+        throw new IOException("Template not found on classpath for [" + templateName + "]. Tried:" + tried);
     }
 
     /**

@@ -152,7 +152,7 @@ public abstract class WireController {
             WireView view = render();
             Map<String, Object> renderData = view.getMergedData(data);
             // 判断 wire 场景
-            String parentTemplate = isWireRequest(request) ? getWireLayout() : getLayout();
+            String parentTemplate = useWireLayout(request) ? getWireLayout() : getLayout();
             String templateName = view.getTemplateName();
 
             // 注册父模板覆盖
@@ -185,6 +185,20 @@ public abstract class WireController {
      */
     public Response update(Request request) {
         try {
+            // 检测是否为 wire 请求（含 wire_body）
+            String wireBody = null;
+            try {
+                wireBody = request.input("wire_body");
+                if (wireBody == null || wireBody.isEmpty()) {
+                    wireBody = request.get("wire_body", "");
+                }
+            } catch (Exception ignored) {}
+
+            // 传统表单提交（无 wire_body）：mount → save → redirect
+            if (wireBody == null || wireBody.isEmpty()) {
+                return handleTraditionalSubmit(request);
+            }
+
             // 解析 wire_body
             WireRequest wireReq = WireRequest.from(request);
             String action = wireReq.getAction();
@@ -257,6 +271,63 @@ public abstract class WireController {
                     "message", "Wire 更新失败: " + e.getMessage()
             )));
         }
+    }
+
+    /**
+     * 处理传统表单提交（无 wire_body 的 POST 请求）。
+     * <p>
+     * 当表单通过传统 method="post" 提交（而非 wire:submit）时走此路径：
+     * mount(request.all()) → invokeAction(getDefaultAction()) → redirect
+     * <p>
+     * 子类可覆盖 {@link #getDefaultAction()} 和 {@link #getRedirectUrl(Request)} 来自定义行为。
+     *
+     * @param request HTTP 请求
+     * @return 重定向响应
+     */
+    protected Response handleTraditionalSubmit(Request request) {
+        // 用表单数据初始化
+        Map<String, Object> formData = new LinkedHashMap<>();
+        try {
+            Map<String, Object> all = request.all();
+            if (all != null) formData.putAll(all);
+        } catch (Exception e) {
+            log.warn("收集表单数据失败", e);
+        }
+        mount(formData);
+        fill(formData);
+        // 调用默认 action（通常是 save）
+        String defaultAction = getDefaultAction();
+        if (defaultAction != null && !defaultAction.isEmpty()) {
+            invokeAction(defaultAction, formData);
+        }
+        // 重定向
+        String redirectUrl = getRedirectUrl(request);
+        if (redirectUrl != null) {
+            return ResponseBuilder.redirect(redirectUrl);
+        }
+        return ResponseBuilder.content("保存成功");
+    }
+
+    /**
+     * 传统表单提交时调用的默认 action 方法名。
+     * <p>
+     * 子类可覆盖返回如 "save"、"store" 等。默认返回 "save"。
+     */
+    protected String getDefaultAction() {
+        return "save";
+    }
+
+    /**
+     * 传统表单提交成功后的重定向 URL。
+     * <p>
+     * 子类可覆盖返回具体的重定向地址。默认返回 null（不重定向）。
+     * wire 请求场景下，此 URL 会作为 effects.redirect 下发到前端触发跳转。
+     *
+     * @param request HTTP 请求
+     * @return 重定向 URL，null 表示不重定向
+     */
+    protected String getRedirectUrl(Request request) {
+        return null;
     }
 
     /* ============ 便利方法 ============ */
@@ -396,6 +467,19 @@ public abstract class WireController {
         return null;
     }
 
+    /**
+     * 判断当前请求是否应该使用 wire 布局。
+     * <p>
+     * 默认实现：对于 POST 请求（有 wire_body）返回 true，对于 GET 请求返回 false。
+     * 子类可覆盖此方法以改变行为，例如让所有请求都使用 wire 布局。
+     *
+     * @param request 当前请求
+     * @return true=使用 getWireLayout()，false=使用 getLayout()
+     */
+    protected boolean useWireLayout(Request request) {
+        return isWireRequest(request);
+    }
+
     private boolean isWireRequest(Request request) {
         try {
             String body = request.input("wire_body");
@@ -533,14 +617,19 @@ public abstract class WireController {
                 continue;
             }
             try {
-                String html = WireManager.renderForWire(templateName, params);
+                // 生成唯一 id 并注入到 params 中,供模板用 {{$id}} 引用
+                String compId = "wc-" + name + "-" + System.nanoTime();
+                Map<String, Object> renderParams = new LinkedHashMap<>();
+                if (params != null) renderParams.putAll(params);
+                renderParams.put("id", compId);
+                String html = WireManager.renderForWire(templateName, renderParams);
                 // 保证单一根元素
                 html = ensureSingleRoot(html);
                 Map<String, Object> entry = new LinkedHashMap<>();
                 entry.put("name", name);
-                entry.put("params", params);
+                entry.put("params", renderParams);
                 entry.put("html", html);
-                entry.put("id", "wc-" + name + "-" + System.nanoTime());
+                entry.put("id", compId);
                 rendered.add(entry);
             } catch (Exception e) {
                 log.error("渲染组件失败: " + name, e);

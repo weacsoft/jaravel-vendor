@@ -1,6 +1,84 @@
 # wire 模块
 
-> Jaravel-Vendor 的全栈响应式 UI 框架模块，实现 Laravel Livewire 风格的服务端渲染 + 前端局部更新。包名统一为 `com.weacsoft.jaravel.vendor.wire`，包含 `WireService`、`WireResponse`、`WireRequest`、`WireManager` 四个核心类，以及一个零依赖的前端运行时 `wire.js`。
+> Jaravel-Vendor 的全栈响应式 UI 框架模块，实现 Laravel Livewire 风格的服务端渲染 + 前端局部更新。包名统一为 `com.weacsoft.jaravel.vendor.wire`。
+>
+> **推荐使用 `WireController` 抽象基类**（Livewire 风格），旧的 `WireService` 流式 API 已废弃（`WireResponse` 保留为兼容层）。
+
+---
+
+## 快速开始：WireController（推荐）
+
+WireController 是类似 Laravel Livewire 的全页组件基类。继承它并实现 `render()` 即可获得完整的 Wire 能力。
+
+### 最小示例
+
+```java
+public class AdminController extends WireController {
+    public Admin setting;
+
+    @Override
+    protected WireView render() {
+        return wireView("mdui.admin.admin.item")
+                .bladeExtends(getLayout())
+                .with("setting", setting);
+    }
+
+    @Override
+    protected void mount(Map<String, Object> params) {
+        if (params.get("id") != null)
+            setting = Admin.self().find(params.get("id").toString()).toObject();
+        else setting = new Admin();
+    }
+
+    @Override protected String getLayout() { return "layouts.mdui.form"; }
+    @Override protected String getWireLayout() { return "layouts.mdui.form.dialog"; }
+    @Override protected String getRedirectUrl(Request request) { return RouteHelper.route("admin.admin.index"); }
+
+    public void save() {
+        Admin.self().newQuery().where("id", setting.getId())
+            .data("name", setting.getName()).update();
+        wire().component("toast", Map.of("message", "保存成功", "type", "success"));
+    }
+}
+```
+
+### 路由注册（方法名固定 index/update）
+
+```java
+Route.get("/change", "AdminController::index").name("change.index");
+Route.post("/change", "AdminController::update").name("change");
+```
+
+### 核心方法
+
+| 方法 | 说明 |
+|------|------|
+| `render()` | **必须实现**。返回 WireView 配置 |
+| `mount(params)` | 可选。首次 index() 时调用 |
+| `fill(data)` | 可选。批量赋值 public 属性 |
+| `getLayout()` | 直访场景父模板 |
+| `getWireLayout()` | wire 请求场景父模板（Dialog 等） |
+| `getRedirectUrl(request)` | 传统表单提交后重定向 URL |
+| `wire()` | 下发临时组件 `wire().component("name", params)` |
+
+### 三种请求处理
+
+| 请求类型 | 触发条件 | 处理流程 |
+|----------|---------|---------|
+| 直访 GET | 无 wire_body | mount → render → 渲染整页 → 注入 wire assets |
+| Wire POST | 含 wire_body | decodeSnapshot → invokeAction → renderSections → JSON |
+| 传统表单 POST | 无 wire_body 的 POST | mount → fill → invokeAction("save") → redirect |
+
+### 安全机制
+
+- Snapshot HMAC 签名（HmacSHA256 + session key）
+- @WireLocked 注解（防 wire:model 篡改）
+- 参数全 String + 结构化解析（禁用 eval）
+- WireParentOverride 运行时 @extends 覆盖
+
+---
+
+## 旧 API 参考（已废弃，以下章节保留供迁移参考）
 
 ---
 

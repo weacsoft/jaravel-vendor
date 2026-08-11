@@ -573,36 +573,35 @@ public class BladeEngine {
     }
 
     /**
-     * 编译模板并存入缓存（异常安全版本）。
+     * 编译模板并存入缓存。
+     * <p>
+     * <b>关键修复</b>：不再静默吞掉编译异常，而是抛出包含完整诊断信息的 RuntimeException，
+     * 避免 "Failed to load template" 这种误导性的错误信息掩盖真实原因。
      */
     private Class<?> safeCompileAndCache(String templateName) {
         try {
-            // 编译模板（读取文件 + 生成源码 + JavaC 编译）
             String className = compiler.compile(templateName);
-            // 从 MemoryClassLoader 加载 Class
             Class<?> templateClass = memoryClassLoader.loadClass(className);
 
-            // 将字节码存入内存缓存（view:cache 预热的主目标）
             byte[] bytecode = memoryClassLoader.getCompiledClasses().get(className);
             if (bytecode != null) {
                 templateClassNameCache.put(templateName, className);
                 templateBytecodeCache.put(templateName, bytecode);
             }
 
-            // 将字节码存入外部 CacheStore（可选）
             if (useCacheStore && bytecode != null) {
                 try {
-                    String cacheKey = CACHE_KEY_PREFIX + templateName;
-                    cacheStore.put(cacheKey, bytecode, 0);
+                    cacheStore.put(CACHE_KEY_PREFIX + templateName, bytecode, 0);
                 } catch (Exception e) {
-                    // 缓存写入失败，不影响功能
+                    // 缓存写入失败不影响功能
                 }
             }
 
             return templateClass;
         } catch (Exception e) {
-            System.err.println("BladeEngine: failed to compile template [" + templateName + "] — " + e.getClass().getSimpleName() + ": " + e.getMessage());
-            return null;
+            throw new RuntimeException(
+                "Failed to compile and load template [" + templateName + "]: "
+                + e.getClass().getSimpleName() + ": " + e.getMessage(), e);
         }
     }
 
