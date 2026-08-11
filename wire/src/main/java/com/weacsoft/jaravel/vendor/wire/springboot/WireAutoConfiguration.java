@@ -8,6 +8,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
+import java.util.Map;
+
 /**
  * Wire 模块 SpringBoot 自动装配。
  * <p>
@@ -35,20 +37,14 @@ public class WireAutoConfiguration {
         if (properties.getExcludedSections() != null && !properties.getExcludedSections().isEmpty()) {
             WireManager.addExcludedSections(properties.getExcludedSections().toArray(new String[0]));
         }
-        log.info("Wire 模块已初始化：autoInjectJs={}, jsPath={}, excludedSections={}",
-                properties.isAutoInjectJs(), properties.getJsPath(), properties.getExcludedSections());
-    }
-
-    /**
-     * 声明 {@code wire.js} 为可发布静态资源，供 {@code vendor:publish:static --tag=wire} 使用。
-     * <p>
-     * 该 Bean 只被 {@code vendor:publish:static} 消费，普通 {@code vendor:publish} 不会触发。
-     *
-     * @return 静态资源发布声明
-     */
-    @org.springframework.context.annotation.Bean
-    @org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean(WireStaticPublishable.class)
-    public WireStaticPublishable wireStaticPublishable() {
-        return new WireStaticPublishable();
+        // 注册组件名 → 模板名 映射(如 "toast" → "components.toast")
+        if (properties.getComponents() != null) {
+            for (Map.Entry<String, String> entry : properties.getComponents().entrySet()) {
+                WireManager.registerComponentTemplate(entry.getKey(), entry.getValue());
+            }
+        }
+        log.info("Wire 模块已初始化：autoInjectJs={}, jsPath={}, excludedSections={}, components={}",
+                properties.isAutoInjectJs(), properties.getJsPath(),
+                properties.getExcludedSections(), properties.getComponents());
     }
 }

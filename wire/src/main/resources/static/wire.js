@@ -204,7 +204,14 @@
                     return;
                 }
                 e.preventDefault();
-                sendRequest(comp, el.getAttribute('wire:click'), collectParams(el), el);
+                var actionExpr = el.getAttribute('wire:click') || '';
+                var parsed = parseWireAction(actionExpr);
+                var params = Object.assign({}, collectParams(el));
+                // 把解析出的位置参数按 0,1,2... 索引合并到 params
+                for (var i = 0; i < parsed.params.length; i++) {
+                    params[String(i)] = parsed.params[i];
+                }
+                sendRequest(comp, parsed.method, params, el);
             });
         })(els[i]);
     }
@@ -229,14 +236,55 @@
         })(containers[c]);
     }
     function bindSubmit(comp) {
+        // 支持 form[wire:submit] 和 button/input[wire:submit]
         var forms = comp.element.querySelectorAll('form[wire\\:submit]');
         for (var i = 0; i < forms.length; i++) (function (form) {
             if (!markBound(comp, form)) return;
             form.addEventListener('submit', function (e) {
                 e.preventDefault();
-                sendRequest(comp, form.getAttribute('wire:submit'), collectFormData(form), form);
+                var actionExpr = form.getAttribute('wire:submit') || '';
+                var parsed = parseWireAction(actionExpr);
+                var params = Object.assign({}, collectParams(form));
+                for (var i = 0; i < parsed.params.length; i++) params[String(i)] = parsed.params[i];
+                sendRequest(comp, parsed.method, params, form);
             });
         })(forms[i]);
+
+        // button/input[type=submit][wire:submit]:拦截其所属 form 的 submit 事件
+        var buttons = comp.element.querySelectorAll('button[wire\\:submit], input[type=submit][wire\\:submit]');
+        for (var j = 0; j < buttons.length; j++) (function (btn) {
+            if (!markBound(comp, btn)) return;
+            var form = btn.closest('form');
+            if (!form) {
+                // 无所属 form,退化为 click 行为
+                btn.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    var actionExpr = btn.getAttribute('wire:submit') || '';
+                    var parsed = parseWireAction(actionExpr);
+                    var params = Object.assign({}, collectParams(btn));
+                    for (var i = 0; i < parsed.params.length; i++) params[String(i)] = parsed.params[i];
+                    sendRequest(comp, parsed.method, params, btn);
+                });
+                return;
+            }
+            // 为每个 button 单独绑定,避免覆盖已有事件
+            if (!form.__wireSubmitBound) {
+                form.__wireSubmitBound = true;
+                form.addEventListener('submit', function (e) {
+                    var target = e.submitter || e.srcElement;
+                    if (target && target.getAttribute && target.getAttribute('wire:submit')) {
+                        e.preventDefault();
+                        var actionExpr = target.getAttribute('wire:submit');
+                        var parsed = parseWireAction(actionExpr);
+                        var p = {};
+                        var fd = new FormData(form); fd.forEach(function (v, k) { p[k] = v; });
+                        Object.assign(p, collectParams(target));
+                        for (var i = 0; i < parsed.params.length; i++) p[String(i)] = parsed.params[i];
+                        sendRequest(comp, parsed.method, p, target);
+                    }
+                });
+            }
+        })(buttons[j]);
     }
     function bindModel(comp) {
         var all = comp.element.querySelectorAll('input, textarea, select');
@@ -295,6 +343,44 @@
     }
 
     var pendingRequests = {};
+
+    /**
+     * 结构化解析 wire:action 表达式,如 "save" / "delete(123)" / "search('test')"。
+     * 不使用 eval,只做词法解析。参数全部视为字符串。
+     */
+    function parseWireAction(expr) {
+        if (!expr) return { method: '', params: [] };
+        var method = expr;
+        var params = [];
+        var lparen = expr.indexOf('(');
+        var rparen = expr.lastIndexOf(')');
+        if (lparen >= 0 && rparen > lparen) {
+            method = expr.substring(0, lparen);
+            var raw = expr.substring(lparen + 1, rparen);
+            if (raw.trim()) {
+                var cur = '', inStr = false, quote = '';
+                for (var i = 0; i < raw.length; i++) {
+                    var c = raw[i];
+                    if (inStr) {
+                        cur += c;
+                        if (c === quote) inStr = false;
+                    } else if (c === "'" || c === '"') {
+                        inStr = true; quote = c; cur += c;
+                    } else if (c === ',') {
+                        var trimmed = cur.trim();
+                        if (trimmed) params.push(trimmed.replace(/^['"]|['"]$/g, ''));
+                        cur = '';
+                    } else {
+                        cur += c;
+                    }
+                }
+                var trimmed = cur.trim();
+                if (trimmed) params.push(trimmed.replace(/^['"]|['"]$/g, ''));
+            }
+        }
+        return { method: method, params: params };
+    }
+
     function sendRequest(comp, action, params, triggerEl, targetSections) {
         var isSync = action === '$sync';
         var updateUrl = comp.updateUrl;

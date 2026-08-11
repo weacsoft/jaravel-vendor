@@ -207,9 +207,9 @@ public class BladeEngine {
         }
 
         BladeTemplate root = initInheritanceChain(template, templateName, context);
-        // 渲染出口统一改写「注释非法位置」的 wire section 锚点（<title>/属性等），
-        // 避免锚点注释以纯文本形式泄漏到标签页标题或 class 等属性值中。
-        return WireAnchorRewriter.rewrite(root.render());
+        String html = WireAnchorRewriter.rewrite(root.render());
+        // 自动注入收集到的 @assets(在 </head> 前) 和 @script(在 </body> 前)
+        return injectCollectedAssetsAndScripts(html, context);
     }
 
     /**
@@ -237,30 +237,90 @@ public class BladeEngine {
         BladeTemplate current = template;
         java.util.Set<String> visited = new java.util.LinkedHashSet<>();
         visited.add(templateName);
-        // 保存子模板 @extends 声明的直接父模板名；循环内为终止继承会将其清空，
         String originalParent = context.getParentTemplate();
-        String parentName = originalParent;
+        String parentName = overrideParentIfNeeded(templateName, originalParent);
         while (parentName != null && !parentName.isEmpty()) {
             if (!visited.add(parentName)) {
                 throw new IllegalStateException("模板继承出现循环: " + visited + " -> " + parentName);
             }
             BladeTemplate parent = loadTemplate(parentName);
             parent.setEngine(this);
-            // 清除当前层的 parent 标记，由父模板 init() 决定是否继续向上继承
             context.setParentTemplate(null);
-            // 父模板共享同一 context（变量 + section 合并）
             parent.resetContext(context);
             parent.init();
             parent.setInitialized(true);
             current = parent;
-            parentName = context.getParentTemplate();
+            parentName = overrideParentIfNeeded(parentName, context.getParentTemplate());
         }
         context.setParentTemplate(originalParent);
         return current;
     }
 
+    /**
+     * 在继承链每一步尝试读取 WireParentOverride 的父模板覆盖。
+     * <p>
+     * 通过反射调用(jblade 不依赖 wire 模块),找不到类或方法时忽略,保持原语义。
+     */
+    private String overrideParentIfNeeded(String templateName, String declaredParent) {
+        try {
+            Class<?> clazz = Class.forName(
+                    "com.weacsoft.jaravel.vendor.wire.WireParentOverride");
+            Object result = clazz.getMethod("get", String.class).invoke(null, templateName);
+            if (result != null) {
+                return (String) result;
+            }
+        } catch (Exception ignored) {
+            // WireParentOverride 不存在或调用失败,忽略
+        }
+        return declaredParent;
+    }
+
     public String render(String templateName) throws Exception {
         return render(templateName, null);
+    }
+
+    /**
+     * 自动将收集到的 @assets 注入到 </head> 前,将 @script 注入到 </body> 前。
+     * <p>
+     * 注入策略:
+     * <ul>
+     *   <li>@assets 注入到 </head> 标签前(继承链按子→父顺序收集,子先注入)</li>
+     *   <li>@script 注入到 </body> 标签前</li>
+     * </ul>
+     * 若无对应标签则追加到文档末尾。
+     *
+     * @param html    已渲染的 HTML
+     * @param context 渲染后的上下文(含收集结果)
+     * @return 注入后的 HTML
+     */
+    private String injectCollectedAssetsAndScripts(String html, BladeContext context) {
+        if (html == null) {
+            return html;
+        }
+        String assetsHtml = context.renderCollectedAssets();
+        String scriptsHtml = context.renderCollectedScripts();
+        if (assetsHtml.isEmpty() && scriptsHtml.isEmpty()) {
+            return html;
+        }
+        String lowerHtml = html.toLowerCase();
+        int headEnd = lowerHtml.lastIndexOf("</head>");
+        int bodyEnd = lowerHtml.lastIndexOf("</body>");
+
+        if (!assetsHtml.isEmpty() && headEnd >= 0) {
+            html = html.substring(0, headEnd) + "\n" + assetsHtml + "\n" + html.substring(headEnd);
+            // 重新定位 body 位置(因为前面插入了 assets)
+            lowerHtml = html.toLowerCase();
+            bodyEnd = lowerHtml.lastIndexOf("</body>");
+        }
+        if (!scriptsHtml.isEmpty() && bodyEnd >= 0) {
+            html = html.substring(0, bodyEnd) + "\n" + scriptsHtml + "\n" + html.substring(bodyEnd);
+        } else if (!scriptsHtml.isEmpty()) {
+            html = html + "\n" + scriptsHtml;
+        }
+        if (!assetsHtml.isEmpty() && headEnd < 0) {
+            html = html + "\n" + assetsHtml;
+        }
+        return html;
     }
 
     // ===== Wire section 渲染方法 =====
@@ -541,6 +601,7 @@ public class BladeEngine {
 
             return templateClass;
         } catch (Exception e) {
+            System.err.println("BladeEngine: failed to compile template [" + templateName + "] — " + e.getClass().getSimpleName() + ": " + e.getMessage());
             return null;
         }
     }

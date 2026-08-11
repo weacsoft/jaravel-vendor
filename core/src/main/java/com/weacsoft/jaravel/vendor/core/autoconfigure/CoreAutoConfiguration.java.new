@@ -1,0 +1,34 @@
+package com.weacsoft.jaravel.vendor.core.autoconfigure;
+
+import com.weacsoft.jaravel.vendor.core.crypto.AppKey;
+import com.weacsoft.jaravel.vendor.core.crypto.DefaultAppKey;
+import com.weacsoft.jaravel.vendor.core.lock.LockProviderManager;
+import com.weacsoft.jaravel.vendor.core.lock.LockProviderRegistrar;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.annotation.Bean;
+
+@AutoConfiguration
+public class CoreAutoConfiguration {
+
+    @Bean
+    @ConditionalOnMissingBean(AppKey.class)
+    public AppKey appKey(@Value("${jaravel.key:}") String key) {
+        return new DefaultAppKey(key);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public LockProviderManager lockProviderManager() {
+        return new LockProviderManager();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public LockProviderRegistrar lockProviderRegistrar(ApplicationContext context,
+                                                        LockProviderManager lockProviderManager) {
+        return new LockProviderRegistrar(context, lockProviderManager);
+    }
+}

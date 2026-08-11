@@ -221,19 +221,20 @@ public class BladeCompiler {
 
     /** 内置指令名集合（编译期识别） */
     private static final Set<String> KNOWN_DIRECTIVES = new HashSet<>(Arrays.asList(
-            "extends", "section", "endsection", "stop", "show", "append", "overwrite", "parent",
-            "yield", "hasSection", "sectionMissing",
-            "if", "elseif", "else", "endif", "unless", "endunless", "isset", "endisset",
-            "empty", "endempty",
-            "foreach", "endforeach", "forelse", "endforelse", "for", "endfor",
-            "while", "endwhile", "continue", "break",
-            "php", "endphp",
-            "include", "includeIf", "includeWhen", "includeUnless",
-            "csrf", "method", "json", "route", "asset",
-            "component", "endcomponent", "slot", "endslot",
-            "auth", "endauth", "guest", "endguest",
-            "verbatim", "endverbatim"
-    ));
+        "extends", "section", "endsection", "stop", "show", "append", "overwrite", "parent",
+        "yield", "hasSection", "sectionMissing",
+        "if", "elseif", "else", "endif", "unless", "endunless", "isset", "endisset",
+        "empty", "endempty",
+        "foreach", "endforeach", "forelse", "endforelse", "for", "endfor",
+        "while", "endwhile", "continue", "break",
+        "php", "endphp",
+        "include", "includeIf", "includeWhen", "includeUnless",
+        "csrf", "method", "json", "route", "asset",
+        "component", "endcomponent", "slot", "endslot",
+        "auth", "endauth", "guest", "endguest",
+        "verbatim", "endverbatim",
+        "script", "endscript", "assets", "endassets"
+));
 
     /**
      * 判断指令名是否可识别（内置 + 动态注册的条件/输出指令及其 else/end 变体）。
@@ -999,6 +1000,50 @@ public class BladeCompiler {
                 }
                 return;
             }
+            /* ---------- 资源收集(@assets / @script) ---------- */
+            case "assets": {
+                String swVar = nextVar("sw");
+                Emitter blockEmitter = new Emitter("assets", "assets", swVar);
+                emitters.push(blockEmitter);
+                return;
+            }
+            case "script": {
+                String swVar = nextVar("sw");
+                Emitter blockEmitter = new Emitter("script", "script", swVar);
+                emitters.push(blockEmitter);
+                return;
+            }
+            case "endassets": {
+                if (!"assets".equals(emitters.peek().kind)) {
+                    throw new IllegalStateException("模板 [" + templateName + "] @endassets 没有对应的 @assets");
+                }
+                emitters.pop();
+                String key = escapeJava(templateName);
+                initCode.append("        {\n");
+                initCode.append("            final java.io.StringWriter ").append(em.writerVar)
+                        .append(" = new java.io.StringWriter();\n");
+                initCode.append(indent(em.code.toString(), "    "));
+                initCode.append("            ctx.collectAssets(\"").append(key)
+                        .append("\", ").append(em.writerVar).append(".toString());\n");
+                initCode.append("        }\n");
+                return;
+            }
+            case "endscript": {
+                if (!"script".equals(emitters.peek().kind)) {
+                    throw new IllegalStateException("模板 [" + templateName + "] @endscript 没有对应的 @script");
+                }
+                emitters.pop();
+                String key = escapeJava(templateName);
+                initCode.append("        {\n");
+                initCode.append("            final java.io.StringWriter ").append(em.writerVar)
+                        .append(" = new java.io.StringWriter();\n");
+                initCode.append(indent(em.code.toString(), "    "));
+                initCode.append("            ctx.collectScript(\"").append(key)
+                        .append("\", ").append(em.writerVar).append(".toString());\n");
+                initCode.append("        }\n");
+                return;
+            }
+
             default:
                 break;
         }

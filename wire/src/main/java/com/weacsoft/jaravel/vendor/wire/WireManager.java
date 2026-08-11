@@ -37,11 +37,29 @@ public class WireManager {
     /** Wire 更新 URL 标记，设置到 BladeContext 中供模板使用 */
     public static final String WIRE_UPDATE_URL_KEY = "__wire_update_url";
 
-    /** wire.js 在 classpath 中的路径 */
-    private static final String WIRE_JS_CLASSPATH = "/static/wire.js";
+    /** 组件名 → 模板名 注册表。由 WireAutoConfiguration 从配置初始化。 */
+    private static final Map<String, String> COMPONENT_TEMPLATES = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** 注册组件名到模板名的映射。 */
+    public static void registerComponentTemplate(String name, String template) {
+        if (name != null && template != null) COMPONENT_TEMPLATES.put(name, template);
+    }
+
+    /**
+     * 解析组件名对应的模板名。未注册时返回 null。
+     *
+     * @param name 组件名(如 "toast")
+     * @return 模板名(如 "components.toast"),未注册时返回 null
+     */
+    public static String resolveComponentTemplate(String name) {
+        return COMPONENT_TEMPLATES.get(name);
+    }
 
     /** wire.js 的外部引用路径（注入到 HTML 中的 script src），默认 /static/wire.js */
     private static String jsPath = "/static/wire.js";
+
+    /** wire.js 在 classpath 中的路径（用于读取内容） */
+    private static final String WIRE_JS_CLASSPATH = "/static/wire.js";
 
     /** 是否自动注入 wire.js 的 script 标签，默认 true（向后兼容） */
     private static boolean autoInjectJs = true;
