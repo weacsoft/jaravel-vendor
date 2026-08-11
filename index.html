@@ -217,7 +217,7 @@ blockquote ul, blockquote ol { margin-bottom: 0.2rem; }
 <a href="#cat-springboot" class="sub" title="SpringBoot 集成核心，自动装配路由/中间件/响应">springboot — SpringBoot 适配</a>
 <a href="#cat-wechat-sdk" class="sub" title="公众号/小程序支持，AccessToken 缓存，OAuth 授权">wechat-sdk — 微信 SDK</a>
 <a href="#cat-captcha" class="sub" title="图片数字/算术/滑动/旋转/文字点选验证码，零依赖前端库，核心层无 SpringBoot 依赖，可独立使用">captcha — 验证码模块</a>
-<a href="#cat-wire" class="sub" title="Laravel Livewire 风格反应式 UI，wire.js 自动注入，服务端渲染模板">wire — Wire 渲染模块</a>
+<a href="#cat-wire" class="sub" title="Laravel Livewire 风格全页组件，WireController 基类，render/mount/fill">wire — Wire 组件系统</a>
 <a href="#cat-json" class="sub" title="JSON 编解码 SPI：Jackson 2 / Jackson 3 双支持，无 Spring 依赖，classpath 自动检测">json — JSON 编解码</a>
 <a href="#cat-starter" class="sub" title="引入所有模块的便捷 starter">starter — 聚合启动器</a>
 <a href="#cat-cluster" class="sub" title="服务器集群部署：Session / Cache 共享，Redis 基础设施">cluster — 集群部署</a>
@@ -3867,8 +3867,44 @@ boolean ok = manager.verify(result.getKey(), userInput);</code></pre>
 </div>
 </section>
 <section id="cat-wire">
-<h3>wire — Wire 渲染模块</h3>
-<p class="module-desc">Laravel Livewire 风格反应式 UI，wire.js 自动注入，服务端渲染模板</p>
+<h3>wire — Wire 组件系统 <span class="badge-new" style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:#dcfce7;color:#059669;margin-left:8px;">v2.0 全新重写</span></h3>
+<p class="module-desc">Laravel Livewire 风格全页组件，WireController 基类，render/mount/fill</p>
+<p><a href="wire.html" target="_blank">📖 查看完整的 Wire 组件系统文档（v2.0）</a> — 包含快速开始、WireController API、临时组件、jblade 新指令、安全性等</p>
+
+<p><strong>核心变化：</strong>Component 组件和 Navigation 导航功能完全统一到 <code>WireController</code> 基类。
+废弃了旧版 <code>WireService</code> / <code>WireResponse</code> / <code>WireComponents</code> 等 11 个类，
+替换为单一的 <code>WireController</code> + <code>WireView</code> 设计。</p>
+
+<h4>快速概览</h4>
+<pre><code>@Controller
+public class MyController extends WireController {
+    public String name;
+
+    @Override
+    protected WireView render() {
+        return wireView("pages.item")
+                .extends("layouts.app")
+                .section("content");
+    }
+
+    @Override
+    protected void mount(Map&lt;String, Object&gt; params) {
+        name = params.get("name") != null ? params.get("name").toString() : "World";
+    }
+
+    public void save() {
+        // 保存逻辑
+        wire().component("toast", Map.of("message", "保存成功", "type", "success"));
+    }
+}</code></pre>
+
+<h4>路由注册</h4>
+<pre><code>Route.get("/items", "MyController::index");
+Route.post("/items", "MyController::update");</code></pre>
+
+<h4>废弃的类</h4>
+<p>旧版 <code>WireService</code>、<code>WireResponse</code>、<code>WireComponents</code>、<code>WireComponentDefinition</code>、<code>WireComponentPayload</code>、<code>WireComponentRenderer</code>、<code>WireOutlet</code>、<code>WireComponentAutoConfiguration</code>、<code>WirePublishableConfig</code>、<code>WirePublishAutoConfiguration</code>、<code>WireStaticPublishable</code> 已全部删除。</p>
+
 <blockquote>
 <p>包名：<code>com.weacsoft.jaravel.vendor.wire</code></p>
 <p>artifactId：<code>wire</code></p>
