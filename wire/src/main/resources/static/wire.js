@@ -1127,13 +1127,14 @@
         wireInit(); compInit(); navInit();
     }
 
-    Wire.refresh = function (sections, action, params) {
+    Wire.refresh = function () {
         var comp = Wire.components[0]; if (!comp) return;
+        // Wire.refresh() 刷新全部 sections
+        // Wire.refresh('form') 刷新指定 section
+        var sections = arguments.length > 0 ? arguments[0] : null;
         var target = null;
-        if (typeof sections === 'string') target = sections ? [sections] : null;
-        else if (Array.isArray(sections)) target = sections.length ? sections : null;
-        // 支持 Wire.refresh(null, null, {reload: true}) 重新加载嵌套对象数据
-        sendRequest(comp, action || '$refresh', params || {}, null, target);
+        if (typeof sections === 'string') target = [sections];
+        sendRequest(comp, '$refresh', {}, null, target);
     };
 
     window.Wire = Wire;

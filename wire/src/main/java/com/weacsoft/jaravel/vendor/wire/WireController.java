@@ -142,11 +142,11 @@ public abstract class WireController {
     public Response index(Request request) {
         try {
             Map<String, Object> data = new LinkedHashMap<>();
-            // mount
+            // mount（仅首次加载时调用，重建嵌套对象如 Admin setting）
             mount(request.query());
             // 收集 public 属性
             collectPublicFields(data);
-            // fill
+            // fill（将 data 中的值赋给 public 字段）
             fill(data);
             // render
             WireView view = render();
@@ -205,10 +205,9 @@ public abstract class WireController {
             }
 
             // 调用 mount() 重建嵌套对象(如 Admin setting 从 Map→真实对象)
+            // 注意：update 时的 mount 只重建对象结构，不重新从数据库加载
+            // 子类应覆盖 refresh() 来重新从数据库加载最新数据
             mount(data);
-
-            // 批量赋值：将合并后的 data 交给子类处理
-            fill(data);
 
             // 反射调用 action 方法(所有参数视为 String)
             if (action != null && !action.isEmpty()) {
