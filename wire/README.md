@@ -60,12 +60,14 @@ Route.post("/change", "AdminController::update").name("change");
 | `render()` | **必须实现**。返回 `WireView` 配置；只声明模板 + 额外数据，**不要**在里面调用 `.bladeExtends(getLayout())`（布局由框架外部套用） |
 | `mount(Request)` | 可选。仅首次 `index()` 时调用，参数为 `Request`；可读取 `request.query()/input()` 初始化。Spring 单例 Bean 需在 `mount()` 里重置表单字段，避免上一次请求残留值泄漏进快照 |
 | `fill(key, value)` / `fill(Map)` | 可选。把键值对**直接赋**到 Controller 自己的 public 属性（同名赋值 + 基础类型转换），不做任何业务重写 |
-| `getLayout()` | 直访场景父模板 |
-| `getWireLayout()` | wire 请求场景父模板（Dialog 等） |
+| `getLayout()` | 直访场景父模板（如整页表单 `layouts.mdui.form`） |
+| `getWireLayout()` | wire 请求场景父模板（如 Dialog `layouts.mdui.form.dialog`）。**点击弹框与直访编辑页共用同一组件**，靠这两个方法切换「底」：直访时不匹配待换底 → 不替换；wire 交互时换上 `getWireLayout()` 的底 |
 | `getUpdateRouteName()` | 组件更新(POST)对应的路由名，`wire:config` 的 `data-wire-update` 指向它 |
-| `getRedirectUrl(request)` | wire 请求成功后的重定向 URL（作为 `effects.redirect` 下发，前端跳转）；传统表单提交后也用它做 redirect |
-| `wire()` | 下发临时组件 `wire().component("name", params)` |
-| `WireEffects.dispatch(name, data)` | 下发前端事件（`window.dispatchEvent(new CustomEvent(name, {detail:data}))`），用于打开/关闭对话框等 |
+| `getRedirectUrl(request)` | **全局默认**重定向 URL：所有 wire 响应都会带上它（作为 `effects.redirect` 下发，前端整页跳转）。若你**只想在某个 action 后跳转**（如 `save()`），请勿重写此方法，改用 `WireEffects.redirect(url)` 在 action 内显式下发，否则每个 action（含 `add()`/`edit()`）都会触发整页跳转、把刚下发的对话框冲掉 |
+| `wire()` | 下发**命名组件** `wire().component("name", params)`（toast / confirm 等带 `wire:lifecycle` 生命周期脚本的临时事务组件，详见第 16 节） |
+| `WireEffects.push(name, params)` | 下发**交互式组件**：渲染时注入 `wire:config` + 签名快照 + `data-wire-update`，使组件成为「活的」wire 组件（`wire:model` 双向绑定、`wire:submit` 提交均生效）。`params` 中的 `__parent` 键可在本次渲染期间临时覆盖该组件的父布局（见下方「交互式组件 + 底替换」） |
+| `WireEffects.redirect(url)` | 在 action 内**显式**下发重定向效果，仅当前 action 生效（区别于 `getRedirectUrl` 的全局默认）。典型：`save()` 末尾调用，保存成功后整页跳回列表 |
+| `WireEffects.dispatch(name, data)` | 下发前端事件（`window.dispatchEvent(new CustomEvent(name, {detail:data}))`）。保留用于纯前端事件；**打开/关闭对话框已不推荐用它**——改用 `WireEffects.push(name, {..., __parent})` 由框架下发并自动挂载交互式对话框组件 |
 
 ### 三种请求处理
 
@@ -101,52 +103,110 @@ Route.prefix("/admin").name("admin").group(() -> {
 ```java
 public class AdminController extends WireController {
     @WireLocked public List<Admin> list;   // 列表数据大,标记 @WireLocked 不进快照
-    public boolean fullPageForm;           // 直访 /change 时为 true
+    public boolean fullPageForm;           // 直访 /change 且非 wire 请求时为 true
+    public String editMode;                // 标题标记:非空=修改,空=新增(规避 jblade 非null即真)
     public Long id; public String number; public String name; /* ...表单字段... */
 
     @Override protected WireView render() {
-        // 整页表单(直接访问 /change)渲染 form 模板;否则渲染 list 模板
+        // 整页表单(直接访问 /change)渲染 item 模板;否则渲染 list 模板
         return fullPageForm
             ? wireView("mdui.admin.admin.item")
             : wireView("mdui.admin.admin.list", Map.of("list", list));
     }
 
     @Override protected void mount(Request request) {
-        // ① 对话框放 @section('modals'),排除出 wire 可更新区 → 永不重建,彻底避免遮罩/标题错乱
-        WireManager.addExcludedSections("modals");
-        // ② Spring 单例 Bean:每次 index 必须重置表单字段,否则上次请求残留的 id 会泄漏进快照
+        // Spring 单例 Bean:每次 index 必须重置表单字段,否则上次请求残留的 id 会泄漏进快照
         this.id = null; this.number = null; this.name = null; /* ... */
-        this.fullPageForm = request.uri() != null && request.uri().endsWith("/change");
+        // 整页表单 = 直访 /change 且非 wire 请求(点列表里的按钮是 wire POST,不算整页)
+        this.fullPageForm = request.uri() != null && request.uri().endsWith("/change") && !useWireLayout(request);
+        this.editMode = fullPageForm ? "1" : null;
         this.list = queryList();
     }
 
+    @Override protected String getLayout() { return "mdui.admin.main"; }            // 列表用主布局
+    @Override protected String getWireLayout() { return "layouts.mdui.form.dialog"; } // 对话框用 dialog 布局
     @Override protected String getUpdateRouteName() { return "admin.admin.change"; }
 
-    public void add()  { WireEffects.dispatch("wire-admin-open-dialog", emptyData()); }
+    // 点击「新增」:下发空表单对话框(交互式组件,套 dialog 布局)
+    public void add() {
+        Map<String,Object> data = new LinkedHashMap<>();
+        data.put("id", null); data.put("number", null); /* 字段全空 */
+        data.put("editMode", "");
+        data.put("fullPageForm", false);
+        data.put("__parent", getWireLayout());   // 把 item 模板的父布局临时换成 dialog
+        WireEffects.push("admin-form", data);     // 注册表: admin-form -> mdui.admin.admin.item
+    }
+
+    // 点击「修改」:下发预填表单对话框
     public void edit(Long id) {
         Admin a = Admin.self().find(id.toString()).toObject();
-        WireEffects.dispatch("wire-admin-open-dialog", Map.of("id", a.getId(), "name", a.getName() /* ... */));
+        Map<String,Object> data = new LinkedHashMap<>();
+        data.put("id", a.getId()); data.put("number", a.getNumber()); /* 预填 */
+        data.put("editMode", "1");
+        data.put("fullPageForm", false);
+        data.put("__parent", getWireLayout());
+        WireEffects.push("admin-form", data);
     }
-    public void delete(Long id) { Admin.self().find(id.toString()).delete(); }
+
+    public void delete(Long id) {
+        Admin.self().find(id.toString()).delete();
+        wire().component("toast", Map.of("message", "删除成功", "type", "success"));
+    }
 
     public void save() {
         Admin a = (id != null) ? Admin.self().find(id.toString()).toObject() : new Admin();
         if (a == null) a = new Admin();         // find() 记录不存在时返回 null,需判空
-        a.setName(name); /* ... */ a.save();
+        // 编辑留空密码 -> 保留原密码;新增留空 -> 用学号兜底(避免 admins.password NOT NULL)
+        if (id != null && (password == null || password.isEmpty())) {
+            var orig = Admin.self().find(id.toString()).toObject();
+            password = (orig != null) ? orig.getPassword() : password;
+        }
+        if (password == null || password.isEmpty())
+            password = (number != null && !number.isEmpty()) ? number : "123456";
+        a.setNumber(number); /* ... */ a.save();
         this.list = queryList();
         wire().component("toast", Map.of("message", "保存成功", "type", "success"));
-        if (!fullPageForm) WireEffects.dispatch("wire-admin-close-dialog", null);
+        WireEffects.redirect(RouteHelper.route("admin.admin.index")); // 仅 save 后整页跳回列表
     }
 }
 ```
 
 关键点：
 
-1. **对话框稳定性**：把对话框放进模板的 `@section('modals')`，并在 `mount()` 里 `WireManager.addExcludedSections("modals")`。`modals` 区不会被 wire 的局部刷新重建，因此对话框 DOM 永远稳定——`mdui` 的打开状态、焦点、标题都不会被冲掉。前端通过 `WireEffects.dispatch("wire-admin-open-dialog", data)` 拿到预填数据回填并 `open()`。
-2. **对话框用普通命名字段 + 按钮 `wire:submit`**：对话框内输入框用 `name="xxx"`（**不要** `wire:model`），提交用 `<button wire:submit="save">`，前端走「读取 `FormData(form)` 全部字段」的路径（与表单是否带 `wire:model` 无关），从而不依赖缓存、不被 `$sync` 干扰。
-3. **`$sync` 只回传快照、不重渲染**：`wire:model` 同步时服务端 `$sync` 动作只合并字段并返回新的 `snapshot`，**不返回任何 section HTML**，前端据此只更新本地快照、不替换任何 DOM——这正是对话框在 `$sync` 下不崩溃的根本原因。
-4. **`@WireLocked` 防快照膨胀**：列表这类大对象用 `@WireLocked` 标记，既不进快照（避免把整张表序列化到客户端），又在每次 wire 更新后由 `refresh()` 重新从 DB 查询。
-5. **单例字段重置**：`AdminController` 是 Spring 单例，`mount()` 不重置字段会导致上一次 `edit(13)` 的 `id=13` 泄漏到下一次直访 `/change` 的快照，使 `save()` 误判为「更新」并对已删除记录 NPE。务必在 `mount()` 起点重置所有表单字段。
+1. **对话框即交互式组件,不用 `@section('modals')`**:列表 `wire:click="edit(id)"` 触发 `edit()` → `WireEffects.push("admin-form", {..., __parent: getWireLayout()})`。框架在渲染该组件时通过 `WireParentOverride` 把 `item` 模板的父布局临时换成 `form.dialog`(dialog 容器 + 内联 `open()` 脚本),并注入 `wire:config`(含签名快照 + `data-wire-update`)使其成为「活的」组件——`wire:model` 双向绑定、`wire:submit` 提交全部生效,前端自动挂载并打开对话框。整个过程**无需任何 JS 辅助**。
+2. **底替换(getLayout / getWireLayout)**:点击弹框与直访编辑页共用同一个 `item` 组件。直访 `/change` → `getLayout()` 套 `form`(整页表单);列表点击 → `getWireLayout()` 套 `form.dialog`(对话框)。`__parent` 是「按次覆盖」,渲染完即清除(ThreadLocal finally),不影响同线程其它渲染,也不会泄漏到其他组件。
+3. **唯一 id 用 `$wireId`**:组件 / DOM 的唯一标记必须用 `$wireId`(`WireController` 基于 `System.nanoTime()` 为每个组件实例生成,如 `wc-admin-form-364525211712000`),**禁止**用 `csrf_token()`——`csrf_token()` 在同一次请求内恒定,多个组件会出现 id 冲突、事件串台。toast、dialog 等模板内凡用到 `id` 的地方统一改用 `{{ $wireId }}`。
+4. **重定向用 `WireEffects.redirect()`**:`save()` 内**显式**调用,仅保存成功后整页跳回列表。若改用 `getRedirectUrl()` 全局默认,`add()/edit()` 也会整页跳转,刚下发的对话框立刻被冲掉。两者不可混用。
+5. **`@WireLocked` 防快照膨胀**:列表这类大对象用 `@WireLocked` 标记,既不进快照(避免把整张表序列化到客户端),又在每次 wire 更新后由 `refresh()` 重新从 DB 查询。
+6. **单例字段重置**:`AdminController` 是 Spring 单例,`mount()` 必须重置所有表单字段(含 `editMode`),否则上一次 `edit(13)` 的残留会泄漏进下次直访 `/change` 的快照,使 `save()` 误判为「更新」并对已删除记录 NPE。
+7. **列表复用 `@component` slot**：列表页用 `@component('layouts.mdui.slot.search')`（带 `@slot('action')/@slot('select')`）与 `@component('layouts.mdui.slot.list')`（带 `@slot('header')/@slot('items')`）复用**只读**模板片段，搜索/表格 DOM 写在 slot 里、列表模板不重复；slot 模板（ layouts/mdui 下）只调样式/js，列表里只允许增删 `wire:` 标签。
+
+### 交互式组件下发（WireEffects.push + __parent）
+
+`WireEffects.push(name, params)` 把注册在 `WireProperties.components`（或 `WireComponents.register`）下的模板渲染成一个**活的 wire 组件**下发到前端，区别于第 16 节的「命名组件」（无状态临时事务）：
+
+- **渲染期注入 `wire:config`**：`WireController.renderComponents` 为每个组件生成唯一 `id`（基于 `System.nanoTime()`）与**签名快照**，并包成 `<script wire:config data-wire-update="..." wire:snapshot="...">` 注入组件根。前端 `mountComponents` 识别后调用 `initComponent` 将其初始化为独立 wire 组件，于是组件内的 `wire:model` 双向绑定、`wire:submit` 提交全部生效，且各组件作用域隔离、互不干扰。
+- **`__parent` 底替换**：`params` 里带上 `__parent` 键（如 `getWireLayout()` 返回的 `layouts.mdui.form.dialog`），渲染该组件时通过 `WireParentOverride` 把子模板（`mdui.admin.admin.item`）原本 `@extends` 的父布局临时换成 `__parent` 指定的布局。`WireParentOverride` 通过 `ThreadLocal` 在 `finally` 中清除，线程安全、按次生效，不会污染同线程其它渲染。
+- **更新 URL 取自 `getUpdateRouteName()`**：组件 `wire:config` 的 `data-wire-update` 指向控制器 `getUpdateRouteName()`（如 `admin.admin.change`），因此对话框表单 `wire:submit="save"` 会提交到正确端点。
+- **`$wireId` 作唯一标记**：模板内用 `{{ $wireId }}` 引用组件唯一 id（dialog 的 `id`、toast 的 `id` 等），由框架注入。**禁止使用 `csrf_token()` 作 id**——`csrf_token()` 在同一次请求内恒定，多个组件会出现 id 冲突、事件串台。
+
+与 `wire().component(name, params)`（命名组件，带 `wire:lifecycle` 脚本、不参与快照/局部刷新）的区别：`WireEffects.push` 下发的是**有状态、可交互**的 wire 组件；`wire().component` 下发的是**无状态临时事务**组件（toast / confirm）。
+
+典型流程（列表页点「修改」打开编辑对话框）：
+
+```
+列表页 wire:click="edit(13)"
+   └─ POST /admin/admin/change (wire_body, action=edit, params=[13])
+        └─ AdminController.edit(13)
+             └─ WireEffects.push("admin-form", {id:13, ..., __parent: getWireLayout()})
+                  └─ renderComponents → 渲染 mdui.admin.admin.item,
+                     经 WireParentOverride 套上 layouts.mdui.form.dialog,
+                     注入 wire:config(wire:model / wire:submit 生效)
+        ← 响应 effects.components = [ {html, id:"wc-admin-form-...", ...} ]
+   └─ 前端 mountComponents 注入 DOM 并 initComponent → dialog.open() 自动弹出
+对话框内 wire:submit="save" → POST /admin/admin/change (action=save)
+   └─ AdminController.save() → 落库 → WireEffects.redirect(列表) → 整页跳回列表
+```
 
 ---
 
@@ -1359,7 +1419,7 @@ jaravel:
 
 同一页面可能同时存在多个实例（包括同名的多个 toast），隔离靠三层保证：
 
-1. **实例 id 唯一**：渲染时生成 `wc-{name}-{seq}`，模板内可用 `{{ $wireId }}`（组件名为 `{{ $wireName }}`）引用，
+1. **实例 id 唯一**：渲染时基于 `System.nanoTime()` 生成 `wc-{name}-{nanoTime}`（每次渲染都不同），模板内可用 `{{ $wireId }}`（组件名为 `{{ $wireName }}`）引用，
    用于作用域化 DOM id 与 CSS，DOM 查询天然隔离；
 2. **生命周期脚本逐实例求值**：渲染器把 `<script wire:lifecycle>` 从 HTML 中**抽离**到 payload 的 `script` 字段，前端用
    `new Function(script + '; return {onCreate, onStart, onStop, onDestroy}')` 对**每个实例单独求值**，

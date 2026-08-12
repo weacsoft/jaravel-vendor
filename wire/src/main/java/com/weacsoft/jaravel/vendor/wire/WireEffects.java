@@ -25,6 +25,9 @@ public final class WireEffects {
     /** dispatch 事件队列:action 中通过 {@link #dispatch(String, Object)} 添加,随响应下发到前端触发 window 事件 */
     private static final ThreadLocal<List<Map<String, Object>>> DISPATCH_QUEUE = ThreadLocal.withInitial(ArrayList::new);
 
+    /** 重定向地址队列:action 中通过 {@link #redirect(String)} 显式指定,使本次 update 响应携带 effects.redirect */
+    private static final ThreadLocal<String> REDIRECT = ThreadLocal.withInitial(() -> null);
+
     /**
      * 向当前请求的临时组件队列添加一个组件。
      *
@@ -86,5 +89,33 @@ public final class WireEffects {
      */
     public static void clear() {
         QUEUE.get().clear();
+        DISPATCH_QUEUE.get().clear();
+        REDIRECT.remove();
+    }
+
+    /**
+     * 请求一次重定向:在 action 中调用,使本次 update 响应携带 {@code effects.redirect},
+     * 前端据此整页跳转到指定 URL(常用于保存成功后返回列表、关闭对话框)。
+     * <p>
+     * 与 {@link #getRedirectUrl} 类回调的区别:本方法是「按 action 显式」的,
+     * 不会作用于 {@code edit()} / {@code add()} 等只下发组件、不希望整页跳转的 action;
+     * 若未调用本方法,则回退到 {@code getRedirectUrl(Request)}(通常为 null = 不跳转)。
+     *
+     * @param url 重定向目标 URL(空值忽略)
+     */
+    public static void redirect(String url) {
+        if (url == null || url.isEmpty()) return;
+        REDIRECT.set(url);
+    }
+
+    /**
+     * 取走本次请求的重定向地址(无则 null),并清空。
+     *
+     * @return 重定向 URL 或 null
+     */
+    public static String drainRedirect() {
+        String r = REDIRECT.get();
+        REDIRECT.remove();
+        return r;
     }
 }

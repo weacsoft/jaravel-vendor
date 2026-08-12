@@ -5,6 +5,7 @@ import com.weacsoft.jaravel.vendor.http.controller.request.Request;
 import com.weacsoft.jaravel.vendor.http.controller.response.Response;
 import com.weacsoft.jaravel.vendor.http.controller.response.ResponseBuilder;
 import com.weacsoft.jaravel.vendor.route.RouteHelper;
+import com.weacsoft.jaravel.vendor.wire.WireParentOverride;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -278,12 +279,17 @@ public abstract class WireController {
             // 编码新快照
             String newSnapshot = encodeSignedSnapshot(data, request);
 
-            // 取走临时组件,并渲染其 HTML
-            List<Map<String, Object>> components = renderComponents(WireEffects.drain());
+            // 取走临时组件,并渲染其 HTML(注入 wire:config 使其成为可交互组件)
+            List<Map<String, Object>> components = renderComponents(WireEffects.drain(), request);
             // 取走 dispatch 事件(供前端 window.dispatchEvent 触发,如打开/关闭对话框)
             List<Map<String, Object>> dispatches = WireEffects.drainDispatches();
-            // 计算重定向地址(整页表单保存成功后跳转)
-            String redirectUrl = getRedirectUrl(request);
+            // 计算重定向地址:优先使用 action 显式指定的(WireEffects.redirect),
+            // 否则回退到 getRedirectUrl()(整页表单保存等场景,默认 null = 不跳转)。
+            // 这样 edit()/add() 只下发组件、不整页跳转;save() 显式 redirect 回列表。
+            String redirectUrl = WireEffects.drainRedirect();
+            if (redirectUrl == null || redirectUrl.isEmpty()) {
+                redirectUrl = getRedirectUrl(request);
+            }
 
             // 构建响应
             Map<String, Object> result = new LinkedHashMap<>();
@@ -706,8 +712,18 @@ public abstract class WireController {
      * <p>
      * 根据组件名从 WireProperties.components 注册表中查找模板名,
      * 渲染后将 HTML 返回给前端下发。
+     * <p>
+     * 每个下发的组件都是「可交互」的独立 Wire 组件:内嵌一份 {@code wire:config}
+     * (含 data-wire-update 与 wire:snapshot),前端据此把它初始化为带 wire:model /
+     * wire:submit 绑定的活动组件,从而对话框里的表单能正确双向绑定、并在提交时把
+     * 字段回传到服务端(如 save)。其更新地址统一指向上层组件(本控制器)的更新路由,
+     * 即「点击弹框」与「直接访问编辑页」由同一个控制器承接(save 等 action 共用)。
+     *
+     * @param request 当前请求(用于计算更新地址与签名快照)
      */
-    private List<Map<String, Object>> renderComponents(List<Map<String, Object>> rawComponents) {
+    private List<Map<String, Object>> renderComponents(List<Map<String, Object>> rawComponents, Request request) {
+        // 上层组件的更新地址:对话框提交的 save 等 action 走同一个 update 入口
+        String parentUpdateUrl = buildUpdateUrl(request);
         List<Map<String, Object>> rendered = new ArrayList<>();
         for (Map<String, Object> raw : rawComponents) {
             String name = (String) raw.get("name");
@@ -719,25 +735,72 @@ public abstract class WireController {
                 continue;
             }
             try {
-                // 生成唯一 id 并注入到 params 中,供模板用 {{$id}} 引用
+                // 组件唯一 id:每个组件实例都不同(基于 nanoTime),注入为 $wireId 供模板用作 DOM 唯一标记。
+                // 切勿使用 csrf_token()/常量——它们在同一次请求内恒定,会导致多个组件 id 重复。
                 String compId = "wc-" + name + "-" + System.nanoTime();
                 Map<String, Object> renderParams = new LinkedHashMap<>();
                 if (params != null) renderParams.putAll(params);
-                renderParams.put("id", compId);
-                String html = WireManager.renderForWire(templateName, renderParams);
-                // 保证单一根元素
-                html = ensureSingleRoot(html);
-                Map<String, Object> entry = new LinkedHashMap<>();
-                entry.put("name", name);
-                entry.put("params", renderParams);
-                entry.put("html", html);
-                entry.put("id", compId);
-                rendered.add(entry);
+
+                // 支持 __parent:渲染该组件时临时把子模板的父布局覆盖为指定布局
+                // (如 admin-form 组件用 layouts.mdui.form.dialog 包裹 item.jblade),
+                // 渲染完成后清除,避免污染同线程后续渲染。
+                Object parentOverride = renderParams.remove("__parent");
+                if (parentOverride != null) {
+                    WireParentOverride.register(templateName, String.valueOf(parentOverride));
+                }
+                try {
+                    renderParams.put("wireId", compId);
+                    String html = WireManager.renderForWire(templateName, renderParams);
+                    // 保证单一根元素
+                    html = ensureSingleRoot(html);
+
+                    // 组件快照:用 push 时传入的数据(去掉 __parent / wireId 等框架内部标记),
+                    // 经 HMAC 签名,供前端回传后在 update() 中解码并 fill 到本控制器字段。
+                    Map<String, Object> snapshotData = new LinkedHashMap<>();
+                    if (params != null) {
+                        for (Map.Entry<String, Object> e : params.entrySet()) {
+                            if (!"__parent".equals(e.getKey()) && !"wireId".equals(e.getKey())) {
+                                snapshotData.put(e.getKey(), e.getValue());
+                            }
+                        }
+                    }
+                    String snapshot = encodeSignedSnapshot(snapshotData, request);
+
+                    // 内嵌 wire:config:data-wire-update 指向上层组件更新路由,
+                    // wire:snapshot 为签名快照。放在根元素内部,使前端 initComponent 以
+                    // 对话框本身为作用域(避免与列表组件的事件被重复绑定)。
+                    String configScript = "<script type=\"application/json\" wire:config"
+                            + " data-wire-update=\"" + escapeAttr(parentUpdateUrl) + "\""
+                            + " wire:snapshot=\"" + escapeAttr(snapshot) + "\"></script>";
+                    int lastClose = html.lastIndexOf("</");
+                    if (lastClose >= 0) {
+                        html = html.substring(0, lastClose) + configScript + html.substring(lastClose);
+                    } else {
+                        html = html + configScript;
+                    }
+
+                    Map<String, Object> entry = new LinkedHashMap<>();
+                    entry.put("name", name);
+                    entry.put("params", renderParams);
+                    entry.put("html", html);
+                    entry.put("id", compId);
+                    rendered.add(entry);
+                } finally {
+                    if (parentOverride != null) {
+                        WireParentOverride.clear();
+                    }
+                }
             } catch (Exception e) {
                 log.error("渲染组件失败: " + name, e);
             }
         }
         return rendered;
+    }
+
+    /** 转义 HTML 属性值中的引号等特殊字符 */
+    private static String escapeAttr(String s) {
+        if (s == null) return "";
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
     }
 
     /**
