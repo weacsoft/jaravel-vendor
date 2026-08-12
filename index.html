@@ -3867,12 +3867,16 @@ boolean ok = manager.verify(result.getKey(), userInput);</code></pre>
 </div>
 </section>
 <section id="cat-wire">
-<h3>wire — Wire 组件系统 <span class="badge-new" style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:#dcfce7;color:#059669;margin-left:8px;">v2.0 全新重写</span></h3>
-<p class="module-desc">Laravel Livewire 风格全页组件，WireController 基类，render/mount/fill/refresh</p>
+<h3>wire — Wire 组件系统 <span class="badge-new" style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:#dcfce7;color:#059669;margin-left:8px;">WireController 全页组件</span></h3>
+<p class="module-desc">Laravel Livewire 风格全页组件：一个 WireController = 一个组件，模板/布局替换/组件下发/action 全部由该控制器强关联承接</p>
 
-<p><strong>核心变化：</strong>Component 组件和 Navigation 导航功能完全统一到 <code>WireController</code> 基类。
-废弃了旧版 <code>WireService</code> / <code>WireResponse</code> / <code>WireComponents</code> 等 11 个类，
-替换为单一的 <code>WireController</code> + <code>WireView</code> 设计。</p>
+<p><strong>核心设计（本版定案）：</strong></p>
+<ul>
+<li><b>一个控制器 = 一个 Livewire 全页组件。</b>列表、新增、修改（对话框）、删除全部由同一个 <code>WireController</code> 子类承担，路由只分 3 条（不是 4 条）。</li>
+<li><b>强关联声明写在控制器里，禁止写入配置文件。</b>与控制器绑定的「模板级布局替换」和「组件注册表」分别通过 <code>wireLayoutReplacements()</code> / <code>wireComponents()</code> 声明式提供，一次声明、处处生效。配置文件 <code>jaravel.wire.components</code> 只放与控制器无关的全局命名组件（toast / confirm 等）。</li>
+<li><b>布局替换 = @extends 的替换。</b><code>setWireLayoutReplace(template, layout)</code> / <code>wireLayoutReplacements()</code> 的语义是「渲染该模板时用 layout 替换其 <code>@extends</code>」；模板名不匹配时使用模板自身 <code>@extends</code>（原替换）。<b>仅作用于组件下发渲染</b>，主页面（直访）渲染始终用模板自身 <code>@extends</code>——因此直访 <code>/change</code> 是整页表单、列表点击是对话框，互不干扰。</li>
+<li><b>已删除的旧 API：</b><code>WireService</code> 流式 API 及其配套（<code>WireComponents</code>、<code>WireOutlet</code>、<code>WireComponentRenderer</code> 等 11 个类）已全部删除；<code>WireResponse</code> 保留为兼容层（仅旧代码迁移用，新代码不用）。<code>getLayout()</code> / <code>getWireLayout()</code> 已删除。</li>
+</ul>
 
 <h4>快速概览</h4>
 <pre><code>@Controller
@@ -3881,8 +3885,7 @@ public class MyController extends WireController {
 
     @Override
     protected WireView render() {
-        // 纠正后:render 只声明模板(+ 额外数据),不要调用 .bladeExtends(getLayout())
-        // 布局由框架按 getLayout()(整页父布局)/setWireLayoutReplace()(按模板换底) 在渲染期外部套用
+        // render 只声明模板 + 额外数据;主页面布局由模板自身 @extends 决定
         return wireView("pages.item", Map.of("name", name));
     }
 
@@ -3891,32 +3894,68 @@ public class MyController extends WireController {
         name = request.query("name", "World");
     }
 
+    // 声明式布局替换(可选):凡以组件形式下发渲染 pages.item 时,用 layouts.dialog 替换其 @extends
+    @Override
+    protected Map&lt;String, String&gt; wireLayoutReplacements() {
+        return Map.of("pages.item", "layouts.dialog");
+    }
+
+    // 声明式组件注册表(可选):admin-form 对话框组件 → pages.item 模板(禁止写入配置文件)
+    @Override
+    protected Map&lt;String, String&gt; wireComponents() {
+        return Map.of("admin-form", "pages.item");
+    }
+
     public void save() {
         // 保存逻辑
         wire().component("toast", Map.of("message", "保存成功", "type", "success"));
     }
 }</code></pre>
 
-<h4>路由注册</h4>
-<pre><code>Route.get("/items", "MyController::index");
-Route.post("/items", "MyController::update");</code></pre>
+<h4>路由注册（方法名固定 index/update）</h4>
+<pre><code>Route.get("/items", "MyController::index").name("index");   // 直访 = 整页
+Route.post("/items", "MyController::update").name("change"); // wire 局部更新端点</code></pre>
+<p>推荐用 <code>getUpdateRouteName()</code> 返回 POST 路由名（如 <code>admin.admin.change</code>），使列表页(GET)的 wire 局部更新指向正确的 POST 端点。</p>
 
 <h4>三种请求处理</h4>
 <table class="cfg">
 <tr><th>请求类型</th><th>触发条件</th><th>处理流程</th></tr>
-<tr><td>直访 GET</td><td>无 wire_body</td><td>mount → render → getLayout → 渲染整页 → 注入 wire assets</td></tr>
-<tr><td>Wire POST</td><td>含 wire_body</td><td>decodeSnapshot → merge params → mount → invokeAction → renderSections → JSON</td></tr>
-<tr><td>传统表单 POST</td><td>无 wire_body 的 POST</td><td>request.all() → mount → fill → invokeAction("save") → redirect</td></tr>
+<tr><td>直访 GET</td><td>无 wire_body</td><td>mount → render → 模板自身 @extends 渲染整页 → 注入 wire assets</td></tr>
+<tr><td>Wire POST</td><td>含 wire_body</td><td>decodeSnapshot(HMAC) → merge params(排除 @WireLocked) → fill → invokeAction → refresh → renderSections(按 getTemplateName) → 下发组件/事件/URL → JSON</td></tr>
+<tr><td>传统表单 POST</td><td>无 wire_body 的 POST</td><td>fill(request.all()) → invokeAction("save") → redirect</td></tr>
 </table>
 
-<h4>废弃的类</h4>
-<p>旧版 <code>WireService</code>、<code>WireResponse</code>、<code>WireComponents</code>、<code>WireComponentDefinition</code>、<code>WireComponentPayload</code>、<code>WireComponentRenderer</code>、<code>WireOutlet</code>、<code>WireComponentAutoConfiguration</code>、<code>WirePublishableConfig</code>、<code>WirePublishAutoConfiguration</code>、<code>WireStaticPublishable</code> 已全部删除。</p>
+<h4 id="wire-布局替换语义">布局替换语义（@extends 的替换）</h4>
+<p><code>setWireLayoutReplace(template, layout)</code> / <code>wireLayoutReplacements()</code> = 指定「<b>@extends 的替换</b>」：</p>
+<ul>
+<li><b>命中</b>：渲染该模板（以组件形式下发）时，用注册的 <code>layout</code> 替换模板字面量里的 <code>@extends(...)</code>；</li>
+<li><b>未命中</b>：使用原替换——模板自身的 <code>@extends(...)</code> 原样生效。</li>
+</ul>
+<p>示例：<code>item.jblade</code> 字面量 <code>@extends('layouts.mdui.form')</code>（整页表单）。控制器声明 <code>wireLayoutReplacements()</code> 后：</p>
+<table class="cfg">
+<tr><th>场景</th><th>渲染路径</th><th>生效的父布局</th></tr>
+<tr><td>直访 <code>/change</code></td><td>主页面渲染（index）</td><td><code>layouts.mdui.form</code>（模板自身 @extends）</td></tr>
+<tr><td>列表点击「修改」</td><td>组件下发渲染（renderComponents）</td><td><code>layouts.mdui.form.dialog</code>（替换规则命中）</td></tr>
+</table>
+<p>替换通过 <code>WireParentOverride</code> 实现：jblade 的 <code>BladeEngine.overrideParentIfNeeded()</code> 在继承链每一步读取该覆盖（反射集成，jblade 不依赖 wire 模块），命中则替换父模板名。仅组件下发渲染期注册，渲染完即清除，线程安全。</p>
+<p><b>对话框布局必须是独立片段</b>：<code>layouts.mdui.form.dialog</code> 不得 <code>@extends</code> 整页布局（<code>layouts.mdui.main</code> / <code>appbar_drawer</code>）。整页布局会连带 <code>&lt;!DOCTYPE html&gt;/&lt;head&gt;/&lt;body&gt;</code> 一起渲染，而组件 HTML 是被追加到当前页面里的——整页结构被塞进页面会造成「看起来整页跳转到修改页」的假象（历史 bug 根因）。正确写法是只输出对话框 DOM + 打开脚本（参考 <code>components/toast.jblade</code>），<code>@yield</code> 拉取 item 模板注册的 <code>title</code>/<code>action</code>/<code>form</code> 区块。</p>
 
-<blockquote>
-<p>包名：<code>com.weacsoft.jaravel.vendor.wire</code></p>
-<p>artifactId：<code>wire</code></p>
-<p>版本：0.1.2</p>
-</blockquote>
+<h4 id="wire-组件下发与解析">组件下发与模板解析规则</h4>
+<p><code>WireEffects.push(name, params)</code> 下发组件时，模板名按以下顺序解析（<code>WireController.resolveComponentTemplate</code>）：</p>
+<ol>
+<li><b>本控制器强关联组件注册表</b> <code>wireComponents()</code>（如 <code>admin-form</code> → <code>mdui.admin.admin.item</code>）——与控制器绑定的对话框/表单组件必须在此声明；</li>
+<li><b>全局命名组件注册表</b> <code>WireManager.resolveComponentTemplate(name)</code>（来自 <code>jaravel.wire.components</code> 配置，如 <code>toast</code> → <code>components.toast</code>）；</li>
+<li><b>兜底</b>：组件名即模板名。</li>
+</ol>
+<p><b>禁止</b>把与某个控制器强关联的组件写进 <code>jaravel.wire.components</code>——它的模板、布局替换、action 全部由该控制器承接，散落到全局配置会造成职责混乱、跨项目冲突。</p>
+
+<h4>内置 magic action</h4>
+<table class="cfg">
+<tr><th>action</th><th>触发</th><th>说明</th></tr>
+<tr><td><code>$sync</code></td><td><code>wire:model</code> 双向绑定</td><td>仅把字段值合并进快照并重新签名返回，不重渲染任何 section（避免整段 innerHTML 替换冲掉对话框/模态的 DOM 状态）</td></tr>
+<tr><td><code>$refresh</code></td><td><code>Wire.refresh()</code></td><td>重新执行 <code>refresh(params)</code> 并刷新组件</td></tr>
+</table>
+
 <h4 id="wire-自动配置参数">SpringBoot 自动配置参数</h4>
 <p>配置前缀 <code>jaravel.wire</code>。在 <code>application.yml</code> 中通过以下键自动加载：</p>
 <table class="cfg">
@@ -3924,135 +3963,124 @@ Route.post("/items", "MyController::update");</code></pre>
 <tr><td><code>jaravel.wire.enabled</code></td><td><code>boolean</code></td><td><code>true</code></td><td>是否启用 Wire 自动装配（运行期主线开启条件）</td></tr>
 <tr><td><code>jaravel.wire.auto-inject-js</code></td><td><code>boolean</code></td><td><code>true</code></td><td>是否自动注入 wire.js 的 script 标签；false 时只注入 wire:config 配置标签</td></tr>
 <tr><td><code>jaravel.wire.js-path</code></td><td><code>String</code></td><td><code>/static/wire.js</code></td><td>wire.js 的外部引用路径（注入到 HTML 的 script src）</td></tr>
-<tr><td><code>jaravel.wire.excluded-sections</code></td><td><code>List&lt;String&gt;</code></td><td><code>[]</code></td><td>排除的 section 名列表，不被前端 wire.js 识别为可更新区域</td></tr>
-<tr><td><code>jaravel.wire.components</code></td><td><code>Map&lt;String,String&gt;</code></td><td><code>{}</code></td><td>命名组件注册表：组件名 → Blade 模板路径</td></tr>
-<tr><td><code>jaravel.wire.outlet.enabled</code></td><td><code>boolean</code></td><td><code>true</code></td><td>是否启用 WireOutlet 加载位置注入</td></tr>
+<tr><td><code>jaravel.wire.excluded-sections</code></td><td><code>List&lt;String&gt;</code></td><td><code>[]</code></td><td>排除的 section 名列表，不被前端 wire.js 识别为可更新区域（渲染后移除其 wire 标记）</td></tr>
+<tr><td><code>jaravel.wire.components</code></td><td><code>Map&lt;String,String&gt;</code></td><td><code>{}</code></td><td><b>全局命名组件</b>注册表：组件名 → Blade 模板路径（如 toast → components.toast）。<b>仅放与控制器无关的全局组件</b>；控制器强关联组件用 <code>wireComponents()</code> 声明</td></tr>
+<tr><td><code>jaravel.wire.outlet.enabled</code></td><td><code>boolean</code></td><td><code>true</code></td><td>是否启用命名组件加载位置（Outlet）注入（toast/confirm 等临时事务组件）</td></tr>
 <tr><td><code>jaravel.wire.outlet.position</code></td><td><code>String</code></td><td><code>body-end</code></td><td>自动注入位置：body-end（&lt;/body&gt; 前）/ body-start（&lt;body&gt; 后）</td></tr>
 <tr><td><code>jaravel.wire.outlet.auto-inject-js</code></td><td><code>boolean</code></td><td><code>true</code></td><td>是否自动注入 wire-component.js 运行时</td></tr>
 <tr><td><code>jaravel.wire.outlet.js-path</code></td><td><code>String</code></td><td><code>/static/wire-component.js</code></td><td>命名组件前端运行时路径</td></tr>
 <tr><td><code>jaravel.wire.outlet.except</code></td><td><code>List&lt;String&gt;</code></td><td><code>[]</code></td><td>不注入 outlet 的路径，支持精确匹配与 * 前缀通配</td></tr>
 </table>
-<h4 id="wire-自动装配">自动装配（@Import / AutoConfiguration，按创建顺序）</h4>
-<p>框架按下列顺序创建对象（即 Spring 容器装配的 Bean 顺序）：</p>
+
+<h4 id="wire-自动装配">自动装配（WireAutoConfiguration）</h4>
+<p>类：<code>com.weacsoft.jaravel.vendor.wire.springboot.WireAutoConfiguration</code>。条件：类级 <code>@ConditionalOnClass(WireManager.class)</code> + <code>@ConditionalOnProperty(prefix=jaravel.wire, name=enabled, havingValue=true, matchIfMissing=true)</code> + <code>@EnableConfigurationProperties(WireProperties.class)</code>。构造注入 <code>WireProperties</code>，按顺序执行：</p>
 <ol>
-<li>wireStaticPublishable（WireStaticPublishable）：将 autoInjectJs/jsPath/excludedSections 写入 WireManager 静态字段，并发布 Wire 运行期静态发布配置。条件：类级 @ConditionalOnClass(WireManager.class) + @ConditionalOnProperty(prefix=jaravel.wire, name=enabled, havingValue=true, matchIfMissing=true) + @EnableConfigurationProperties(WireProperties.class)；@Bean 级 @ConditionalOnMissingBean。依赖：构造注入 WireProperties。</li>
-<li>wireComponentStaticPublishable（WireComponentStaticPublishable）：注册 WireOutlet 中间件别名、wire_outlet() 模板函数、按配置注册命名组件并应用 outlet 子配置，随后发布组件静态发布配置。条件：类级同 enabled 条件；@Bean 级 @ConditionalOnMissingBean。依赖：构造注入 WireProperties。</li>
-<li>wirePublishableConfig（WirePublishableConfig）：发布运行期配置。条件：@ConditionalOnClass(PublishableConfig.class) + @ConditionalOnMissingBean。依赖：无。</li>
+<li><code>WireManager.setAutoInjectJs(properties.isAutoInjectJs())</code> —— 注入 wire.js 开关；</li>
+<li><code>WireManager.setJsPath(properties.getJsPath())</code> —— wire.js 引用路径；</li>
+<li><code>WireManager.addExcludedSections(...)</code> —— 应用排除列表（<code>excluded-sections</code>）；</li>
+<li><code>WireManager.registerComponentTemplate(name, template)</code> —— 把 <code>components</code> 配置（全局命名组件）注册进 <code>WireManager</code> 组件注册表。</li>
 </ol>
+
 <h4 id="wire-手动装配">手动装配（无 SpringBoot 配置文件时的顺序）</h4>
-<p class="manual-note">本模块以 Spring Boot 自动装配为主；不使用自动配置时，自行编写 @Configuration 并按以下顺序注册 Bean：wireStaticPublishable → wireComponentStaticPublishable → wirePublishableConfig。WireManager 为静态工具类，需在启动时注入 Blade 引擎。</p>
-<p>不使用自动配置时，需自行按以下顺序创建对象并注册（等价于上一步自动装配所做的事）：</p>
+<p>本模块以 Spring Boot 自动装配为主；不使用自动配置时，自行编写 <code>@Configuration</code> 并依次完成下列步骤（等价于自动装配做的事）：</p>
 <ol>
-<li>编写 @Configuration 类，确保 classpath 存在 WireManager 且 jaravel.wire.enabled=true 或缺失。</li>
-<li>注册 wireStaticPublishable：new WireStaticPublishable()；构造时 WireManager.setAutoInjectJs(...)、setJsPath(...)、addExcludedSections(...)。</li>
-<li>若需命名组件，另写 @Configuration（@AutoConfigureAfter 第一步），注册 wireComponentStaticPublishable：new WireComponentStaticPublishable()；构造时注册 WireOutlet 中间件别名、wire_outlet() 模板函数、按 components 注册命名组件、应用 outlet 子配置。</li>
-<li>若 PublishableConfig 在 classpath，注册 wirePublishableConfig：new WirePublishableConfig()。</li>
-<li>在应用启动时调用 WireManager.setEngine(bladeEngine) 注入 Blade 引擎实例（通常由 springboot Starter 自动完成）。</li>
+<li>确保 classpath 存在 <code>WireManager</code> 且 <code>jaravel.wire.enabled=true</code>（或缺失该项）。</li>
+<li><code>WireManager.setEngine(bladeEngine)</code>：注入 Blade 引擎（未设置时从 <code>ViewFacade</code> 回退获取当前激活的 <code>BladeView</code> 引擎）。</li>
+<li><code>WireManager.setAutoInjectJs(...)</code> / <code>WireManager.setJsPath(...)</code>：配置 wire.js 注入策略。</li>
+<li><code>WireManager.addExcludedSections(...)</code>：声明无需局部刷新的 section。</li>
+<li><code>WireManager.registerComponentTemplate(name, template)</code>：注册全局命名组件（toast/confirm 等）。</li>
+<li>若需要命名组件（Outlet）能力，另配置 <code>WireOutlet</code> 中间件与 <code>wire_outlet()</code> 模板函数（见 wire 模块源码 <code>WireOutlet</code> / <code>WireComponents</code>）。</li>
 </ol>
-<h4 id="wire-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
-<p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
-<pre><code>// 1. Wire 依赖 jblade 渲染 @section，先注入 BladeEngine（未设置时回退 ViewFacade）
-WireManager.setEngine(bladeEngine);
-// 2. 配置 wire.js 注入策略，对应 jaravel.wire.auto-inject-js / js-path
-WireManager.setAutoInjectJs(true);
-WireManager.setJsPath("/static/wire.js");
-// 3. 声明无需局部刷新的 section，渲染后自动剥离 wire:section 标记
-WireManager.addExcludedSections("head", "footer");
-// 4. 注册命名组件（名称 -&gt; 模板 + 默认参数），供 effects.components 下发
-WireComponents.register("toast", "components.toast", Map.of("duration", 3000));
-// 5. 注册 WireOutlet 中间件别名与 wire_outlet() 模板函数（组件挂载位置）
-MiddlewareAliasRegistry.getGlobal().register("WireOutlet", WireOutlet.instance());
-BladeFunctions.register("wire_outlet", args -&gt; WireOutlet.outletTag(RequestFactory.getCurrentRequest()));
-WireOutlet.setPosition(WireOutlet.POSITION_BODY_END);
-// 6. 控制器中使用：解析请求 -&gt; 填默认值 -&gt; 注册 action -&gt; 生成更新响应
-Response resp = WireService.from(request, "wire-demo", "/api/wire/demo")
-        .once("count", 0)
-        .action("increment", c -&gt; c.set("count", c.getInt("count") + 1))
-        .responseUpdate();</code></pre>
+
 <h4 id="wire-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
-<p>本模块向业务代码公开以下类与方法：</p>
 <div class="api-class">
-<p><b>WireService</b> — Wire 流式上下文，把请求解析、默认值填充、action 分派、响应构建串成一条链式调用</p>
+<p><b>WireController</b> — Wire 全页组件抽象基类（用户继承）。框架默认实现 <code>index()</code>（GET 首屏）与 <code>update()</code>（POST 局部更新/传统表单），用户实现 <code>render()</code> 并可选覆盖以下方法：</p>
 <table class="cfg">
 <tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
-<tr><td><code>public static WireService from(Request request, String templateName, String updateUrl)</code></td><td>HTTP 请求、模板名、Wire 更新 URL</td><td>从请求解析 snapshot/action/params/sections 并构建上下文</td></tr>
-<tr><td><code>public WireService once(String key, Object defaultValue)</code></td><td>字段名、默认值</td><td>字段不存在时填入默认值，链式返回自身</td></tr>
-<tr><td><code>public WireService action(String actionName, Consumer&lt;WireService&gt; handler)</code></td><td>action 名称、处理器回调</td><td>注册 action 处理器，生成响应时按当前 action 分派</td></tr>
-<tr><td><code>public Response responseWire()</code></td><td>无</td><td>生成 Wire 初始页面 HTML 响应（含快照与资源注入）</td></tr>
-<tr><td><code>public Response responseUpdate()</code></td><td>无</td><td>分派 action 后生成 section 局部更新的 JSON 响应</td></tr>
-<tr><td><code>public WireService responseComponent(String name, Map&lt;String, Object&gt; params)</code></td><td>组件名、本次参数（覆盖默认参数）</td><td>在本次响应中下发一个命名组件（toast/确认框等）</td></tr>
+<tr><td><code>protected abstract WireView render()</code></td><td>无</td><td><b>必须实现</b>。返回 <code>wireView("模板名", Map)</code>；只声明模板 + 额外数据，不要调用 <code>.bladeExtends(...)</code>（主页面布局由模板自身 @extends 决定）</td></tr>
+<tr><td><code>protected void mount(Request request)</code></td><td>HTTP 请求</td><td>仅首次 index() 调用；可读 query/input/uri 初始化。Spring 单例 Bean 需在此重置表单字段，避免上次请求残留值泄漏进快照</td></tr>
+<tr><td><code>protected void fill(String key, Object value)</code> / <code>fill(Map)</code></td><td>键值对 / Map</td><td>把键值对直接赋到本控制器 public 属性（同名赋值 + 基础类型转换），不做业务重写</td></tr>
+<tr><td><code>protected void refresh(Map params)</code></td><td>请求参数</td><td>每次 wire 更新后重新加载展示数据（如重新查库），$refresh action 时也调用</td></tr>
+<tr><td><code>protected Map&lt;String,String&gt; wireLayoutReplacements()</code></td><td>无</td><td><b>声明式布局替换</b>：返回「模板名 → 替换布局名」，如 <code>Map.of("mdui.admin.admin.item", "layouts.mdui.form.dialog")</code>。声明一次即可，勿在每个 action 里重复调用。仅作用于组件下发渲染；主页面渲染不受影响。默认 null</td></tr>
+<tr><td><code>protected Map&lt;String,String&gt; wireComponents()</code></td><td>无</td><td><b>声明式控制器强关联组件注册表</b>：返回「组件名 → 模板名」，如 <code>Map.of("admin-form", "mdui.admin.admin.item")</code>。禁止写入配置文件。默认 null</td></tr>
+<tr><td><code>protected void setWireLayoutReplace(String template, String layout)</code></td><td>模板名、替换布局名</td><td>请求级临时布局替换（仅当前请求生效，ThreadLocal 请求末清除）。一般场景用声明式 <code>wireLayoutReplacements()</code> 即可</td></tr>
+<tr><td><code>protected String getWireLayoutReplace(String template)</code></td><td>模板名</td><td>查询替换规则（声明式 + 请求级合并，请求级优先）；未命中返回 null = 用模板自身 @extends</td></tr>
+<tr><td><code>protected String getUpdateRouteName()</code></td><td>无</td><td>组件更新(POST)路由名，<code>wire:config</code> 的 <code>data-wire-update</code> 指向它；默认 null（回退当前 URI）</td></tr>
+<tr><td><code>protected String getTemplateName()</code></td><td>无</td><td>局部 section 刷新的目标模板。默认取 <code>render().getTemplateName()</code>；若组件的 wire 更新目标是固定页面（如列表页），应覆盖返回该页面模板名，避免依赖请求状态</td></tr>
+<tr><td><code>protected String getRedirectUrl(Request request)</code></td><td>HTTP 请求</td><td>全局默认重定向 URL（默认 null）。若只想在某个 action 后跳转（如 save()），改用 <code>WireEffects.redirect(url)</code>，否则每个 action（含 add/edit）都会整页跳转</td></tr>
+<tr><td><code>protected String getDefaultAction()</code></td><td>无</td><td>传统表单提交默认 action，默认 "save"</td></tr>
+<tr><td><code>protected WireResponseHelper wire()</code></td><td>无</td><td>下发命名组件：<code>wire().component("toast", params)</code>（toast/confirm 等临时事务组件）</td></tr>
+<tr><td><code>protected boolean isWireRequest()</code></td><td>无</td><td>当前请求是否为 wire 局部更新（带 wire_body / X-Wire-Request 头）；供 save() 区分对话框提交与整页表单提交</td></tr>
+<tr><td><code>protected boolean useWireLayout(Request request)</code></td><td>HTTP 请求</td><td>默认 = isWireRequest；mount 期用于区分直访整页 / wire 交互</td></tr>
+<tr><td><code>protected WireView wireView(String name, Map extra)</code></td><td>模板名、额外数据</td><td>创建 WireView；自动把 Controller public 属性聚合进模板（等价 ResponseBuilder.view）</td></tr>
 </table>
 </div>
 <div class="api-class">
-<p><b>WireManager</b> — Wire 无状态核心工具类，负责模板渲染、section 抽取、快照编解码与资源注入</p>
+<p><b>WireEffects</b> — Wire 请求级临时组件 / 事件 / 重定向 / URL 变更下发队列（ThreadLocal 隔离，请求末 drain + 清理）</p>
 <table class="cfg">
 <tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
-<tr><td><code>public static void setEngine(BladeEngine engine)</code></td><td>Blade 模板引擎实例</td><td>注入渲染引擎，未设置时从 ViewFacade 回退获取</td></tr>
-<tr><td><code>public static String renderWirePage(String templateName, Map&lt;String, Object&gt; data, String updateUrl)</code></td><td>模板名、模板数据、Wire 更新 URL</td><td>完整初始渲染：渲染页面并注入快照与 wire.js</td></tr>
-<tr><td><code>public static Map&lt;String, String&gt; renderSections(String templateName, List&lt;String&gt; sectionNames, Map&lt;String, Object&gt; data)</code></td><td>模板名、section 名列表、模板数据</td><td>批量渲染多个 section，模板只加载初始化一次</td></tr>
-<tr><td><code>public static String encodeSnapshot(Map&lt;String, Object&gt; data)</code></td><td>组件状态数据</td><td>剔除 __wire 内部键后编码为 Base64 JSON 快照</td></tr>
-<tr><td><code>public static Map&lt;String, Object&gt; decodeSnapshot(String base64)</code></td><td>Base64 快照字符串</td><td>把客户端回传的快照解码回状态 Map</td></tr>
-<tr><td><code>public static void addExcludedSections(String... sectionNames)</code></td><td>要排除的 section 名（可变参数）</td><td>将指定 section 排除出可更新区域，渲染后移除其 wire 标记</td></tr>
-</table>
-</div>
-<div class="api-class">
-<p><b>WireResponse</b> — Wire 响应工厂与构建器，产出初始页面、局部更新、重定向、事件派发等响应</p>
-<table class="cfg">
-<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
-<tr><td><code>public static Response wire(String templateName, Map&lt;String, Object&gt; data, String updateUrl)</code></td><td>模板名、模板数据、更新 URL</td><td>返回 Wire 初始页面 HTML 响应</td></tr>
-<tr><td><code>public static Response update(String templateName, Map&lt;String, Object&gt; data, List&lt;String&gt; sections)</code></td><td>模板名、模板数据、要刷新的 section 列表</td><td>返回含 sections 与新快照的局部更新 JSON 响应</td></tr>
-<tr><td><code>public static WireResponse of(String templateName, Map&lt;String, Object&gt; data, List&lt;String&gt; sections)</code></td><td>模板名、模板数据、section 列表</td><td>创建可继续链式追加副作用的响应构建器</td></tr>
-<tr><td><code>public WireResponse withRedirect(String url, int delayMs)</code></td><td>跳转地址、延迟毫秒数</td><td>在响应 effects 中附加延迟重定向指令</td></tr>
-<tr><td><code>public WireResponse withDispatch(String eventName, Object eventData)</code></td><td>事件名、事件数据</td><td>向前端派发自定义事件</td></tr>
-<tr><td><code>public Response build()</code></td><td>无</td><td>构建最终 Response，自动附加待下发的命名组件</td></tr>
-</table>
-</div>
-<div class="api-class">
-<p><b>WireEffects</b> — Wire 请求级临时组件 / 事件 / 重定向下发队列（ThreadLocal 隔离）。<b>注意：旧版 <code>WireComponents</code> 已重命名为 <code>WireEffects</code></b>，并新增 <code>redirect</code> 能力。</p>
-<table class="cfg">
-<tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
-<tr><td><code>public static void push(String name, Map&lt;String, Object&gt; params)</code></td><td>组件名、本次参数</td><td>把组件压入当前请求待下发队列（写入响应 <code>effects.components</code>）；父布局替换为「按模板名」注册，见 <code>setWireLayoutReplace</code>（不再用 <code>__parent</code> 参数）</td></tr>
-<tr><td><code>public static List&lt;Map&lt;String, Object&gt;&gt; drain()</code></td><td>无</td><td>取出并清空待下发组件，写入响应 effects.components</td></tr>
-<tr><td><code>public static void dispatch(String name, Object data)</code></td><td>事件名、事件负载</td><td>派发前端事件，响应以 <code>effects.dispatch</code> 下发，前端执行 <code>window.dispatchEvent(new CustomEvent(name, {detail:data}))</code>；关闭对话框即用 <code>dispatch("wire-dialog-close", null)</code>，由前端监听后关闭对话框 / 刷新列表</td></tr>
-<tr><td><code>public static List&lt;Map&lt;String, Object&gt;&gt; drainDispatches()</code></td><td>无</td><td>取出并清空待派发事件</td></tr>
-<tr><td><code>public static void redirect(String url)</code></td><td>重定向目标 URL</td><td>在 action 中显式请求一次重定向，使本次 update 响应携带 <code>effects.redirect</code>；<b>仅作用于调用它的 action</b>（传统整页表单的 <code>save()</code>），不会让 <code>edit()</code>/<code>add()</code> 这类只下发组件、不希望整页跳转的 action 误跳转</td></tr>
-<tr><td><code>public static String drainRedirect()</code></td><td>无</td><td>取出本次请求的重定向地址（无则 null），并清空</td></tr>
-<tr><td><code>public static void pushUrl(String url)</code></td><td>目标 URL</td><td>请求一次 URL 变更：响应携带 <code>effects.url</code>，前端仅用 <code>history.pushState</code> 改变地址栏（生成可分享深链，如 <code>/admin/admin/change?id=5</code>），<b>不发起请求、不刷新页面</b>。常用于「点击修改后 URL 变为深链」</td></tr>
-<tr><td><code>public static String drainPushUrl()</code></td><td>无</td><td>取出本次请求的 URL 变更地址（无则 null），并清空</td></tr>
+<tr><td><code>public static void push(String name, Map params)</code></td><td>组件名、参数</td><td>把组件压入当前请求待下发队列（写入响应 <code>effects.components</code>）。模板由 <code>wireComponents()</code> → 全局注册表 → 组件名兜底解析；布局替换由 <code>wireLayoutReplacements()</code> 提供</td></tr>
+<tr><td><code>public static List&lt;Map&gt; drain()</code></td><td>无</td><td>取出并清空待下发组件</td></tr>
+<tr><td><code>public static void dispatch(String name, Object data)</code></td><td>事件名、事件负载</td><td>派发前端事件（<code>effects.dispatch</code>），前端执行 <code>window.dispatchEvent(new CustomEvent(name, {detail:data}))</code>。关闭对话框即 <code>dispatch("wire-dialog-close", null)</code></td></tr>
+<tr><td><code>public static List&lt;Map&gt; drainDispatches()</code></td><td>无</td><td>取出并清空待派发事件</td></tr>
+<tr><td><code>public static void redirect(String url)</code></td><td>重定向目标 URL</td><td>在 action 内显式请求一次重定向（<code>effects.redirect</code>），仅作用于调用它的 action（传统整页表单的 save()），不会让 edit()/add() 误跳转</td></tr>
+<tr><td><code>public static String drainRedirect()</code></td><td>无</td><td>取出本次请求的重定向地址（无则 null）并清空</td></tr>
+<tr><td><code>public static void pushUrl(String url)</code></td><td>目标 URL</td><td>请求一次 URL 变更（<code>effects.url</code>），前端仅用 <code>history.pushState</code> 改变地址栏（生成可分享深链，如 <code>/admin/admin/change?id=5</code>），不发起请求、不刷新页面</td></tr>
+<tr><td><code>public static String drainPushUrl()</code></td><td>无</td><td>取出本次请求的 URL 变更地址（无则 null）并清空</td></tr>
 <tr><td><code>public static void clear()</code></td><td>无</td><td>清空当前请求的组件 / 事件 / 重定向 / URL 变更队列</td></tr>
 </table>
 </div>
 <div class="api-class">
-<p><b>WireOutlet</b> — 命名组件加载位置中间件，负责在页面注入 outlet 容器与组件运行时 JS</p>
-<p><b>前端兜底（无需任何配置）：</b>即使页面既没有注册 <code>WireOutlet</code> 中间件、也没有手写 <code>wire:outlet</code> 容器，前端运行时在挂载命名组件时也会<strong>自动在 <code>&lt;body&gt;</code> 末尾创建一个默认 <code>&lt;div id="wire-outlet" wire:outlet&gt;</code> 容器</strong>并把组件挂进去。因此开发者不声明 outlet 也绝不会看到「找不到 outlet 容器」的告警，toast / confirm 等临时组件始终能正常弹出。该自动容器只创建一次、幂等；若页面后续又显式出现 <code>wire:outlet</code>，则直接使用已存在的那个。</p>
+<p><b>WireManager</b> — Wire 无状态核心工具类：模板渲染、section 抽取、快照编解码、资源注入、组件注册表、排除列表（静态方法，线程安全）</p>
 <table class="cfg">
 <tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
-<tr><td><code>public static WireOutlet instance()</code></td><td>无</td><td>获取中间件单例，用于注册到中间件别名表</td></tr>
-<tr><td><code>public static String outletTag(Request request)</code></td><td>当前 HTTP 请求</td><td>输出 outlet 容器标签，中间件未启用时返回空串</td></tr>
-<tr><td><code>public static void setPosition(String value)</code></td><td>位置常量 body-end / body-start</td><td>设置 outlet 容器在页面中的注入位置</td></tr>
-<tr><td><code>public static void setExcept(List&lt;String&gt; patterns)</code></td><td>路径匹配模式列表</td><td>设置不注入 outlet 的例外路径</td></tr>
-<tr><td><code>public Response handle(Request request, NextFunction next, String... params)</code></td><td>请求、后续处理链、中间件参数</td><td>中间件入口，在响应 HTML 中植入 outlet 与运行时脚本</td></tr>
+<tr><td><code>public static void setEngine(BladeEngine engine)</code></td><td>Blade 引擎</td><td>注入渲染引擎；未设置时从 ViewFacade 回退获取当前激活的 BladeView 引擎</td></tr>
+<tr><td><code>public static BladeEngine getEngine()</code></td><td>无</td><td>获取引擎（优先显式设置，否则 ViewFacade 回退）</td></tr>
+<tr><td><code>public static String renderForWire(String templateName, Map data)</code></td><td>模板名、模板数据</td><td>以 Wire 模式渲染完整页面（@yield 输出 wire:section 标记）</td></tr>
+<tr><td><code>public static Map&lt;String,String&gt; renderSections(String templateName, List&lt;String&gt; names, Map data)</code></td><td>模板名、section 名列表、数据</td><td>批量渲染多个 section（@section 名直渲；wire:section 属性名回退渲染 content 后截取），模板只加载初始化一次</td></tr>
+<tr><td><code>public static List&lt;String&gt; getSectionNames(String templateName)</code></td><td>模板名</td><td>获取模板全部已注册 section 名</td></tr>
+<tr><td><code>public static String encodeSnapshot(Map data)</code></td><td>组件状态数据</td><td>剔除 __wire 内部键后编码为 Base64 JSON 快照</td></tr>
+<tr><td><code>public static Map&lt;String,Object&gt; decodeSnapshot(String base64)</code></td><td>Base64 快照</td><td>解码快照回状态 Map</td></tr>
+<tr><td><code>public static String injectWireAssets(String html, String updateUrl, String snapshot)</code></td><td>HTML、更新 URL、快照</td><td>在 &lt;/body&gt; 前注入 wire:config（+ 可选 wire.js script）</td></tr>
+<tr><td><code>public static void addExcludedSections(String... names)</code></td><td>section 名（可变）</td><td>排除的 section 渲染后移除 wire 标记（不被前端识别为可更新区域）</td></tr>
+<tr><td><code>public static void registerComponentTemplate(String name, String template)</code></td><td>组件名、模板名</td><td>注册全局命名组件（来自 jaravel.wire.components 配置）</td></tr>
+<tr><td><code>public static String resolveComponentTemplate(String name)</code></td><td>组件名</td><td>查全局组件注册表（控制器私有组件由 WireController.wireComponents() 先行解析）</td></tr>
+<tr><td><code>public static void setAutoInjectJs(boolean)</code> / <code>setJsPath(String)</code></td><td>开关 / 路径</td><td>配置 wire.js 注入策略；getWireJsContent() 可读取 wire.js 全文</td></tr>
 </table>
+</div>
+<div class="api-class">
+<p><b>WireView</b> — render() 返回值（链式 API）：<code>templateName</code>（模板名）、<code>bladeExtends()</code>（传统布局，一般不用）、<code>section()</code>、<code>with()</code>（附加数据）、<code>title()</code>；<code>getMergedData(properties)</code> 合并 Controller public 属性与附加数据。</p>
+</div>
+<div class="api-class">
+<p><b>WireRequest</b> — 前端 wire_body JSON 解析：<code>from(Request)</code> / <code>fromJson(String)</code>；<code>getSnapshot()</code> / <code>getAction()</code> / <code>getParams()</code> / <code>getSections()</code> / <code>getData()</code> / <code>getMergedData()</code>。</p>
+</div>
+<div class="api-class">
+<p><b>WireParentOverride</b> — 运行时 @extends 父模板覆盖（ThreadLocal）：<code>register(templateName, newParent)</code> / <code>get(templateName)</code> / <code>clear()</code>。jblade <code>BladeEngine.overrideParentIfNeeded()</code> 通过反射读取，命中则替换父模板名（组件下发渲染期生效，渲染完清除）。</p>
+</div>
+<div class="api-class">
+<p><b>WireLocked</b> — 字段注解：标记的 public 字段不进快照、不接受 wire:model 参数合并（防篡改、防大对象序列化，如列表数据）。<b>TamperedSnapshotException</b> — 快照 HMAC 签名验证失败异常（前端提示刷新页面）。</p>
 </div>
 
 <h4>WireController 生命周期</h4>
 <table class="cfg">
 <tr><th>方法</th><th>默认行为</th><th>说明</th></tr>
-<tr><td><code>mount(Request)</code></td><td>空实现</td><td>首次 GET 时调用，参数为 Request，可读取 query/input/has/uri 初始化；Spring 单例需在 mount 重置表单字段</td></tr>
-<tr><td><code>fill(Map)</code></td><td>反射赋值</td><td>将数据填充到 public 字段（子类可在 mount 中主动调用）</td></tr>
-<tr><td><code>refresh(Map)</code></td><td>空实现</td><td><code>$refresh</code> action 时调用，子类覆盖以从数据库重新加载数据</td></tr>
-<tr><td><code>getLayout()</code></td><td>返回 null</td><td>直访 / wire 场景统一的父模板。返回非 null 时，其布局会<b>替换本组件渲染的所有模板</b>（整页父布局），如 <code>layouts.mdui.form</code> / <code>mdui.admin.main</code>。子类覆盖返回具体布局即可。</td></tr>
-<tr><td><code>setWireLayoutReplace(String template, String layout)</code></td><td>模板名、替换布局名</td><td><b>模板级布局替换（取代原 <code>getWireLayout()</code>）</b>。注册「当渲染名为 <code>template</code> 的模板时，用 <code>layout</code> 替换其 <code>@extends</code>」规则，对应「判定到模板是 A，就用 B 换掉」的 Dialog 场景。可多次调用（不同 action 注册不同规则）；渲染对应模板时生效，其余模板不受影响。请求结束由框架自动清除（ThreadLocal finally）。</td></tr>
-<tr><td><code>getWireLayoutReplace(String template)</code></td><td>模板名</td><td>查询某模板是否注册了替换规则，命中返回替换布局名，否则 null。</td></tr>
-<tr><td colspan="3"><b>布局切换的两种手段</b>：① <code>getLayout()</code> 返回非 null → 替换<b>所有</b>本组件模板（整页底）；② <code>setWireLayoutReplace("mdui.admin.admin.item", "layouts.mdui.form.dialog")</code> → 仅把该模板换成对话框底。两者可共存：列表用 <code>getLayout()</code> 套主布局，点击「修改/新增」时在 <code>edit()</code>/<code>add()</code> 里注册一条 <code>setWireLayoutReplace</code>，使下发的 <code>item.jblade</code> 组件改用对话框布局包裹。原 <code>getWireLayout()</code> 方法已删除。</td></tr>
-<tr><td colspan="3"><b>组件实例唯一 id <code>{{ $wireId }}</code></b>：每个下发的临时组件实例都拥有唯一 id（<code>wc-{name}-{nanoTime}</code>）。模板里用 <code>{{ $wireId }}</code> 作 DOM 唯一标记（如 <code>id="wire-dialog-{{ $wireId }}"</code>），<b>切勿用 <code>csrf_token()</code></b>——它在同一次请求内恒定，多个组件会拿到重复 id 导致 DOM 冲突。</td></tr>
+<tr><td><code>mount(Request)</code></td><td>空实现</td><td>首次 GET 时调用，参数为 Request；Spring 单例需在 mount 重置表单字段</td></tr>
+<tr><td><code>fill(Map)</code></td><td>反射赋值</td><td>把数据赋到 public 字段（同名赋值 + 类型转换）</td></tr>
+<tr><td><code>refresh(Map)</code></td><td>空实现</td><td>wire 更新后 / $refresh action 时调用，子类覆盖以重新查库</td></tr>
+<tr><td><code>wireLayoutReplacements()</code></td><td>返回 null</td><td>声明式布局替换（模板名 → 替换布局名），一次声明处处生效，仅组件下发渲染生效</td></tr>
+<tr><td><code>wireComponents()</code></td><td>返回 null</td><td>声明式控制器强关联组件注册表（组件名 → 模板名），禁止写入配置文件</td></tr>
+<tr><td><code>setWireLayoutReplace(String template, String layout)</code></td><td>空操作</td><td>请求级临时布局替换（ThreadLocal 请求末清除）；一般场景用声明式即可</td></tr>
+<tr><td><code>getUpdateRouteName()</code></td><td>返回 null</td><td>wire POST 更新端点路由名（回退当前 URI）</td></tr>
+<tr><td><code>getTemplateName()</code></td><td>render() 的模板名</td><td>section 刷新目标模板；固定页面（列表页）时覆盖返回</td></tr>
+<tr><td colspan="3"><b>组件实例唯一 id <code>{{ $wireId }}</code></b>：每个下发的临时组件实例都拥有唯一 id（<code>wc-{name}-{nanoTime}</code>）。模板里用 <code>{{ $wireId }}</code> 作 DOM 唯一标记（如 <code>id="wire-dialog-{{ $wireId }}"</code>），<b>切勿用 <code>csrf_token()</code></b>——它在同一次请求内恒定，多个组件会拿到重复 id 导致 DOM 冲突、事件串台。</td></tr>
+<tr><td colspan="3"><b>Snapshot 安全</b>：快照经 HmacSHA256 + session key 签名（<code>signature:base64</code>），篡改抛 <code>TamperedSnapshotException</code>；参数全 String + 结构化解析（禁用 eval）。</td></tr>
 </table>
 
 <h4>前端 wire.js API</h4>
 <table class="cfg">
 <tr><th>方法</th><th>说明</th></tr>
 <tr><td><code>Wire.refresh()</code></td><td>刷新全部 sections（重新渲染组件）</td></tr>
-<tr><td><code>Wire.refresh('form')</code></td><td>只刷新指定的 form section</td></tr>
+<tr><td><code>Wire.refresh('form')</code></td><td>只刷新指定 section</td></tr>
 <tr><td><code>Wire.on(event, callback)</code></td><td>监听 Wire 事件：beforeRequest / afterRequest / beforeUpdate / afterUpdate</td></tr>
 <tr><td><code>Wire.off(event, callback)</code></td><td>取消监听</td></tr>
 </table>
@@ -4060,105 +4088,122 @@ Response resp = WireService.from(request, "wire-demo", "/api/wire/demo")
 <h4>wire.js 前端指令</h4>
 <table class="cfg">
 <tr><th>指令</th><th>说明</th></tr>
-<tr><td><code>wire:click="actionName"</code></td><td>点击触发指定 action</td></tr>
-<tr><td><code>wire:submit="actionName"</code></td><td>表单提交或按钮提交触发指定 action</td></tr>
-<tr><td><code>wire:model="fieldName"</code></td><td>输入框双向绑定</td></tr>
-<tr><td><code>wire:section="name"</code></td><td>标记可局部更新的 section</td></tr>
-<tr><td><code>wire:lazy</code></td><td>懒加载 section（滚动到可视区域时加载）</td></tr>
-<tr><td><code>wire:loading</code></td><td>加载中样式（action 执行期间显示）</td></tr>
+<tr><td><code>wire:click="actionName(参数)"</code></td><td>点击触发指定 action（参数按声明类型转换，如 <code>edit(1)</code> → <code>edit(Long id)</code>）</td></tr>
+<tr><td><code>wire:submit="actionName"</code></td><td>表单 / 提交按钮触发指定 action（按钮自身 click 拦截 + preventDefault，无整页刷新）</td></tr>
+<tr><td><code>wire:model="fieldName"</code> / <code>wire:model.live</code></td><td>输入框双向绑定（本地缓存，真实 action 发起时随 params 提交）</td></tr>
+<tr><td><code>wire:change="actionName"</code> / <code>wire:keydown="actionName"</code></td><td>change / keydown 触发 action</td></tr>
+<tr><td><code>wire:section="name"</code></td><td>标记可局部更新的 section（或由 @yield 自动生成注释锚点）</td></tr>
+<tr><td><code>wire:config</code></td><td>组件配置脚本（data-wire-update + wire:snapshot），由框架注入，前端据此初始化活动组件</td></tr>
+<tr><td><code>wire:param-name="value"</code></td><td>在触发元素上附带 action 参数</td></tr>
 </table>
 
-<h4>错误项目参考实现</h4>
-<p>error 项目的 <code>AdminController</code> 展示了完整的迁移过程：直访 <code>/admin/admin/change</code> 渲染整页表单，点击列表「修改/新增」则通过 wire 下发一个套着 <code>form.dialog</code> 对话框布局的 <code>item.jblade</code> 组件——<b>两者共用同一个组件与同一份 <code>item.jblade</code> 模板</b>，靠 <code>getLayout()</code>（整页父布局）+ <code>setWireLayoutReplace()</code>（点击时把 <code>item.jblade</code> 临时换成 <code>form.dialog</code> 包裹）切换底，靠 <code>WireEffects.pushUrl()</code> 把地址栏变成可分享深链（无整页刷新）。</p>
+<h4>错误项目参考实现（AdminController 全流程）</h4>
+<p>error 项目的 <code>AdminController</code> 展示了完整范式：直访 <code>/admin/admin/change</code> 渲染整页表单（item 模板自身 <code>@extends('layouts.mdui.form')</code>）；点击列表「修改/新增」则通过 wire 下发一个套着 <code>form.dialog</code> 对话框布局的 <code>item.jblade</code> 组件——<b>两者共用同一份模板</b>，靠 <code>wireLayoutReplacements()</code>（声明式，组件下发时替换 @extends）+ <code>WireEffects.pushUrl()</code>（地址栏变可分享深链，无整页刷新）实现：</p>
 <pre><code>@Controller
 public class AdminController extends WireController {
-    // 表单字段（Spring 单例：mount 中必须重置）
+    @WireLocked public List&lt;Admin&gt; list;  // 列表数据大,不进快照
+    public boolean fullPageForm;           // 直访 /change 且非 wire 请求时为 true(仅 render() 选模板用)
     public Long id; public String number; public String name; public String password;
     public String nickname; public String group; public String phone;
-    public String editMode;       // 非空 = 修改；空 = 新增（用字符串规避 jblade 真值判定）
-    public boolean fullPageForm;  // 直访 /change 时为整页表单
 
     @Override
     protected WireView render() {
-        // render 只声明模板(+ 额外数据)，布局由框架按 getLayout()/setWireLayoutReplace() 外部套用
-        if (fullPageForm) {
-            return wireView("mdui.admin.admin.item");
-        }
-        return wireView("mdui.admin.admin.list", Map.of("list", list));
+        // 直访 /change → item 模板(自身 @extends('layouts.mdui.form') 整页表单);否则 list 模板
+        return fullPageForm
+            ? wireView("mdui.admin.admin.item")
+            : wireView("mdui.admin.admin.list", Map.of("list", list));
     }
 
-    @Override
-    protected String getLayout() {
-        // 整页父布局：返回非 null 时替换本组件渲染的所有模板。
-        // 列表页用 mdui.admin.main；直访整页表单用 layouts.mdui.form。
-        return fullPageForm ? "layouts.mdui.form" : "mdui.admin.main";
+    // wire 局部更新始终以列表页为刷新对象(对话框是临时组件,不参与 section 刷新)
+    @Override protected String getTemplateName() { return "mdui.admin.admin.list"; }
+
+    // 声明式布局替换:凡以组件形式下发渲染 item 模板 → 套用 dialog 布局(一次声明,add()/edit() 无需重复调用)
+    @Override protected Map&lt;String, String&gt; wireLayoutReplacements() {
+        return Map.of("mdui.admin.admin.item", "layouts.mdui.form.dialog");
     }
 
-    @Override
-    protected void mount(Request request) {
-        // Spring 单例：每次请求先重置字段，避免上次 edit(id) 的 id 泄漏
-        this.id = null; /* ...字段置空... */ this.editMode = null; this.fullPageForm = false;
-        // 直访 /change（非 wire 请求）才视为整页表单
-        this.fullPageForm = request.uri() != null
-                && request.uri().endsWith("/change") && !useWireLayout(request);
+    // 控制器强关联组件注册表:admin-form 对话框 → item 模板(禁止写入配置文件)
+    @Override protected Map&lt;String, String&gt; wireComponents() {
+        return Map.of("admin-form", "mdui.admin.admin.item");
+    }
+
+    @Override protected String getUpdateRouteName() { return "admin.admin.change"; }
+
+    @Override protected void mount(Request request) {
+        // Spring 单例:每次 index 必须重置表单字段,否则上次 edit(id) 残留会泄漏进快照
+        this.id = null; this.number = null; this.name = null; this.password = null;
+        this.nickname = null; this.group = null; this.phone = null;
+        // 整页表单 = 直访 /change 且非 wire 请求(列表点击是 wire POST → update(),mount 不执行,保持 false)
+        String uri = request.uri();
+        this.fullPageForm = uri != null &amp;&amp; uri.endsWith("/change") &amp;&amp; !useWireLayout(request);
+        this.list = queryList();
+        // 编辑预填(直访 /change?id=x):标题「修改/新增」由模板按 !empty($id) 判定,无需 editMode 标记
         if (request.has("id")) {
             Admin a = Admin.self().find(request.get("id", "")).toObject();
-            if (a != null) { this.id = a.getId(); /* ...赋值... */ this.editMode = "1"; }
+            if (a != null) copyFrom(a);
         }
     }
 
-    // ===== wire action:新增(下发空表单对话框) =====
+    // 点击「新增」:下发空表单对话框(布局/模板由上述声明式注册表解析)
     public void add() {
         Map&lt;String, Object&gt; data = new LinkedHashMap&lt;&gt;();
-        data.put("id", null); data.put("number", null); /* ...字段置空... */
-        data.put("editMode", ""); data.put("fullPageForm", false);
-        // 模板级布局替换：渲染 mdui.admin.admin.item 时改用对话框布局包裹
-        setWireLayoutReplace("mdui.admin.admin.item", "layouts.mdui.form.dialog");
-        WireEffects.pushUrl("/admin/admin/change");   // 地址栏变深链，无整页刷新
-        WireEffects.push("admin-form", data);          // 注册在 application.yml: admin-form -> mdui.admin.admin.item
+        data.put("id", null); data.put("number", null); /* 字段全空 */
+        WireEffects.pushUrl("/admin/admin/change");   // 地址栏变深链,无整页刷新
+        WireEffects.push("admin-form", data);
     }
 
-    // ===== wire action:修改(下发预填表单对话框) =====
+    // 点击「修改」:下发预填表单对话框
     public void edit(Long id) {
         Admin a = (id != null) ? Admin.self().find(id.toString()).toObject() : null;
         Map&lt;String, Object&gt; data = new LinkedHashMap&lt;&gt;();
         if (a != null) {
-            data.put("id", a.getId()); data.put("number", a.getNumber()); /* ...赋值... */
-            data.put("editMode", "1");
-        } else { /* 字段置空 */ }
-        data.put("fullPageForm", false);
-        setWireLayoutReplace("mdui.admin.admin.item", "layouts.mdui.form.dialog");
+            data.put("id", a.getId()); data.put("number", a.getNumber()); /* 预填 */
+        } else { data.put("id", null); /* 字段置空 */ }
         WireEffects.pushUrl("/admin/admin/change" + (id != null ? "?id=" + id : ""));
         WireEffects.push("admin-form", data);
     }
 
     public void delete(Long id) {
         if (id != null) Admin.self().find(id.toString()).delete();
+        wire().component("toast", Map.of("message", "删除成功", "type", "success"));
     }
 
-    // ===== wire action:保存(对话框内关闭对话框并刷新列表；整页表单则跳回列表) =====
+    // 保存:对话框内提交 → 关闭对话框并刷新列表;整页表单提交 → 整页跳回列表
     public void save() {
-        Admin a = (id != null) ? Admin.self().find(id.toString()).toObject() : null;
+        Admin a = (id != null) ? Admin.self().find(id.toString()).toObject() : new Admin();
         if (a == null) a = new Admin();
-        a.setNumber(number); /* ...set 各字段... */
+        /* 密码留空处理、字段赋值 */
+        a.setNumber(number); a.setName(name); a.setNickname(nickname);
+        a.setGroup(group); a.setPhone(phone); a.setPassword(password);
         a.save();
         this.list = queryList();
         wire().component("toast", Map.of("message", "保存成功", "type", "success"));
         if (isWireRequest()) {
-            // 对话框内提交：派发「关闭对话框」事件，前端 form.dialog.jblade 关闭、list.jblade 刷新（均不整页刷新）
-            WireEffects.dispatch("wire-dialog-close", null);
+            WireEffects.dispatch("wire-dialog-close", null);   // 对话框内提交:关闭对话框
         } else {
-            // 传统整页表单提交：整页跳回列表
-            WireEffects.redirect(RouteHelper.route("admin.admin.index"));
+            WireEffects.redirect(RouteHelper.route("admin.admin.index")); // 整页表单提交:跳回列表
         }
     }
 }</code></pre>
-<p><strong>单组件后台 CRUD：</strong>列表、新增、修改（对话框）、删除全部由同一个 <code>WireController</code> 组件承担，<b>路由只分 3 条</b>（不是 4 条）。<code>list</code>/<code>add</code>/<code>edit</code>/<code>delete</code>/<code>save</code> 都是组件内的普通方法，由前端 <code>wire:click</code> / <code>wire:submit</code> 触发，<b>不是</b>独立的 Route 方法：</p>
-<pre><code>Route.prefix("/admin").name("admin").group(() -> {
+<p><strong>单组件后台 CRUD：</strong>列表、新增、修改（对话框）、删除全部由同一个 <code>WireController</code> 组件承担，<b>路由只分 3 条</b>（不是 4 条）。<code>add</code>/<code>edit</code>/<code>delete</code>/<code>save</code> 都是组件内的普通方法，由前端 <code>wire:click</code> / <code>wire:submit</code> 触发，<b>不是</b>独立的 Route 方法：</p>
+<pre><code>Route.prefix("/admin").name("admin").group(() -&gt; {
     Route.get("/", "AdminController::index").name("index");
     Route.get("/change", "AdminController::index").name("change.index"); // 直访 = 整页表单
     Route.post("/change", "AdminController::update").name("change");     // wire 局部更新端点
 });</code></pre>
+<p><strong>典型流程（列表页点「修改」打开编辑对话框）：</strong></p>
+<pre><code>列表页 wire:click="edit(13)"
+   └─ POST /admin/admin/change (wire_body, action=edit, params=[13])
+        └─ AdminController.edit(13)
+             └─ WireEffects.pushUrl("/admin/admin/change?id=13") + WireEffects.push("admin-form", {id:13, ...})
+                  └─ renderComponents → wireComponents() 解析模板 mdui.admin.admin.item,
+                     wireLayoutReplacements() 套上 layouts.mdui.form.dialog(独立片段),
+                     注入 wire:config(wire:model / wire:submit 生效)
+        ← 响应 effects.components = [ {html, id:"wc-admin-form-...", ...} ] + effects.url
+   └─ 前端 mountComponents 注入 DOM 并 initComponent → dialog.open() 自动弹出(URL 已 pushState 为深链)
+对话框内 wire:submit="save" → POST /admin/admin/change (action=save)
+   └─ AdminController.save() → 落库 → isWireRequest()? dispatch("wire-dialog-close") 关闭对话框并刷新列表 : redirect(列表) 整页跳回</code></pre>
+<p><strong>命名组件（toast/confirm 等临时事务）：</strong>与主数据无关、生命周期短、可多实例并存。后端一行下发 <code>wire().component("name", params)</code>；全局命名组件模板在 <code>jaravel.wire.components</code> 注册（如 <code>toast: components.toast</code>）；由 <code>WireOutlet</code> 中间件注入容器与运行时，四生命周期 <code>onCreate → onStart → onStop → onDestroy</code>，<code>wire.stop()</code> 结束实例，多实例 id 隔离。</p>
 </section>
 <section id="cat-json">
 <h3>json — JSON 编解码</h3>
