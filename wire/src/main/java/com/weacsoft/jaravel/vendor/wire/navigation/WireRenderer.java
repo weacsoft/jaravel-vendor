@@ -31,6 +31,10 @@ public class WireRenderer {
             "<!--wire:section-start:([a-zA-Z0-9_-]+)-->(.*?)<!--wire:section-end:\\1-->",
             Pattern.DOTALL);
 
+    /** Wire section 起止标记统一正则（start/end 均可匹配），用于栈式解析提取所有嵌套 section */
+    private static final Pattern MARKER_PATTERN = Pattern.compile(
+            "<!--wire:section-(start|end):([a-zA-Z0-9_-]+)-->");
+
     /** 用于剥离所有嵌套的 section 标记（起止注释本身），保留非嵌套的文本/HTML 结构。 */
     private static final Pattern NESTED_SECTION_STRIP = Pattern.compile(
             "<!--wire:section-start:[a-zA-Z0-9_-]+-->.*?<!--wire:section-end:[a-zA-Z0-9_-]+-->",
@@ -62,17 +66,25 @@ public class WireRenderer {
                     .trim();
         }
 
-        // 提取所有 section 并计算 hash（含嵌套子 section 时，父 section 的 hash 基于剥离了子 section 后的内容）
+        // 提取所有 section（含嵌套）并计算 hash：
+        // 父 section 的 hash 会剥离其内嵌的子 section（含起止注释），因此父 section 不会因为
+        // 子 section 内容不同而被误判为变更 —— 这就是「模板继承差异化」的核心：
+        // A/B 继承同一个父模板 C 时，C 提供的公共 section（appbar、抽屉等）hash 稳定，
+        // 导航时只有真正变化的差异 section 被下发，公共部分不重建。
+        // 注意：必须用栈式解析提取【所有】section（含嵌套），若沿用正则 find() 只能拿到最外层
+        // section（body 包裹内部全部），嵌套 section 名不在 sectionNames 中，normalizeNestedSections
+        // 的剥离逻辑会因「保守：仅在已登记的 section 集里替换」而失效 —— 这是历史上
+        // 「切换页面后公共部分整体重建」的根因。
+        List<Section> sectionList = extractAllSections(html);
         Map<String, String> allSections = new LinkedHashMap<>();
         Map<String, String> allHashes = new LinkedHashMap<>();
         Set<String> sectionNames = new LinkedHashSet<>();
-        Matcher sm = SECTION_PATTERN.matcher(html);
-        while (sm.find()) {
-            String name = sm.group(1);
-            String content = sm.group(2);
-            allSections.put(name, content);
-            sectionNames.add(name);
-            allHashes.put(name, hashNormalized(content, sectionNames, name));
+        for (Section s : sectionList) {
+            sectionNames.add(s.name);
+        }
+        for (Section s : sectionList) {
+            allSections.put(s.name, s.content);
+            allHashes.put(s.name, hashNormalized(s.content, sectionNames, s.name));
         }
 
         // 对比客户端 hash，只保留变化的 section
@@ -118,14 +130,80 @@ public class WireRenderer {
     public static Map<String, String> computeHashes(String html) {
         Map<String, String> hashes = new LinkedHashMap<>();
         if (html == null || html.isEmpty()) return hashes;
+        // 同样必须提取【所有】section（含嵌套），否则首屏注入的 __wireHashes 会缺失
+        // 嵌套 section（bar_end/drawer_content 等），导航时客户端上报的 hash 集合不完整，
+        // 服务端对这些 section 的 hash 对比将基于 null（永远判为变化），退化为全量下发。
+        List<Section> sectionList = extractAllSections(html);
         Set<String> sectionNames = new LinkedHashSet<>();
-        Matcher sm = SECTION_PATTERN.matcher(html);
-        while (sm.find()) sectionNames.add(sm.group(1));
-        sm = SECTION_PATTERN.matcher(html);
-        while (sm.find()) {
-            hashes.put(sm.group(1), hashNormalized(sm.group(2), sectionNames, sm.group(1)));
+        for (Section s : sectionList) sectionNames.add(s.name);
+        for (Section s : sectionList) {
+            hashes.put(s.name, hashNormalized(s.content, sectionNames, s.name));
         }
         return hashes;
+    }
+
+    /**
+     * 单个 section 的提取结果：名字 + 起止标记之间的内容（不含本 section 自身的标记，含嵌套标记）。
+     * 包可见：供同包单元测试验证栈式提取结果。
+     */
+    static final class Section {
+        final String name;
+        final String content;
+
+        Section(String name, String content) {
+            this.name = name;
+            this.content = content;
+        }
+    }
+
+    /** 栈帧：未闭合 section 的名字与其 start 标记的结束偏移（content 起点）。 */
+    private static final class OpenMark {
+        final String name;
+        final int contentStart;
+
+        OpenMark(String name, int contentStart) {
+            this.name = name;
+            this.contentStart = contentStart;
+        }
+    }
+
+    /**
+     * 栈式解析：提取 HTML 中【所有】wire:section（含嵌套），返回顺序与各 section 的
+     * end 标记出现顺序一致（嵌套子 section 先于父 section）。
+     *
+     * <p>与正则 {@code find()} 的根本区别：正则从上次匹配末尾继续扫描，嵌套在最外层
+     * section（如 body）内部的子 section 永远不会被单独匹配到；栈式解析则按起止标记
+     * 配对，任何深度的嵌套 section 都能被提取，从而支持「父 section hash 剥离子 section」
+     * 的差异化 diff。
+     *
+     * @param html 渲染后的 HTML
+     * @return 所有 section；无标记时返回空列表
+     */
+    static List<Section> extractAllSections(String html) {
+        List<Section> result = new ArrayList<>();
+        if (html == null || html.isEmpty() || html.indexOf("<!--wire:section-start:") < 0) {
+            return result;
+        }
+        List<OpenMark> stack = new ArrayList<>();
+        Matcher m = MARKER_PATTERN.matcher(html);
+        while (m.find()) {
+            boolean isStart = "start".equals(m.group(1));
+            String name = m.group(2);
+            if (isStart) {
+                stack.add(new OpenMark(name, m.end()));
+                continue;
+            }
+            // end 标记：从栈尾向前找最近未闭合的同名 section（Blade 不允许交叉嵌套）
+            for (int i = stack.size() - 1; i >= 0; i--) {
+                OpenMark mark = stack.get(i);
+                if (mark.name.equals(name)) {
+                    result.add(new Section(name, html.substring(mark.contentStart, m.start())));
+                    stack.remove(i);
+                    break;
+                }
+            }
+        }
+        return result;
     }
 
     /**
