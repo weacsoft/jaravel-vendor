@@ -4020,6 +4020,7 @@ Response resp = WireService.from(request, "wire-demo", "/api/wire/demo")
 </div>
 <div class="api-class">
 <p><b>WireOutlet</b> — 命名组件加载位置中间件，负责在页面注入 outlet 容器与组件运行时 JS</p>
+<p><b>前端兜底（无需任何配置）：</b>即使页面既没有注册 <code>WireOutlet</code> 中间件、也没有手写 <code>wire:outlet</code> 容器，前端运行时在挂载命名组件时也会<strong>自动在 <code>&lt;body&gt;</code> 末尾创建一个默认 <code>&lt;div id="wire-outlet" wire:outlet&gt;</code> 容器</strong>并把组件挂进去。因此开发者不声明 outlet 也绝不会看到「找不到 outlet 容器」的告警，toast / confirm 等临时组件始终能正常弹出。该自动容器只创建一次、幂等；若页面后续又显式出现 <code>wire:outlet</code>，则直接使用已存在的那个。</p>
 <table class="cfg">
 <tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
 <tr><td><code>public static WireOutlet instance()</code></td><td>无</td><td>获取中间件单例，用于注册到中间件别名表</td></tr>
