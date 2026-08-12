@@ -16,8 +16,11 @@ import static org.junit.jupiter.api.Assertions.*;
  *   <li>{@code fill(key,value)} 是「赋值」(同名赋值),且按属性类型做基础转换</li>
  *   <li>{@code fill(Map)} 批量赋值</li>
  *   <li>{@code wireView(name)} / {@code wireView(name, extra)} 契约：
- *       不携带 bladeExtends(布局由框架按 getLayout()/getWireLayout() 外部套用),
+ *       不携带 bladeExtends(布局由模板自身 @extends 或组件渲染期的 wireLayoutReplacements() 替换),
  *       且会把 Controller 的 public 属性与 extra 聚合进渲染数据</li>
+ *   <li>{@code wireLayoutReplacements()} 声明式布局替换 + {@code getWireLayoutReplace} 合并查询
+ *       (声明式 + 请求级 setWireLayoutReplace,请求级优先)</li>
+ *   <li>{@code wireComponents()} 控制器强关联组件注册表(组件名 → 模板名)</li>
  *   <li>{@code invokeAction} 按 action 声明参数类型做转换(Long/Boolean 等)</li>
  *   <li>{@code buildUpdateUrl} 在路由名缺失时回退为 request.uri() 且不抛异常</li>
  *   <li>{@code encodeSignedSnapshot} 自动排除 {@code @WireLocked} 字段</li>
@@ -25,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * <p>注：{@code $sync}(仅返回 snapshot,不重渲染 section) 与 {@code $refresh} 依赖完整渲染链路
  * (BladeEngine + 模板),由浏览器集成测试(admin CRUD 17/17)覆盖,此处不做白盒单测。
+ * 布局替换的端到端效果(直访整页表单 / 列表点击弹对话框)由浏览器集成测试覆盖。
  */
 class WireControllerApiTest {
 
@@ -44,13 +48,21 @@ class WireControllerApiTest {
 
         @Override
         protected WireView render() {
-            // 纠正后的写法：render 只声明模板 + extra,布局交给框架(按 getLayout() 套)
+            // 纠正后的写法：render 只声明模板 + extra;主页面布局由模板自身 @extends,
+            // 组件下发渲染的布局替换由 wireLayoutReplacements() 声明式提供。
             return wireView("sample.list", Map.of("list", lockedList));
         }
 
+        // 声明式:模板级布局替换(仅组件下发渲染生效)
         @Override
-        protected String getLayout() {
-            return "layouts.sample"; // 仅用于证明布局独立于 wireView
+        protected Map<String, String> wireLayoutReplacements() {
+            return Map.of("sample.item", "layouts.sample.dialog");
+        }
+
+        // 声明式:控制器强关联组件注册表
+        @Override
+        protected Map<String, String> wireComponents() {
+            return Map.of("sample-form", "sample.item");
         }
 
         // ---- 白盒暴露受保护/私有方法给测试 ----
@@ -59,6 +71,16 @@ class WireControllerApiTest {
         public WireView pubWireView(String name) { return wireView(name); }
         public WireView pubWireView(String name, Map<String, Object> extra) { return wireView(name, extra); }
         public String pubBuildUpdateUrl(Request r) { return buildUpdateUrl(r); }
+        public String pubGetWireLayoutReplace(String template) { return getWireLayoutReplace(template); }
+        public String pubResolveComponentTemplate(String name) {
+            try {
+                Method m = WireController.class.getDeclaredMethod("resolveComponentTemplate", String.class);
+                m.setAccessible(true);
+                return (String) m.invoke(this, name);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
         public void pubInvokeAction(String action, Map<String, Object> params) {
             try {
                 Method m = WireController.class.getDeclaredMethod("invokeAction", String.class, Map.class);
@@ -150,7 +172,7 @@ class WireControllerApiTest {
         SampleController c = newController();
         WireView v = c.pubWireView("sample.list");
         assertEquals("sample.list", v.getTemplateName());
-        // 纠正后:render 不得调用 bladeExtends(getLayout());布局由框架外部套用
+        // 纠正后:render 不调用 bladeExtends;布局由模板自身 @extends 或组件渲染期替换提供
         assertNull(v.getExtendsTemplate());
     }
 
@@ -170,6 +192,54 @@ class WireControllerApiTest {
         // Controller 公共属性也被聚合(等价于 ResponseBuilder.view 自动 with 公共属性)
         assertEquals(7L, merged.get("id"));
         assertEquals("n", merged.get("name"));
+    }
+
+    // ===== wireLayoutReplacements:声明式布局替换(一次声明,处处生效) =====
+    @Test
+    void wireLayoutReplacements_declared_once_apply_to_component_render() {
+        SampleController c = newController();
+        // 命中声明式规则 → 返回替换布局
+        assertEquals("layouts.sample.dialog", c.pubGetWireLayoutReplace("sample.item"));
+        // 未命中 → null(使用模板自身 @extends)
+        assertNull(c.pubGetWireLayoutReplace("sample.other"));
+    }
+
+    @Test
+    void wireLayoutReplacements_request_level_overrides_declared() {
+        SampleController c = newController();
+        // 请求级 setWireLayoutReplace 优先于声明式
+        c.setWireLayoutReplace("sample.item", "layouts.sample.full");
+        assertEquals("layouts.sample.full", c.pubGetWireLayoutReplace("sample.item"));
+    }
+
+    // 每个用例后清理请求级 ThreadLocal,避免跨用例串扰
+    @org.junit.jupiter.api.AfterEach
+    void clearRequestLevelReplacements() {
+        try {
+            java.lang.reflect.Field f = WireController.class.getDeclaredField("WIRE_LAYOUT_REPLACEMENTS");
+            f.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            ThreadLocal<Map<String, String>> tl = (ThreadLocal<Map<String, String>>) f.get(null);
+            if (tl != null) tl.remove();
+        } catch (Exception ignored) {
+        }
+    }
+
+    // ===== wireComponents:控制器强关联组件注册表 =====
+    @Test
+    void wireComponents_own_registry_resolves_template() {
+        SampleController c = newController();
+        // 控制器私有组件:admin-form 类对话框由 wireComponents() 解析,不依赖配置文件
+        assertEquals("sample.item", c.pubResolveComponentTemplate("sample-form"));
+    }
+
+    @Test
+    void resolveComponentTemplate_falls_back_to_global_then_name() {
+        SampleController c = newController();
+        // 未注册 → 兜底:组件名即模板名
+        assertEquals("some.template", c.pubResolveComponentTemplate("some.template"));
+        // toast 等全局命名组件在 WireManager 中注册后也可解析(此处未注册 → 兜底同名)
+        assertEquals("toast", c.pubResolveComponentTemplate("toast"));
     }
 
     // ===== invokeAction 类型转换 =====

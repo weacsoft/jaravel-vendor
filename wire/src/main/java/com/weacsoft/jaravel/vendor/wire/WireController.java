@@ -42,13 +42,24 @@ import java.util.function.Consumer;
  *   <li>{@code protected void fill(String key, Object value)} / {@code fill(Map)} —— 把键值对直接赋值到
  *       Controller 自己的 public 属性(等同于赋值,不做任何业务重写)</li>
  *   <li>{@code protected void refresh(Map)} —— 每次 wire 更新后重新加载展示数据(如重新查库)</li>
- *   <li>{@code protected String getLayout()} —— 直访/wire 场景统一的父模板;默认返回 null(不套布局)。
- *       若返回非 null,则该值作为布局替换<b>所有</b>本组件渲染的模板(即整页父布局)。</li>
- *   <li>{@code protected void setWireLayoutReplace(String template, String layout)} —— 模板级布局替换:
- *       声明「当渲染名为 template 的模板时,用 layout 替换其 @extends」。可用于「判断到模板是 A,就用 B 换掉」的
- *       Dialog 等场景。不同 action 展示的 component 可注册不同的替换逻辑(可多次调用)。</li>
+ *   <li>{@code protected Map<String,String> wireLayoutReplacements()} —— 模板级布局替换注册表(声明式):
+ *       返回「模板名 → 替换布局名」映射,声明一次即可。例如
+ *       {@code Map.of("mdui.admin.admin.item", "layouts.mdui.form.dialog")}
+ *       表示「凡以组件形式下发渲染 {@code mdui.admin.admin.item} 时,用 {@code layouts.mdui.form.dialog}
+ *       替换其 {@code @extends}」。替换<b>仅作用于组件下发渲染</b>;主页面(直访)渲染始终使用模板自身的
+ *       {@code @extends},不受影响。不匹配的模板同样使用原 {@code @extends}。</li>
+ *   <li>{@code protected Map<String,String> wireComponents()} —— 本控制器<b>强关联</b>的组件注册表(声明式):
+ *       返回「组件名 → 模板名」映射(如 {@code Map.of("admin-form", "mdui.admin.admin.item")})。
+ *       这类组件与控制器绑定(模板、布局替换、action 都由本控制器承接),<b>禁止</b>写入配置文件;
+ *       配置文件({@code jaravel.wire.components})只放全局命名组件(toast/confirm 等)。</li>
+ *   <li>{@code protected void setWireLayoutReplace(String template, String layout)} —— 请求级临时布局替换
+ *       (仅当前请求生效,ThreadLocal 请求末清除)。一般场景用声明式 {@link #wireLayoutReplacements()} 即可,
+ *       此方法仅用于个别 action 需要动态追加替换规则的情况。</li>
  *   <li>{@code protected String getUpdateRouteName()} —— 组件更新(POST)对应的路由名,
  *       wire:config 的 data-wire-update 会指向该路由</li>
+ *   <li>{@code protected String getTemplateName()} —— 组件局部更新(section 刷新)对应的模板名;
+ *       默认取 {@code render().getTemplateName()},若组件的 wire 更新目标是固定页面(如列表页),
+ *       子类应覆盖返回该页面模板名,避免依赖请求状态。</li>
  * </ul>
  * <p>
  * 内置 magic action(由前端 wire.js 自动发起,无需在子类声明方法):
@@ -68,7 +79,7 @@ public abstract class WireController {
     private static final Logger log = LoggerFactory.getLogger(WireController.class);
     private static final Set<String> WIRE_INTERNAL_METHODS = new HashSet<>(Arrays.asList(
             "index", "update", "render", "mount", "fill",
-            "getLayout", "getTemplateName",
+            "getTemplateName",
             "wire", "getPublicFields", "getLockedFields", "collectPublicFields",
             "invokeAction", "isWireRequest", "buildUpdateUrl",
             "renderPage", "renderSections", "renderWireSections",
@@ -148,32 +159,66 @@ public abstract class WireController {
     }
 
     /**
-     * 直访/wire 场景统一的父模板(布局)。
+     * 本控制器强关联的「模板级布局替换」注册表(声明式,一次声明处处生效)。
      * <p>
-     * 默认返回 {@code null},表示不套用任何布局,直接渲染 {@code render()} 指定的模板。
-     * 子类可覆盖返回如 {@code "layouts.mdui.form"} 或 {@code "mdui.admin.main"}。
+     * 返回「模板名 → 替换布局名」映射。例如:
+     * <pre>{@code
+     * @Override
+     * protected Map<String, String> wireLayoutReplacements() {
+     *     return Map.of("mdui.admin.admin.item", "layouts.mdui.form.dialog");
+     * }
+     * }</pre>
+     * 表示「凡以组件形式下发渲染 {@code mdui.admin.admin.item} 时,用 {@code layouts.mdui.form.dialog}
+     * 替换其 {@code @extends} 指定的父模板」(对应「判定到模板是 A,就用 B 换掉」的 Dialog 场景)。
      * <p>
-     * <b>语义(本框架约定)</b>:若返回非 null,则该布局会替换<b>所有</b>本组件渲染的模板
-     * (即作为整页父布局套用在 {@code render()} 的模板外层)。因此它对应「整个组件用什么布局」。
-     * 若只想针对「某个具体模板」做布局替换(例如把 item 模板换成 Dialog 布局),
-     * 请用 {@link #setWireLayoutReplace(String, String)} 而非本方法。
+     * <b>作用范围</b>:仅作用于组件下发渲染({@link #renderComponents 渲染临时组件}时),
+     * 命中模板名才替换;不匹配的模板仍使用模板自身的 {@code @extends}。
+     * 主页面(直访 index / wire 局部 section 刷新)渲染<b>不受影响</b>,始终使用模板自身的 {@code @extends}——
+     * 因此直访 {@code /change} 走 {@code layouts.mdui.form} 整页表单,列表点击走对话框布局,互不干扰。
+     * <p>
+     * <b>与请求级 {@link #setWireLayoutReplace(String, String)} 的关系</b>:两者合并生效,
+     * 请求级规则优先。一般场景声明式即可,无需在每个 action 里重复调用。
+     *
+     * @return 模板名 → 替换布局名;默认 null(无替换规则)
      */
-    protected String getLayout() {
+    protected Map<String, String> wireLayoutReplacements() {
         return null;
     }
 
     /**
-     * 注册一个「模板级布局替换」规则:当渲染名为 {@code templateName} 的模板时,
-     * 用 {@code layoutName} 替换其 {@code @extends} 指定的父模板。
+     * 本控制器<b>强关联</b>的组件注册表(声明式)。
+     * <p>
+     * 返回「组件名 → 模板名」映射,例如:
+     * <pre>{@code
+     * @Override
+     * protected Map<String, String> wireComponents() {
+     *     return Map.of("admin-form", "mdui.admin.admin.item");
+     * }
+     * }</pre>
+     * 之后在 action 中 {@code WireEffects.push("admin-form", data)} 即可下发该组件,
+     * 模板名由本注册表解析,无需在配置文件({@code jaravel.wire.components})中登记。
+     * <p>
+     * <b>强关联语义</b>:此类组件与控制器绑定——模板、布局替换({@link #wireLayoutReplacements()}),
+     * 表单字段、action(save/edit/add)全部由本控制器承接。<b>禁止</b>写入配置文件;
+     * 配置文件只放与控制器无关的全局命名组件(toast/confirm 等)。
+     *
+     * @return 组件名 → 模板名;默认 null(无控制器私有组件)
+     */
+    protected Map<String, String> wireComponents() {
+        return null;
+    }
+
+    /**
+     * 注册一个「请求级模板布局替换」规则:当以组件形式渲染名为 {@code templateName} 的模板时,
+     * 用 {@code layoutName} 替换其 {@code @extends} 指定的父模板(仅当前请求生效,ThreadLocal 请求末清除)。
      * <p>
      * 设计意图(对应 Dialog 场景):「判断到模板是 A,就得用 B 把它换掉」。
      * 例如 {@code setWireLayoutReplace("mdui.admin.admin.item", "layouts.mdui.form.dialog")}
-     * 表示:凡渲染 {@code mdui.admin.admin.item} 模板,一律套用 {@code layouts.mdui.form.dialog}
+     * 表示:凡以组件形式渲染 {@code mdui.admin.admin.item} 模板,一律套用 {@code layouts.mdui.form.dialog}
      * 而非模板字面量里的 {@code @extends}。
      * <p>
-     * <b>可多次调用</b>:不同 action 展示的 component 往往需要不同的替换逻辑,
-     * 因此在各 action 中分别注册即可(如 edit() 注册 Dialog 布局,其它 action 不注册)。
-     * 规则按模板名精确匹配,渲染对应模板时生效;不匹配的模板不受影响(仍走 getLayout() 或模板自身 @extends)。
+     * <b>一般场景无需使用本方法</b>:请在 {@link #wireLayoutReplacements()} 中声明式注册(一次声明,处处生效)。
+     * 本方法仅用于个别 action 需要动态追加替换规则的情况;与声明式规则合并,请求级优先。
      *
      * @param templateName 受影响的模板名(如 "mdui.admin.admin.item")
      * @param layoutName   替换成的父布局模板名(如 "layouts.mdui.form.dialog")
@@ -185,19 +230,27 @@ public abstract class WireController {
     }
 
     /**
-     * 查询某模板是否注册了布局替换规则。命中返回替换后的布局名,否则返回 null。
+     * 查询某模板注册的布局替换规则(合并声明式 {@link #wireLayoutReplacements()} 与请求级
+     * {@link #setWireLayoutReplace(String, String)},请求级优先)。命中返回替换后的布局名,否则返回 null。
      *
      * @param templateName 模板名
-     * @return 替换布局名或 null
+     * @return 替换布局名或 null(表示使用模板自身的 @extends)
      */
     protected String getWireLayoutReplace(String templateName) {
-        return templateName == null ? null : WIRE_LAYOUT_REPLACEMENTS.get().get(templateName);
+        if (templateName == null) return null;
+        String runtime = WIRE_LAYOUT_REPLACEMENTS.get().get(templateName);
+        if (runtime != null) return runtime;
+        Map<String, String> declared = wireLayoutReplacements();
+        if (declared != null) return declared.get(templateName);
+        return null;
     }
 
     /**
-     * 返回当前 WireController 对应的模板名。
+     * 返回当前 WireController 对应的模板名(局部更新 section 渲染的目标模板)。
      * <p>
-     * 默认从 render().getTemplateName() 获取,子类可覆盖。
+     * 默认从 render().getTemplateName() 获取。若组件的 wire 更新目标是固定页面
+     * (如列表页——对话框等组件通过 push 临时下发,不参与 section 刷新),
+     * 子类应覆盖返回该固定页面模板名,避免依赖请求状态(fullPageForm 等字段在 update() 中不更新)。
      */
     protected String getTemplateName() {
         return render().getTemplateName();
@@ -208,7 +261,7 @@ public abstract class WireController {
     /**
      * GET 请求：首屏渲染。
      * <p>
-     * 流程:mount → collectPublicFields → fill → render → 判断 wire/直访 → 套布局 → 注入 wire assets。
+     * 流程:mount → collectPublicFields → fill → render(模板自身 @extends 整页) → 注入 wire assets。
      */
     public Response index(Request request) {
         try {
@@ -221,17 +274,13 @@ public abstract class WireController {
             // render
             WireView view = render();
             Map<String, Object> renderData = view.getMergedData(data);
-            // 布局:统一使用 getLayout()(直访/wire 同一套)。若返回非 null,则替换所有本组件模板的父布局。
-            String parentTemplate = getLayout();
             String templateName = view.getTemplateName();
 
-            // 注册父模板覆盖(框架按 getLayout() 切换布局)
-            if (parentTemplate != null && !parentTemplate.equals(view.getExtendsTemplate())) {
-                WireParentOverride.register(templateName, parentTemplate);
-            }
             try {
-                // 渲染页面
-                String html = renderPage(templateName, parentTemplate, renderData);
+                // 渲染页面:主页面渲染始终使用模板自身的 @extends(布局替换仅作用于组件下发渲染,
+                // 见 renderComponents / getWireLayoutReplace)。直访 /change 走 item 模板自身的
+                // @extends('layouts.mdui.form') 整页表单;列表页走 list 模板自身的 @extends。
+                String html = renderPage(templateName, renderData);
                 // 编码快照(签名,自动排除 @WireLocked 字段)
                 String snapshot = encodeSignedSnapshot(data, request);
                 // 构建 update URL
@@ -610,15 +659,14 @@ public abstract class WireController {
     }
 
     /**
-     * 判断当前请求是否应该使用「wire 交互」语义(对应原 getWireLayout 的触发场景)。
+     * 判断当前请求是否应该使用「wire 交互」语义(如 mount 期区分「直访整页」与「wire 局部更新」)。
      * <p>
      * 默认实现：判断请求是否携带 wire_body(POST)或 X-Wire-Request 头。
      * 子类可覆盖此方法以改变行为，例如让所有请求都按 wire 处理。
      * <p>
-     * 注意：本框架已不再区分 getLayout / getWireLayout 两套布局方法，
-     * 布局切换统一由 {@link #getLayout()}（替换所有本组件模板）与
-     * {@link #setWireLayoutReplace(String, String)}（按模板名替换）完成。
-     * 因此本方法仅用于「当前是不是 wire 局部更新」的语义判断（如 mount 期区分直访/交互）。
+     * 注意：本框架已移除 getLayout()——主页面渲染始终使用模板自身的 {@code @extends}，
+     * 布局切换统一由 {@link #wireLayoutReplacements()}（声明式,组件下发渲染时按模板名替换
+     * {@code @extends}）与 {@link #setWireLayoutReplace(String, String)}（请求级临时规则）完成。
      *
      * @param request 当前请求
      * @return true=是 wire 请求
@@ -687,10 +735,7 @@ public abstract class WireController {
         return null;
     }
 
-    private String renderPage(String templateName, String parentTemplate, Map<String, Object> data) {
-        if (parentTemplate != null) {
-            // 通过注册 WireParentOverride 已由 BladeEngine 自动处理
-        }
+    private String renderPage(String templateName, Map<String, Object> data) {
         return WireManager.renderForWire(templateName, data);
     }
 
@@ -835,7 +880,7 @@ public abstract class WireController {
                 try {
                     renderParams.put("wireId", compId);
                     String html = WireManager.renderForWire(templateName, renderParams);
-                    // 保证单一根元素
+                    // 保证单一根元素(片段模板如 dialog/toast 可能含多个兄弟节点)
                     html = ensureSingleRoot(html);
 
                     // 组件快照:用 push 时传入的数据(去掉 wireId 等框架内部标记),
@@ -851,17 +896,14 @@ public abstract class WireController {
                     String snapshot = encodeSignedSnapshot(snapshotData, request);
 
                     // 内嵌 wire:config:data-wire-update 指向上层组件更新路由,
-                    // wire:snapshot 为签名快照。放在根元素内部,使前端 initComponent 以
-                    // 对话框本身为作用域(避免与列表组件的事件被重复绑定)。
+                    // wire:snapshot 为签名快照。注入到「根元素内部末尾」(而非最后一个 </ 之前——
+                    // 片段模板末尾往往是 </script>,插到它前面会把 JSON 塞进脚本块破坏渲染)。
+                    // 放在根元素内部,使前端 initComponent 以对话框本身为作用域(scope=config.parentElement),
+                    // 避免与列表组件的事件被重复绑定。
                     String configScript = "<script type=\"application/json\" wire:config"
                             + " data-wire-update=\"" + escapeAttr(parentUpdateUrl) + "\""
                             + " wire:snapshot=\"" + escapeAttr(snapshot) + "\"></script>";
-                    int lastClose = html.lastIndexOf("</");
-                    if (lastClose >= 0) {
-                        html = html.substring(0, lastClose) + configScript + html.substring(lastClose);
-                    } else {
-                        html = html + configScript;
-                    }
+                    html = injectConfigIntoRoot(html, configScript);
 
                     Map<String, Object> entry = new LinkedHashMap<>();
                     entry.put("name", name);
@@ -888,27 +930,67 @@ public abstract class WireController {
     }
 
     /**
-     * 从 WireProperties.components 注册表中查找组件模板名。
-     * 通过反射调用以解耦依赖。
+     * 把 wire:config 脚本注入到 HTML 根元素内部末尾。
+     * <p>
+     * 先确定根标签名(取 html 开头第一个标签),再在最后一个 {@code </根标签>} 前插入。
+     * 不能简单用 {@code lastIndexOf("</")}——片段模板末尾往往是 {@code </script>},
+     * 会把 JSON 配置插进脚本块内部,破坏组件渲染。
+     *
+     * @param html        已 ensureSingleRoot 的组件 HTML
+     * @param configScript wire:config 脚本
+     * @return 注入后的 HTML
+     */
+    private String injectConfigIntoRoot(String html, String configScript) {
+        if (html == null || html.isEmpty()) return html;
+        String trimmed = html.trim();
+        if (!trimmed.startsWith("<")) {
+            return html + configScript;
+        }
+        // 提取根标签名(如 <div class="mdui-dialog"> → div)
+        int tagEnd = -1;
+        for (int i = 1; i < trimmed.length(); i++) {
+            char c = trimmed.charAt(i);
+            if (c == ' ' || c == '>' || c == '\t' || c == '\n' || c == '/') {
+                tagEnd = i;
+                break;
+            }
+        }
+        if (tagEnd <= 1) return html + configScript;
+        String rootTag = trimmed.substring(1, tagEnd);
+        if (rootTag.isEmpty() || !rootTag.matches("[a-zA-Z][a-zA-Z0-9]*")) {
+            return html + configScript;
+        }
+        String closeTag = "</" + rootTag + ">";
+        int lastClose = trimmed.lastIndexOf(closeTag);
+        if (lastClose >= 0) {
+            return trimmed.substring(0, lastClose) + configScript + trimmed.substring(lastClose);
+        }
+        return html + configScript;
+    }
+
+    /**
+     * 解析组件名对应的模板名。解析顺序:
+     * <ol>
+     *   <li>本控制器强关联组件注册表 {@link #wireComponents()}(如 admin-form → mdui.admin.admin.item);</li>
+     *   <li>全局命名组件注册表 {@link WireManager#resolveComponentTemplate(String)}
+     *       (来自 jaravel.wire.components 配置,如 toast → components.toast);</li>
+     *   <li>兜底:组件名即模板名。</li>
+     * </ol>
+     * 控制器私有组件(对话框/表单等)必须在 {@link #wireComponents()} 声明,禁止写入配置文件。
      */
     private String resolveComponentTemplate(String name) {
-        try {
-            Class<?> props = Class.forName("com.weacsoft.jaravel.vendor.wire.springboot.WireProperties");
-            java.lang.reflect.Field compField = props.getDeclaredField("components");
-            compField.setAccessible(true);
-            // 组件注册表可能是类静态字段或通过自动装配初始化;这里简化为检查 WireManager 是否有对应方法
-            Class<?> wm = Class.forName("com.weacsoft.jaravel.vendor.wire.WireManager");
-            try {
-                java.lang.reflect.Method m = wm.getMethod("resolveComponentTemplate", String.class);
-                Object result = m.invoke(null, name);
-                return result != null ? (String) result : null;
-            } catch (NoSuchMethodException e) {
-                // 回退:尝试从类路径直接渲染 name 对应的模板
-                return name;
-            }
-        } catch (Exception ignored) {
-            return name;
+        if (name == null || name.isEmpty()) return name;
+        // 1. 控制器强关联组件注册表(声明式,与控制器绑定)
+        Map<String, String> own = wireComponents();
+        if (own != null) {
+            String t = own.get(name);
+            if (t != null && !t.isEmpty()) return t;
         }
+        // 2. 全局命名组件注册表(配置文件 jaravel.wire.components,如 toast/confirm)
+        String global = WireManager.resolveComponentTemplate(name);
+        if (global != null && !global.isEmpty()) return global;
+        // 3. 兜底:组件名即模板名
+        return name;
     }
 
     /**

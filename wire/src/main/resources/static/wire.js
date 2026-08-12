@@ -229,39 +229,23 @@
             });
         })(forms[i]);
 
-        // button/input[type=submit][wire:submit]:拦截其所属 form 的 submit
+        // button/input[type=submit][wire:submit]:拦截按钮自身的 click 事件,preventDefault
+        // 阻止原生表单提交,直接发起 wire 请求(等价于提交它所属的 form)。
+        // 这样无论 e.submitter / 原生 submit 是否可靠,都不会再触发整页刷新。
+        // 找不到所属 form 时退化为纯 click 行为(Q7 决策)。
         var buttons = comp.element.querySelectorAll('button[wire\\:submit], input[type=submit][wire\\:submit]');
         for (var j = 0; j < buttons.length; j++) (function (btn) {
             if (isOwnedByOther(btn, comp)) return;
             if (!markBound(comp, btn)) return;
-            var form = btn.closest('form');
-            if (!form) {
-                btn.addEventListener('click', function (e) {
-                    e.preventDefault();
-                    var actionExpr = btn.getAttribute('wire:submit') || '';
-                    var parsed = parseWireAction(actionExpr);
-                    var params = Object.assign({}, collectParams(btn));
-                    for (var i = 0; i < parsed.params.length; i++) params[String(i)] = parsed.params[i];
-                    sendRequest(comp, parsed.method, params, btn);
-                });
-                return;
-            }
-            if (!form.__wireSubmitBound) {
-                form.__wireSubmitBound = true;
-                form.addEventListener('submit', function (e) {
-                    var target = e.submitter || e.srcElement;
-                    if (target && target.getAttribute && target.getAttribute('wire:submit')) {
-                        e.preventDefault();
-                        var actionExpr = target.getAttribute('wire:submit');
-                        var parsed = parseWireAction(actionExpr);
-                        var p = {};
-                        var fd = new FormData(form); fd.forEach(function (v, k) { p[k] = v; });
-                        Object.assign(p, collectParams(target));
-                        for (var i = 0; i < parsed.params.length; i++) p[String(i)] = parsed.params[i];
-                        sendRequest(comp, parsed.method, p, target);
-                    }
-                });
-            }
+            btn.addEventListener('click', function (e) {
+                e.preventDefault();
+                var actionExpr = btn.getAttribute('wire:submit') || '';
+                var parsed = parseWireAction(actionExpr);
+                // 合并 wire:model 的本地缓存,确保对话框表单的最新输入随请求提交
+                var params = Object.assign({}, comp.modelCache, collectParams(btn));
+                for (var i = 0; i < parsed.params.length; i++) params[String(i)] = parsed.params[i];
+                sendRequest(comp, parsed.method, params, btn);
+            });
         })(buttons[j]);
     }
 
@@ -356,8 +340,22 @@
         // 使缓存始终等于页面实际值,避免把上一次未提交的编辑泄漏到后续 action。
         resyncModelCache(comp);
         if (data.effects) {
+            // pushUrl:仅用 history.pushState 改变地址栏,不发起请求、不刷新页面(bug2:
+            // 点击「修改」后 URL 变为可分享的深链,但页面不整页重载)。
+            if (data.effects.url) {
+                try { history.pushState({ wireUrl: data.effects.url }, '', data.effects.url); } catch (e) {}
+            }
+            // redirect:透明导航(pushState + section diff),避免整页刷新(bug1:
+            // 整页表单保存成功后走 WireNavigate 的局部 diff,而非 window.location.href 整页跳转)。
             var r = data.effects.redirect;
-            if (r) { var url = typeof r === 'string' ? r : r.url; window.location.href = url; }
+            if (r) {
+                var url = typeof r === 'string' ? r : (r.url || '');
+                if (url && window.WireNavigate && typeof window.WireNavigate.visit === 'function') {
+                    window.WireNavigate.visit(url);
+                } else if (url) {
+                    window.location.href = url;
+                }
+            }
             if (data.effects.dispatch) {
                 for (var i = 0; i < data.effects.dispatch.length; i++) {
                     window.dispatchEvent(new CustomEvent(data.effects.dispatch[i].name, { detail: data.effects.dispatch[i].data }));
