@@ -3882,7 +3882,7 @@ public class MyController extends WireController {
     @Override
     protected WireView render() {
         // 纠正后:render 只声明模板(+ 额外数据),不要调用 .bladeExtends(getLayout())
-        // 布局由框架按 getLayout()/getWireLayout() 在渲染期外部套用
+        // 布局由框架按 getLayout()(整页父布局)/setWireLayoutReplace()(按模板换底) 在渲染期外部套用
         return wireView("pages.item", Map.of("name", name));
     }
 
@@ -4011,13 +4011,15 @@ Response resp = WireService.from(request, "wire-demo", "/api/wire/demo")
 <p><b>WireEffects</b> — Wire 请求级临时组件 / 事件 / 重定向下发队列（ThreadLocal 隔离）。<b>注意：旧版 <code>WireComponents</code> 已重命名为 <code>WireEffects</code></b>，并新增 <code>redirect</code> 能力。</p>
 <table class="cfg">
 <tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
-<tr><td><code>public static void push(String name, Map&lt;String, Object&gt; params)</code></td><td>组件名、本次参数</td><td>把组件压入当前请求待下发队列（写入响应 <code>effects.components</code>）；参数中可带 <code>__parent</code> 指定临时父布局覆盖</td></tr>
+<tr><td><code>public static void push(String name, Map&lt;String, Object&gt; params)</code></td><td>组件名、本次参数</td><td>把组件压入当前请求待下发队列（写入响应 <code>effects.components</code>）；父布局替换为「按模板名」注册，见 <code>setWireLayoutReplace</code>（不再用 <code>__parent</code> 参数）</td></tr>
 <tr><td><code>public static List&lt;Map&lt;String, Object&gt;&gt; drain()</code></td><td>无</td><td>取出并清空待下发组件，写入响应 effects.components</td></tr>
-<tr><td><code>public static void dispatch(String name, Object data)</code></td><td>事件名、事件负载</td><td>派发前端事件，响应以 <code>effects.dispatch</code> 下发，前端执行 <code>window.dispatchEvent(new CustomEvent(name, {detail:data}))</code></td></tr>
+<tr><td><code>public static void dispatch(String name, Object data)</code></td><td>事件名、事件负载</td><td>派发前端事件，响应以 <code>effects.dispatch</code> 下发，前端执行 <code>window.dispatchEvent(new CustomEvent(name, {detail:data}))</code>；关闭对话框即用 <code>dispatch("wire-dialog-close", null)</code>，由前端监听后关闭对话框 / 刷新列表</td></tr>
 <tr><td><code>public static List&lt;Map&lt;String, Object&gt;&gt; drainDispatches()</code></td><td>无</td><td>取出并清空待派发事件</td></tr>
-<tr><td><code>public static void redirect(String url)</code></td><td>重定向目标 URL</td><td>在 action 中显式请求一次重定向，使本次 update 响应携带 <code>effects.redirect</code>，前端整页跳转；<b>仅作用于调用它的 action</b>（如 <code>save()</code>），不会让 <code>edit()</code>/<code>add()</code> 这类只下发组件、不希望整页跳转的 action 误跳转</td></tr>
+<tr><td><code>public static void redirect(String url)</code></td><td>重定向目标 URL</td><td>在 action 中显式请求一次重定向，使本次 update 响应携带 <code>effects.redirect</code>；<b>仅作用于调用它的 action</b>（传统整页表单的 <code>save()</code>），不会让 <code>edit()</code>/<code>add()</code> 这类只下发组件、不希望整页跳转的 action 误跳转</td></tr>
 <tr><td><code>public static String drainRedirect()</code></td><td>无</td><td>取出本次请求的重定向地址（无则 null），并清空</td></tr>
-<tr><td><code>public static void clear()</code></td><td>无</td><td>清空当前请求的组件 / 事件 / 重定向队列</td></tr>
+<tr><td><code>public static void pushUrl(String url)</code></td><td>目标 URL</td><td>请求一次 URL 变更：响应携带 <code>effects.url</code>，前端仅用 <code>history.pushState</code> 改变地址栏（生成可分享深链，如 <code>/admin/admin/change?id=5</code>），<b>不发起请求、不刷新页面</b>。常用于「点击修改后 URL 变为深链」</td></tr>
+<tr><td><code>public static String drainPushUrl()</code></td><td>无</td><td>取出本次请求的 URL 变更地址（无则 null），并清空</td></tr>
+<tr><td><code>public static void clear()</code></td><td>无</td><td>清空当前请求的组件 / 事件 / 重定向 / URL 变更队列</td></tr>
 </table>
 </div>
 <div class="api-class">
@@ -4039,9 +4041,10 @@ Response resp = WireService.from(request, "wire-demo", "/api/wire/demo")
 <tr><td><code>mount(Request)</code></td><td>空实现</td><td>首次 GET 时调用，参数为 Request，可读取 query/input/has/uri 初始化；Spring 单例需在 mount 重置表单字段</td></tr>
 <tr><td><code>fill(Map)</code></td><td>反射赋值</td><td>将数据填充到 public 字段（子类可在 mount 中主动调用）</td></tr>
 <tr><td><code>refresh(Map)</code></td><td>空实现</td><td><code>$refresh</code> action 时调用，子类覆盖以从数据库重新加载数据</td></tr>
-<tr><td><code>getLayout()</code></td><td>返回 null</td><td>直访场景的父模板（如 <code>layouts.mdui.form</code>）</td></tr>
-<tr><td><code>getWireLayout()</code></td><td>同 getLayout()</td><td>wire 触发场景的父模板（如 <code>layouts.mdui.form.dialog</code>）。<b>关键区分</b>：访问 list 时框架用 <code>getLayout()</code>，点击「修改/新增」触发 wire 请求时用 <code>getWireLayout()</code>——同一个组件因此能同时服务于「整页编辑页」与「对话框表单」两套底。</td></tr>
-<tr><td colspan="3"><b>临时父布局覆盖 <code>__parent</code></b>：通过 <code>WireEffects.push("name", Map.of("__parent", getWireLayout()))</code> 可在<b>本次下发</b>中把组件套上指定父模板（如用 <code>form.dialog</code> 包裹 <code>item.jblade</code> 生成对话框），渲染结束后由 <code>WireParentOverride</code> 清除，绝不污染同线程后续渲染。这是「点击弹框」与「直访编辑页」共用同一组件、却渲染不同底的实现基础。</td></tr>
+<tr><td><code>getLayout()</code></td><td>返回 null</td><td>直访 / wire 场景统一的父模板。返回非 null 时，其布局会<b>替换本组件渲染的所有模板</b>（整页父布局），如 <code>layouts.mdui.form</code> / <code>mdui.admin.main</code>。子类覆盖返回具体布局即可。</td></tr>
+<tr><td><code>setWireLayoutReplace(String template, String layout)</code></td><td>模板名、替换布局名</td><td><b>模板级布局替换（取代原 <code>getWireLayout()</code>）</b>。注册「当渲染名为 <code>template</code> 的模板时，用 <code>layout</code> 替换其 <code>@extends</code>」规则，对应「判定到模板是 A，就用 B 换掉」的 Dialog 场景。可多次调用（不同 action 注册不同规则）；渲染对应模板时生效，其余模板不受影响。请求结束由框架自动清除（ThreadLocal finally）。</td></tr>
+<tr><td><code>getWireLayoutReplace(String template)</code></td><td>模板名</td><td>查询某模板是否注册了替换规则，命中返回替换布局名，否则 null。</td></tr>
+<tr><td colspan="3"><b>布局切换的两种手段</b>：① <code>getLayout()</code> 返回非 null → 替换<b>所有</b>本组件模板（整页底）；② <code>setWireLayoutReplace("mdui.admin.admin.item", "layouts.mdui.form.dialog")</code> → 仅把该模板换成对话框底。两者可共存：列表用 <code>getLayout()</code> 套主布局，点击「修改/新增」时在 <code>edit()</code>/<code>add()</code> 里注册一条 <code>setWireLayoutReplace</code>，使下发的 <code>item.jblade</code> 组件改用对话框布局包裹。原 <code>getWireLayout()</code> 方法已删除。</td></tr>
 <tr><td colspan="3"><b>组件实例唯一 id <code>{{ $wireId }}</code></b>：每个下发的临时组件实例都拥有唯一 id（<code>wc-{name}-{nanoTime}</code>）。模板里用 <code>{{ $wireId }}</code> 作 DOM 唯一标记（如 <code>id="wire-dialog-{{ $wireId }}"</code>），<b>切勿用 <code>csrf_token()</code></b>——它在同一次请求内恒定，多个组件会拿到重复 id 导致 DOM 冲突。</td></tr>
 </table>
 
@@ -4066,36 +4069,41 @@ Response resp = WireService.from(request, "wire-demo", "/api/wire/demo")
 </table>
 
 <h4>错误项目参考实现</h4>
-<p>error 项目的 <code>AdminController</code> 展示了完整的迁移过程：直访 <code>/admin/admin/change</code> 渲染整页表单，点击列表「修改/新增」则通过 wire 下发一个套着 <code>form.dialog</code> 对话框布局的 <code>item.jblade</code> 组件——<b>两者共用同一个组件与同一份 <code>item.jblade</code> 模板</b>，靠 <code>getLayout()</code> / <code>getWireLayout()</code> 切换底，靠 <code>__parent</code> 在点击时临时套上对话框布局。</p>
+<p>error 项目的 <code>AdminController</code> 展示了完整的迁移过程：直访 <code>/admin/admin/change</code> 渲染整页表单，点击列表「修改/新增」则通过 wire 下发一个套着 <code>form.dialog</code> 对话框布局的 <code>item.jblade</code> 组件——<b>两者共用同一个组件与同一份 <code>item.jblade</code> 模板</b>，靠 <code>getLayout()</code>（整页父布局）+ <code>setWireLayoutReplace()</code>（点击时把 <code>item.jblade</code> 临时换成 <code>form.dialog</code> 包裹）切换底，靠 <code>WireEffects.pushUrl()</code> 把地址栏变成可分享深链（无整页刷新）。</p>
 <pre><code>@Controller
 public class AdminController extends WireController {
     // 表单字段（Spring 单例：mount 中必须重置）
     public Long id; public String number; public String name; public String password;
     public String nickname; public String group; public String phone;
-    public String editMode; // "edit" = 修改对话框 / 整页表单；"" = 新增对话框
+    public String editMode;       // 非空 = 修改；空 = 新增（用字符串规避 jblade 真值判定）
+    public boolean fullPageForm;  // 直访 /change 时为整页表单
 
     @Override
     protected WireView render() {
-        // render 只声明模板(+ 额外数据),布局由框架按 getLayout()/getWireLayout() 外部套用
-        return wireView("mdui.admin.admin.item", Map.of("id", id, "number", number,
-                "name", name, "password", password, "nickname", nickname,
-                "group", group, "phone", phone, "editMode", editMode));
+        // render 只声明模板(+ 额外数据)，布局由框架按 getLayout()/setWireLayoutReplace() 外部套用
+        if (fullPageForm) {
+            return wireView("mdui.admin.admin.item");
+        }
+        return wireView("mdui.admin.admin.list", Map.of("list", list));
     }
 
     @Override
-    protected String getLayout()     { return "layouts.mdui.form"; }       // 直访整页表单
-    @Override
-    protected String getWireLayout() { return "layouts.mdui.form.dialog"; } // 点击触发的对话框底
+    protected String getLayout() {
+        // 整页父布局：返回非 null 时替换本组件渲染的所有模板。
+        // 列表页用 mdui.admin.main；直访整页表单用 layouts.mdui.form。
+        return fullPageForm ? "layouts.mdui.form" : "mdui.admin.main";
+    }
 
     @Override
     protected void mount(Request request) {
-        // Spring 单例：每次请求先重置字段,避免上次 edit(id) 的 id 泄漏
-        this.id = null; this.number = null; this.name = null; this.password = null;
-        this.nickname = null; this.group = null; this.phone = null; this.editMode = null;
+        // Spring 单例：每次请求先重置字段，避免上次 edit(id) 的 id 泄漏
+        this.id = null; /* ...字段置空... */ this.editMode = null; this.fullPageForm = false;
+        // 直访 /change（非 wire 请求）才视为整页表单
+        this.fullPageForm = request.uri() != null
+                && request.uri().endsWith("/change") && !useWireLayout(request);
         if (request.has("id")) {
             Admin a = Admin.self().find(request.get("id", "")).toObject();
-            if (a != null) { this.id = a.getId(); this.number = a.getNumber(); /* ...赋值... */
-                           this.editMode = "edit"; }
+            if (a != null) { this.id = a.getId(); /* ...赋值... */ this.editMode = "1"; }
         }
     }
 
@@ -4103,34 +4111,46 @@ public class AdminController extends WireController {
     public void add() {
         Map&lt;String, Object&gt; data = new LinkedHashMap&lt;&gt;();
         data.put("id", null); data.put("number", null); /* ...字段置空... */
-        data.put("editMode", "");
-        data.put("__parent", getWireLayout()); // 临时用 form.dialog 包裹 item.jblade
-        WireEffects.push("admin-form", data);  // 注册在 application.yml: admin-form -> mdui.admin.admin.item
+        data.put("editMode", ""); data.put("fullPageForm", false);
+        // 模板级布局替换：渲染 mdui.admin.admin.item 时改用对话框布局包裹
+        setWireLayoutReplace("mdui.admin.admin.item", "layouts.mdui.form.dialog");
+        WireEffects.pushUrl("/admin/admin/change");   // 地址栏变深链，无整页刷新
+        WireEffects.push("admin-form", data);          // 注册在 application.yml: admin-form -> mdui.admin.admin.item
     }
 
     // ===== wire action:修改(下发预填表单对话框) =====
     public void edit(Long id) {
-        Admin a = Admin.self().find(id.toString()).toObject();
+        Admin a = (id != null) ? Admin.self().find(id.toString()).toObject() : null;
         Map&lt;String, Object&gt; data = new LinkedHashMap&lt;&gt;();
-        data.put("id", a.getId()); data.put("number", a.getNumber()); /* ...赋值... */
-        data.put("editMode", "edit");
-        data.put("__parent", getWireLayout());
+        if (a != null) {
+            data.put("id", a.getId()); data.put("number", a.getNumber()); /* ...赋值... */
+            data.put("editMode", "1");
+        } else { /* 字段置空 */ }
+        data.put("fullPageForm", false);
+        setWireLayoutReplace("mdui.admin.admin.item", "layouts.mdui.form.dialog");
+        WireEffects.pushUrl("/admin/admin/change" + (id != null ? "?id=" + id : ""));
         WireEffects.push("admin-form", data);
     }
 
     public void delete(Long id) {
-        Admin.self().find(id.toString()).delete();
+        if (id != null) Admin.self().find(id.toString()).delete();
     }
 
-    // ===== wire action:保存(整页重定向回列表,关闭对话框) =====
-    public void save(Request request) {
-        Long id = request.wireParam("id", (Long) null);
-        Admin a = (id != null) ? Admin.self().find(id.toString()).toObject() : new Admin();
+    // ===== wire action:保存(对话框内关闭对话框并刷新列表；整页表单则跳回列表) =====
+    public void save() {
+        Admin a = (id != null) ? Admin.self().find(id.toString()).toObject() : null;
         if (a == null) a = new Admin();
-        a.setNumber(request.wireParam("number", "")); /* ...set 各字段... */
+        a.setNumber(number); /* ...set 各字段... */
         a.save();
+        this.list = queryList();
         wire().component("toast", Map.of("message", "保存成功", "type", "success"));
-        WireEffects.redirect(RouteHelper.route("admin.admin.index")); // 仅 save 跳转,edit/add 不下发重定向
+        if (isWireRequest()) {
+            // 对话框内提交：派发「关闭对话框」事件，前端 form.dialog.jblade 关闭、list.jblade 刷新（均不整页刷新）
+            WireEffects.dispatch("wire-dialog-close", null);
+        } else {
+            // 传统整页表单提交：整页跳回列表
+            WireEffects.redirect(RouteHelper.route("admin.admin.index"));
+        }
     }
 }</code></pre>
 <p><strong>单组件后台 CRUD：</strong>列表、新增、修改（对话框）、删除全部由同一个 <code>WireController</code> 组件承担，<b>路由只分 3 条</b>（不是 4 条）。<code>list</code>/<code>add</code>/<code>edit</code>/<code>delete</code>/<code>save</code> 都是组件内的普通方法，由前端 <code>wire:click</code> / <code>wire:submit</code> 触发，<b>不是</b>独立的 Route 方法：</p>
