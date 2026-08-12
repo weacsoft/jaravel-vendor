@@ -1342,6 +1342,8 @@ Route.group(new String[]{"VerifyCsrfToken", "WireOutlet"}, () -> {
 中间件检测到页面里已经有 `data-wire-outlet` 属性（即 `{!! wire_outlet() !!}` 输出的容器或手动添加的 `<div wire:outlet>`）就**不会重复注入**，因此显式指定与自动注入不会冲突。
 中间件未启用（例如该路径在 `except` 里）时，`wire_outlet()` 返回空字符串，不会留下无人管理的空容器。
 
+> **前端兜底（无需任何配置）**：即使页面既没有注册 `WireOutlet` 中间件、也没有手写 `wire:outlet` 容器，前端运行时在挂载命名组件时也会**自动在 `<body>` 末尾创建一个默认 `<div id="wire-outlet" wire:outlet>` 容器**并把组件挂进去。因此开发者不声明 outlet 也绝不会看到「找不到 outlet 容器」的告警，toast / confirm 等临时组件始终能正常弹出。该自动容器只创建一次，幂等；若页面后续又显式出现 `wire:outlet`，则直接使用已存在的那个。
+
 **例外配置**支持精确匹配与前缀通配：
 
 ```yaml

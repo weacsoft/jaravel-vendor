@@ -690,7 +690,17 @@
     }
     function getOutlet(outletId) {
         if (outletId) { var by = document.getElementById(outletId); if (by) return by; }
-        return document.querySelector('[wire\\:outlet]') || document.getElementById('wire-outlet');
+        var found = document.querySelector('[wire\\:outlet]') || document.getElementById('wire-outlet');
+        if (found) return found;
+        // 页面未显式声明 outlet 容器：运行时自动在 <body> 末尾补一个默认容器，
+        // 开发者无需手动添加 wire:outlet，也不再打印「找不到 outlet」告警
+        if (!document.body) return null;
+        var created = document.createElement('div');
+        created.id = 'wire-outlet';
+        created.setAttribute('wire:outlet', '');
+        created.setAttribute('data-wire-outlet', 'wire-outlet');
+        document.body.appendChild(created);
+        return created;
     }
     function callLife(inst, name, el, wire) {
         var fn = inst.api[name]; if (typeof fn !== 'function') return undefined;
@@ -701,7 +711,7 @@
         if (!payload || !payload.id) return null;
         if (compInstances[payload.id]) return compInstances[payload.id];
         var outlet = getOutlet(outletId || payload.outlet);
-        if (!outlet) { console.error('[WireComponent] 找不到 outlet 容器，无法挂载组件 [' + payload.name + ']'); return null; }
+        if (!outlet) return null;
         var params = payload.params || {};
         wireEmit('beforeRequest', { id: payload.id, name: payload.name }, 'component:mount', params);
         wireEmit('beforeUpdate', { id: payload.id, name: payload.name }, 'component:mount', params);
