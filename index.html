@@ -3881,14 +3881,14 @@ public class MyController extends WireController {
 
     @Override
     protected WireView render() {
-        return wireView("pages.item")
-                .bladeExtends("layouts.app")
-                .section("content");
+        // 纠正后:render 只声明模板(+ 额外数据),不要调用 .bladeExtends(getLayout())
+        // 布局由框架按 getLayout()/getWireLayout() 在渲染期外部套用
+        return wireView("pages.item", Map.of("name", name));
     }
 
     @Override
-    protected void mount(Map&lt;String, Object&gt; params) {
-        name = params.get("name") != null ? params.get("name").toString() : "World";
+    protected void mount(Request request) {   // 注意:参数是 Request,不是 Map
+        name = request.query("name", "World");
     }
 
     public void save() {
@@ -4033,7 +4033,7 @@ Response resp = WireService.from(request, "wire-demo", "/api/wire/demo")
 <h4>WireController 生命周期</h4>
 <table class="cfg">
 <tr><th>方法</th><th>默认行为</th><th>说明</th></tr>
-<tr><td><code>mount(Map)</code></td><td>空实现</td><td>首次 GET 时调用，重建嵌套对象（如 Admin setting 从 Map→真实对象）</td></tr>
+<tr><td><code>mount(Request)</code></td><td>空实现</td><td>首次 GET 时调用，参数为 Request，可读取 query/input/has/uri 初始化；Spring 单例需在 mount 重置表单字段</td></tr>
 <tr><td><code>fill(Map)</code></td><td>反射赋值</td><td>将数据填充到 public 字段（子类可在 mount 中主动调用）</td></tr>
 <tr><td><code>refresh(Map)</code></td><td>空实现</td><td><code>$refresh</code> action 时调用，子类覆盖以从数据库重新加载数据</td></tr>
 <tr><td><code>getLayout()</code></td><td>返回 null</td><td>直访场景的父模板</td></tr>
@@ -4062,16 +4062,16 @@ Response resp = WireService.from(request, "wire-demo", "/api/wire/demo")
 
 <h4>错误项目参考实现</h4>
 <p>error 项目的 <code>AdminController</code> 展示了完整的迁移过程：</p>
-<pre><code>// 关键设计：保留 $setting 变量，兼容原有 item.jblade 模板
+<pre><code>// 关键设计：保留 setting 变量，兼容原有 item.jblade 模板
 @Controller
 public class AdminController extends WireController {
     public Admin setting;
 
     @Override
     protected WireView render() {
-        return wireView("mdui.admin.admin.item")
-                .bladeExtends("layouts.mdui.form")
-                .with("setting", setting)
+        // 纠正后：render 只声明模板(+ 额外数据)，不要调用 .bladeExtends(getLayout())
+        // 布局由框架按 getLayout()/getWireLayout() 在渲染期通过 WireParentOverride 外部套用
+        return wireView("mdui.admin.admin.item", Map.of("setting", setting))
                 .title(setting != null ? "修改管理员信息" : "新增管理员信息");
     }
 
@@ -4082,42 +4082,22 @@ public class AdminController extends WireController {
 
     @Override
     protected String getWireLayout() {
-        return "layouts.mdui.form.dialog";
+        return "layouts.mdui.form";
     }
 
-    // mount: 仅首次 GET 调用，重建 setting 对象
+    // mount: 仅首次 GET 调用，参数为 Request（不是 Map）
     @Override
-    protected void mount(Map&lt;String, Object&gt; params) {
-        if (params != null && params.get("setting") instanceof Map) {
-            Map&lt;?, ?&gt; settingMap = (Map&lt;?, ?&gt;) params.get("setting");
-            Object id = settingMap.get("id");
-            if (id != null &amp;&amp; !id.toString().isEmpty()) {
-                setting = Admin.self().find(id.toString()).toObject();
-            } else {
-                setting = new Admin();
-                // 填充 setting Map 中的字段
-                Map&lt;String, Object&gt; fillData = new LinkedHashMap&lt;&gt;();
-                for (Map.Entry&lt;?, ?&gt; e : settingMap.entrySet()) {
-                    if (e.getKey() instanceof String) fillData.put((String) e.getKey(), e.getValue());
-                }
-                setting.fill(fillData);
-            }
-        } else if (params != null &amp;&amp; params.get("id") != null) {
-            setting = Admin.self().find(params.get("id").toString()).toObject();
-        } else if (setting == null) {
+    protected void mount(Request request) {
+        // 纠正后:mount 接收 Request,可读取 request.query()/input()/has()/uri()
+        if (request.has("id")) {
+            setting = Admin.self().find(request.get("id", "")).toObject();
+        } else {
             setting = new Admin();
         }
-        // 将 top-level params（表单提交的数据）也填入 setting
-        if (setting != null &amp;&amp; params != null) {
-            Map&lt;String, Object&gt; topLevelData = new LinkedHashMap&lt;&gt;();
-            for (Map.Entry&lt;String, Object&gt; entry : params.entrySet()) {
-                if (!"setting".equals(entry.getKey()) &amp;&amp; entry.getValue() != null) {
-                    topLevelData.put(entry.getKey(), entry.getValue());
-                }
-            }
-            if (!topLevelData.isEmpty()) setting.fill(topLevelData);
-        }
     }
+
+    // fill 是「赋值」：把键值对直接赋到本 Controller 的 public 属性（同名赋值，不覆盖其它字段）
+    // public void fill(String key, Object value) / fill(Map) 由框架提供，用户主动调用即可
 
     // refresh: 前端 Wire.refresh() 时重新从数据库加载
     @Override
@@ -4133,6 +4113,12 @@ public class AdminController extends WireController {
         wire().component("toast", Map.of("message", "保存成功", "type", "success"));
     }
 }</code></pre>
+<p><strong>单组件后台 CRUD：</strong>列表、新增、修改（对话框）、删除全部由同一个 <code>WireController</code> 组件承担，<b>路由只分 3 条</b>（不是 4 条）。<code>list</code>/<code>add</code>/<code>edit</code>/<code>delete</code>/<code>save</code> 都是组件内的普通方法，由前端 <code>wire:click</code> / <code>wire:submit</code> 触发，<b>不是</b>独立的 Route 方法：</p>
+<pre><code>Route.prefix("/admin").name("admin").group(() -> {
+    Route.get("/", "AdminController::index").name("index");
+    Route.get("/change", "AdminController::index").name("change.index"); // 直访 = 整页表单
+    Route.post("/change", "AdminController::update").name("change");     // wire 局部更新端点
+});</code></pre>
 </section>
 <section id="cat-json">
 <h3>json — JSON 编解码</h3>
