@@ -4,6 +4,7 @@ import com.weacsoft.jaravel.vendor.http.controller.Controllers;
 import com.weacsoft.jaravel.vendor.http.controller.request.Request;
 import com.weacsoft.jaravel.vendor.http.controller.response.Response;
 import com.weacsoft.jaravel.vendor.http.controller.response.ResponseBuilder;
+import com.weacsoft.jaravel.vendor.route.RouteHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,15 +30,27 @@ import java.util.function.Consumer;
  * <p>
  * 用户必须实现的:
  * <ul>
- *   <li>{@code protected abstract WireView render()} —— 返回模板和布局配置</li>
+ *   <li>{@code protected WireView render()} —— 通过 {@code wireView("模板名", Map)} 返回模板;
+ *       等价于 {@code ResponseBuilder.view("模板名", map)},且会自动把 Controller 的 public 属性
+ *       聚合进模板,无需手动 {@code .with()} 注入。</li>
  * </ul>
  * <p>
  * 用户可选实现的:
  * <ul>
- *   <li>{@code protected void mount(Map<String,String> params)} —— 初始化(仅首次 index)调用</li>
- *   <li>{@code protected void fill(Map<String,Object> data)} —— 批量赋值 public 属性</li>
+ *   <li>{@code protected void mount(Request request)} —— 初始化(仅首次 index() 调用),可读取 query/input</li>
+ *   <li>{@code protected void fill(String key, Object value)} / {@code fill(Map)} —— 把键值对直接赋值到
+ *       Controller 自己的 public 属性(等同于赋值,不做任何业务重写)</li>
+ *   <li>{@code protected void refresh(Map)} —— 每次 wire 更新后重新加载展示数据(如重新查库)</li>
  *   <li>{@code protected String getLayout()} —— 直访场景的父模板</li>
  *   <li>{@code protected String getWireLayout()} —— wire 场景的父模板(Dialog 等)</li>
+ *   <li>{@code protected String getUpdateRouteName()} —— 组件更新(POST)对应的路由名,
+ *       wire:config 的 data-wire-update 会指向该路由</li>
+ * </ul>
+ * <p>
+ * 内置 magic action(由前端 wire.js 自动发起,无需在子类声明方法):
+ * <ul>
+ *   <li>{@code $sync} —— wire:model 双向绑定同步,仅把字段合并进快照,不调用任何方法</li>
+ *   <li>{@code $refresh} —— 重新执行 {@link #refresh(Map)} 并刷新组件</li>
  * </ul>
  * <p>
  * 框架默认实现的(对接两条路由):
@@ -69,41 +82,49 @@ public abstract class WireController {
      * 初始化方法,仅在首次 index() 请求时调用一次。
      * <p>
      * 语义等价于 Livewire 的 mount():用于加载初始数据(如从数据库查询 Model)。
-     * 参数为 GET query 参数。子类可在其中通过 {@code fill(...)} 批量赋值。
+     * 参数为当前 {@link Request},子类可读取 {@code request.query()}/{@code request.input()} 等。
+     * 子类可在此通过 {@code fill(...)} 把数据赋值到 Controller 自己的 public 属性。
      *
-     * @param params GET query 参数
+     * @param request 当前 HTTP 请求
      */
-    protected void mount(Map<String, Object> params) {
+    protected void mount(Request request) {
     }
 
     /**
-     * 批量赋值 public 属性,参考 BaseModel.fill 的语义。
+     * 把单个键值对直接赋值到 Controller 自己的 public 属性。
      * <p>
-     * 默认可选实现,基于反射遍历 public 字段并调用 setter。
+     * 语义极其简单:等同于 {@code this.<key> = value}(按属性类型做基础类型转换)。
+     * 不做任何业务重写,也不递归处理嵌套对象。找不到对应 public 属性时静默忽略。
      *
-     * @param data 要赋值的键值对(键为字段名)
+     * @param key   属性名(区分大小写)
+     * @param value 属性值(为 null 时直接置 null)
+     */
+    protected void fill(String key, Object value) {
+        if (key == null || key.isEmpty()) return;
+        try {
+            Field f = findPublicField(this.getClass(), key);
+            if (f == null) return;
+            f.setAccessible(true);
+            if (value == null) {
+                f.set(this, null);
+            } else {
+                f.set(this, convertValue(value.toString(), f.getType()));
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    /**
+     * 批量赋值 public 属性,等价于对每一项调用 {@link #fill(String, Object)}。
+     * <p>
+     * 直接把传入的键值对赋值到 Controller 自己的 public 属性,等同于逐字段赋值。
+     *
+     * @param data 要赋值的键值对(键为属性名)
      */
     protected void fill(Map<String, Object> data) {
-        if (data == null || data.isEmpty()) return;
-        Set<String> locked = getLockedFields();
+        if (data == null) return;
         for (Map.Entry<String, Object> entry : data.entrySet()) {
-            String key = entry.getKey();
-            if (key == null || key.isEmpty() || locked.contains(key)) continue;
-            Object value = entry.getValue();
-            if (value == null) continue;
-            try {
-                Field f = findPublicField(this.getClass(), key);
-                if (f == null) continue;
-                f.setAccessible(true);
-                // 类型转换:全部先转 String
-                String strVal = value.toString();
-                Class<?> type = f.getType();
-                Object converted = convertValue(strVal, type);
-                if (converted != null) {
-                    f.set(this, converted);
-                }
-            } catch (Exception ignored) {
-            }
+            fill(entry.getKey(), entry.getValue());
         }
     }
 
@@ -142,12 +163,10 @@ public abstract class WireController {
     public Response index(Request request) {
         try {
             Map<String, Object> data = new LinkedHashMap<>();
-            // mount（仅首次加载时调用，重建嵌套对象如 Admin setting）
-            mount(request.query());
+            // mount（仅首次加载时调用,从 Request 加载初始数据并赋值到 public 属性）
+            mount(request);
             // 收集 public 属性
             collectPublicFields(data);
-            // fill（将 data 中的值赋给 public 字段）
-            fill(data);
             // render
             WireView view = render();
             Map<String, Object> renderData = view.getMergedData(data);
@@ -155,14 +174,14 @@ public abstract class WireController {
             String parentTemplate = useWireLayout(request) ? getWireLayout() : getLayout();
             String templateName = view.getTemplateName();
 
-            // 注册父模板覆盖
+            // 注册父模板覆盖(框架按 getLayout()/getWireLayout() 切换布局)
             if (parentTemplate != null && !parentTemplate.equals(view.getExtendsTemplate())) {
                 WireParentOverride.register(templateName, parentTemplate);
             }
             try {
                 // 渲染页面
                 String html = renderPage(templateName, parentTemplate, renderData);
-                // 编码快照(签名)
+                // 编码快照(签名,自动排除 @WireLocked 字段)
                 String snapshot = encodeSignedSnapshot(data, request);
                 // 构建 update URL
                 String updateUrl = buildUpdateUrl(request);
@@ -218,15 +237,30 @@ public abstract class WireController {
                 }
             }
 
-            // 调用 mount() 重建嵌套对象(如 Admin setting 从 Map→真实对象)
-            // 注意：update 时的 mount 只重建对象结构，不重新从数据库加载
-            // 子类应覆盖 refresh() 来重新从数据库加载最新数据
-            mount(data);
+            // 把解码后的快照(已合并 params)赋值到 Controller 自己的 public 属性
+            // (等价于把快照状态还原到当前组件实例,以便 action 方法读取)
+            fill(data);
 
-            // 反射调用 action 方法(所有参数视为 String)
+            // $sync:wire:model 双向绑定同步。仅把字段值合并进快照并重新签名返回,
+            // 不重渲染任何 section——否则整段 innerHTML 替换会把对话框/模态等局部组件
+            // 的 DOM 状态(如 mdui Dialog 的打开状态、光标焦点)冲掉。前端拿到新快照后
+            // 仅更新本地快照,不替换任何 DOM,从而保持对话框存活。
+            if ("$sync".equals(action)) {
+                Map<String, Object> synced = new LinkedHashMap<>(data);
+                collectPublicFields(synced);
+                String newSnapshot = encodeSignedSnapshot(synced, request);
+                Map<String, Object> result = new LinkedHashMap<>();
+                result.put("snapshot", newSnapshot);
+                return ResponseBuilder.json(result);
+            }
+
+            // 反射调用 action 方法(参数按声明类型自动转换)
             if (action != null && !action.isEmpty()) {
                 invokeAction(action, params);
             }
+
+            // 重新加载展示数据(子类覆盖 refresh 以重新查库,保持列表等数据最新)
+            refresh(params);
 
             // 重新收集 public 属性
             data = new LinkedHashMap<>(data);
@@ -246,6 +280,10 @@ public abstract class WireController {
 
             // 取走临时组件,并渲染其 HTML
             List<Map<String, Object>> components = renderComponents(WireEffects.drain());
+            // 取走 dispatch 事件(供前端 window.dispatchEvent 触发,如打开/关闭对话框)
+            List<Map<String, Object>> dispatches = WireEffects.drainDispatches();
+            // 计算重定向地址(整页表单保存成功后跳转)
+            String redirectUrl = getRedirectUrl(request);
 
             // 构建响应
             Map<String, Object> result = new LinkedHashMap<>();
@@ -255,7 +293,15 @@ public abstract class WireController {
             if (!components.isEmpty()) {
                 effects.put("components", components);
             }
-            result.put("effects", effects);
+            if (!dispatches.isEmpty()) {
+                effects.put("dispatch", dispatches);
+            }
+            if (redirectUrl != null && !redirectUrl.isEmpty()) {
+                effects.put("redirect", redirectUrl);
+            }
+            if (!effects.isEmpty()) {
+                result.put("effects", effects);
+            }
 
             return ResponseBuilder.json(result);
         } catch (TamperedSnapshotException e) {
@@ -277,7 +323,7 @@ public abstract class WireController {
      * 处理传统表单提交（无 wire_body 的 POST 请求）。
      * <p>
      * 当表单通过传统 method="post" 提交（而非 wire:submit）时走此路径：
-     * mount(request.all()) → invokeAction(getDefaultAction()) → redirect
+     * fill(request.all()) → invokeAction(getDefaultAction()) → redirect
      * <p>
      * 子类可覆盖 {@link #getDefaultAction()} 和 {@link #getRedirectUrl(Request)} 来自定义行为。
      *
@@ -293,7 +339,7 @@ public abstract class WireController {
         } catch (Exception e) {
             log.warn("收集表单数据失败", e);
         }
-        mount(formData);
+        // 表单字段为简单键值对,直接赋值到 Controller 自己的 public 属性
         fill(formData);
         // 调用默认 action（通常是 save）
         String defaultAction = getDefaultAction();
@@ -334,9 +380,27 @@ public abstract class WireController {
 
     /**
      * 创建一个 WireView 对象,用于 render() 返回。
+     * <p>
+     * 等价于 {@code ResponseBuilder.view(templateName, null)}:模板只接收 Controller 的
+     * public 属性(由框架自动聚合),无需手动注入额外数据。
      */
     protected WireView wireView(String templateName) {
         return new WireView(templateName);
+    }
+
+    /**
+     * 创建一个 WireView 对象并附带额外数据,用于 render() 返回。
+     * <p>
+     * 语义完全等同于 {@code ResponseBuilder.view("模板名", map)}:框架会把 Controller 自己的
+     * public 属性与这里的 {@code extra} 一起聚合进模板(extra 优先),无需使用 {@code .with()} 手动注入。
+     *
+     * @param templateName 模板名(如 "mdui.admin.admin.list")
+     * @param extra        额外渲染数据(可为 null;没有额外参数时直接传 null)
+     */
+    protected WireView wireView(String templateName, Map<String, Object> extra) {
+        WireView view = new WireView(templateName);
+        if (extra != null) view.with(extra);
+        return view;
     }
 
     /**
@@ -408,6 +472,11 @@ public abstract class WireController {
             refresh(params);
             return;
         }
+        if ("$sync".equals(action)) {
+            // wire:model 双向绑定的同步动作:仅把字段值合并进快照(已在 update() 中完成),
+            // 不调用任何 action 方法,刷新由 update() 统一处理。
+            return;
+        }
         if (action.startsWith("$")) {
             log.warn("未知 magic action: " + action);
             return;
@@ -428,7 +497,9 @@ public abstract class WireController {
             args = new Object[paramTypes.length];
             for (int i = 0; i < paramTypes.length; i++) {
                 Object val = params != null ? params.get(String.valueOf(i)) : null;
-                args[i] = val != null ? val.toString() : null;
+                // 按 action 方法声明的参数类型做基础转换(如 Long/Integer/Boolean),
+                // 使 wire:click="delete(1)" 能正确映射到 delete(Long id)。
+                args[i] = val != null ? convertValue(val.toString(), paramTypes[i]) : null;
             }
         }
         try {
@@ -493,12 +564,38 @@ public abstract class WireController {
         }
     }
 
+    /**
+     * 返回组件更新(POST)对应的 URL,即前端 wire.js 发起局部更新请求的目标地址。
+     * <p>
+     * 默认按 {@link #getUpdateRouteName()} 解析路由;若子类未指定路由名,则回退为当前请求 URI。
+     * <b>关键点</b>:列表页(GET {@code /admin})的更新必须指向 POST 端点(如 {@code /admin/change}),
+     * 而不是 GET 的 URI,否则 wire 局部更新会打到错误的地址。
+     */
     protected String buildUpdateUrl(Request request) {
+        try {
+            String name = getUpdateRouteName();
+            if (name != null && !name.isEmpty()) {
+                return RouteHelper.route(name);
+            }
+        } catch (Exception ignored) {
+        }
         try {
             return request.uri();
         } catch (Exception e) {
             return "/wire/update";
         }
+    }
+
+    /**
+     * 组件更新(POST)对应的路由名,供 {@link #buildUpdateUrl(Request)} 解析。
+     * <p>
+     * 子类应覆盖返回如 {@code "admin.admin.change"},使列表页的 wire:config 更新地址
+     * 指向正确的 POST 端点。默认返回 null(回退为当前 URI)。
+     *
+     * @return 路由别名,或 null
+     */
+    protected String getUpdateRouteName() {
+        return null;
     }
 
     private String renderPage(String templateName, String parentTemplate, Map<String, Object> data) {
@@ -518,7 +615,12 @@ public abstract class WireController {
     private static final String SESSION_KEY_NAME = "wire_key";
 
     private String encodeSignedSnapshot(Map<String, Object> data, Request request) {
-        String snapshot = WireManager.encodeSnapshot(data);
+        // 排除 @WireLocked 字段(如列表数据),避免把大型/派生数据塞进快照
+        Map<String, Object> filtered = new LinkedHashMap<>(data);
+        for (String locked : getLockedFields()) {
+            filtered.remove(locked);
+        }
+        String snapshot = WireManager.encodeSnapshot(filtered);
         String key = getOrCreateSessionKey(request);
         String signature = hmac(snapshot, key);
         return signature + ":" + snapshot;

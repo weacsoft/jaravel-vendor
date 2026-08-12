@@ -22,6 +22,9 @@ public final class WireEffects {
 
     private static final ThreadLocal<List<Map<String, Object>>> QUEUE = ThreadLocal.withInitial(ArrayList::new);
 
+    /** dispatch 事件队列:action 中通过 {@link #dispatch(String, Object)} 添加,随响应下发到前端触发 window 事件 */
+    private static final ThreadLocal<List<Map<String, Object>>> DISPATCH_QUEUE = ThreadLocal.withInitial(ArrayList::new);
+
     /**
      * 向当前请求的临时组件队列添加一个组件。
      *
@@ -44,6 +47,35 @@ public final class WireEffects {
     @SuppressWarnings("unchecked")
     public static List<Map<String, Object>> drain() {
         List<Map<String, Object>> list = QUEUE.get();
+        List<Map<String, Object>> result = new ArrayList<>(list);
+        list.clear();
+        return result;
+    }
+
+    /**
+     * 派发一个前端事件:更新响应会以 {@code effects.dispatch} 形式下发,
+     * 前端 wire.js 收到后执行 {@code window.dispatchEvent(new CustomEvent(name, {detail:data}))}。
+     * <p>
+     * 典型用途:在 action 中打开/关闭对话框(如 {@code WireEffects.dispatch("admin-dialog-open", null)})。
+     *
+     * @param name 事件名(前端需自行监听)
+     * @param data 事件负载(可为 null)
+     */
+    public static void dispatch(String name, Object data) {
+        if (name == null || name.isEmpty()) return;
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put("name", name);
+        entry.put("data", data);
+        DISPATCH_QUEUE.get().add(entry);
+    }
+
+    /**
+     * 取走当前请求的所有待派发事件,清空队列。
+     *
+     * @return 事件列表(每项含 name 和 data 字段)
+     */
+    public static List<Map<String, Object>> drainDispatches() {
+        List<Map<String, Object>> list = DISPATCH_QUEUE.get();
         List<Map<String, Object>> result = new ArrayList<>(list);
         list.clear();
         return result;
