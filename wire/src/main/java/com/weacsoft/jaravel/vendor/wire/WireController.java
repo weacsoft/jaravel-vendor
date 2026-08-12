@@ -42,8 +42,11 @@ import java.util.function.Consumer;
  *   <li>{@code protected void fill(String key, Object value)} / {@code fill(Map)} —— 把键值对直接赋值到
  *       Controller 自己的 public 属性(等同于赋值,不做任何业务重写)</li>
  *   <li>{@code protected void refresh(Map)} —— 每次 wire 更新后重新加载展示数据(如重新查库)</li>
- *   <li>{@code protected String getLayout()} —— 直访场景的父模板</li>
- *   <li>{@code protected String getWireLayout()} —— wire 场景的父模板(Dialog 等)</li>
+ *   <li>{@code protected String getLayout()} —— 直访/wire 场景统一的父模板;默认返回 null(不套布局)。
+ *       若返回非 null,则该值作为布局替换<b>所有</b>本组件渲染的模板(即整页父布局)。</li>
+ *   <li>{@code protected void setWireLayoutReplace(String template, String layout)} —— 模板级布局替换:
+ *       声明「当渲染名为 template 的模板时,用 layout 替换其 @extends」。可用于「判断到模板是 A,就用 B 换掉」的
+ *       Dialog 等场景。不同 action 展示的 component 可注册不同的替换逻辑(可多次调用)。</li>
  *   <li>{@code protected String getUpdateRouteName()} —— 组件更新(POST)对应的路由名,
  *       wire:config 的 data-wire-update 会指向该路由</li>
  * </ul>
@@ -65,12 +68,27 @@ public abstract class WireController {
     private static final Logger log = LoggerFactory.getLogger(WireController.class);
     private static final Set<String> WIRE_INTERNAL_METHODS = new HashSet<>(Arrays.asList(
             "index", "update", "render", "mount", "fill",
-            "getLayout", "getWireLayout", "getTemplateName",
+            "getLayout", "getTemplateName",
             "wire", "getPublicFields", "getLockedFields", "collectPublicFields",
             "invokeAction", "isWireRequest", "buildUpdateUrl",
             "renderPage", "renderSections", "renderWireSections",
             "getSessionKey", "encodeSignedSnapshot", "decodeSignedSnapshot", "hmac"
     ));
+
+    /**
+     * 当前请求实例,在 index()/update() 入口保存,供子类 action(如 save())通过
+     * {@link #isWireRequest()} 判断本次请求是否为 wire 局部更新请求。
+     */
+    protected Request currentRequest;
+
+    /**
+     * 模板级布局替换注册表(请求级 ThreadLocal)。
+     * 由 {@link #setWireLayoutReplace(String, String)} 写入,渲染模板时
+     * (index/update 的主渲染与临时组件渲染)若模板名命中则套用替换布局。
+     * 每请求处理完毕在 finally 中清除,避免跨请求泄漏(控制器多为 Spring 单例)。
+     */
+    private static final ThreadLocal<Map<String, String>> WIRE_LAYOUT_REPLACEMENTS =
+            ThreadLocal.withInitial(LinkedHashMap::new);
 
     /**
      * 子类实现的 render 方法返回的视图配置。
@@ -130,19 +148,50 @@ public abstract class WireController {
     }
 
     /**
-     * 直访场景的父模板。默认返回 null(表示不套布局)。
-     * 子类可覆盖返回如 "layouts.mdui.form"。
+     * 直访/wire 场景统一的父模板(布局)。
+     * <p>
+     * 默认返回 {@code null},表示不套用任何布局,直接渲染 {@code render()} 指定的模板。
+     * 子类可覆盖返回如 {@code "layouts.mdui.form"} 或 {@code "mdui.admin.main"}。
+     * <p>
+     * <b>语义(本框架约定)</b>:若返回非 null,则该布局会替换<b>所有</b>本组件渲染的模板
+     * (即作为整页父布局套用在 {@code render()} 的模板外层)。因此它对应「整个组件用什么布局」。
+     * 若只想针对「某个具体模板」做布局替换(例如把 item 模板换成 Dialog 布局),
+     * 请用 {@link #setWireLayoutReplace(String, String)} 而非本方法。
      */
     protected String getLayout() {
         return null;
     }
 
     /**
-     * wire 场景的父模板。默认同 getLayout()。
-     * 子类可覆盖返回如 "layouts.mdui.form.dialog"。
+     * 注册一个「模板级布局替换」规则:当渲染名为 {@code templateName} 的模板时,
+     * 用 {@code layoutName} 替换其 {@code @extends} 指定的父模板。
+     * <p>
+     * 设计意图(对应 Dialog 场景):「判断到模板是 A,就得用 B 把它换掉」。
+     * 例如 {@code setWireLayoutReplace("mdui.admin.admin.item", "layouts.mdui.form.dialog")}
+     * 表示:凡渲染 {@code mdui.admin.admin.item} 模板,一律套用 {@code layouts.mdui.form.dialog}
+     * 而非模板字面量里的 {@code @extends}。
+     * <p>
+     * <b>可多次调用</b>:不同 action 展示的 component 往往需要不同的替换逻辑,
+     * 因此在各 action 中分别注册即可(如 edit() 注册 Dialog 布局,其它 action 不注册)。
+     * 规则按模板名精确匹配,渲染对应模板时生效;不匹配的模板不受影响(仍走 getLayout() 或模板自身 @extends)。
+     *
+     * @param templateName 受影响的模板名(如 "mdui.admin.admin.item")
+     * @param layoutName   替换成的父布局模板名(如 "layouts.mdui.form.dialog")
      */
-    protected String getWireLayout() {
-        return getLayout();
+    protected void setWireLayoutReplace(String templateName, String layoutName) {
+        if (templateName != null && layoutName != null && !templateName.isEmpty() && !layoutName.isEmpty()) {
+            WIRE_LAYOUT_REPLACEMENTS.get().put(templateName, layoutName);
+        }
+    }
+
+    /**
+     * 查询某模板是否注册了布局替换规则。命中返回替换后的布局名,否则返回 null。
+     *
+     * @param templateName 模板名
+     * @return 替换布局名或 null
+     */
+    protected String getWireLayoutReplace(String templateName) {
+        return templateName == null ? null : WIRE_LAYOUT_REPLACEMENTS.get().get(templateName);
     }
 
     /**
@@ -163,6 +212,7 @@ public abstract class WireController {
      */
     public Response index(Request request) {
         try {
+            this.currentRequest = request;
             Map<String, Object> data = new LinkedHashMap<>();
             // mount（仅首次加载时调用,从 Request 加载初始数据并赋值到 public 属性）
             mount(request);
@@ -171,11 +221,11 @@ public abstract class WireController {
             // render
             WireView view = render();
             Map<String, Object> renderData = view.getMergedData(data);
-            // 判断 wire 场景
-            String parentTemplate = useWireLayout(request) ? getWireLayout() : getLayout();
+            // 布局:统一使用 getLayout()(直访/wire 同一套)。若返回非 null,则替换所有本组件模板的父布局。
+            String parentTemplate = getLayout();
             String templateName = view.getTemplateName();
 
-            // 注册父模板覆盖(框架按 getLayout()/getWireLayout() 切换布局)
+            // 注册父模板覆盖(框架按 getLayout() 切换布局)
             if (parentTemplate != null && !parentTemplate.equals(view.getExtendsTemplate())) {
                 WireParentOverride.register(templateName, parentTemplate);
             }
@@ -191,6 +241,7 @@ public abstract class WireController {
                 return ResponseBuilder.html(html);
             } finally {
                 WireParentOverride.clear();
+                WIRE_LAYOUT_REPLACEMENTS.remove();
             }
         } catch (Exception e) {
             log.error("WireController.index 失败: " + e.getMessage(), e);
@@ -205,6 +256,7 @@ public abstract class WireController {
      */
     public Response update(Request request) {
         try {
+            this.currentRequest = request;
             // 检测是否为 wire 请求（含 wire_body）
             String wireBody = null;
             try {
@@ -290,6 +342,9 @@ public abstract class WireController {
             if (redirectUrl == null || redirectUrl.isEmpty()) {
                 redirectUrl = getRedirectUrl(request);
             }
+            // 计算 URL 变更(pushState):action 中通过 WireEffects.pushUrl 指定,
+            // 前端仅用 history.pushState 改变地址栏(如点击「修改」后 URL 变深链),不刷新页面。
+            String pushUrl = WireEffects.drainPushUrl();
 
             // 构建响应
             Map<String, Object> result = new LinkedHashMap<>();
@@ -304,6 +359,9 @@ public abstract class WireController {
             }
             if (redirectUrl != null && !redirectUrl.isEmpty()) {
                 effects.put("redirect", redirectUrl);
+            }
+            if (pushUrl != null && !pushUrl.isEmpty()) {
+                effects.put("url", pushUrl);
             }
             if (!effects.isEmpty()) {
                 result.put("effects", effects);
@@ -322,6 +380,9 @@ public abstract class WireController {
                     "status", 500,
                     "message", "Wire 更新失败: " + e.getMessage()
             )));
+        } finally {
+            // 控制器多为 Spring 单例,请求级 ThreadLocal 必须显式清除,否则会泄漏到同线程的下一个请求。
+            WIRE_LAYOUT_REPLACEMENTS.remove();
         }
     }
 
@@ -352,9 +413,13 @@ public abstract class WireController {
         if (defaultAction != null && !defaultAction.isEmpty()) {
             invokeAction(defaultAction, formData);
         }
-        // 重定向
-        String redirectUrl = getRedirectUrl(request);
-        if (redirectUrl != null) {
+        // 重定向:优先使用 action 显式指定的(WireEffects.redirect,如 save 后跳回列表),
+        // 否则回退到 getRedirectUrl(Request)。传统表单(直接访问 /change 提交)走整页跳转,属正常行为。
+        String redirectUrl = WireEffects.drainRedirect();
+        if (redirectUrl == null || redirectUrl.isEmpty()) {
+            redirectUrl = getRedirectUrl(request);
+        }
+        if (redirectUrl != null && !redirectUrl.isEmpty()) {
             return ResponseBuilder.redirect(redirectUrl);
         }
         return ResponseBuilder.content("保存成功");
@@ -545,16 +610,34 @@ public abstract class WireController {
     }
 
     /**
-     * 判断当前请求是否应该使用 wire 布局。
+     * 判断当前请求是否应该使用「wire 交互」语义(对应原 getWireLayout 的触发场景)。
      * <p>
-     * 默认实现：对于 POST 请求（有 wire_body）返回 true，对于 GET 请求返回 false。
-     * 子类可覆盖此方法以改变行为，例如让所有请求都使用 wire 布局。
+     * 默认实现：判断请求是否携带 wire_body(POST)或 X-Wire-Request 头。
+     * 子类可覆盖此方法以改变行为，例如让所有请求都按 wire 处理。
+     * <p>
+     * 注意：本框架已不再区分 getLayout / getWireLayout 两套布局方法，
+     * 布局切换统一由 {@link #getLayout()}（替换所有本组件模板）与
+     * {@link #setWireLayoutReplace(String, String)}（按模板名替换）完成。
+     * 因此本方法仅用于「当前是不是 wire 局部更新」的语义判断（如 mount 期区分直访/交互）。
      *
      * @param request 当前请求
-     * @return true=使用 getWireLayout()，false=使用 getLayout()
+     * @return true=是 wire 请求
      */
     protected boolean useWireLayout(Request request) {
         return isWireRequest(request);
+    }
+
+    /**
+     * 判断当前请求是否为 wire 局部更新请求。
+     * <p>
+     * 基于 {@link #index(Request)} / {@link #update(Request)} 入口保存的
+     * {@link #currentRequest} 进行判断，供子类 action（如 save()）区分
+     * 「对话框内 wire 提交」与「直接访问表单的传统提交」并分别处理。
+     *
+     * @return true=当前请求是 wire 局部更新（带 wire_body / X-Wire-Request 头）
+     */
+    protected boolean isWireRequest() {
+        return currentRequest != null && isWireRequest(currentRequest);
     }
 
     private boolean isWireRequest(Request request) {
@@ -741,12 +824,13 @@ public abstract class WireController {
                 Map<String, Object> renderParams = new LinkedHashMap<>();
                 if (params != null) renderParams.putAll(params);
 
-                // 支持 __parent:渲染该组件时临时把子模板的父布局覆盖为指定布局
-                // (如 admin-form 组件用 layouts.mdui.form.dialog 包裹 item.jblade),
-                // 渲染完成后清除,避免污染同线程后续渲染。
-                Object parentOverride = renderParams.remove("__parent");
+                // 模板级布局替换:若本组件模板名命中 setWireLayoutReplace 注册的规则,
+                // 则用替换布局覆盖其 @extends(对应「判定到模板是 A,就用 B 换掉」的 Dialog 场景)。
+                // 规则由 action(如 edit()/add())在调用 wire().component(...) 前注册,
+                // 渲染该组件时生效,不影响其它未命中的模板。
+                String parentOverride = getWireLayoutReplace(templateName);
                 if (parentOverride != null) {
-                    WireParentOverride.register(templateName, String.valueOf(parentOverride));
+                    WireParentOverride.register(templateName, parentOverride);
                 }
                 try {
                     renderParams.put("wireId", compId);
@@ -754,12 +838,12 @@ public abstract class WireController {
                     // 保证单一根元素
                     html = ensureSingleRoot(html);
 
-                    // 组件快照:用 push 时传入的数据(去掉 __parent / wireId 等框架内部标记),
+                    // 组件快照:用 push 时传入的数据(去掉 wireId 等框架内部标记),
                     // 经 HMAC 签名,供前端回传后在 update() 中解码并 fill 到本控制器字段。
                     Map<String, Object> snapshotData = new LinkedHashMap<>();
                     if (params != null) {
                         for (Map.Entry<String, Object> e : params.entrySet()) {
-                            if (!"__parent".equals(e.getKey()) && !"wireId".equals(e.getKey())) {
+                            if (!"wireId".equals(e.getKey())) {
                                 snapshotData.put(e.getKey(), e.getValue());
                             }
                         }

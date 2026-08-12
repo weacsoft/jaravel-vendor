@@ -28,6 +28,10 @@ public final class WireEffects {
     /** 重定向地址队列:action 中通过 {@link #redirect(String)} 显式指定,使本次 update 响应携带 effects.redirect */
     private static final ThreadLocal<String> REDIRECT = ThreadLocal.withInitial(() -> null);
 
+    /** URL 变更队列:action 中通过 {@link #pushUrl(String)} 指定,使本次 update 响应携带 effects.url
+     *  (前端仅用 history.pushState 改变地址栏,不发起请求、不刷新页面)。对应「点击修改后 URL 变深链」场景。 */
+    private static final ThreadLocal<String> PUSH_URL = ThreadLocal.withInitial(() -> null);
+
     /**
      * 向当前请求的临时组件队列添加一个组件。
      *
@@ -91,6 +95,7 @@ public final class WireEffects {
         QUEUE.get().clear();
         DISPATCH_QUEUE.get().clear();
         REDIRECT.remove();
+        PUSH_URL.remove();
     }
 
     /**
@@ -117,5 +122,30 @@ public final class WireEffects {
         String r = REDIRECT.get();
         REDIRECT.remove();
         return r;
+    }
+
+    /**
+     * 请求一次 URL 变更:在 action 中调用,使本次 update 响应携带 {@code effects.url},
+     * 前端据此仅用 {@code history.pushState} 改变地址栏(生成可分享深链),不发起请求、不刷新页面。
+     * <p>
+     * 典型场景:列表点击「修改」后,地址栏变为 {@code /admin/admin/change?id=5} 而不重新加载页面。
+     * 与 {@link #redirect(String)} 的区别:redirect 会触发整页/透明导航跳转;pushUrl 只改地址栏文本。
+     *
+     * @param url 目标 URL(空值忽略)
+     */
+    public static void pushUrl(String url) {
+        if (url == null || url.isEmpty()) return;
+        PUSH_URL.set(url);
+    }
+
+    /**
+     * 取走本次请求的 URL 变更地址(无则 null),并清空。
+     *
+     * @return 变更后的 URL 或 null
+     */
+    public static String drainPushUrl() {
+        String u = PUSH_URL.get();
+        PUSH_URL.remove();
+        return u;
     }
 }
