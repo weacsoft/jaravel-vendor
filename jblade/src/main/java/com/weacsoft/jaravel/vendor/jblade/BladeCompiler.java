@@ -1043,8 +1043,16 @@ public class BladeCompiler {
                 if (!"component".equals(em.kind)) {
                     throw new IllegalStateException("模板 [" + templateName + "] @slot 只能出现在 @component 内");
                 }
-                String slotName = literalArg(PhpExpressionTranslator.splitTopLevel(args).get(0),
-                        templateName, "@slot");
+                List<String> slotParts = PhpExpressionTranslator.splitTopLevel(args);
+                String slotName = literalArg(slotParts.get(0), templateName, "@slot");
+                // @slot('name', $value) 标量形式：直接写入 slots map，不推入 Emitter 栈
+                if (slotParts.size() >= 2) {
+                    PhpExpressionTranslator.Expr valueExpr = translateExpr(slotParts.get(1), templateName);
+                    Emitter comp = emitters.peek();
+                    comp.code.append("        ").append(comp.slotsVar).append(".put(\"")
+                            .append(escapeJava(slotName)).append("\", ").append(valueExpr.asString()).append(");\n");
+                    return;
+                }
                 String slVar = nextVar("sl");
                 Emitter slot = new Emitter("slot", slotName, slVar);
                 emitters.push(slot);

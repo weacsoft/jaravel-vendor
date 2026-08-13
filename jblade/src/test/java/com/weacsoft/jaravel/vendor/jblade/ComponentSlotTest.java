@@ -96,4 +96,29 @@ class ComponentSlotTest {
         assertTrue(html.contains("DATA:[&lt;b&gt;data&lt;/b&gt;]"),
                 "用户显式传入的数据应被正常 HTML 转义: " + html);
     }
+
+    /** @slot 支持第二个参数：标量表达式直接赋值，不含多余空白字符 */
+    @Test
+    void slotWithExpressionValue() throws Exception {
+        Map<String, Object> data = Map.of("searchValue", "测试");
+        String out = render("comp-slot-expr-usage", data);
+        assertTrue(out.contains("测试"), "标量表达式应被正确传递: " + out);
+        assertFalse(out.contains(" |"), "value 不应包含多余空白: " + out);
+    }
+
+    /** @slot 第二个参数为空表达式时输出空字符串 */
+    @Test
+    void slotWithEmptyExpression() throws Exception {
+        String out = render("comp-slot-expr-usage", Map.of());
+        assertTrue(out.contains("<div class=\"slot-val\"></div>"), "空值应输出空字符串: " + out);
+    }
+
+    /** @slot 多参数形式与块形式可共存 */
+    @Test
+    void mixedSlotSyntax() throws Exception {
+        Map<String, Object> data = Map.of("title", "标题值", "content", "内容值");
+        String out = render("comp-slot-mixed-usage", data);
+        assertTrue(out.contains("标题值"), "标量 slot 应输出: " + out);
+        assertTrue(out.contains("内容值"), "标量 slot 应输出: " + out);
+    }
 }
