@@ -32,6 +32,10 @@ public final class WireEffects {
      *  (前端仅用 history.pushState 改变地址栏,不发起请求、不刷新页面)。对应「点击修改后 URL 变深链」场景。 */
     private static final ThreadLocal<String> PUSH_URL = ThreadLocal.withInitial(() -> null);
 
+    /** 返回 URL 队列:action 中通过 {@link #backUrl(String)} 指定,
+     * 使本次 update 响应携带 effects.backUrl(前端 dialog 取消时用于还原地址栏)。 */
+    private static final ThreadLocal<String> BACK_URL = ThreadLocal.withInitial(() -> null);
+
     /**
      * 向当前请求的临时组件队列添加一个组件。
      *
@@ -96,6 +100,7 @@ public final class WireEffects {
         DISPATCH_QUEUE.get().clear();
         REDIRECT.remove();
         PUSH_URL.remove();
+        BACK_URL.remove();
     }
 
     /**
@@ -147,5 +152,40 @@ public final class WireEffects {
         String u = PUSH_URL.get();
         PUSH_URL.remove();
         return u;
+    }
+
+    /**
+     * 设置「返回 URL」:在 action 中调用,使本次 update 响应携带 {@code effects.backUrl},
+     * 供前端 dialog 取消/关闭时用于还原地址栏(不发起请求、不刷新页面)。
+     * <p>
+     * 典型场景:点击「修改」后地址栏变为 /admin/admin/change?id=5,
+     * 取消时回到 /admin/admin。backUrl 由后端决定,前端只是消费,不与 dialog 模板耦合。
+     *
+     * @param url 返回列表页 URL(空值忽略)
+     */
+    public static void backUrl(String url) {
+        if (url == null || url.isEmpty()) return;
+        BACK_URL.set(url);
+    }
+
+    /**
+     * 取走本次请求的返回 URL(无则 null),并清空。
+     *
+     * @return 返回 URL 或 null
+     */
+    public static String drainBackUrl() {
+        String u = BACK_URL.get();
+        BACK_URL.remove();
+        return u;
+    }
+
+    /**
+     * 读取本次请求的返回 URL(不消耗,不清空)。
+     * 用于需要在多个位置读取但不想重复 drain 的场景。
+     *
+     * @return 返回 URL 或 null
+     */
+    public static String getBackUrl() {
+        return BACK_URL.get();
     }
 }

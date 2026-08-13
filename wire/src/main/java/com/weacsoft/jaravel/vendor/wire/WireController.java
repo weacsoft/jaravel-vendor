@@ -394,6 +394,16 @@ public abstract class WireController {
             // 计算 URL 变更(pushState):action 中通过 WireEffects.pushUrl 指定,
             // 前端仅用 history.pushState 改变地址栏(如点击「修改」后 URL 变深链),不刷新页面。
             String pushUrl = WireEffects.drainPushUrl();
+            // 计算返回 URL:优先使用 action 显式指定的(WireEffects.backUrl),
+            // 否则自动从当前请求 URI 推断(去掉最后一段路径)。
+            // 例如:请求 URI=/admin/admin/change → backUrl=/admin/admin
+            String backUrl = WireEffects.getBackUrl();
+            if (backUrl == null || backUrl.isEmpty()) {
+                backUrl = inferBackUrl(request);
+                if (backUrl != null && !backUrl.isEmpty()) {
+                    WireEffects.backUrl(backUrl); // 设置回 ThreadLocal 供 renderComponents 使用
+                }
+            }
 
             // 构建响应
             Map<String, Object> result = new LinkedHashMap<>();
@@ -411,6 +421,9 @@ public abstract class WireController {
             }
             if (pushUrl != null && !pushUrl.isEmpty()) {
                 effects.put("url", pushUrl);
+            }
+            if (backUrl != null && !backUrl.isEmpty()) {
+                effects.put("backUrl", backUrl);
             }
             if (!effects.isEmpty()) {
                 result.put("effects", effects);
@@ -724,6 +737,28 @@ public abstract class WireController {
     }
 
     /**
+     * 从当前请求 URI 推断「返回 URL」:去掉最后一段路径。
+     * 例如 /admin/admin/change → /admin/admin，/admin/admin/change?id=5 → /admin/admin。
+     */
+    private String inferBackUrl(Request request) {
+        try {
+            String uri = request.uri();
+            if (uri == null || uri.isEmpty() || uri.equals("/")) return null;
+            // 去掉 query string
+            int qIdx = uri.indexOf('?');
+            String path = qIdx >= 0 ? uri.substring(0, qIdx) : uri;
+            // 去掉尾斜杠
+            if (path.endsWith("/")) path = path.substring(0, path.length() - 1);
+            // 去掉最后一段
+            int lastSlash = path.lastIndexOf('/');
+            if (lastSlash <= 0) return null;  // 只有一级路径（如 /）或零级
+            return path.substring(0, lastSlash);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
      * 组件更新(POST)对应的路由名,供 {@link #buildUpdateUrl(Request)} 解析。
      * <p>
      * 子类应覆盖返回如 {@code "admin.admin.change"},使列表页的 wire:config 更新地址
@@ -905,6 +940,15 @@ public abstract class WireController {
                             + " wire:snapshot=\"" + escapeAttr(snapshot) + "\"></script>";
                     html = injectConfigIntoRoot(html, configScript);
 
+                    // 注入 data-wire-back-url:供前端 dialog 取消按钮读取,还原地址栏。
+                    // 由 action(edit/add)通过 WireEffects.backUrl() 指定,
+                    // 避免 dialog 模板写死返回 URL,与控制器逻辑彻底解耦。
+                    // 注意:drainBackUrl 是请求级一次性读取,这里调用后从 ThreadLocal 中取出。
+                    String backUrlAttr = WireEffects.drainBackUrl();
+                    if (backUrlAttr != null && !backUrlAttr.isEmpty()) {
+                        html = injectDataAttr(html, "data-wire-back-url", backUrlAttr);
+                    }
+
                     Map<String, Object> entry = new LinkedHashMap<>();
                     entry.put("name", name);
                     entry.put("params", renderParams);
@@ -927,6 +971,33 @@ public abstract class WireController {
     private static String escapeAttr(String s) {
         if (s == null) return "";
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
+    }
+
+    /**
+     * 在根元素的起始标签上追加一个自定义属性(data-wire-back-url)。
+     * <p>
+     * 先定位第一个非自闭合的起始标签,在其末尾插入属性,
+     * 例如 {@code <div class="mdui-dialog">} → {@code <div class="mdui-dialog" data-wire-back-url="/admin/admin">}。
+     */
+    private static String injectDataAttr(String html, String attrName, String attrValue) {
+        if (html == null || html.isEmpty()) return html;
+        String trimmed = html.trim();
+        if (!trimmed.startsWith("<")) return html + " " + attrName + "=\"" + escapeAttr(attrValue) + "\"";
+        int tagEnd = -1;
+        for (int i = 1; i < trimmed.length(); i++) {
+            char c = trimmed.charAt(i);
+            if (c == ' ' || c == '>' || c == '\t' || c == '\n' || c == '/') {
+                tagEnd = i;
+                break;
+            }
+        }
+        if (tagEnd <= 1) return html;
+        String rootTag = trimmed.substring(1, tagEnd);
+        if (rootTag.isEmpty() || !rootTag.matches("[a-zA-Z][a-zA-Z0-9]*")) return html;
+        // 跳过自闭合标签(/>)
+        if (trimmed.charAt(tagEnd - 1) == '/') return html;
+        String attr = " " + attrName + "=\"" + escapeAttr(attrValue) + "\"";
+        return trimmed.substring(0, tagEnd) + attr + trimmed.substring(tagEnd);
     }
 
     /**

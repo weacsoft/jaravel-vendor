@@ -520,8 +520,19 @@ public class SpringBootRouteAutoConfiguration {
     }
 
     private RequestPredicate createRoutePredicate(RouteDefinition route) {
-        return RequestPredicates.method(HttpMethod.valueOf(route.getMethod()))
-                .and(RequestPredicates.path(route.generateFullUri()));
+        String exactPath = route.generateFullUri();
+        RequestPredicate exact = RequestPredicates.method(HttpMethod.valueOf(route.getMethod()))
+                .and(RequestPredicates.path(exactPath));
+        // 允许带尾斜杠的请求也命中同一条路由(如 /admin/admin/ 也能匹配 /admin/admin 路由),
+        // 避免用户手动在 URL 末尾加 / 时返回 404。注意:不带尾斜杠的请求仍走 exact 路径,
+        // 不受影响。
+        if (exactPath.length() > 1) {
+            String slashPath = exactPath + "/";
+            RequestPredicate slash = RequestPredicates.method(HttpMethod.valueOf(route.getMethod()))
+                    .and(RequestPredicates.path(slashPath));
+            return exact.or(slash);
+        }
+        return exact;
     }
 
     private HandlerFunction<ServerResponse> createRouteFunction(RouteDefinition route, RouteAuthHandler routeAuthHandler) {
