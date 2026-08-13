@@ -9,6 +9,7 @@ import com.weacsoft.jaravel.vendor.captcha.generator.ClickCaptcha;
 import com.weacsoft.jaravel.vendor.captcha.generator.NumberCaptcha;
 import com.weacsoft.jaravel.vendor.captcha.generator.RotateCaptcha;
 import com.weacsoft.jaravel.vendor.captcha.generator.SliderCaptcha;
+import com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -139,40 +140,8 @@ public class CaptchaAutoConfiguration {
         return coreProps;
     }
 
-    /**
-     * 声明验证码模块的 Java 配置类可发布（{@code artisan vendor:publish --tag=captcha}）。
-     * <p>
-     * 发布后在业务工程生成 {@code config/CaptchaConfig.java}，用户可在此增删验证码类型、
-     * 注入自定义实现，做到各类型相互独立、可插拔。该声明与 {@code vendor:publish:static}
-     * （前端静态资源）完全隔离。
-     *
-     * @return 配置类发布声明
-     */
-    @Bean
-    @ConditionalOnClass(com.weacsoft.jaravel.vendor.core.publish.PublishableConfig.class)
-    @ConditionalOnMissingBean(CaptchaPublishableConfig.class)
-    public CaptchaPublishableConfig captchaPublishableConfig() {
-        return new CaptchaPublishableConfig();
-    }
-
-    /**
-     * 声明验证码模块自带的前端资源为可发布静态资源。
-     * <p>
-     * 仅在 classpath 中存在 core 模块的 {@code PublishableStatic} 时生效
-     * （core 在 captcha 中是 optional 依赖）。注册后可执行：
-     * <pre>
-     * artisan vendor:publish:static --tag=captcha
-     * </pre>
-     * 把 {@code jaravel-captcha.js}（零依赖前端库）发布到 {@code src/main/resources/static/}。
-     * <p>
-     * 该 Bean 只被 {@code vendor:publish:static} 消费，普通 {@code vendor:publish} 不会触发。
-     *
-     * @return 静态资源发布声明
-     */
-    @Bean
-    @ConditionalOnClass(com.weacsoft.jaravel.vendor.core.publish.PublishableStatic.class)
-    @ConditionalOnMissingBean(CaptchaStaticPublishable.class)
-    public CaptchaStaticPublishable captchaStaticPublishable() {
-        return new CaptchaStaticPublishable();
+    static {
+        PublishableRegistry.register(new CaptchaPublishableConfig());
+        PublishableRegistry.register(new CaptchaStaticPublishable());
     }
 }

@@ -1,6 +1,7 @@
 package com.weacsoft.jaravel.vendor.modelcache;
 
 import com.weacsoft.jaravel.vendor.cache.CacheManager;
+import com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -29,6 +30,10 @@ import org.springframework.context.annotation.Bean;
 @EnableConfigurationProperties(ModelCacheProperties.class)
 public class ModelCacheAutoConfiguration {
 
+    static {
+        PublishableRegistry.register(new ModelCachePublishableConfig());
+    }
+
     /**
      * 注册模型缓存服务 Bean。
      * <p>
@@ -46,19 +51,5 @@ public class ModelCacheAutoConfiguration {
     public ModelCacheService modelCacheService(CacheManager cacheManager,
                                                ModelCacheProperties properties) {
         return new ModelCacheService(cacheManager, properties);
-    }
-
-    /**
-     * 声明 model-cache 模块的可发布配置类，供 {@code artisan vendor:publish --tag=model-cache} 使用。
-     * <p>
-     * 仅声明元数据，不依赖 artisan 模块；未引入 artisan 时该 Bean 无人消费，无副作用。
-     *
-     * @return 可发布配置声明
-     */
-    @Bean
-    @ConditionalOnClass(com.weacsoft.jaravel.vendor.core.publish.PublishableConfig.class)
-    @ConditionalOnMissingBean(ModelCachePublishableConfig.class)
-    public ModelCachePublishableConfig modelCachePublishableConfig() {
-        return new ModelCachePublishableConfig();
     }
 }

@@ -4,6 +4,7 @@ import com.weacsoft.jaravel.vendor.artisan.ArtisanCommand;
 import com.weacsoft.jaravel.vendor.artisan.make.MakeCodeProperties;
 import com.weacsoft.jaravel.vendor.core.publish.Publishable;
 import com.weacsoft.jaravel.vendor.core.publish.PublishableConfig;
+import com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry;
 import com.weacsoft.jaravel.vendor.core.publish.PublishableStatic;
 import com.weacsoft.jaravel.vendor.core.publish.PublishType;
 
@@ -21,8 +22,11 @@ import java.util.Map;
 /**
  * {@code vendor:publish} 命令，对齐 Laravel 的 {@code php artisan vendor:publish}。
  * <p>
- * <b>统一扫描</b>容器中所有 {@link Publishable}（{@link PublishableConfig} 配置类源码 +
+ * <b>静态扫描</b>{@link PublishableRegistry} 中所有已注册的可发布项（{@link PublishableConfig} 配置类源码 +
  * {@link PublishableStatic} 静态前端资源），一次扫描、按需发布，不再区分两条命令。
+ * <p>
+ * 各模块通过 {@link PublishableRegistry#register(Publishable)} 注册自己的可发布项，
+ * 不需要任何 Spring Bean。
  *
  * <h3>用法</h3>
  * <pre>
@@ -35,16 +39,14 @@ import java.util.Map;
  * </pre>
  *
  * <h3>可选依赖说明</h3>
- * 本命令通过构造器接收 {@code List<Publishable>}，由 Spring 收集。
+ * 本命令通过 {@link PublishableRegistry} 扫描已注册的可发布项。
  * 若工程未引入任何声明了可发布项的模块，列表为空，命令只提示无可发布项，不会报错。
  */
 public class VendorPublishCommand extends ArtisanCommand {
 
-    private final List<Publishable> publishables;
     private final MakeCodeProperties properties;
 
-    public VendorPublishCommand(List<Publishable> publishables, MakeCodeProperties properties) {
-        this.publishables = publishables == null ? new ArrayList<>() : publishables;
+    public VendorPublishCommand(MakeCodeProperties properties) {
         this.properties = properties;
     }
 
@@ -60,6 +62,7 @@ public class VendorPublishCommand extends ArtisanCommand {
 
     @Override
     public int handle() {
+        List<Publishable> publishables = PublishableRegistry.list();
         if (publishables.isEmpty()) {
             warn("没有任何可发布项。");
             info("请确认已引入对应 jaravel 模块（如 jaravel-cache / jaravel-wire）。");
@@ -67,11 +70,11 @@ public class VendorPublishCommand extends ArtisanCommand {
         }
 
         if (hasOption("list")) {
-            printList();
+            printList(publishables);
             return 0;
         }
 
-        List<Publishable> targets = resolveTargets();
+        List<Publishable> targets = resolveTargets(publishables);
         if (targets == null) {
             return 1;
         }
@@ -107,28 +110,28 @@ public class VendorPublishCommand extends ArtisanCommand {
      *
      * @return null 表示参数非法（调用方返回失败码）；空列表表示无需写文件
      */
-    private List<Publishable> resolveTargets() {
+    private List<Publishable> resolveTargets(List<Publishable> all) {
         if (hasOption("all")) {
-            return new ArrayList<>(publishables);
+            return new ArrayList<>(all);
         }
 
         String tag = option("tag");
         if (tag != null && !tag.isEmpty() && !"true".equals(tag)) {
             if ("resources".equals(tag)) {
-                return filterByType(PublishType.RESOURCE);
+                return filterByType(all, PublishType.RESOURCE);
             }
             if ("config".equals(tag)) {
-                return filterByType(PublishType.CONFIG);
+                return filterByType(all, PublishType.CONFIG);
             }
             List<Publishable> matched = new ArrayList<>();
-            for (Publishable p : publishables) {
+            for (Publishable p : all) {
                 if (tag.equals(p.tag())) {
                     matched.add(p);
                 }
             }
             if (matched.isEmpty()) {
                 error("未知的 tag: " + tag);
-                info("可用的 tag: " + String.join(", ", tags())
+                info("可用的 tag: " + String.join(", ", tags(all))
                         + "（保留标签: resources=全部静态资源, config=全部配置类）");
                 return null;
             }
@@ -136,16 +139,16 @@ public class VendorPublishCommand extends ArtisanCommand {
         }
 
         // 未指定任何选项时，展示清单并提示用法，避免误覆盖用户文件
-        printList();
+        printList(all);
         info("");
         info("请使用 --all 发布全部；--tag=<标签> 发布指定模块；"
                 + "--tag=resources 发布静态资源；--tag=config 发布配置类。");
         return new ArrayList<>();
     }
 
-    private List<Publishable> filterByType(PublishType type) {
+    private List<Publishable> filterByType(List<Publishable> all, PublishType type) {
         List<Publishable> r = new ArrayList<>();
-        for (Publishable p : publishables) {
+        for (Publishable p : all) {
             if (p.type() == type) {
                 r.add(p);
             }
@@ -153,9 +156,9 @@ public class VendorPublishCommand extends ArtisanCommand {
         return r;
     }
 
-    private List<String> tags() {
+    private List<String> tags(List<Publishable> all) {
         List<String> t = new ArrayList<>();
-        for (Publishable p : publishables) {
+        for (Publishable p : all) {
             if (!t.contains(p.tag())) {
                 t.add(p.tag());
             }
@@ -163,9 +166,9 @@ public class VendorPublishCommand extends ArtisanCommand {
         return t;
     }
 
-    private void printList() {
+    private void printList(List<Publishable> all) {
         Map<String, List<Publishable>> grouped = new LinkedHashMap<>();
-        for (Publishable p : publishables) {
+        for (Publishable p : all) {
             grouped.computeIfAbsent(p.tag(), k -> new ArrayList<>()).add(p);
         }
 

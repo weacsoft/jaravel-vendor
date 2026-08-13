@@ -1,5 +1,6 @@
 package com.weacsoft.jaravel.vendor.event;
 
+import com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -24,6 +25,9 @@ import org.springframework.context.annotation.Bean;
 @ConditionalOnClass(Dispatcher.class)
 @EnableConfigurationProperties(EventProperties.class)
 public class EventAutoConfiguration {
+    static {
+        PublishableRegistry.register(new QueuePublishableConfig());
+    }
 
     /**
      * 注册队列管理器，按配置初始化默认线程池大小、各队列大小覆盖与重试参数。
@@ -71,20 +75,5 @@ public class EventAutoConfiguration {
     @ConditionalOnMissingBean(EventListenerRegistrar.class)
     public EventListenerRegistrar eventListenerRegistrar(Dispatcher dispatcher, ApplicationContext applicationContext) {
         return new EventListenerRegistrar(dispatcher, applicationContext);
-    }
-
-    /**
-     * 声明 queue 模块的可发布配置类，供 {@code artisan vendor:publish --tag=queue} 使用。
-     * <p>
-     * 置于 event 基础模块（队列原始功能所在），不依赖 queue-database，
-     * 因此只要引入框架基础即可发布队列配置。仅声明元数据，不依赖 artisan 模块；
-     * 未引入 artisan 时该 Bean 无人消费，无副作用。
-     *
-     * @return 可发布配置
-     */
-    @Bean
-    @ConditionalOnMissingBean
-    public QueuePublishableConfig queuePublishableConfig() {
-        return new QueuePublishableConfig();
     }
 }

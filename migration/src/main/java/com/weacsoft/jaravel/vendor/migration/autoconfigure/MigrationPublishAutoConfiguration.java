@@ -1,10 +1,6 @@
 package com.weacsoft.jaravel.vendor.migration.autoconfigure;
 
-import com.weacsoft.jaravel.vendor.core.publish.PublishableConfig;
-import org.springframework.boot.autoconfigure.AutoConfiguration;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.context.annotation.Bean;
+import com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry;
 
 /**
  * migration 模块「发布配置」自动装配。
@@ -20,23 +16,12 @@ import org.springframework.context.annotation.Bean;
  * {@code MigrationConfig.java} 模板，与「迁移运行期是否启用」是两回事。
  * 关闭自动迁移的工程同样需要这份配置模板来声明迁移目录、迁移源模式等。
  * <p>
- * 因此本类<b>只保留 {@code @ConditionalOnClass(PublishableConfig.class)} 这一个条件</b>，
- * 不含任何运行时条件，确保任何情况下都能执行 {@code artisan vendor:publish --tag=migration}。
+ * 因此本类使用静态注册表，确保任何情况下都能执行
+ * {@code artisan vendor:publish --tag=migration}。
  */
-@AutoConfiguration
-@ConditionalOnClass(PublishableConfig.class)
+@org.springframework.boot.autoconfigure.AutoConfiguration
 public class MigrationPublishAutoConfiguration {
-
-    /**
-     * 声明 migration 模块的可发布配置类，供 {@code artisan vendor:publish --tag=migration} 使用。
-     * <p>
-     * 仅声明元数据，不依赖 artisan 模块；未引入 artisan 时该 Bean 无人消费，无副作用。
-     *
-     * @return 可发布配置声明
-     */
-    @Bean
-    @ConditionalOnMissingBean(MigrationPublishableConfig.class)
-    public MigrationPublishableConfig migrationPublishableConfig() {
-        return new MigrationPublishableConfig();
+    static {
+        PublishableRegistry.register(new MigrationPublishableConfig());
     }
 }

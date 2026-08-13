@@ -1,5 +1,6 @@
 package com.weacsoft.jaravel.vendor.springboot;
 
+import com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry;
 import com.weacsoft.jaravel.vendor.json.Jackson2JsonCodec;
 import com.weacsoft.jaravel.vendor.json.Jackson3JsonCodec;
 import com.weacsoft.jaravel.vendor.json.JsonCodec;
@@ -46,18 +47,7 @@ public class JsonCodecAutoConfiguration {
         return codec;
     }
 
-    /**
-     * 声明 json 模块的可发布配置类，供 {@code artisan vendor:publish --tag=json} 使用。
-     * <p>
-     * json 模块零 Spring 依赖且被 core 反向依赖，无法在其内部实现
-     * {@code PublishableConfig}（会造成 Maven 循环依赖），故在此声明。
-     *
-     * @return 可发布配置声明
-     */
-    @Bean
-    @ConditionalOnClass(com.weacsoft.jaravel.vendor.core.publish.PublishableConfig.class)
-    @ConditionalOnMissingBean(JsonPublishableConfig.class)
-    public JsonPublishableConfig jsonPublishableConfig() {
-        return new JsonPublishableConfig();
+    static {
+        PublishableRegistry.register(new JsonPublishableConfig());
     }
 }

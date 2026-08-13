@@ -1,5 +1,6 @@
 package com.weacsoft.jaravel.vendor.queue.database;
 
+import com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry;
 import com.weacsoft.jaravel.vendor.core.queue.QueueDriver;
 import com.weacsoft.jaravel.vendor.core.queue.RegisterQueueDriver;
 import com.weacsoft.jaravel.vendor.core.queue.QueueDriverHolder;
@@ -156,17 +157,7 @@ public class QueueDatabaseAutoConfiguration {
         return new DatabaseQueueDispatcher(driver, applicationContext);
     }
 
-    /**
-     * 声明 queue-database 模块的可发布配置类，供 {@code artisan vendor:publish --tag=queue-database} 使用。
-     * <p>
-     * 仅声明元数据，不依赖 artisan 模块；未引入 artisan 时该 Bean 无人消费，无副作用。
-     *
-     * @return 可发布配置声明
-     */
-    @Bean
-    @ConditionalOnClass(com.weacsoft.jaravel.vendor.core.publish.PublishableConfig.class)
-    @ConditionalOnMissingBean(QueueDatabasePublishableConfig.class)
-    public QueueDatabasePublishableConfig queueDatabasePublishableConfig() {
-        return new QueueDatabasePublishableConfig();
+    static {
+        PublishableRegistry.register(new QueueDatabasePublishableConfig());
     }
 }

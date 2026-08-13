@@ -7,6 +7,7 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.ApplicationContext;
+import com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 
@@ -29,6 +30,9 @@ import java.util.Map;
  */
 @AutoConfiguration
 public class DatabaseAutoConfiguration {
+    static {
+        PublishableRegistry.register(new DatabasePublishableConfig());
+    }
 
     /**
      * 注册 {@code @RegisterConnection} 扫描器。
@@ -72,19 +76,6 @@ public class DatabaseAutoConfiguration {
     @ConditionalOnMissingBean(javax.sql.DataSource.class)
     public JaravelDataSource jaravelDataSource() {
         return new JaravelDataSource();
-    }
-
-    /**
-     * 声明 {@code config/DatabaseConfig.java} 为可发布配置。
-     * <p>
-     * 使 {@code artisan vendor:publish --tag=database} 能发布数据库配置类。
-     *
-     * @return 可发布配置模板
-     */
-    @Bean
-    @ConditionalOnMissingBean(DatabasePublishableConfig.class)
-    public DatabasePublishableConfig databasePublishableConfig() {
-        return new DatabasePublishableConfig();
     }
 
     /**

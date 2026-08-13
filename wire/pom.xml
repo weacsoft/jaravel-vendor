@@ -21,6 +21,10 @@
         </dependency>
         <dependency>
             <groupId>io.github.lijialong1313</groupId>
+            <artifactId>core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
             <artifactId>http</artifactId>
         </dependency>
         <dependency>

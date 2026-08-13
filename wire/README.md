@@ -2,7 +2,7 @@
 
 > Jaravel-Vendor 的全栈响应式 UI 框架模块，实现 Laravel Livewire 风格的服务端渲染 + 前端局部更新。包名统一为 `com.weacsoft.jaravel.vendor.wire`。
 >
-> **统一使用 `WireController` 抽象基类**（Livewire 风格全页组件）。旧的 `WireService` 流式 API 及其配套章节已删除（`WireResponse` 保留为兼容层，仅旧代码迁移用，新代码不要使用）。
+> **统一使用 `WireController` 抽象基类**（Livewire 风格全页组件）。旧的流式 API（`WireService`/`WireResponse`）已全部删除，新代码请使用 `WireController`。
 
 ---
 
@@ -333,7 +333,7 @@ public class AdminController extends WireController {
 
 针对「与主数据无关、生命周期短、可能多实例并存」的临时 UI，wire 模块提供一套独立于 section 体系的**命名组件**机制（由 `WireOutlet` 中间件 + `wire-component.js` 前端运行时承接，详见 wire 模块的 `WireOutlet`/`WireComponents` 相关源码）：
 
-- **后端一行下发**：`wire().component("name", params)`（WireController 内）或 `WireResponse.withComponent(...)`（兼容层）。
+- **后端一行下发**：`wire().component("name", params)`（WireController 内）。
 - **模板注册**：全局命名组件在 `application.yml` 的 `jaravel.wire.components` 注册（组件名 → 模板名），如 `toast: components.toast`、`confirm: components.confirm`。与控制器绑定的业务组件（对话框等）**不在此注册**，用 `wireComponents()` 声明。
 - **四条下发路径统一**：首屏 HTML bootstrap、Wire 更新 `effects.components`、组件内嵌套下发——共用同一队列与渲染器。
 - **生命周期**：`onCreate → onStart → onStop → onDestroy`，`wire.stop()` 主动结束实例，多实例 id 隔离（`wc-{name}-{seq}`），脚本按实例独立闭包求值。

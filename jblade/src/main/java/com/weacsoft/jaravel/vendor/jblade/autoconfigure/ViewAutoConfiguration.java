@@ -2,6 +2,7 @@ package com.weacsoft.jaravel.vendor.jblade.autoconfigure;
 
 import com.weacsoft.jaravel.vendor.cache.CacheManager;
 import com.weacsoft.jaravel.vendor.cache.CacheStore;
+import com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry;
 import com.weacsoft.jaravel.vendor.core.view.View;
 import com.weacsoft.jaravel.vendor.jblade.view.BladeView;
 import com.weacsoft.jaravel.vendor.jblade.view.RegisterView;
@@ -35,6 +36,9 @@ import org.springframework.core.annotation.AnnotationUtils;
  */
 @Configuration
 public class ViewAutoConfiguration {
+    static {
+        PublishableRegistry.register(new JbladePublishableConfig());
+    }
 
     private static final Logger log = LoggerFactory.getLogger(ViewAutoConfiguration.class);
 
@@ -94,20 +98,6 @@ public class ViewAutoConfiguration {
         log.info("[view] 默认 View 实现: {}",
                 defaultView == null ? "<none>" : defaultView.name());
         return manager;
-    }
-
-    /**
-     * 声明 jblade 模块的可发布配置类，供 {@code artisan vendor:publish --tag=jblade} 使用。
-     * <p>
-     * 仅声明元数据，不依赖 artisan 模块；未引入 artisan 时该 Bean 无人消费，无副作用。
-     *
-     * @return 可发布配置声明
-     */
-    @Bean
-    @ConditionalOnClass(com.weacsoft.jaravel.vendor.core.publish.PublishableConfig.class)
-    @ConditionalOnMissingBean(JbladePublishableConfig.class)
-    public JbladePublishableConfig jbladePublishableConfig() {
-        return new JbladePublishableConfig();
     }
 
     private CacheStore resolveCacheStore(ObjectProvider<CacheManager> cacheManagerProvider) {

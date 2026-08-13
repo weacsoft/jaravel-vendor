@@ -170,15 +170,8 @@ public class CacheAutoConfiguration {
         return new CacheStoreRegistrar(context, cacheManager);
     }
 
-    /**
-     * 声明 cache 模块的可发布配置类，供 {@code artisan vendor:publish --tag=cache} 使用。
-     * <p>
-     * 仅声明元数据，不依赖 artisan 模块；未引入 artisan 时该 Bean 无人消费，无副作用。
-     */
-    @Bean
-    @ConditionalOnMissingBean(CachePublishableConfig.class)
-    public CachePublishableConfig cachePublishableConfig() {
-        return new CachePublishableConfig();
+    static {
+        com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry.register(new CachePublishableConfig());
     }
 
     /**

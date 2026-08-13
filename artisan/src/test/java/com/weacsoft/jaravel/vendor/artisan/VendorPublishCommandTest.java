@@ -4,6 +4,7 @@ import com.weacsoft.jaravel.vendor.artisan.make.MakeCodeProperties;
 import com.weacsoft.jaravel.vendor.artisan.vendor.VendorPublishCommand;
 import com.weacsoft.jaravel.vendor.core.publish.Publishable;
 import com.weacsoft.jaravel.vendor.core.publish.PublishableConfig;
+import com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry;
 import com.weacsoft.jaravel.vendor.core.publish.PublishableStatic;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -52,6 +53,7 @@ class VendorPublishCommandTest {
         properties.setBasePackage("com.example.test");
         properties.setOutputDir(tempDir.toString());
         properties.setResourcesDir(tempDir.resolve("resources").toString());
+        PublishableRegistry.clearForTest();
     }
 
     /** 配置类应发布到 {@code <outputDir>/com/example/test/config/}。 */
@@ -67,8 +69,8 @@ class VendorPublishCommandTest {
     /**
      * 构造命令并注入解析后的选项。
      */
-    private VendorPublishCommand command(List<Publishable> items, String... optionKeys) {
-        VendorPublishCommand cmd = new VendorPublishCommand(items, properties);
+    private VendorPublishCommand command(String... optionKeys) {
+        VendorPublishCommand cmd = new VendorPublishCommand(properties);
         Map<String, String> options = new LinkedHashMap<>();
         for (String key : optionKeys) {
             int eq = key.indexOf('=');
@@ -136,10 +138,10 @@ class VendorPublishCommandTest {
 
     @Test
     void testPublishAll() throws IOException {
-        int code = command(List.of(
-                stub("cache", "CacheConfig"),
-                staticStub("captcha", "static/x.js", "static/x.js", "console.log(1)".getBytes(StandardCharsets.UTF_8))
-        ), "all").handle();
+        PublishableRegistry.register(stub("cache", "CacheConfig"));
+        PublishableRegistry.register(staticStub("captcha", "static/x.js", "static/x.js", "console.log(1)".getBytes(StandardCharsets.UTF_8)));
+
+        int code = command("all").handle();
 
         assertEquals(0, code);
         assertTrue(Files.exists(configDir().resolve("CacheConfig.java")), "配置类应被发布");
@@ -152,10 +154,10 @@ class VendorPublishCommandTest {
 
     @Test
     void testPublishByTag() {
-        int code = command(List.of(
-                stub("cache", "CacheConfig"),
-                stub("storage", "StorageConfig")
-        ), "tag=cache").handle();
+        PublishableRegistry.register(stub("cache", "CacheConfig"));
+        PublishableRegistry.register(stub("storage", "StorageConfig"));
+
+        int code = command("tag=cache").handle();
 
         assertEquals(0, code);
         assertTrue(Files.exists(configDir().resolve("CacheConfig.java")));
@@ -165,11 +167,11 @@ class VendorPublishCommandTest {
 
     @Test
     void testPublishResourcesTag() throws IOException {
-        int code = command(List.of(
-                stub("cache", "CacheConfig"),
-                staticStub("captcha", "static/x.js", "static/x.js", "A".getBytes(StandardCharsets.UTF_8)),
-                staticStub("wire", "static/wire.js", "static/wire.js", "B".getBytes(StandardCharsets.UTF_8))
-        ), "tag=resources").handle();
+        PublishableRegistry.register(stub("cache", "CacheConfig"));
+        PublishableRegistry.register(staticStub("captcha", "static/x.js", "static/x.js", "A".getBytes(StandardCharsets.UTF_8)));
+        PublishableRegistry.register(staticStub("wire", "static/wire.js", "static/wire.js", "B".getBytes(StandardCharsets.UTF_8)));
+
+        int code = command("tag=resources").handle();
 
         assertEquals(0, code);
         assertFalse(Files.exists(configDir().resolve("CacheConfig.java")), "--tag=resources 不应发布配置类");
@@ -179,10 +181,10 @@ class VendorPublishCommandTest {
 
     @Test
     void testPublishConfigTag() throws IOException {
-        int code = command(List.of(
-                stub("cache", "CacheConfig"),
-                staticStub("captcha", "static/x.js", "static/x.js", "A".getBytes(StandardCharsets.UTF_8))
-        ), "tag=config").handle();
+        PublishableRegistry.register(stub("cache", "CacheConfig"));
+        PublishableRegistry.register(staticStub("captcha", "static/x.js", "static/x.js", "A".getBytes(StandardCharsets.UTF_8)));
+
+        int code = command("tag=config").handle();
 
         assertEquals(0, code);
         assertTrue(Files.exists(configDir().resolve("CacheConfig.java")), "--tag=config 应发布配置类");
@@ -191,7 +193,8 @@ class VendorPublishCommandTest {
 
     @Test
     void testUnknownTagFails() {
-        int code = command(List.of(stub("cache", "CacheConfig")), "tag=nope").handle();
+        PublishableRegistry.register(stub("cache", "CacheConfig"));
+        int code = command("tag=nope").handle();
         assertEquals(1, code, "未知 tag 应返回失败码");
     }
 
@@ -201,7 +204,8 @@ class VendorPublishCommandTest {
         Path target = configDir().resolve("CacheConfig.java");
         Files.writeString(target, "// 用户已修改的内容", StandardCharsets.UTF_8);
 
-        int code = command(List.of(stub("cache", "CacheConfig")), "all").handle();
+        PublishableRegistry.register(stub("cache", "CacheConfig"));
+        int code = command("all").handle();
 
         assertEquals(0, code);
         assertEquals("// 用户已修改的内容", Files.readString(target, StandardCharsets.UTF_8),
@@ -214,7 +218,8 @@ class VendorPublishCommandTest {
         Path target = configDir().resolve("CacheConfig.java");
         Files.writeString(target, "// 旧内容", StandardCharsets.UTF_8);
 
-        int code = command(List.of(stub("cache", "CacheConfig")), "all", "force").handle();
+        PublishableRegistry.register(stub("cache", "CacheConfig"));
+        int code = command("all", "force").handle();
 
         assertEquals(0, code);
         assertTrue(Files.readString(target, StandardCharsets.UTF_8).contains("class CacheConfig"),
@@ -223,7 +228,8 @@ class VendorPublishCommandTest {
 
     @Test
     void testListDoesNotWriteFiles() {
-        int code = command(List.of(stub("cache", "CacheConfig")), "list").handle();
+        PublishableRegistry.register(stub("cache", "CacheConfig"));
+        int code = command("list").handle();
 
         assertEquals(0, code);
         assertFalse(Files.exists(configDir().resolve("CacheConfig.java")),
@@ -232,7 +238,8 @@ class VendorPublishCommandTest {
 
     @Test
     void testNoOptionsDoesNotWriteFiles() {
-        int code = command(List.of(stub("cache", "CacheConfig"))).handle();
+        PublishableRegistry.register(stub("cache", "CacheConfig"));
+        int code = command().handle();
 
         assertEquals(0, code);
         assertFalse(Files.exists(configDir().resolve("CacheConfig.java")),
@@ -241,6 +248,6 @@ class VendorPublishCommandTest {
 
     @Test
     void testEmptyPublishablesExitsGracefully() {
-        assertEquals(0, command(List.of(), "all").handle());
+        assertEquals(0, command("all").handle());
     }
 }

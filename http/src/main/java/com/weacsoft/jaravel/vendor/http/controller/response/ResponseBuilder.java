@@ -86,9 +86,7 @@ public class ResponseBuilder {
         };
     }
 
-    // ===== Wire 方法已迁移到 WireResponse =====
-    // 请使用 WireResponse.wire() / WireResponse.update() / WireResponse.redirect() / WireResponse.error()
-    // WireResponse 位于 wire 模块，直接调用 WireManager 无需反射。
+    // Wire 功能由 wire 模块的 WireController / WireManager 提供
 
     public static Response json(Object data) {
         return new AbstractResponse() {

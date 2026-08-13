@@ -1,5 +1,6 @@
 package com.weacsoft.jaravel.vendor.wire.springboot;
 
+import com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry;
 import com.weacsoft.jaravel.vendor.wire.WireManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,6 +44,8 @@ public class WireAutoConfiguration {
                 WireManager.registerComponentTemplate(entry.getKey(), entry.getValue());
             }
         }
+        // 静态注册 wire.js 为可发布资源
+        PublishableRegistry.register(new WireStaticPublishable());
         log.info("Wire 模块已初始化：autoInjectJs={}, jsPath={}, excludedSections={}, components={}",
                 properties.isAutoInjectJs(), properties.getJsPath(),
                 properties.getExcludedSections(), properties.getComponents());

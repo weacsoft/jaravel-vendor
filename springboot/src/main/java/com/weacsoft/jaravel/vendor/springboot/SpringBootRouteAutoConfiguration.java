@@ -1,5 +1,6 @@
 package com.weacsoft.jaravel.vendor.springboot;
 
+import com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry;
 import com.weacsoft.jaravel.vendor.http.controller.ControllerRegistry;
 import com.weacsoft.jaravel.vendor.http.controller.Controllers;
 import com.weacsoft.jaravel.vendor.http.controller.request.Request;
@@ -82,6 +83,10 @@ public class SpringBootRouteAutoConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(SpringBootRouteAutoConfiguration.class);
 
+    static {
+        PublishableRegistry.register(new ViewPublishableConfig());
+    }
+
     @Bean
     @ConditionalOnMissingBean
     public Router baseRouter(HttpProperties httpProperties) {
@@ -124,17 +129,6 @@ public class SpringBootRouteAutoConfiguration {
     @ConditionalOnMissingBean
     public BladeDirectiveRegistrar bladeDirectiveRegistrar(ApplicationContext applicationContext) {
         return new BladeDirectiveRegistrar(applicationContext);
-    }
-
-    /**
-     * 声明视图模块的可发布配置类，供 {@code artisan vendor:publish --tag=view} 使用。
-     * <p>
-     * 仅声明元数据，不依赖 artisan 模块；未引入 artisan 时该 Bean 无人消费，无副作用。
-     */
-    @Bean
-    @ConditionalOnMissingBean
-    public ViewPublishableConfig viewPublishableConfig() {
-        return new ViewPublishableConfig();
     }
 
     /**

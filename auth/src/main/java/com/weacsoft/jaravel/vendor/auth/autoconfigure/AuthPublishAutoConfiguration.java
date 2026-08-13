@@ -1,10 +1,7 @@
 package com.weacsoft.jaravel.vendor.auth.autoconfigure;
 
 import com.weacsoft.jaravel.vendor.auth.AuthManager;
-import org.springframework.boot.autoconfigure.AutoConfiguration;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.context.annotation.Bean;
+import com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry;
 
 /**
  * auth 模块「可发布配置」的自动装配。
@@ -15,20 +12,13 @@ import org.springframework.context.annotation.Bean;
  * 会导致 {@code vendor:publish} 找不到 auth 的可发布配置。
  * <p>
  * 本类不带 Web 条件，因此命令行模式下同样可用。
- * 它只声明一个纯元数据 Bean，不引入任何运行期开销。
+ * 通过 {@link PublishableRegistry} 静态注册，不引入任何运行期开销。
  */
-@AutoConfiguration
-@ConditionalOnClass(AuthManager.class)
+@org.springframework.boot.autoconfigure.AutoConfiguration
+@org.springframework.boot.autoconfigure.condition.ConditionalOnClass(AuthManager.class)
 public class AuthPublishAutoConfiguration {
 
-    /**
-     * 声明 auth 模块的可发布配置类，供 {@code artisan vendor:publish --tag=auth} 使用。
-     * <p>
-     * 仅声明元数据，不依赖 artisan 模块；未引入 artisan 时该 Bean 无人消费，无副作用。
-     */
-    @Bean
-    @ConditionalOnMissingBean
-    public AuthPublishableConfig authPublishableConfig() {
-        return new AuthPublishableConfig();
+    static {
+        PublishableRegistry.register(new AuthPublishableConfig());
     }
 }

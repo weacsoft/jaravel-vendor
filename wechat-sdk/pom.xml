@@ -20,6 +20,11 @@
             <groupId>io.github.lijialong1313</groupId>
             <artifactId>cache</artifactId>
         </dependency>
+        <!-- 内部模块：core（PublishableConfig 静态注册） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>core</artifactId>
+        </dependency>
         <!-- 内部模块：utils（SimpleMemoryCache fallback 基础设施，CacheManager.createDefaultStore() 依赖） -->
         <dependency>
             <groupId>io.github.lijialong1313</groupId>
