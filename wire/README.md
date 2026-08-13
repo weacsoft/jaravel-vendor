@@ -93,6 +93,11 @@ Route.post("/change", "AdminController::update").name("change");     // wire 局
 | `render()` | **必须实现**。返回 `WireView` 配置；只声明模板 + 额外数据，**不要**调用 `.bladeExtends(...)`（主页面布局由模板自身 `@extends` 决定，组件布局替换由 `wireLayoutReplacements()` 提供） |
 | `mount(Request)` | 可选。仅首次 `index()` 时调用，参数为 `Request`；可读取 `request.query()/input()` 初始化。Spring 单例 Bean 需在 `mount()` 里重置表单字段，避免上一次请求残留值泄漏进快照 |
 | `fill(key, value)` / `fill(Map)` | 可选。把键值对**直接赋**到 Controller 自己的 public 属性（同名赋值 + 基础类型转换），不做任何业务重写 |
+| `refresh(Map<String, Object> params)` | 可选。每次 wire 更新后重新加载展示数据（如重新查库），保持列表等数据最新。**调用时机**：`update()` 中 `invokeAction(action, params)` 执行完毕后、`renderSections()` 渲染 sections 前调用。**`params` 含义**：来自前端 POST 请求体 `wire_body` JSON 中的 `"params"` 字段，代表**本次请求前端传来的 action 参数**（不是快照状态）。例如：
+  - `wire:click="delete(1)"` → `params = {"0": "1"}`
+  - `wire:click="$refresh"` → `params = null`（magic action 无参数）
+  - `wire:model` 触发 `$sync` → `params` 包含同步的字段值（但 `$sync` 不会走 `invokeAction` → `refresh`，直接返回新快照）
+  子类可忽略 params 直接重新查库，也可根据 params 决定加载哪些数据（如按 `params.get("page")` 分页）。对于 `@WireLocked` 的大字段（如列表），建议在 `refresh()` 中重新查询并赋值，确保每次 wire 更新后展示数据是最新的 |
 | `wireLayoutReplacements()` | **声明式**模板级布局替换：返回「模板名 → 替换布局名」。如 `Map.of("mdui.admin.admin.item", "layouts.mdui.form.dialog")` 表示凡以组件形式下发渲染该模板时用对话框布局替换其 `@extends`。**声明一次即可，不要在每个 action 里重复调用**。仅作用于组件下发渲染；主页面渲染不受影响 |
 | `setWireLayoutReplace(template, layout)` | 请求级临时布局替换（仅当前请求生效，ThreadLocal 请求末清除）。一般场景用声明式 `wireLayoutReplacements()` 即可，此方法仅用于个别 action 动态追加规则 |
 | `getWireLayoutReplace(template)` | 查询替换规则（声明式 + 请求级合并，请求级优先）；未命中返回 null = 用模板自身 `@extends` |
