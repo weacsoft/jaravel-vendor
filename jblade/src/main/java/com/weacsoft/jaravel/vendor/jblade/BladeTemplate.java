@@ -758,6 +758,10 @@ public abstract class BladeTemplate {
             // 兼容旧组件插槽命名（"$slot"）
             val = context.getVariable("$" + name);
         }
+        // strictMode: 未定义的变量输出 warning
+        if (val == null && JbladeConfig.strictMode) {
+            System.out.println("[jblade warning] 未定义变量: $" + name);
+        }
         return val;
     }
 
@@ -1025,11 +1029,23 @@ public abstract class BladeTemplate {
         }
         if (obj instanceof java.util.List) {
             java.util.List<?> list = (java.util.List<?>) obj;
-            return idx >= 0 && idx < list.size() ? list.get(idx) : null;
+            if (idx >= 0 && idx < list.size()) {
+                return list.get(idx);
+            }
+            if (JbladeConfig.strictMode) {
+                System.out.println("[jblade warning] 数组越界: [" + key + "]");
+            }
+            return null;
         }
         if (obj.getClass().isArray()) {
             int len = java.lang.reflect.Array.getLength(obj);
-            return idx >= 0 && idx < len ? java.lang.reflect.Array.get(obj, idx) : null;
+            if (idx >= 0 && idx < len) {
+                return java.lang.reflect.Array.get(obj, idx);
+            }
+            if (JbladeConfig.strictMode) {
+                System.out.println("[jblade warning] 数组越界: [" + key + "]");
+            }
+            return null;
         }
         return null;
     }

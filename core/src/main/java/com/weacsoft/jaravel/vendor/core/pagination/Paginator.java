@@ -31,6 +31,8 @@ import java.util.Map;
  */
 public class Paginator<T> implements Iterable<T>, Htmlable {
 
+    private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(Paginator.class.getName());
+
     /** 默认视图提供者（由模板引擎注入）；为 null 时 links 降级空串。 */
     private static volatile ViewProvider defaultViewProvider = null;
 
@@ -320,6 +322,7 @@ public class Paginator<T> implements Iterable<T>, Htmlable {
         try {
             return HtmlString.raw(view.render(viewName, data));
         } catch (Exception e) {
+            logger.warning("分页模板渲染失败 [" + viewName + "]: " + e.getMessage());
             return HtmlString.raw("");
         }
     }
