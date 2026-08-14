@@ -66,6 +66,15 @@ public class Paginator<T> implements Iterable<T>, Htmlable {
         return items;
     }
 
+    /**
+     * jblade 模板引擎的 foreach 循环通过反射调用 getItems() 方法获取数据。
+     * 此方法为 items() 的别名，保持与 Laravel 的 {@code $paginator->items()} API 一致。
+     * 返回副本以避免 ConcurrentModificationException。
+     */
+    public List<T> getItems() {
+        return new ArrayList<>(items);
+    }
+
     public long total() {
         return total;
     }
@@ -322,6 +331,7 @@ public class Paginator<T> implements Iterable<T>, Htmlable {
 
     @Override
     public java.util.Iterator<T> iterator() {
-        return items.iterator();
+        // 返回列表的副本迭代器，避免 ConcurrentModificationException
+        return new ArrayList<>(items).iterator();
     }
 }

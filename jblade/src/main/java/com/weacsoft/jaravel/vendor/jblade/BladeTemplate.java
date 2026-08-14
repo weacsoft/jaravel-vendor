@@ -7,6 +7,7 @@ import java.io.StringWriter;
 import java.io.Writer;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -686,7 +687,8 @@ public abstract class BladeTemplate {
         }
 
         String prevComponent = context.getCurrentComponent();
-        Map<String, String> prevSlots = new ConcurrentHashMap<>(context.getComponentSlots());
+        // 使用普通HashMap复制，避免ConcurrentModificationException
+        Map<String, String> prevSlots = new HashMap<>(context.getComponentSlots());
 
         context.startComponent(componentName);
 
