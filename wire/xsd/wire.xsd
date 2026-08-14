@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="https://jaravel.dev/ns/wire"
+           xmlns="https://jaravel.dev/ns/wire"
+           elementFormDefault="qualified"
+           attributeFormDefault="unqualified">
+
+  <!--
+    jaravel-vendor Wire 模块命名空间 XSD
+    ====================================
+    版本：0.1.x（对应 jaravel-vendor wire 模块 0.1.x）
+    命名空间 URI：https://jaravel.dev/ns/wire
+    用途：供 IntelliJ IDEA 等 XML 编辑器识别 wire:* 命名空间属性，
+          消除 "wire 命名空间不存在" / "未知属性" 警告。
+    安装方式（IntelliJ IDEA）：
+      方式一（推荐，全局注册）：
+        1. File → Settings → Languages & Frameworks → HTML → Schemas and DTDs
+        2. 点击 + 添加本文件的本地路径
+        3. Namespace URI 填写：https://jaravel.dev/ns/wire
+        4. 在模板文件根元素添加：
+             xmlns:wire="https://jaravel.dev/ns/wire"
+           IDEA 会自动匹配并启用校验
+      方式二（单文件内联）：
+        在 .blade.java / .jblade 文件顶部添加：
+          xmlns:wire="https://jaravel.dev/ns/wire"
+          xsi:schemaLocation="https://jaravel.dev/ns/wire
+            file:///绝对路径/to/wire.xsd"
+    属性说明：
+      wire:click        点击事件处理器（值：方法名或方法名(参数)）
+      wire:submit       表单提交处理器（值：方法名）
+      wire:model        双向数据绑定（值：属性名）
+      wire:model.live   实时双向绑定（值：属性名，每次 input 同步）
+      wire:model.defer  延迟双向绑定（值：属性名，blur 时同步）
+      wire:section      标记精准刷新区域（值：section 名称）
+      wire:config       组件配置标记（布尔，仅用于 <script> 标签）
+      wire:snapshot     状态快照（由框架自动注入）
+      wire:lifecycle    生命周期脚本标记（布尔，仅用于 <script> 标签）
+      wire:outlet       命名组件注入容器标记（布尔）
+      wire:navigate     透明导航链接标记（布尔）
+      wire:update       自定义 update 请求地址
+      wire:keydown      键盘按下事件处理器（值：方法名）
+      wire:change       输入变化事件处理器（值：方法名）
+      wire:param-id     操作参数 ID（与 wire:click 配合使用）
+    配合使用的 data-wire-* 属性（不在此 schema 中，前端 wire.js 运行时读取）：
+      data-wire-update      update 请求地址（与 wire:update 对应）
+      data-wire-key         列表行稳定标识（用于 diff 保留 DOM 状态）
+      data-wire-owned       组件作用域标识（wire.js 内部使用）
+      data-wire-outlet      命名组件 outlet 容器 ID
+      data-wire-back-url    返回地址（对话框取消按钮使用）
+  -->
+
+  <!-- wire:click — 点击事件处理器 -->
+  <xs:attribute name="click" type="xs:string">
+    <xs:annotation>
+      <xs:documentation>
+        点击事件处理器。值格式为 Controller 方法名，可带参数：
+          wire:click="save"
+          wire:click="edit({{ $id }})"
+          wire:click="delete({{ $item->id }})"
+        框架通过反射调用对应 Controller 的 public 方法。
+      </xs:documentation>
+    </xs:annotation>
+  </xs:attribute>
+
+  <!-- wire:submit — 表单提交处理器 -->
+  <xs:attribute name="submit" type="xs:string">
+    <xs:annotation>
+      <xs:documentation>
+        表单提交处理器，值格式同 wire:click。
+        可绑定在 &lt;form&gt; 或 &lt;button&gt; / &lt;input type="submit"&gt; 上：
+          &lt;form wire:submit="save"&gt;
+          &lt;button wire:submit="save"&gt;提交&lt;/button&gt;
+        绑定在 button 上时，wire.js 自动查找所属 form 并拦截提交。
+        整页表单（直访）不使用 wire:submit，由 handleTraditionalSubmit 处理。
+      </xs:documentation>
+    </xs:annotation>
+  </xs:attribute>
+
+  <!-- wire:model — 双向数据绑定 -->
+  <xs:attribute name="model" type="xs:string">
+    <xs:annotation>
+      <xs:documentation>
+        双向数据绑定到 Controller 的 public 属性。
+        值为用户态属性名（不带 $ 前缀），例如：
+          &lt;input wire:model="name" value="{{ $name }}" /&gt;
+          &lt;input wire:model="number" /&gt;
+        配合 wire:click / wire:submit 发起时，值会合并进 params 提交到服务端。
+      </xs:documentation>
+    </xs:annotation>
+  </xs:attribute>
+
+  <!-- wire:model.live — 实时双向绑定 -->
+  <xs:attribute name="model.live" type="xs:string">
+    <xs:annotation>
+      <xs:documentation>
+        实时双向绑定。每次 input 事件立即将值同步到服务端，
+        无需等待表单提交或点击其他元素。
+        例如：&lt;input wire:model.live="search" placeholder="搜索..." /&gt;
+      </xs:documentation>
+    </xs:annotation>
+  </xs:attribute>
+
+  <!-- wire:model.defer — 延迟双向绑定 -->
+  <xs:attribute name="model.defer" type="xs:string">
+    <xs:annotation>
+      <xs:documentation>
+        延迟双向绑定。在 input 元素失去焦点（blur）时才将值同步到服务端，
+        减少请求频率。例如：&lt;input wire:model.defer="name" /&gt;
+      </xs:documentation>
+    </xs:annotation>
+  </xs:attribute>
+
+  <!-- wire:section — 精准刷新区域标记 -->
+  <xs:attribute name="section" type="xs:string">
+    <xs:annotation>
+      <xs:documentation>
+        标记当前元素为命名 section，wire 更新时只替换该 section 的内容。
+        配合 &lt;!--wire:section-start:NAME--&gt; 注释锚点使用。
+        例如：&lt;tbody wire:section="list"&gt; ... &lt;/tbody&gt;
+        也可用于标题等需要精准更新的元素：
+          &lt;h3 wire:section="summary"&gt;...&lt;/h3&gt;
+      </xs:documentation>
+    </xs:annotation>
+  </xs:attribute>
+
+  <!-- wire:config — 组件配置标记 -->
+  <xs:attribute name="config" type="xs:boolean">
+    <xs:annotation>
+      <xs:documentation>
+        标记当前 &lt;script&gt; 为 Wire 组件配置脚本。
+        通常与 data-wire-update 配合指定 update 请求地址：
+          &lt;script wire:config data-wire-update="/api/wire/tasks"&gt;
+            // 可选：组件初始化脚本
+          &lt;/script&gt;
+        此属性为布尔标志，无属性值。
+      </xs:documentation>
+    </xs:annotation>
+  </xs:attribute>
+
+  <!-- wire:snapshot — 状态快照（框架自动注入） -->
+  <xs:attribute name="snapshot" type="xs:string">
+    <xs:annotation>
+      <xs:documentation>
+        Wire 组件状态快照（HMAC 签名 + Base64 编码的 JSON），
+        由框架在 index() 渲染时自动注入到 wire:config script 标签。
+        用户无需手动设置此属性。
+        格式：signature:base64json
+      </xs:documentation>
+    </xs:annotation>
+  </xs:attribute>
+
+  <!-- wire:lifecycle — 生命周期脚本标记 -->
+  <xs:attribute name="lifecycle" type="xs:boolean">
+    <xs:annotation>
+      <xs:documentation>
+        标记当前 &lt;script&gt; 为命名组件生命周期脚本。
+        包含 onCreate / onStart / onStop / onDestroy 四阶段回调。
+        wire.js 会抽离并独立求值，保证多实例隔离。
+        例如：&lt;script wire:lifecycle&gt; ... &lt;/script&gt;
+      </xs:documentation>
+    </xs:annotation>
+  </xs:attribute>
+
+  <!-- wire:outlet — 命名组件注入容器标记 -->
+  <xs:attribute name="outlet" type="xs:boolean">
+    <xs:annotation>
+      <xs:documentation>
+        标记当前元素为命名组件（toast / confirm 等）的下发容器。
+        框架通过 effects.components 下发组件 HTML 到此容器。
+        通常配合 data-wire-outlet 属性使用：
+          &lt;div wire:outlet data-wire-outlet="wire-outlet"&gt;&lt;/div&gt;
+      </xs:documentation>
+    </xs:annotation>
+  </xs:attribute>
+
+  <!-- wire:navigate — 透明导航链接标记 -->
+  <xs:attribute name="navigate" type="xs:boolean">
+    <xs:annotation>
+      <xs:documentation>
+        标记当前 &lt;a&gt; 链接为 Wire 透明导航链接。
+        点击时前端发送 X-Wire-Navigate 请求头，后端返回最小 diff 响应，
+        前端只替换变化的 section，实现无感页面切换（无整页刷新）。
+        例如：&lt;a href="/wire/records" wire:navigate&gt;记录列表&lt;/a&gt;
+      </xs:documentation>
+    </xs:annotation>
+  </xs:attribute>
+
+  <!-- wire:update — 自定义 update 请求地址 -->
+  <xs:attribute name="update" type="xs:string">
+    <xs:annotation>
+      <xs:documentation>
+        指定当前 Wire 组件的 update 请求地址（POST），
+        覆盖 WireConfig 中的全局配置。
+        通常在 wire:config script 标签上配合使用：
+          &lt;script wire:config data-wire-update="/api/wire/tasks"&gt;&lt;/script&gt;
+        所有 wire:click / wire:submit 请求将发往此地址。
+      </xs:documentation>
+    </xs:annotation>
+  </xs:attribute>
+
+  <!-- wire:keydown — 键盘按下事件处理器 -->
+  <xs:attribute name="keydown" type="xs:string">
+    <xs:annotation>
+      <xs:documentation>
+        键盘按下事件处理器，值格式同 wire:click。
+        通常配合 HTML5 key 修饰符使用：
+          &lt;input wire:keydown.enter="submit" /&gt;
+          &lt;input wire:keydown.escape="cancel" /&gt;
+      </xs:documentation>
+    </xs:annotation>
+  </xs:attribute>
+
+  <!-- wire:change — 输入变化事件处理器 -->
+  <xs:attribute name="change" type="xs:string">
+    <xs:annotation>
+      <xs:documentation>
+        输入变化（change）事件处理器，值格式同 wire:click。
+        适用于 &lt;select&gt; 等触发 change 事件的元素：
+          &lt;select wire:change="filter" /&gt;
+      </xs:documentation>
+    </xs:annotation>
+  </xs:attribute>
+
+  <!-- wire:param-id — 操作参数 ID -->
+  <xs:attribute name="param-id" type="xs:string">
+    <xs:annotation>
+      <xs:documentation>
+        为 wire:click 方法调用提供位置参数 ID。
+        通常与 wire:click 配合使用在列表操作按钮上：
+          &lt;button wire:click="delete" wire:param-id="{{ $item->id }}"&gt;删除&lt;/button&gt;
+        框架将此值作为 params["0"] 传入 Controller 方法。
+        也可用 wire:param-* 自定义参数名。
+      </xs:documentation>
+    </xs:annotation>
+  </xs:attribute>
+
+</xs:schema>

@@ -18,6 +18,7 @@
 - [命名组件（toast / confirm 等临时事务）](#命名组件toast--confirm-等临时事务)
 - [前端事件系统](#前端事件系统)
 - [Section 排除列表](#section-排除列表)
+- [IDEA 模板语法提示（XSD 命名空间校验）](#idea-模板语法提示xsd-命名空间校验)
 - [认证过期无感重定向](#认证过期无感重定向)
 - [手动控制 wire.js 注入](#手动控制-wirejs-注入)
 - [线程安全说明](#线程安全说明)
@@ -423,6 +424,58 @@ WireManager.isExcluded("header");   // true
 WireManager.removeExcludedSection("header");
 WireManager.clearExcludedSections();
 ```
+
+---
+
+## IDEA 模板语法提示（XSD 命名空间校验）
+
+在 IntelliJ IDEA 中直接编写 `.blade.java` / `.jblade` 模板时，`wire:*` 属性会报「命名空间不存在」警告。
+本仓库已提供 XSD 校验文件，下载后即可消除警告并获得属性补全。
+
+### 下载 XSD 文件
+
+本仓库 `wire/xsd/wire.xsd` 包含全部 15 个 `wire:*` 属性的类型声明。
+可直接从仓库克隆或下载到本地：
+
+```
+jaravel-vendor/wire/xsd/wire.xsd
+```
+
+### IDEA 配置步骤
+
+1. 打开 `Settings` → `Languages & Frameworks` → `HTML` → `Schemas and DTDs`
+2. 点击 `+` 添加按钮，选择本地 `wire.xsd` 文件
+3. Namespace URI 填写：`https://jaravel.dev/ns/wire`
+4. 在模板文件根元素添加命名空间声明：
+
+```blade
+<html xmlns:wire="https://jaravel.dev/ns/wire">
+```
+
+5. 保存后 IDEA 会自动匹配并启用校验，`wire:click`、`wire:model` 等属性将显示补全提示，不再报红线警告。
+
+### 支持的 wire:* 属性
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `wire:click` | string | 点击事件处理器 |
+| `wire:submit` | string | 表单提交处理器 |
+| `wire:model` | string | 双向数据绑定 |
+| `wire:model.live` | string | 实时双向绑定 |
+| `wire:model.defer` | string | 延迟双向绑定 |
+| `wire:section` | string | 精准刷新区域标记 |
+| `wire:config` | boolean | 组件配置标记（仅 `<script>`） |
+| `wire:snapshot` | string | 状态快照（框架自动注入） |
+| `wire:lifecycle` | boolean | 生命周期脚本标记（仅 `<script>`） |
+| `wire:outlet` | boolean | 命名组件注入容器 |
+| `wire:navigate` | boolean | 透明导航链接标记 |
+| `wire:update` | string | 自定义 update 请求地址 |
+| `wire:keydown` | string | 键盘按下事件处理器 |
+| `wire:change` | string | 输入变化事件处理器 |
+| `wire:param-id` | string | 操作参数 ID |
+
+配合使用的 `data-wire-*` 属性（wire.js 运行时读取，无需声明）：
+`data-wire-update`、`data-wire-key`、`data-wire-owned`、`data-wire-outlet`、`data-wire-back-url`
 
 ---
 
