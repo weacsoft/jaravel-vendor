@@ -846,6 +846,7 @@
     }
 
     function getTargetSections(component, triggerEl) {
+        if (!triggerEl) return [];
         var targetAttr = triggerEl.getAttribute('wire:target');
         if (!targetAttr) {
             var el = triggerEl.parentElement;
@@ -1505,10 +1506,6 @@
         // 纯生命周期组件(如 snackbar):模板仅 <script wire:lifecycle>,剔除后无内容节点。
         // 不依赖 outlet、也不向页面注入任何 div;生命周期内由组件(如 mdui)自建 DOM。
         var isScriptOnly = !el && !!api;
-        if (!isScriptOnly && !getOutlet(outletId || payload.outlet)) {
-            console.error('[WireComponent] 找不到 outlet 容器，无法挂载组件 [' + payload.name + ']');
-            return null;
-        }
 
         var inst = {
             id: payload.id,
@@ -1529,12 +1526,20 @@
         inst.wire = wire;
         instances[payload.id] = inst;
 
-        // 3) onCreate：内容已从服务端取回、尚未插入 DOM(纯生命周期组件跳过)
+        // onCreate：内容已从服务端取回、尚未插入 DOM(纯生命周期组件跳过)
         if (el) callLife(inst, 'onCreate', el, wire);
 
-        // 4) 插入 DOM(仅带内容节点的组件;纯生命周期组件不插入任何 div)
+        // 插入 DOM(仅带内容节点的组件;纯生命周期组件不插入任何 div)
         if (el) {
-            getOutlet(outletId || payload.outlet).appendChild(el);
+            // 解析 outlet;未声明时自动在 body 末尾补默认容器,
+            // 兼容未加 #wire-outlet 的页面(否则整页组件/对话框全部无法挂载、按钮无反应)。
+            var outlet = getOutlet(outletId || payload.outlet);
+            if (!outlet) {
+                outlet = document.createElement('div');
+                outlet.id = 'wire-outlet';
+                document.body.appendChild(outlet);
+            }
+            outlet.appendChild(el);
             // 补跑组件内常规 <script>(如对话框 opener),innerHTML 注入默认不执行脚本
             runScripts(el);
         }
