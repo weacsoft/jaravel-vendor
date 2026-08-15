@@ -756,6 +756,25 @@
                     window.dispatchEvent(new CustomEvent(event.name, { detail: event.data }));
                 }
             }
+            // 深链地址栏同步（如「点击修改」后 URL 变为 /admin/admin/change?id=5）:
+            // 仅 pushState 改地址栏文本,不触发导航/请求(DOM 已是正确状态——对话框已 open)。
+            // 状态带 wireUrl 但不带 wireNavigate 标记,浏览器后退时 popstate 会忽略该条目
+            // (见 wire-navigate popstate 守卫),避免把列表页误导航成整页表单。
+            // 同时同步 wire-navigate 内部 currentUrl,使随后「取消」的 WireNavigate.visit(回列表)
+            // 能正确判定 URL 已变化并 pushState 还原地址栏。
+            if (data.effects.url) {
+                var deep = data.effects.url;
+                try { history.pushState({ wireUrl: deep }, '', deep); } catch (e) {}
+                if (window.WireNavigate && typeof window.WireNavigate.syncUrl === 'function') {
+                    window.WireNavigate.syncUrl(deep);
+                }
+            }
+            // 返回 URL(由 WireController.inferBackUrl 自动推断,如 /admin/admin):
+            // 暂存到 window.__wireBackUrl,供 form.dialog.jblade 取消按钮还原地址栏(WireNavigate.visit)时使用。
+            // 之前客户端未消费 effects.backUrl,导致取消后地址栏卡在编辑深链、URL 不还原。
+            if (data.effects.backUrl) {
+                window.__wireBackUrl = data.effects.backUrl;
+            }
             // 命名组件（toast / confirm 等）：委托给 wire.js 内联的 WireComponent 无感挂载
             if (data.effects.components && data.effects.components.length > 0) {
                 if (window.WireComponent && typeof window.WireComponent.mountAll === 'function') {
@@ -1507,6 +1526,14 @@
         // 不依赖 outlet、也不向页面注入任何 div;生命周期内由组件(如 mdui)自建 DOM。
         var isScriptOnly = !el && !!api;
 
+        // 对话框组件:挂载前先经 mdui .close() 关闭任何已打开的对话框(释放 overlay 计数)。
+        // 其 DOM 包裹层不在此处移除 —— 由各自挂载时注册的 close.mdui.dialog 事件回调统一清理,
+        // 保证任意时刻至多一个对话框、overlay 计数正确,杜绝多个对话框共存导致的 overlay 滞留(白屏)。
+        // 注意:此时新实例尚未加入 instances,closeAllOpenDialogs 只会关闭旧对话框。
+        if (el && el.querySelector && el.querySelector('.mdui-dialog')) {
+            closeAllOpenDialogs();
+        }
+
         var inst = {
             id: payload.id,
             name: payload.name,
@@ -1542,12 +1569,70 @@
             outlet.appendChild(el);
             // 补跑组件内常规 <script>(如对话框 opener),innerHTML 注入默认不执行脚本
             runScripts(el);
+
+            // 对话框组件:注册 mdui 关闭事件,由 mdui 自身在关闭时触发清理。
+            // close.mdui.dialog 是 mdui 派发的原生 CustomEvent(冒泡),在 mdui 真正开始关闭
+            // (removeClass mdui-dialog-open 之后、过渡动画前)即触发,此时 overlay 已被 mdui
+            // 同步释放,移除 DOM 绝不会打断 overlay 计数 —— 彻底根除「取消后对话框 DOM 滞留」
+            // 与「提前摘 DOM 致 overlay 计数卡死 → 白屏」。兜底定时器应对极端情况下事件未触发。
+            if (el.querySelector('.mdui-dialog')) {
+                var dlgEl = el.querySelector('.mdui-dialog');
+                dlgEl.addEventListener('close.mdui.dialog', function () {
+                    cleanupDialogInstance(inst);
+                });
+                setTimeout(function () { cleanupDialogInstance(inst); }, 2000);
+            }
         }
 
         // 5) onStart：已插入 DOM 或纯生命周期组件(自建 DOM)均触发
         callLife(inst, 'onStart', el, wire);
 
         return inst;
+    }
+
+    /**
+     * 关闭所有已打开的 mdui 对话框(经 mdui 自身 .close() 释放 overlay 计数)。
+     * 本函数【不】移除任何 DOM。对话框包裹层(含 .mdui-dialog)的移除,统一由各自挂载时
+     * 注册的 `close.mdui.dialog` 事件回调完成 —— 该事件在 mdui 真正开始关闭
+     * (removeClass mdui-dialog-open 之后、过渡动画前)即触发,此时 overlay 已被 mdui
+     * 同步释放(.hideOverlay()),移除 DOM 绝不会打断 overlay 计数,从根上杜绝
+     * 「遮罩滞留整页 → 白屏」与「取消后对话框 DOM 滞留」。
+     * 若在此处直接 removeChild 包裹层,而该对话框的 mdui 实例又未登记进 window.__wireDialogs,
+     * 则其 .close() 永不执行、overlay 计数永不递减,遮罩会一直盖住整页。
+     */
+    function closeAllOpenDialogs() {
+        var ds = window.__wireDialogs || {};
+        for (var dk in ds) {
+            if (!ds.hasOwnProperty(dk)) continue;
+            try { if (ds[dk] && typeof ds[dk].close === 'function') ds[dk].close(); } catch (e) {}
+        }
+    }
+
+    /**
+     * 清理单个对话框组件实例:移除其 DOM 包裹层(含 .mdui-dialog)并卸载 wire 实例。
+     * 仅执行一次(由 inst._wireCleaned 守卫),可由 `close.mdui.dialog` 事件或兜底定时器触发。
+     */
+    function cleanupDialogInstance(inst) {
+        if (!inst || inst._wireCleaned) return;
+        inst._wireCleaned = true;
+        try { if (inst.el && inst.el.parentNode) inst.el.parentNode.removeChild(inst.el); } catch (e) {}
+        stop(inst);
+        cleanupOrphanOverlays();
+    }
+
+    /**
+     * 兜底清理残留的「惰性 overlay」:mdui 关闭对话框后通过 setTimeout 延迟移除 overlay 节点,
+     * 极端情况下可能残留。无 mdui-overlay-show 的 overlay 在 CSS 中被定位到屏幕外且
+     * visibility:hidden(不可见、不拦截点击),此处仅移除这类惰性节点以防 DOM 累积;
+     * 带 mdui-overlay-show 的活动遮罩一律不动,避免打断正在进行的对话框。
+     */
+    function cleanupOrphanOverlays() {
+        try {
+            var orphans = document.querySelectorAll('.mdui-overlay:not(.mdui-overlay-show)');
+            for (var i = 0; i < orphans.length; i++) {
+                if (orphans[i].parentNode) orphans[i].parentNode.removeChild(orphans[i]);
+            }
+        } catch (e) {}
     }
 
     /** 移除一个实例：onStop → 移除 DOM → onDestroy（onStop 可返回 ms / Promise 延后移除） */
@@ -1603,6 +1688,15 @@
         if (inited) return;
         inited = true;
         mountBootstrapTags();
+
+        // 对话框关闭事件(由 form.dialog.jblade 经 window.dispatchEvent 派发):兜底关闭所有仍
+        // 打开的 mdui 对话框以释放 overlay 计数。其 DOM 包裹层由各自的 close.mdui.dialog 事件
+        // 回调清理,不在此处移除 DOM —— 避免打断 overlay 计数导致遮罩滞留(白屏)。
+        window.addEventListener('wire-dialog-close', function () {
+            closeAllOpenDialogs();
+            // 兜底:延迟清理可能残留的惰性 overlay(无 mdui-overlay-show 的屏幕外节点)。
+            setTimeout(cleanupOrphanOverlays, 350);
+        });
     }
 
     /**
@@ -1702,7 +1796,11 @@
         off: off,
         visit: visit,
         rescan: function () { refreshRuntimes(); },
-        currentUrl: function () { return currentUrl; }
+        currentUrl: function () { return currentUrl; },
+        // 供 Wire 组件 update 响应(wire.js handleResponse)在「点击修改」等场景同步深链地址栏时调用:
+        // 仅更新内部 currentUrl,使随后 WireNavigate.visit(回列表)能正确判定 URL 已变化并 pushState 还原,
+        // 避免取消后地址栏卡在编辑深链。不触发任何导航/请求。
+        syncUrl: function (u) { if (u) currentUrl = u; }
     };
 
     // ===== 初始化 =====
