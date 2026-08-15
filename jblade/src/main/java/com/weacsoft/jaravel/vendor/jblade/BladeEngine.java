@@ -193,7 +193,7 @@ public class BladeEngine {
      * @param variables    模板变量
      * @return 渲染后的 HTML 字符串
      */
-    public String render(String templateName, Map<String, Object> variables) throws Exception {
+    public synchronized String render(String templateName, Map<String, Object> variables) throws Exception {
         BladeTemplate template = loadTemplate(templateName);
         template.setEngine(this);
 
@@ -339,11 +339,13 @@ public class BladeEngine {
      */
     public String renderSection(String templateName, String sectionName, Map<String, Object> variables) throws Exception {
         BladeTemplate template = loadTemplate(templateName);
-        // 并发安全:BladeTemplate 实例在 templateInstanceCache 中被跨请求共享,其 context 是可变实例字段。
-        // 多个并发 wire 更新同时渲染同一模板时,会并发读写同一个 context(尤其是 componentSlots 的
+        // 并发安全:templateInstanceCache 中的模板实例(含继承链父模板、组件模板)被跨请求共享,
+        // 其 context 是可变实例字段。多个并发 wire 更新同时渲染不同模板时,可能共享同一父/布局模板
+        // 实例,并发 resetContext/init/renderComponent 同一实例的 context(尤其是 componentSlots 的
         // clear/putAll 与迭代),导致 ConcurrentModificationException(表现为「点击后页面直接蹦」)。
-        // 对缓存模板实例加锁,保证同一模板的渲染串行,context 不再被并发篡改。
-        synchronized (template) {
+        // 故对整引擎加锁(与 loadTemplate 的 synchronized(this) 同一把锁),保证任意时刻至多一个渲染
+        // 在走,共享实例的 context 不再被并发篡改。
+        synchronized (this) {
             template.setEngine(this);
             template.resetContext();
             BladeContext context = template.getContext();
@@ -381,9 +383,10 @@ public class BladeEngine {
      */
     public Map<String, String> renderSections(String templateName, List<String> sectionNames, Map<String, Object> variables) throws Exception {
         BladeTemplate template = loadTemplate(templateName);
-        // 并发安全:与 renderSection 同理,对共享缓存模板实例加锁,保证同一模板渲染串行,
-        // 避免并发请求同时迭代/修改同一 context 引发的 ConcurrentModificationException。
-        synchronized (template) {
+        // 并发安全:与 renderSection 同理,对整引擎加锁(共享缓存模板实例含继承链父/组件模板),
+        // 保证任意时刻至多一个渲染在走,避免并发请求同时迭代/修改同一 context 引发
+        // ConcurrentModificationException。
+        synchronized (this) {
             template.setEngine(this);
             template.resetContext();
             BladeContext context = template.getContext();
@@ -418,7 +421,7 @@ public class BladeEngine {
      * @param templateName 模板名
      * @return section 名列表
      */
-    public List<String> getSectionNames(String templateName) throws Exception {
+    public synchronized List<String> getSectionNames(String templateName) throws Exception {
         BladeTemplate template = loadTemplate(templateName);
         template.setEngine(this);
         template.resetContext();
