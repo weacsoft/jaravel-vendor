@@ -57,8 +57,27 @@ public class WireRequest {
 
             String snapshot = (String) data.get("snapshot");
             String action = (String) data.get("action");
-            Map<String, Object> params = (Map<String, Object>) data.get("params");
-            List<String> sections = (List<String>) data.get("sections");
+
+            // 兼容 params 可能是 ArrayList（Jackson 解析空对象 {} 时的问题）
+            Object paramsObj = data.get("params");
+            Map<String, Object> params;
+            if (paramsObj instanceof Map) {
+                params = (Map<String, Object>) paramsObj;
+            } else if (paramsObj instanceof java.util.List) {
+                // Jackson 将 {} 解析为空 ArrayList 的情况
+                params = new java.util.HashMap<>();
+            } else {
+                params = new java.util.HashMap<>();
+            }
+
+            // 兼容 sections 可能是 ArrayList 的情况
+            Object sectionsObj = data.get("sections");
+            List<String> sections;
+            if (sectionsObj instanceof List) {
+                sections = (List<String>) sectionsObj;
+            } else {
+                sections = new ArrayList<>();
+            }
 
             return new WireRequest(snapshot, action, params, sections);
         } catch (Exception e) {
@@ -108,8 +127,27 @@ public class WireRequest {
             Map<String, Object> data = Json.parseToMap(json);
             String snapshot = (String) data.get("snapshot");
             String action = (String) data.get("action");
-            Map<String, Object> params = (Map<String, Object>) data.get("params");
-            List<String> sections = (List<String>) data.get("sections");
+
+            // 兼容 params 可能是 ArrayList 的情况
+            Object paramsObj = data.get("params");
+            Map<String, Object> params;
+            if (paramsObj instanceof Map) {
+                params = (Map<String, Object>) paramsObj;
+            } else if (paramsObj instanceof java.util.List) {
+                params = new java.util.HashMap<>();
+            } else {
+                params = new java.util.HashMap<>();
+            }
+
+            // 兼容 sections 可能是 ArrayList 的情况
+            Object sectionsObj = data.get("sections");
+            List<String> sections;
+            if (sectionsObj instanceof List) {
+                sections = (List<String>) sectionsObj;
+            } else {
+                sections = new ArrayList<>();
+            }
+
             return new WireRequest(snapshot, action, params, sections);
         } catch (Exception e) {
             throw new RuntimeException("解析 Wire 请求 JSON 失败", e);
