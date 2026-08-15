@@ -85,4 +85,32 @@ public final class ViewCache {
         }
         return ok;
     }
+
+    /**
+     * 全部模板重新编译进缓存（<b>不输出预编译包</b>）。
+     * <p>
+     * 与 {@link #rebuild()} 的唯一区别：仅清空旧缓存 → 扫描模板目录 → 逐个强制编译写入
+     * 内存字节码缓存，<b>不会</b>额外生成 {@code storage/framework/views/templates.jblade.zip}。
+     * 适用于应用启动期一次性预热，无需持久化预编译包的场景。
+     *
+     * @return 成功编译的模板数量；无可用引擎时返回 0
+     */
+    public static int recompile() {
+        BladeEngine engine = activeEngine();
+        if (engine == null) {
+            return 0;
+        }
+        engine.clearCache();
+        java.util.List<String> names = engine.scanTemplateNames();
+        int ok = 0;
+        for (String name : names) {
+            try {
+                engine.loadTemplate(name);
+                ok++;
+            } catch (Exception ignored) {
+                // 单个模板编译失败不阻断其余
+            }
+        }
+        return ok;
+    }
 }
