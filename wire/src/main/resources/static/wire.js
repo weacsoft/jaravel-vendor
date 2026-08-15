@@ -141,7 +141,7 @@
 
     function bindEvents(comp) {
         bindClick(comp); bindSubmit(comp); bindModel(comp);
-        bindChange(comp); bindKeydown(comp);
+        bindChange(comp); bindKeydown(comp); bindPagination(comp);
     }
     function markBound(comp, el) {
         if (comp.boundElements.has(el)) return false;
@@ -293,6 +293,35 @@
         })(els[i]);
     }
 
+    /**
+     * 分页器拦截：为 [wire:pagination] 容器内的 a[href*="?page=N"] 绑定点击拦截，
+     * 阻止浏览器整页跳转，改为发 $paginate 请求并只精准刷新目标 section。
+     */
+    function bindPagination(comp) {
+        var containers = comp.element.querySelectorAll('[wire\\:pagination]');
+        for (var c = 0; c < containers.length; c++) {
+            (function (container) {
+                var links = container.querySelectorAll('a[href]');
+                for (var i = 0; i < links.length; i++) {
+                    (function (el) {
+                        if (!markBound(comp, el)) return;
+                        el.addEventListener('click', function (e) {
+                            var href = el.getAttribute('href') || '';
+                            var m = href.match(/[?&]page=(\d+)/);
+                            if (!m) return; // 非分页链接，放行默认行为
+                            e.preventDefault();
+                            var target = container.getAttribute('wire:target') || '';
+                            var pparams = { pageNum: parseInt(m[1], 10) };
+                            var perMatch = href.match(/[?&]perPage=(\d+)/);
+                            if (perMatch) pparams.perPage = parseInt(perMatch[1], 10);
+                            sendRequest(comp, '$paginate', pparams, el, target ? [target] : null);
+                        });
+                    })(links[i]);
+                }
+            })(containers[c]);
+        }
+    }
+
     function sendRequest(comp, action, params, triggerEl, targetSections) {
         var updateUrl = comp.updateUrl;
         var el = triggerEl;
@@ -355,6 +384,12 @@
                 } else if (url) {
                     window.location.href = url;
                 }
+            }
+            if (data.effects.backUrl) {
+                // backUrl:对话框取消时还原地址栏,存入全局变量供模板读取。
+                // 由 WireController.inferBackUrl() 自动推断(去末段路径),
+                // 前端仅消费,不与 dialog 模板耦合。
+                try { window.__wireBackUrl = data.effects.backUrl; } catch (e) {}
             }
             if (data.effects.dispatch) {
                 for (var i = 0; i < data.effects.dispatch.length; i++) {
@@ -420,6 +455,22 @@
             for (var t = 0; t < scriptTexts.length; t++) {
                 try { (function (body) { eval(body); })(scriptTexts[t]); } catch (e) { console.error('[Wire] 组件脚本执行失败:', e); }
             }
+            // 执行生命周期脚本(comp.script来自后端提取的wire:lifecycle脚本)
+            if (comp.script) {
+                try {
+                    // 严格模式下直接 eval 的 onStart 不会泄漏到外层作用域,typeof 恒为 undefined,
+                    // 导致 onStart 永远不被调用(snackbar 等生命周期组件无反应的历史 bug)。
+                    // 改为:把脚本包装为「定义 onStart + return onStart」,用 new Function 取回函数引用。
+                    // new Function 创建的函数体默认非严格模式,函数声明在函数作用域内可见,return 可取到。
+                    var lifecycleFactory = new Function(comp.script + '\n; return onStart;');
+                    var onStartFn = lifecycleFactory();
+                    // 创建wire对象，供onStart等生命周期函数使用
+                    var wireObj = { stop: function() { el.remove(); } };
+                    if (typeof onStartFn === 'function') {
+                        onStartFn(el, wireObj);
+                    }
+                } catch (e) { console.error('[Wire] 生命周期脚本执行失败:', e); }
+            }
         }
     }
 
@@ -436,7 +487,10 @@
             for (var i = 0; i < toRemove.length; i++) parent.removeChild(toRemove[i]);
             var tmpl = document.createElement('template'); tmpl.innerHTML = cleanContent;
             parent.insertBefore(tmpl.content, end);
-            activateScriptsInContext(parent);
+            // 只激活新插入片段内的脚本,不要激活整个 parent(如 body)——
+            // 否则布局级脚本(main.jblade 的 check_time/change_style 等)会被重新执行,
+            // 夜间 check_time() 会再次触发 change_style(),把暗色模式 toggle 掉(历史 bug 根因)。
+            activateScriptsInContext(tmpl.content);
             rebindSection(comp, parent);
             return;
         }
@@ -507,6 +561,14 @@
         var walker = document.createTreeWalker(document.documentElement, NodeFilter.SHOW_COMMENT, null, null);
         var comment;
         while ((comment = walker.nextNode())) { var m = comment.nodeValue.match(/^wire:section-start:(.+)$/); if (m && secs.indexOf(m[1]) === -1) secs.push(m[1]); }
+        // 只返回「内容级」section:页面外壳 section(body/css/style/javascript/js 及布局内的
+        // bar_*/headline/drawer_* 等)不参与局部更新——替换外层 section(如 body)会先移除其内部
+        // 嵌套的 section 注释(content 等),导致后续差分更新找不到目标而失效(历史 bug 根因:
+        // 「修改提交后翻页无反应」= content 注释被 body 替换时移除)。
+        // 有 content 时仅请求 content;无 content(如对话框组件场景)回退全部。
+        if (secs.indexOf('content') !== -1) {
+            return ['content'];
+        }
         return secs;
     }
 

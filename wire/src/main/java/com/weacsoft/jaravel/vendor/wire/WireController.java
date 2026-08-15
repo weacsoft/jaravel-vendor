@@ -610,6 +610,41 @@ public abstract class WireController {
             // 不调用任何 action 方法,刷新由 update() 统一处理。
             return;
         }
+        if ("$paginate".equals(action)) {
+            // 分页请求:仅调用 refresh 重新加载数据,不调用任何 action 方法
+            refresh(params);
+            // 同步地址栏为 ?page=N(保留已有查询参数,如搜索条件 key/value)。
+            // 前端收到 effects.url 后 history.pushState,不刷新页面;翻回第 1 页同样还原 URL。
+            if (params != null && params.get("pageNum") != null) {
+                try {
+                    int pageNum = Integer.parseInt(params.get("pageNum").toString());
+                    if (currentRequest != null) {
+                        // 主页面路径:POST 更新端点(如 /admin/admin/change)的 uri 不是列表页,
+                        // 用 inferBackUrl 去末段得到列表页路径(如 /admin/admin)。
+                        String basePath = inferBackUrl(currentRequest);
+                        if (basePath == null) basePath = "/";
+                        StringBuilder sb = new StringBuilder(basePath);
+                        Map<String, Object> qm = currentRequest.query();
+                        LinkedHashMap<String, Object> newQuery = new LinkedHashMap<>();
+                        for (Map.Entry<String, Object> e : qm.entrySet()) {
+                            String k = e.getKey();
+                            if ("page".equals(k) || e.getValue() == null) continue;
+                            newQuery.put(k, e.getValue());
+                        }
+                        if (pageNum > 1) newQuery.put("page", pageNum);
+                        boolean first = true;
+                        for (Map.Entry<String, Object> e : newQuery.entrySet()) {
+                            sb.append(first ? "?" : "&")
+                              .append(e.getKey()).append("=").append(encodeQueryParam(String.valueOf(e.getValue())));
+                            first = false;
+                        }
+                        WireEffects.pushUrl(sb.toString());
+                    }
+                } catch (NumberFormatException ignored) {
+                }
+            }
+            return;
+        }
         if (action.startsWith("$")) {
             log.warn("未知 magic action: " + action);
             return;
@@ -759,6 +794,16 @@ public abstract class WireController {
             return path.substring(0, lastSlash);
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    /** URL 查询参数编码(与 {@link com.weacsoft.jaravel.vendor.core.pagination.Paginator} 的编码一致)。 */
+    private static String encodeQueryParam(String s) {
+        if (s == null) return "";
+        try {
+            return java.net.URLEncoder.encode(s, "UTF-8");
+        } catch (java.io.UnsupportedEncodingException e) {
+            return s;
         }
     }
 

@@ -16,6 +16,7 @@
 - [三种请求处理](#三种请求处理)
 - [交互式组件下发](#交互式组件下发)
 - [命名组件（toast / confirm 等临时事务）](#命名组件toast--confirm-等临时事务)
+- [分页无感切换（Pagination）](#分页无感切换pagination)
 - [前端事件系统](#前端事件系统)
 - [Section 排除列表](#section-排除列表)
 - [IDEA 模板语法提示（XSD 命名空间校验）](#idea-模板语法提示xsd-命名空间校验)
@@ -303,6 +304,7 @@ public class AdminController extends WireController {
 |--------|------|------|
 | `$sync` | `wire:model` 双向绑定同步 | 仅把字段值合并进快照并重新签名返回,不重渲染任何 section——否则整段 innerHTML 替换会把对话框/模态等局部组件的 DOM 状态(如 mdui Dialog 的打开状态、光标焦点)冲掉。前端拿到新快照后仅更新本地快照,不替换任何 DOM |
 | `$refresh` | `Wire.refresh()` / `wire:click="$refresh"` | 重新执行 `refresh(params)` 并刷新组件 |
+| `$paginate` | `wire:pagination` 容器内的 `a[href*="?page=N"]` 点击 | 分页**无感切换**：仅调用 `refresh(params)` 重载分页数据（不调用任何 action 方法），并自动 `WireEffects.pushUrl` 把地址栏同步为 `?page=N`（翻回第 1 页时还原为无参 URL），前端只精准刷新目标 section，暗色模式/对话框状态全部保留 |
 
 ### 参数化 action（前端解析 + 后端使用）
 
@@ -342,6 +344,74 @@ public void role(Long id, String filter) { ... }          // role('a,b', 2) → 
 - 从 `params.get(String.valueOf(i))` 按位置下标读取参数；
 - 经 `convertValue(val.toString(), paramTypes[i])` 按声明类型转换（`"1"`→`Long`，`"true"`→`Boolean` 等）；
 - 无括号 action（如 `save`）原样按方法名匹配，`params` 为 null。
+
+---
+
+## 分页无感切换（Pagination）
+
+Wire 框架内置「分页器无感切换」能力：点击分页链接**不整页跳转**，只精准刷新数据 section，且地址栏同步为 `?page=N`（翻回第 1 页时还原）。底层依赖核心模块 `core` 的 `Paginator`（来自 [gaarason/database-all](https://github.com/gaarason/database-all)，实现 `Iterable` + `Htmlable`，`items()` 供模板 foreach、`links()` 渲染分页模板）。
+
+### 后端：控制器返回 Paginator 并 override refresh
+
+```java
+public class AdminController extends WireController {
+    @WireLocked public Paginator<Admin> paginator;   // 分页结果,标记 @WireLocked 不进快照
+    public Long page;                                // 当前页码(从 request.query("page","1") 读取并转 Long)
+
+    private Paginator<Admin> queryPaginated() {
+        QueryBuilder<Admin, Long> q = Admin.self().newQuery();
+        if (searchKey 非空) q.whereLike(searchKey, searchValue);
+        q.orderBy("id", gaarason.database.appointment.OrderBy.ASC); // 必须 ORDER BY,否则 SQLite 行序不稳定→分页错位
+        int currentPage = (page != null && page > 0) ? page.intValue() : 1;
+        Paginator<Admin> p = Admin.self().paginate(q, currentPage, 10);
+        p.setPath("/admin/admin");                    // 链接基准路径(与列表路由一致)
+        return p;
+    }
+
+    @Override
+    protected void refresh(Map<String, Object> params) {
+        if (params != null && params.containsKey("pageNum")) {
+            try { this.page = Long.valueOf(params.get("pageNum").toString()); } catch (Exception ignored) {}
+        }
+        this.paginator = queryPaginated();
+    }
+}
+```
+
+- `$paginate` 是框架内置 magic action（`WireController.invokeAction` 中处理）：仅调用 `refresh(params)` 重载数据（**不调用任何 action 方法**），随后自动 `WireEffects.pushUrl(...)` 把地址栏同步为 `?page=N`（pageNum>1 时；=1 时还原为无参 URL，并保留 `key`/`value` 等已有的查询参数）。`pageNum` 取自前端分页拦截器。
+- `Paginator.links()` 需要注册 `ViewProvider`（`ViewFacade.bind()`）才能渲染分页模板；分页模板自身是普通 `.jblade`（如 `layouts.mdui.pageinator`），通过 `{{ $paginator->links() }}` 输出、放在 `[wire:pagination]` 容器内。
+
+### 前端：wire:pagination 绑定
+
+模板在分页区加 `wire:pagination`（可选 `wire:target` 指定刷新目标 section，如 `content`）：
+
+```blade
+@foreach($paginator->items() as $item)
+    {{-- 列表行 --}}
+@endforeach
+
+<div wire:pagination wire:target="content">
+    {!! $paginator->links() !!}
+</div>
+```
+
+`wire.js` 的 `bindPagination` 会为 `[wire:pagination]` 容器内的 `a[href*="?page=N"]` 绑定点击拦截：阻止浏览器整页跳转，改为发 `$paginate` 请求（携带 `pageNum`/`perPage`），后端只精准刷新目标 section。分页链接格式需为 `?page=N`（可选 `&perPage=M`）。
+
+### 完整流程
+
+```
+列表页点击 ?page=2 链接
+   └─ wire.js bindPagination 拦截 → sendRequest(comp, '$paginate', {pageNum:2}, el, ['content'])
+        └─ POST /admin/admin/change (wire_body, action=$paginate, params={pageNum:2})
+             └─ WireController.invokeAction → refresh({pageNum:2}) 重载 paginator
+                  └─ WireEffects.pushUrl("/admin/admin?page=2")  ← 地址栏同步(保留搜索参数)
+        ← 响应 sections={content: 新列表 HTML} + effects.url="/admin/admin?page=2"
+   └─ 前端 replaceSection 精准替换 content(暗色模式/对话框状态均保留,无整页刷新)
+```
+
+### 数据量注意
+
+分页模板用 `hasPages()` 决定是否渲染分页控件。若活跃记录数 ≤ 每页大小（如 10 条），`hasPages()` 为 false，`links()` 返回空串、分页器「消失」——这是数据量问题，不是 bug。
 
 ---
 
@@ -412,6 +482,36 @@ wire().component("layouts.mdui.component.snackbar",
 ```
 
 > 配合「参数化 action」，`wire:click="role(1)"` 触发的 `role(Long id)` 也可下发此类纯脚本组件完成轻提示。
+
+#### 生命周期脚本执行机制（严格模式注意）
+
+纯脚本组件的 `comp.script` 由 `wire.js` 的 `mountComponents` 执行，**不是** `parseLifecycle` 单独取出四钩子。执行方式：
+
+```javascript
+// wire.js mountComponents 内
+if (comp.script) {
+    // 注意:wire.js 头部有 'use strict'。严格模式下直接 eval 的 onStart 不会泄漏到外层作用域,
+    // typeof onStart === 'function' 恒为 false,导致 onStart 永不调用(snackbar 等无反应的历史 bug)。
+    // 正确做法:把脚本包装成「定义 onStart + return onStart」的函数体,用 new Function 取回函数引用。
+    var lifecycleFactory = new Function(comp.script + '\n; return onStart;');
+    var onStartFn = lifecycleFactory();
+    onStartFn(el, { stop: function() { el.remove(); } });
+}
+```
+
+- `new Function` 创建的函数体默认**非严格模式**，函数声明（如 `function onStart(){}`）在函数作用域内可见，`return onStart` 可取到引用；
+- **禁止**用裸 `eval(comp.script)`（严格模式作用域隔离导致外层拿不到 `onStart`），也**禁止**用 `new Function(comp.script)` 后不取引用直接调用（那只定义了函数却没有执行 `onStart`）；
+- `el` 是组件在 `#wire-components-container` 内的挂载点（纯脚本组件通常无显式 div，`el` 可能为空元素或 container 本身），`wire.stop()` 用于自我移除实例。
+
+---
+
+## Section 局部更新内部约定
+
+`wire.js` 在合并服务端 section HTML 时有两条**必须守住**的约束，否则会出现「暗色模式被冲掉」「提交后翻页无反应」等历史 bug：
+
+1. **只激活新插入片段内的脚本，不激活整个 parent**。`replaceSection` 注释标记分支在 `parent.insertBefore(tmpl.content, end)` 后调用 `activateScriptsInContext(tmpl.content)`（**传 `tmpl.content`，不是 `parent=body`**）。若传 `parent`，布局级脚本（`main.jblade` 里的 `$$(function(){ check_time() })` 等）会被重新执行——夜间 `check_time()` 触发 `change_style()` 把暗色模式 toggle 掉。
+
+2. **只请求「内容级」section，不请求外壳 section**。`getAllSections` 检测到页面存在 `content` 注释时**只返回 `['content']`**（无 content 如对话框组件场景再回退全部）。原因：普通 action 若请求并替换 `body` 等外层 section，会先移除其内部**嵌套**的 `content` 注释标记，之后 `findComment('content')` 找不到目标，表格等数据 section 永不更新（表现为「URL 变了但数据没变 / 提交后翻页无反应」）。页面外壳（body/css/style/bar_* 等）不参与局部更新，嵌套注释才能保留。
 
 ---
 
