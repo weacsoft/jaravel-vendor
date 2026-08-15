@@ -95,7 +95,7 @@ Route.post("/change", "AdminController::update").name("change");     // wire 局
 | `mount(Request)` | 可选。仅首次 `index()` 时调用，参数为 `Request`；可读取 `request.query()/input()` 初始化。Spring 单例 Bean 需在 `mount()` 里重置表单字段，避免上一次请求残留值泄漏进快照 |
 | `fill(key, value)` / `fill(Map)` | 可选。把键值对**直接赋**到 Controller 自己的 public 属性（同名赋值 + 基础类型转换），不做任何业务重写 |
 | `refresh(Map<String, Object> params)` | 可选。每次 wire 更新后重新加载展示数据（如重新查库），保持列表等数据最新。**调用时机**：`update()` 中 `invokeAction(action, params)` 执行完毕后、`renderSections()` 渲染 sections 前调用。**`params` 含义**：来自前端 POST 请求体 `wire_body` JSON 中的 `"params"` 字段，代表**本次请求前端传来的 action 参数**（不是快照状态）。例如：
-  - `wire:click="delete(1)"` → `params = {"0": "1"}`
+  - `wire:click="delete(1)"` → `delete(Long id)` 由 `invokeAction` 按 `method(args)` 位置参数解析调用（`1` 经 `convertValue` 转 `Long`，见「参数化 action」）；`params` 字段作为同名下标回退（`params.get("0")`）。
   - `wire:click="$refresh"` → `params = null`（magic action 无参数）
   - `wire:model` 触发 `$sync` → `params` 包含同步的字段值（但 `$sync` 不会走 `invokeAction` → `refresh`，直接返回新快照）
   子类可忽略 params 直接重新查库，也可根据 params 决定加载哪些数据（如按 `params.get("page")` 分页）。对于 `@WireLocked` 的大字段（如列表），建议在 `refresh()` 中重新查询并赋值，确保每次 wire 更新后展示数据是最新的 |
@@ -304,6 +304,28 @@ public class AdminController extends WireController {
 | `$sync` | `wire:model` 双向绑定同步 | 仅把字段值合并进快照并重新签名返回,不重渲染任何 section——否则整段 innerHTML 替换会把对话框/模态等局部组件的 DOM 状态(如 mdui Dialog 的打开状态、光标焦点)冲掉。前端拿到新快照后仅更新本地快照,不替换任何 DOM |
 | `$refresh` | `Wire.refresh()` / `wire:click="$refresh"` | 重新执行 `refresh(params)` 并刷新组件 |
 
+### 参数化 action（前端直调后端带参方法）
+
+`wire:click` / `wire:submit` 支持 `method(arg1, arg2, …)` 语法，前端**无需任何额外属性**（如 `wire:param-id`），框架自动把 `(args)` 解析为位置参数、按方法声明的参数类型转换后调用后端方法。这是框架设计内的核心能力——「一次前端 wire 交互即自动调用对应后端方法并带参」，不要当 bug 绕过。
+
+```java
+// 模板（后端模板引擎把 {{$item->id}} 渲染成字面量）：
+//   <a wire:click="role({{$item->id}})">角色修改</a>  →  渲染后 wire:click="role(1)"
+// 前端把 "role(1)" 原样作为 action 派发，后端解析后调用 role(Long id)
+
+public void role(Long id) {                 // 直接对应 role(1)
+    // 下发对话框 / 处理 id ...
+}
+```
+
+解析规则（`WireController.invokeAction`）：
+
+- 正则 `^([^(]+)\((.*)\)$` 拆出方法名与括号内位置参数，逗号分隔，**支持多参**（`role(1, 2)` → `role(Long, Long)`）；
+- 用去掉 `(args)` 后的名字匹配 public 方法（`findPublicMethod`），因此 `role(1)` 命中 `role(Long id)`，而非去匹配字面量 `"role(1)"`；
+- `args[i]` **优先**取 `(args)` 中的位置参数，其次回退同名下标 `params.get("0"/"1"…)`（来自 wire_body 的 params 字段）；
+- 每个参数经 `convertValue(val, paramTypes[i])` 按声明类型转换（`"1"`→`Long`/`Integer`/`Boolean`…），故 `role(1)`→`role(1L)` 天然可用；位置参数未覆盖的形参回退 `params`，两者皆无则传 `null`；
+- 无括号的 action（如 `save`）原样按方法名匹配。
+
 ---
 
 ## 交互式组件下发
@@ -343,6 +365,36 @@ public class AdminController extends WireController {
 - **模板注册**：全局命名组件在 `application.yml` 的 `jaravel.wire.components` 注册（组件名 → 模板名），如 `toast: components.toast`、`confirm: components.confirm`。与控制器绑定的业务组件（对话框等）**不在此注册**，用 `wireComponents()` 声明。
 - **四条下发路径统一**：首屏 HTML bootstrap、Wire 更新 `effects.components`、组件内嵌套下发——共用同一队列与渲染器。
 - **生命周期**：`onCreate → onStart → onStop → onDestroy`，`wire.stop()` 主动结束实例，多实例 id 隔离（`wc-{name}-{seq}`），脚本按实例独立闭包求值。
+
+### 纯脚本命名组件（如 snackbar，零显式 div）
+
+命名组件模板可以是**单个 `<script wire:lifecycle>`，不含任何根 HTML 元素**——连 `display:none` 的占位 div 都不需要。后端 `renderComponents` 识别这种「纯生命周期脚本组件」：把脚本内容抽到 `payload.script`、`html` 置空，并**跳过 `wire:config` 注入与 outlet/div 注入**（否则 `injectConfigIntoRoot` 会把 JSON 塞进 `<script>` 根内部，前端 `new Function` 报 `SyntaxError: Unexpected token '<'`）。
+
+前端 `WireComponent.mount` 对纯脚本组件：不向 outlet 注入任何 div、也不要求 outlet，仅 `parseLifecycle(payload.script)` 取出 `onCreate/onStart/onStop/onDestroy` 并触发 `onStart`（组件自身用 mdui 等自建 DOM）。典型实现（snackbar）：
+
+```blade
+{{-- layouts/mdui/component/snackbar.jblade：整段即一个 <script wire:lifecycle> --}}
+<script wire:lifecycle>
+    function onStart(el, wire) {
+        var message = (wire.params && wire.params.message) || '';
+        var type = (wire.params && wire.params.type) || 'info';
+        mdui.snackbar(message, {
+            timeout: type === 'error' ? 5000 : 3000,
+            position: type === 'error' ? 'top' : 'bottom',
+            onClosed: function () { wire.stop(); }   // 关闭后自我移除，无 DOM 残留
+        });
+    }
+</script>
+```
+
+下发（组件名直接写模板全路径，**无需在 `application.yml` 注册**）：
+
+```java
+wire().component("layouts.mdui.component.snackbar",
+        Map.of("message", "保存成功", "type", "success"));
+```
+
+> 配合「参数化 action」，`wire:click="role(1)"` 触发的 `role(Long id)` 也可下发此类纯脚本组件完成轻提示。
 
 ---
 
@@ -567,5 +619,5 @@ String jsPath = WireManager.getJsPath();
 
 - **Snapshot HMAC 签名**：快照经 HmacSHA256 + session key 签名（`signature:base64` 形式），篡改会抛 `TamperedSnapshotException` → 前端提示刷新页面。
 - **@WireLocked 注解**：标记的字段不进快照、不接受 `wire:model` 参数合并（防篡改、防大对象序列化）。
-- **参数全 String + 结构化解析**：`parseWireAction` 不做 eval，只用词法解析。
+- **参数全 String + 结构化解析**：action 解析用正则（`ACTION_WITH_ARGS` / `LIFECYCLE_SCRIPT`）做词法解析，**不做 eval**；`method(arg)` 的位置参数经 `convertValue` 按声明类型转换（非反射执行任意代码）。
 - **WireParentOverride 运行时 @extends 覆盖**：仅组件下发渲染期生效，主页面渲染不受影响。

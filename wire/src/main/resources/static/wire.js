@@ -760,6 +760,12 @@
             if (data.effects.components && data.effects.components.length > 0) {
                 if (window.WireComponent && typeof window.WireComponent.mountAll === 'function') {
                     window.WireComponent.mountAll(data.effects.components);
+                    // 下发的对话框组件携带 wire:config,需重扫文档以完成 wire:model/wire:submit 绑定,
+                    // 否则对话框失交互。Wire.scan 按 config 节点身份去重,幂等安全;snackbar 等
+                    // 纯生命周期组件无 wire:config,会被忽略。
+                    if (typeof Wire !== 'undefined' && typeof Wire.scan === 'function') {
+                        Wire.scan();
+                    }
                 } else {
                     console.warn('[Wire] 收到 effects.components 但前端单一运行时 wire.js 内的 WireComponent 未加载');
                 }
@@ -1457,6 +1463,27 @@
         return undefined;
     }
 
+    /** 重新执行节点内所有常规 <script>(innerHTML 注入默认不执行脚本)。
+     *  用于组件下发的对话框:其布局里的 mdui.Dialog(...).open()  opener 是常规 <script>,
+     *  经 innerHTML 注入后不会自动执行,这里补跑一次使其打开。
+     *  跳过 wire:config(type=application/json)等数据脚本;wire:lifecycle 已由 parseLifecycle 处理。 */
+    function runScripts(root) {
+        if (!root) return;
+        var scripts = root.querySelectorAll('script');
+        for (var i = 0; i < scripts.length; i++) {
+            var old = scripts[i];
+            var type = (old.getAttribute('type') || '').toLowerCase();
+            if (type && type !== 'text/javascript') continue; // 仅执行普通 JS 脚本
+            var fresh = document.createElement('script');
+            if (old.src) {
+                fresh.src = old.src;
+            } else {
+                fresh.textContent = old.textContent;
+            }
+            if (old.parentNode) old.parentNode.replaceChild(fresh, old);
+        }
+    }
+
     /** 挂载单个组件实例 */
     function mount(payload, outletId) {
         if (!payload || !payload.id) {
@@ -1466,19 +1493,23 @@
         if (instances[payload.id]) {
             return instances[payload.id]; // 防重复挂载
         }
-        var outlet = getOutlet(outletId || payload.outlet);
-        if (!outlet) {
+
+        // 1) 由 html 构建 DOM（innerHTML 的 <script> 不会执行）
+        var wrap = document.createElement('div');
+        wrap.innerHTML = payload.html || '';
+        var el = wrap.firstElementChild || null;
+
+        // 2) 实例隔离：每实例独立闭包
+        var api = parseLifecycle(payload.script);
+
+        // 纯生命周期组件(如 snackbar):模板仅 <script wire:lifecycle>,剔除后无内容节点。
+        // 不依赖 outlet、也不向页面注入任何 div;生命周期内由组件(如 mdui)自建 DOM。
+        var isScriptOnly = !el && !!api;
+        if (!isScriptOnly && !getOutlet(outletId || payload.outlet)) {
             console.error('[WireComponent] 找不到 outlet 容器，无法挂载组件 [' + payload.name + ']');
             return null;
         }
 
-        // 1) 由 html 构建 DOM（innerHTML 的 <script> 不会执行，因此生命周期已拆到 script 字段）
-        var wrap = document.createElement('div');
-        wrap.innerHTML = payload.html || '';
-        var el = wrap.firstElementChild || wrap;
-
-        // 2) 实例隔离：每实例独立闭包
-        var api = parseLifecycle(payload.script);
         var inst = {
             id: payload.id,
             name: payload.name,
@@ -1498,13 +1529,17 @@
         inst.wire = wire;
         instances[payload.id] = inst;
 
-        // 3) onCreate：内容已从服务端取回、尚未插入 DOM
-        callLife(inst, 'onCreate', el, wire);
+        // 3) onCreate：内容已从服务端取回、尚未插入 DOM(纯生命周期组件跳过)
+        if (el) callLife(inst, 'onCreate', el, wire);
 
-        // 4) 插入 DOM
-        outlet.appendChild(el);
+        // 4) 插入 DOM(仅带内容节点的组件;纯生命周期组件不插入任何 div)
+        if (el) {
+            getOutlet(outletId || payload.outlet).appendChild(el);
+            // 补跑组件内常规 <script>(如对话框 opener),innerHTML 注入默认不执行脚本
+            runScripts(el);
+        }
 
-        // 5) onStart：已插入 DOM 且其余初始化完成
+        // 5) onStart：已插入 DOM 或纯生命周期组件(自建 DOM)均触发
         callLife(inst, 'onStart', el, wire);
 
         return inst;

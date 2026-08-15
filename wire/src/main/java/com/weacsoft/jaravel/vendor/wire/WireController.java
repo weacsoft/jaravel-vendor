@@ -18,6 +18,8 @@ import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Wire 抽象控制器基类,类似 Laravel Livewire 的全页组件。
@@ -600,6 +602,13 @@ public abstract class WireController {
         return null;
     }
 
+    /** 解析 "role(1, 2)" 形式 action:拆出方法名与位置参数。支持 wire:click="role(1)" 直接调用 role(Long id)。 */
+    private static final Pattern ACTION_WITH_ARGS = Pattern.compile("^([^(]+)\\((.*)\\)$");
+
+    /** 识别「纯生命周期脚本组件」(整段 HTML 即一个 <script wire:lifecycle>),如 snackbar。 */
+    private static final Pattern LIFECYCLE_SCRIPT =
+            Pattern.compile("^(?s)<script\\b[^>]*wire:lifecycle[^>]*>([\\s\\S]*?)</script>\\s*$");
+
     private void invokeAction(String action, Map<String, Object> params) {
         if ("$refresh".equals(action)) {
             refresh(params);
@@ -615,7 +624,23 @@ public abstract class WireController {
             return;
         }
 
-        Method method = findPublicMethod(this.getClass(), action);
+        // 解析 "role(1, 2)" -> 方法名 "role" + 位置参数 ["1","2"]。
+        // 框架设计:前端 wire:click="role(1)" 等价于自动调用后端 role(Long id),
+        // 可传多个参数(位置对应方法形参)。无括号的 action(如 "save")原样匹配方法名。
+        String methodName = action;
+        List<String> positional = new ArrayList<>();
+        Matcher am = ACTION_WITH_ARGS.matcher(action);
+        if (am.matches()) {
+            methodName = am.group(1).trim();
+            String inside = am.group(2).trim();
+            if (!inside.isEmpty()) {
+                for (String p : inside.split(",")) {
+                    positional.add(p.trim());
+                }
+            }
+        }
+
+        Method method = findPublicMethod(this.getClass(), methodName);
         if (method == null) {
             log.warn("未找到 action 方法: " + action);
             return;
@@ -629,9 +654,11 @@ public abstract class WireController {
         } else {
             args = new Object[paramTypes.length];
             for (int i = 0; i < paramTypes.length; i++) {
-                Object val = params != null ? params.get(String.valueOf(i)) : null;
+                // 优先使用 wire:click="role(1)" 中的位置参数,其次用同名下标 params.get("0"/"1"...)
+                Object val = (i < positional.size()) ? positional.get(i)
+                            : (params != null ? params.get(String.valueOf(i)) : null);
                 // 按 action 方法声明的参数类型做基础转换(如 Long/Integer/Boolean),
-                // 使 wire:click="delete(1)" 能正确映射到 delete(Long id)。
+                // 使 wire:click="role(1)" 能正确映射到 role(Long id)。
                 args[i] = val != null ? convertValue(val.toString(), paramTypes[i]) : null;
             }
         }
@@ -918,41 +945,57 @@ public abstract class WireController {
                     // 保证单一根元素(片段模板如 dialog/toast 可能含多个兄弟节点)
                     html = ensureSingleRoot(html);
 
-                    // 组件快照:用 push 时传入的数据(去掉 wireId 等框架内部标记),
-                    // 经 HMAC 签名,供前端回传后在 update() 中解码并 fill 到本控制器字段。
-                    Map<String, Object> snapshotData = new LinkedHashMap<>();
-                    if (params != null) {
-                        for (Map.Entry<String, Object> e : params.entrySet()) {
-                            if (!"wireId".equals(e.getKey())) {
-                                snapshotData.put(e.getKey(), e.getValue());
+                    // 生命周期脚本组件(整段 HTML 即一个 <script wire:lifecycle>,如 snackbar):
+                    // 把脚本内容抽到 payload.script,html 置空,且不注入 wire:config。
+                    // 纯生命周期组件无需更新地址/签名快照;若仍注入, injectConfigIntoRoot 会把 JSON
+                    // 塞进 <script> 根内部,导致前端 new Function 报 SyntaxError: Unexpected token '<'。
+                    String lifecycleScript = null;
+                    Matcher lcm = LIFECYCLE_SCRIPT.matcher(html.trim());
+                    if (lcm.matches()) {
+                        lifecycleScript = lcm.group(1);
+                        html = ""; // 无内容节点,前端 mount 视为纯生命周期组件(不注入 div)
+                    }
+
+                    if (lifecycleScript == null) {
+                        // 组件快照:用 push 时传入的数据(去掉 wireId 等框架内部标记),
+                        // 经 HMAC 签名,供前端回传后在 update() 中解码并 fill 到本控制器字段。
+                        Map<String, Object> snapshotData = new LinkedHashMap<>();
+                        if (params != null) {
+                            for (Map.Entry<String, Object> e : params.entrySet()) {
+                                if (!"wireId".equals(e.getKey())) {
+                                    snapshotData.put(e.getKey(), e.getValue());
+                                }
                             }
                         }
-                    }
-                    String snapshot = encodeSignedSnapshot(snapshotData, request);
+                        String snapshot = encodeSignedSnapshot(snapshotData, request);
 
-                    // 内嵌 wire:config:data-wire-update 指向上层组件更新路由,
-                    // wire:snapshot 为签名快照。注入到「根元素内部末尾」(而非最后一个 </ 之前——
-                    // 片段模板末尾往往是 </script>,插到它前面会把 JSON 塞进脚本块破坏渲染)。
-                    // 放在根元素内部,使前端 initComponent 以对话框本身为作用域(scope=config.parentElement),
-                    // 避免与列表组件的事件被重复绑定。
-                    String configScript = "<script type=\"application/json\" wire:config"
-                            + " data-wire-update=\"" + escapeAttr(parentUpdateUrl) + "\""
-                            + " wire:snapshot=\"" + escapeAttr(snapshot) + "\"></script>";
-                    html = injectConfigIntoRoot(html, configScript);
+                        // 内嵌 wire:config:data-wire-update 指向上层组件更新路由,
+                        // wire:snapshot 为签名快照。注入到「根元素内部末尾」(而非最后一个 </ 之前——
+                        // 片段模板末尾往往是 </script>,插到它前面会把 JSON 塞进脚本块破坏渲染)。
+                        // 放在根元素内部,使前端 initComponent 以对话框本身为作用域(scope=config.parentElement),
+                        // 避免与列表组件的事件被重复绑定。
+                        String configScript = "<script type=\"application/json\" wire:config"
+                                + " data-wire-update=\"" + escapeAttr(parentUpdateUrl) + "\""
+                                + " wire:snapshot=\"" + escapeAttr(snapshot) + "\"></script>";
+                        html = injectConfigIntoRoot(html, configScript);
 
-                    // 注入 data-wire-back-url:供前端 dialog 取消按钮读取,还原地址栏。
-                    // 由 action(edit/add)通过 WireEffects.backUrl() 指定,
-                    // 避免 dialog 模板写死返回 URL,与控制器逻辑彻底解耦。
-                    // 注意:drainBackUrl 是请求级一次性读取,这里调用后从 ThreadLocal 中取出。
-                    String backUrlAttr = WireEffects.drainBackUrl();
-                    if (backUrlAttr != null && !backUrlAttr.isEmpty()) {
-                        html = injectDataAttr(html, "data-wire-back-url", backUrlAttr);
+                        // 注入 data-wire-back-url:供前端 dialog 取消按钮读取,还原地址栏。
+                        // 由 action(edit/add)通过 WireEffects.backUrl() 指定,
+                        // 避免 dialog 模板写死返回 URL,与控制器逻辑彻底解耦。
+                        // 注意:drainBackUrl 是请求级一次性读取,这里调用后从 ThreadLocal 中取出。
+                        String backUrlAttr = WireEffects.drainBackUrl();
+                        if (backUrlAttr != null && !backUrlAttr.isEmpty()) {
+                            html = injectDataAttr(html, "data-wire-back-url", backUrlAttr);
+                        }
                     }
 
                     Map<String, Object> entry = new LinkedHashMap<>();
                     entry.put("name", name);
                     entry.put("params", renderParams);
                     entry.put("html", html);
+                    if (lifecycleScript != null) {
+                        entry.put("script", lifecycleScript);
+                    }
                     entry.put("id", compId);
                     rendered.add(entry);
                 } finally {
