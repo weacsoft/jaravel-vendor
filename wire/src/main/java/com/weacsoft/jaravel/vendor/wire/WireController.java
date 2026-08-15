@@ -615,52 +615,11 @@ public abstract class WireController {
             return;
         }
 
-        // 解析 wire:click action,纯字符串切分(不依赖正则):
-        //   "save"          -> 方法 save,无参
-        //   "edit()"        -> 方法 edit,无参
-        //   "role(1)"       -> 方法 role,位置参数 ["1"]
-        //   "role('admin')" -> 方法 role,位置参数 ["admin"](单引号标记字符串字面量,剥去引号)
-        //   "role('a,b',2)" -> 位置参数 ["a,b","2"](引号内的逗号不切分)
-        // 单引号用于声明该实参为字符串字面量;剥去引号后按方法形参类型做类型转换。
-        String methodName = action;
-        List<String> positional = new ArrayList<>();
-        int lp = action.indexOf('(');
-        if (lp >= 0) {
-            methodName = action.substring(0, lp).trim();
-            int rp = action.lastIndexOf(')');
-            if (rp <= lp) {
-                rp = action.length();
-            }
-            String inner = action.substring(lp + 1, rp).trim();
-            if (!inner.isEmpty()) {
-                // 按逗号切分,但忽略被单引号包住的逗号
-                StringBuilder buf = new StringBuilder();
-                boolean inQuote = false;
-                for (int i = 0; i < inner.length(); i++) {
-                    char ch = inner.charAt(i);
-                    if (ch == '\'') {
-                        // 单引号:翻转引号状态,作为字符串字面量边界(引号本身不计入参数)
-                        inQuote = !inQuote;
-                        continue;
-                    }
-                    if (ch == ',' && !inQuote) {
-                        String a = buf.toString().trim();
-                        if (!a.isEmpty()) {
-                            positional.add(a);
-                        }
-                        buf.setLength(0);
-                        continue;
-                    }
-                    buf.append(ch);
-                }
-                String last = buf.toString().trim();
-                if (!last.isEmpty()) {
-                    positional.add(last);
-                }
-            }
-        }
-
-        Method method = findPublicMethod(this.getClass(), methodName);
+        // 参数化 action 解析由前端 wire.js 的 parseWireAction 负责:
+        //   wire:click="edit(1)"  →  action="edit", params={"0":"1"}
+        //   wire:click="role('admin')"  →  action="role", params={"0":"'admin'"}
+        // 后端直接按精确方法名查找，参数从 params 按位置下标读取。
+        Method method = findPublicMethod(this.getClass(), action);
         if (method == null) {
             log.warn("未找到 action 方法: " + action);
             return;
@@ -674,11 +633,9 @@ public abstract class WireController {
         } else {
             args = new Object[paramTypes.length];
             for (int i = 0; i < paramTypes.length; i++) {
-                // 优先使用 wire:click="role(1)" 中的位置参数,其次用同名下标 params.get("0"/"1"...)
-                Object val = (i < positional.size()) ? positional.get(i)
-                            : (params != null ? params.get(String.valueOf(i)) : null);
+                Object val = params != null ? params.get(String.valueOf(i)) : null;
                 // 按 action 方法声明的参数类型做基础转换(如 Long/Integer/Boolean),
-                // 使 wire:click="role(1)" 能正确映射到 role(Long id)。
+                // 使 wire:click="delete(1)" 能正确映射到 delete(Long id)。
                 args[i] = val != null ? convertValue(val.toString(), paramTypes[i]) : null;
             }
         }
