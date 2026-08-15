@@ -304,28 +304,44 @@ public class AdminController extends WireController {
 | `$sync` | `wire:model` 双向绑定同步 | 仅把字段值合并进快照并重新签名返回,不重渲染任何 section——否则整段 innerHTML 替换会把对话框/模态等局部组件的 DOM 状态(如 mdui Dialog 的打开状态、光标焦点)冲掉。前端拿到新快照后仅更新本地快照,不替换任何 DOM |
 | `$refresh` | `Wire.refresh()` / `wire:click="$refresh"` | 重新执行 `refresh(params)` 并刷新组件 |
 
-### 参数化 action（前端直调后端带参方法）
+### 参数化 action（前端解析 + 后端使用）
 
-`wire:click` / `wire:submit` 支持 `method(arg1, arg2, …)` 语法，前端**无需任何额外属性**（如 `wire:param-id`），框架自动把 `(args)` 解析为位置参数、按方法声明的参数类型转换后调用后端方法。这是框架设计内的核心能力——「一次前端 wire 交互即自动调用对应后端方法并带参」，不要当 bug 绕过。
+`wire:click` / `wire:submit` 支持 `method(arg1, arg2, …)` 语法。框架采用**前后端职责分离**设计：
 
-```java
-// 模板（后端模板引擎把 {{$item->id}} 渲染成字面量）：
-//   <a wire:click="role({{$item->id}})">角色修改</a>  →  渲染后 wire:click="role(1)"
-// 前端把 "role(1)" 原样作为 action 派发，后端解析后调用 role(Long id)
+- **前端负责解析**：`wire.js` 的 `parseWireAction(expr)` 函数负责把 `wire:click` 表达式切分为「方法名」和「位置参数」，并负责单引号字符串字面量剥除、逗号分隔（支持引号内逗号不切分，如 `role('a,b',2)` → 两个参数）。
+- **后端直接使用**：`WireController.invokeAction` 直接使用 action 作为方法名，参数从 `params` 按位置下标读取（`params.get("0")`, `params.get("1")`…），仅做类型转换，不做任何 action 字符串解析。
 
-public void role(Long id) {                 // 直接对应 role(1)
-    // 下发对话框 / 处理 id ...
-}
+```blade
+{{-- 模板 --}}
+<a wire:click="edit({{ $item->id }})">修改</a>   {{-- 渲染后：wire:click="edit(1)" --}}
+<a wire:click="role({{ $item->id }}, 'admin')">角色修改</a>  {{-- 渲染后：wire:click="role(1, 'admin')" --}}
 ```
 
-解析规则（`WireController.invokeAction`）：
+```javascript
+// wire.js 中的 parseWireAction 处理：
+// edit(1)           → action="edit",   params={"0":"1"}
+// role(1, 'admin')  → action="role",   params={"0":"1", "1":"'admin'"}
+// role('a,b', 2)    → action="role",   params={"0":"a,b", "1":"2"}  {{-- 引号内逗号不切分 --}}
+```
 
-- 按**字符串切分**（不依赖正则）：取首个 `(` 与配对 `)` 之间为参数区，按逗号切分，**支持多参**（`role(1, 2)` → `role(Long, Long)`）；
-- 用去掉 `(args)` 后的名字匹配 public 方法（`findPublicMethod`），因此 `role(1)` 命中 `role(Long id)`，而非去匹配字面量 `"role(1)"`；
-- **单引号标记字符串字面量**：参数若被单引号包住（如 `role('admin')`），解析时**剥去引号**得到 `admin`，再按形参类型转换；故 `role('admin')` 命中 `role(String)`、`role('7')` 剥引号后转 `Long`；引号**内的逗号不切分**（`role('a,b')` 视为单个 `"a,b"` 参数）；
-- `args[i]` **优先**取 `(args)` 中的位置参数，其次回退同名下标 `params.get("0"/"1"…)`（来自 wire_body 的 params 字段）；
-- 每个参数经 `convertValue(val, paramTypes[i])` 按声明类型转换（`"1"`→`Long`/`Integer`/`Boolean`…），故 `role(1)`→`role(1L)` 天然可用；位置参数未覆盖的形参回退 `params`，两者皆无则传 `null`；
-- 无括号的 action（如 `save`）原样按方法名匹配。
+```java
+// 后端方法直接对应：
+public void edit(Long id) { ... }                          // edit(1) → edit(1L)
+public void role(Long id, String name) { ... }            // role(1, 'admin') → role(1L, "admin")
+public void role(Long id, String filter) { ... }          // role('a,b', 2) → role("a,b", 2)
+```
+
+参数解析规则（前端 `parseWireAction`）：
+- 取首个 `(` 与配对 `)` 之间为参数区，按逗号切分（**支持多参**）；
+- 单引号标记字符串字面量：引号内逗号不切分（`role('a,b',2)` → 两个参数 `"a,b"` 和 `"2"`）；
+- 剥去字符串参数外层的单引号（`'admin'` → `admin`）；
+- 位置参数放入 `params` 的字符串下标：`params={"0":"...", "1":"..."}`。
+
+后端处理规则（`WireController.invokeAction`）：
+- 直接用 `action` 作为方法名字符串匹配（`findPublicMethod`）；
+- 从 `params.get(String.valueOf(i))` 按位置下标读取参数；
+- 经 `convertValue(val.toString(), paramTypes[i])` 按声明类型转换（`"1"`→`Long`，`"true"`→`Boolean` 等）；
+- 无括号 action（如 `save`）原样按方法名匹配，`params` 为 null。
 
 ---
 
@@ -532,6 +548,41 @@ jaravel-vendor/wire/xsd/wire.xsd
 
 ---
 
+## 参数化 action 设计原则（前后端职责分离）
+
+**核心原则**：`wire:click="edit(1)"` 这类表达式由前端 `wire.js` 的 `parseWireAction` 函数负责解析，后端只做方法名匹配和类型转换。
+
+### 前端职责（wire.js `parseWireAction`）
+
+| 表达式 | 解析结果 |
+|--------|---------|
+| `edit(1)` | `action="edit"`, `params={"0":"1"}` |
+| `role('admin')` | `action="role"`, `params={"0":"admin"}` |
+| `role('a,b', 2)` | `action="role"`, `params={"0":"a,b", "1":"2"}` |
+| `save` | `action="save"`, `params=null` |
+
+解析规则：
+1. 取首个 `(` 与配对 `)` 之间为参数区；
+2. 按逗号切分（**支持多参**）；
+3. 单引号内逗号不切分（字符串字面量保护）；
+4. 剥去字符串参数外层的单引号；
+5. 位置参数放入 `params` 的字符串下标。
+
+### 后端职责（WireController.invokeAction）
+
+1. 直接用 `action` 字符串匹配 public 方法（`findPublicMethod`）；
+2. 从 `params.get(String.valueOf(i))` 按位置下标读取参数；
+3. 经 `convertValue(val.toString(), paramTypes[i])` 按方法声明类型转换；
+4. 不做任何 action 字符串解析。
+
+### 设计理由
+
+- 前端有完整的表达式上下文，可以正确处理引号、逗号等语法；
+- 后端只做类型转换，职责单一，避免前后端双重解析导致的不一致；
+- 前端 `parseWireAction` 可复用，不依赖后端方法签名。
+
+---
+
 ## 认证过期无感重定向
 
 Wire 实现了认证过期的「无感」重定向体验：当用户在 Wire 交互过程中 session 过期，前端会自动跳转到登录页，登录成功后回到之前的页面。
@@ -620,5 +671,5 @@ String jsPath = WireManager.getJsPath();
 
 - **Snapshot HMAC 签名**：快照经 HmacSHA256 + session key 签名（`signature:base64` 形式），篡改会抛 `TamperedSnapshotException` → 前端提示刷新页面。
 - **@WireLocked 注解**：标记的字段不进快照、不接受 `wire:model` 参数合并（防篡改、防大对象序列化）。
-- **参数全 String + 结构化解析**：action 解析按**字符串切分**（无正则、无 eval）；`method(arg)` 的位置参数经 `convertValue` 按声明类型转换（非反射执行任意代码）；单引号参数标记为字符串字面量并剥引号。
+- **参数全 String + 结构化解析**：前端 `parseWireAction` 按字符串切分（无正则、无 eval）把 `wire:click` 表达式解析为方法名和位置参数；后端 `WireController.invokeAction` 直接使用 action 作为方法名，参数从 `params` 按位置下标读取，经 `convertValue` 按声明类型转换（非反射执行任意代码）；单引号参数标记为字符串字面量并剥引号。
 - **WireParentOverride 运行时 @extends 覆盖**：仅组件下发渲染期生效，主页面渲染不受影响。
