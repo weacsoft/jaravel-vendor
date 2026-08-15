@@ -320,8 +320,9 @@ public void role(Long id) {                 // 直接对应 role(1)
 
 解析规则（`WireController.invokeAction`）：
 
-- 正则 `^([^(]+)\((.*)\)$` 拆出方法名与括号内位置参数，逗号分隔，**支持多参**（`role(1, 2)` → `role(Long, Long)`）；
+- 按**字符串切分**（不依赖正则）：取首个 `(` 与配对 `)` 之间为参数区，按逗号切分，**支持多参**（`role(1, 2)` → `role(Long, Long)`）；
 - 用去掉 `(args)` 后的名字匹配 public 方法（`findPublicMethod`），因此 `role(1)` 命中 `role(Long id)`，而非去匹配字面量 `"role(1)"`；
+- **单引号标记字符串字面量**：参数若被单引号包住（如 `role('admin')`），解析时**剥去引号**得到 `admin`，再按形参类型转换；故 `role('admin')` 命中 `role(String)`、`role('7')` 剥引号后转 `Long`；引号**内的逗号不切分**（`role('a,b')` 视为单个 `"a,b"` 参数）；
 - `args[i]` **优先**取 `(args)` 中的位置参数，其次回退同名下标 `params.get("0"/"1"…)`（来自 wire_body 的 params 字段）；
 - 每个参数经 `convertValue(val, paramTypes[i])` 按声明类型转换（`"1"`→`Long`/`Integer`/`Boolean`…），故 `role(1)`→`role(1L)` 天然可用；位置参数未覆盖的形参回退 `params`，两者皆无则传 `null`；
 - 无括号的 action（如 `save`）原样按方法名匹配。
@@ -619,5 +620,5 @@ String jsPath = WireManager.getJsPath();
 
 - **Snapshot HMAC 签名**：快照经 HmacSHA256 + session key 签名（`signature:base64` 形式），篡改会抛 `TamperedSnapshotException` → 前端提示刷新页面。
 - **@WireLocked 注解**：标记的字段不进快照、不接受 `wire:model` 参数合并（防篡改、防大对象序列化）。
-- **参数全 String + 结构化解析**：action 解析用正则（`ACTION_WITH_ARGS` / `LIFECYCLE_SCRIPT`）做词法解析，**不做 eval**；`method(arg)` 的位置参数经 `convertValue` 按声明类型转换（非反射执行任意代码）。
+- **参数全 String + 结构化解析**：action 解析按**字符串切分**（无正则、无 eval）；`method(arg)` 的位置参数经 `convertValue` 按声明类型转换（非反射执行任意代码）；单引号参数标记为字符串字面量并剥引号。
 - **WireParentOverride 运行时 @extends 覆盖**：仅组件下发渲染期生效，主页面渲染不受影响。

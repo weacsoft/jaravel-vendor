@@ -18,8 +18,6 @@ import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Wire 抽象控制器基类,类似 Laravel Livewire 的全页组件。
@@ -602,13 +600,6 @@ public abstract class WireController {
         return null;
     }
 
-    /** 解析 "role(1, 2)" 形式 action:拆出方法名与位置参数。支持 wire:click="role(1)" 直接调用 role(Long id)。 */
-    private static final Pattern ACTION_WITH_ARGS = Pattern.compile("^([^(]+)\\((.*)\\)$");
-
-    /** 识别「纯生命周期脚本组件」(整段 HTML 即一个 <script wire:lifecycle>),如 snackbar。 */
-    private static final Pattern LIFECYCLE_SCRIPT =
-            Pattern.compile("^(?s)<script\\b[^>]*wire:lifecycle[^>]*>([\\s\\S]*?)</script>\\s*$");
-
     private void invokeAction(String action, Map<String, Object> params) {
         if ("$refresh".equals(action)) {
             refresh(params);
@@ -624,18 +615,47 @@ public abstract class WireController {
             return;
         }
 
-        // 解析 "role(1, 2)" -> 方法名 "role" + 位置参数 ["1","2"]。
-        // 框架设计:前端 wire:click="role(1)" 等价于自动调用后端 role(Long id),
-        // 可传多个参数(位置对应方法形参)。无括号的 action(如 "save")原样匹配方法名。
+        // 解析 wire:click action,纯字符串切分(不依赖正则):
+        //   "save"          -> 方法 save,无参
+        //   "edit()"        -> 方法 edit,无参
+        //   "role(1)"       -> 方法 role,位置参数 ["1"]
+        //   "role('admin')" -> 方法 role,位置参数 ["admin"](单引号标记字符串字面量,剥去引号)
+        //   "role('a,b',2)" -> 位置参数 ["a,b","2"](引号内的逗号不切分)
+        // 单引号用于声明该实参为字符串字面量;剥去引号后按方法形参类型做类型转换。
         String methodName = action;
         List<String> positional = new ArrayList<>();
-        Matcher am = ACTION_WITH_ARGS.matcher(action);
-        if (am.matches()) {
-            methodName = am.group(1).trim();
-            String inside = am.group(2).trim();
-            if (!inside.isEmpty()) {
-                for (String p : inside.split(",")) {
-                    positional.add(p.trim());
+        int lp = action.indexOf('(');
+        if (lp >= 0) {
+            methodName = action.substring(0, lp).trim();
+            int rp = action.lastIndexOf(')');
+            if (rp <= lp) {
+                rp = action.length();
+            }
+            String inner = action.substring(lp + 1, rp).trim();
+            if (!inner.isEmpty()) {
+                // 按逗号切分,但忽略被单引号包住的逗号
+                StringBuilder buf = new StringBuilder();
+                boolean inQuote = false;
+                for (int i = 0; i < inner.length(); i++) {
+                    char ch = inner.charAt(i);
+                    if (ch == '\'') {
+                        // 单引号:翻转引号状态,作为字符串字面量边界(引号本身不计入参数)
+                        inQuote = !inQuote;
+                        continue;
+                    }
+                    if (ch == ',' && !inQuote) {
+                        String a = buf.toString().trim();
+                        if (!a.isEmpty()) {
+                            positional.add(a);
+                        }
+                        buf.setLength(0);
+                        continue;
+                    }
+                    buf.append(ch);
+                }
+                String last = buf.toString().trim();
+                if (!last.isEmpty()) {
+                    positional.add(last);
                 }
             }
         }
@@ -950,10 +970,21 @@ public abstract class WireController {
                     // 纯生命周期组件无需更新地址/签名快照;若仍注入, injectConfigIntoRoot 会把 JSON
                     // 塞进 <script> 根内部,导致前端 new Function 报 SyntaxError: Unexpected token '<'。
                     String lifecycleScript = null;
-                    Matcher lcm = LIFECYCLE_SCRIPT.matcher(html.trim());
-                    if (lcm.matches()) {
-                        lifecycleScript = lcm.group(1);
-                        html = ""; // 无内容节点,前端 mount 视为纯生命周期组件(不注入 div)
+                    // 纯生命周期脚本组件(整段 HTML 即一个 <script wire:lifecycle>,如 snackbar):
+                    // 字符串判断(不用正则):以 <script 开头、</script> 结尾,且 opening tag 含 wire:lifecycle。
+                    // 把脚本内容抽到 payload.script,html 置空,且不注入 wire:config。
+                    // 纯生命周期组件无需更新地址/签名快照;若仍注入, injectConfigIntoRoot 会把 JSON
+                    // 塞进 <script> 根内部,导致前端 new Function 报 SyntaxError: Unexpected token '<'。
+                    String trimmedHtml = html.trim();
+                    if (trimmedHtml.startsWith("<script") && trimmedHtml.endsWith("</script>")) {
+                        int tagEnd = trimmedHtml.indexOf('>');
+                        if (tagEnd > 0 && trimmedHtml.substring(0, tagEnd).contains("wire:lifecycle")) {
+                            int closeStart = trimmedHtml.lastIndexOf("</script>");
+                            if (closeStart > tagEnd) {
+                                lifecycleScript = trimmedHtml.substring(tagEnd + 1, closeStart);
+                                html = ""; // 无内容节点,前端 mount 视为纯生命周期组件(不注入 div)
+                            }
+                        }
                     }
 
                     if (lifecycleScript == null) {
