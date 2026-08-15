@@ -339,30 +339,36 @@ public class BladeEngine {
      */
     public String renderSection(String templateName, String sectionName, Map<String, Object> variables) throws Exception {
         BladeTemplate template = loadTemplate(templateName);
-        template.setEngine(this);
-        template.resetContext();
-        BladeContext context = template.getContext();
+        // 并发安全:BladeTemplate 实例在 templateInstanceCache 中被跨请求共享,其 context 是可变实例字段。
+        // 多个并发 wire 更新同时渲染同一模板时,会并发读写同一个 context(尤其是 componentSlots 的
+        // clear/putAll 与迭代),导致 ConcurrentModificationException(表现为「点击后页面直接蹦」)。
+        // 对缓存模板实例加锁,保证同一模板的渲染串行,context 不再被并发篡改。
+        synchronized (template) {
+            template.setEngine(this);
+            template.resetContext();
+            BladeContext context = template.getContext();
 
-        if (variables != null) {
-            for (Map.Entry<String, Object> entry : variables.entrySet()) {
-                context.setVariable(entry.getKey(), entry.getValue());
+            if (variables != null) {
+                for (Map.Entry<String, Object> entry : variables.entrySet()) {
+                    context.setVariable(entry.getKey(), entry.getValue());
+                }
             }
+
+            // Wire 局部渲染同样需要初始化完整继承链：
+            // 1. resetContext 后 section renderer 已被清空，必须重新 init（不能依赖 isInitialized 守卫）；
+            // 2. section 可能定义在父模板中，或经 @parent 与父模板合并，需与整页渲染语义一致。
+            initInheritanceChain(template, templateName, context);
+
+            Consumer<Writer> renderer = context.getSectionRenderer(sectionName);
+            if (renderer == null) {
+                String sectionContent = context.getSection(sectionName);
+                return sectionContent != null ? sectionContent : "";
+            }
+
+            StringWriter writer = new StringWriter();
+            renderer.accept(writer);
+            return WireAnchorRewriter.rewrite(writer.toString());
         }
-
-        // Wire 局部渲染同样需要初始化完整继承链：
-        // 1. resetContext 后 section renderer 已被清空，必须重新 init（不能依赖 isInitialized 守卫）；
-        // 2. section 可能定义在父模板中，或经 @parent 与父模板合并，需与整页渲染语义一致。
-        initInheritanceChain(template, templateName, context);
-
-        Consumer<Writer> renderer = context.getSectionRenderer(sectionName);
-        if (renderer == null) {
-            String sectionContent = context.getSection(sectionName);
-            return sectionContent != null ? sectionContent : "";
-        }
-
-        StringWriter writer = new StringWriter();
-        renderer.accept(writer);
-        return WireAnchorRewriter.rewrite(writer.toString());
     }
 
     /**
@@ -375,31 +381,35 @@ public class BladeEngine {
      */
     public Map<String, String> renderSections(String templateName, List<String> sectionNames, Map<String, Object> variables) throws Exception {
         BladeTemplate template = loadTemplate(templateName);
-        template.setEngine(this);
-        template.resetContext();
-        BladeContext context = template.getContext();
+        // 并发安全:与 renderSection 同理,对共享缓存模板实例加锁,保证同一模板渲染串行,
+        // 避免并发请求同时迭代/修改同一 context 引发的 ConcurrentModificationException。
+        synchronized (template) {
+            template.setEngine(this);
+            template.resetContext();
+            BladeContext context = template.getContext();
 
-        if (variables != null) {
-            for (Map.Entry<String, Object> entry : variables.entrySet()) {
-                context.setVariable(entry.getKey(), entry.getValue());
+            if (variables != null) {
+                for (Map.Entry<String, Object> entry : variables.entrySet()) {
+                    context.setVariable(entry.getKey(), entry.getValue());
+                }
             }
-        }
 
-        initInheritanceChain(template, templateName, context);
+            initInheritanceChain(template, templateName, context);
 
-        Map<String, String> result = new LinkedHashMap<>();
-        for (String sectionName : sectionNames) {
-            Consumer<Writer> renderer = context.getSectionRenderer(sectionName);
-            if (renderer != null) {
-                StringWriter writer = new StringWriter();
-                renderer.accept(writer);
-                result.put(sectionName, WireAnchorRewriter.rewrite(writer.toString()));
-            } else {
-                String sectionContent = context.getSection(sectionName);
-                result.put(sectionName, sectionContent != null ? WireAnchorRewriter.rewrite(sectionContent) : "");
+            Map<String, String> result = new LinkedHashMap<>();
+            for (String sectionName : sectionNames) {
+                Consumer<Writer> renderer = context.getSectionRenderer(sectionName);
+                if (renderer != null) {
+                    StringWriter writer = new StringWriter();
+                    renderer.accept(writer);
+                    result.put(sectionName, WireAnchorRewriter.rewrite(writer.toString()));
+                } else {
+                    String sectionContent = context.getSection(sectionName);
+                    result.put(sectionName, sectionContent != null ? WireAnchorRewriter.rewrite(sectionContent) : "");
+                }
             }
+            return result;
         }
-        return result;
     }
 
     /**

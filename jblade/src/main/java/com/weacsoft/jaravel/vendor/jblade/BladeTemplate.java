@@ -28,7 +28,9 @@ public abstract class BladeTemplate {
 
     public abstract void render(Writer writer) throws Exception;
 
-    public String render() throws Exception {
+    // 并发安全:整页渲染也走共享缓存的 BladeTemplate 实例,generated 子类在此之上调用 render(Writer)
+    // 并读写 this.context。synchronized 保证同一缓存模板实例的整页渲染串行,避免 context 并发竞态。
+    public synchronized String render() throws Exception {
         StringWriter writer = new StringWriter();
         render(writer);
         return writer.toString();
@@ -681,7 +683,11 @@ public abstract class BladeTemplate {
         return java.time.LocalDate.now().getYear();
     }
 
-    protected void renderComponent(Writer writer, String componentName, Map<String, Object> data, Map<String, String> slots) throws Exception {
+    // 并发安全:组件模板实例同样来自 templateInstanceCache(共享),其 context 是可变实例字段。
+    // 加 synchronized 后,同一缓存组件模板的 renderComponent 串行执行,避免并发线程在迭代
+    // context 的 slots/variables/componentData 时,另一线程对这些 map 做结构修改(put/clear/putAll)
+    // 而抛出 ConcurrentModificationException。
+    protected synchronized void renderComponent(Writer writer, String componentName, Map<String, Object> data, Map<String, String> slots) throws Exception {
         if (engine == null) {
             throw new IllegalStateException("BladeEngine not set for template");
         }
@@ -711,7 +717,9 @@ public abstract class BladeTemplate {
         BladeContext componentCtx = componentTemplate.getContext();
 
         // 组件可见：外层变量（Laravel 行为：组件视图共享环境数据）+ 显式传入的数据 + 插槽
-        for (Map.Entry<String, Object> varEntry : context.getVariables().entrySet()) {
+        // 防御性快照:遍历前复制一份,避免迭代过程中 context 被并发修改而抛 ConcurrentModificationException。
+        Map<String, Object> variablesSnapshot = new HashMap<>(context.getVariables());
+        for (Map.Entry<String, Object> varEntry : variablesSnapshot.entrySet()) {
             componentCtx.setVariable(varEntry.getKey(), varEntry.getValue());
         }
         // 插槽内容是已经渲染好的 HTML 片段，按 PHP Blade 语义包装为 HtmlString（Htmlable），
@@ -720,12 +728,17 @@ public abstract class BladeTemplate {
         String defaultSlot = context.getSlot("default");
         componentCtx.setVariable("slot", new HtmlString(defaultSlot == null ? "" : defaultSlot));
         componentCtx.setVariable("$slot", new HtmlString(defaultSlot == null ? "" : defaultSlot)); // 兼容旧版编译产物
-        for (Map.Entry<String, String> slotEntry : context.getComponentSlots().entrySet()) {
+        // 防御性快照:遍历前复制一份 slots,避免迭代过程中 context.getComponentSlots() 被并发
+        // 修改(如其他线程的 clear/putAll)而抛 ConcurrentModificationException。
+        Map<String, String> slotsSnapshot = new HashMap<>(context.getComponentSlots());
+        for (Map.Entry<String, String> slotEntry : slotsSnapshot.entrySet()) {
             HtmlString htmlSlot = new HtmlString(slotEntry.getValue() == null ? "" : slotEntry.getValue());
             componentCtx.setVariable(slotEntry.getKey(), htmlSlot);
             componentCtx.setVariable("$" + slotEntry.getKey(), htmlSlot);
         }
-        for (Map.Entry<String, Object> dataEntry : context.getComponentData().entrySet()) {
+        // 防御性快照:同上,避免迭代 componentData 时被并发修改。
+        Map<String, Object> componentDataSnapshot = new HashMap<>(context.getComponentData());
+        for (Map.Entry<String, Object> dataEntry : componentDataSnapshot.entrySet()) {
             componentCtx.setVariable(dataEntry.getKey(), dataEntry.getValue());
         }
 
