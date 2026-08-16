@@ -174,7 +174,7 @@ blockquote ul, blockquote ol { margin-bottom: 0.2rem; }
 <div class="layout">
 <div class="sidebar">
 <h2>jaravel-vendor</h2>
-<div class="version">v0.1.2 · 31 模块 · 857 测试</div>
+<div class="version">v0.1.2 · 31 模块</div>
 <nav>
 <a href="#overview" class="group">框架总览</a>
 <a href="#core" class="group">核心模块</a>
@@ -229,7 +229,6 @@ blockquote ul, blockquote ol { margin-bottom: 0.2rem; }
 <div class="subtitle">Laravel 风格的 Java Web 框架 · 路由/模板/ORM/认证/缓存/事件/CLI/插件热加载/远程执行/文件存储</div>
 <div class="meta">
 <span>31 个模块</span>
-<span>857 个测试</span>
 <span>v0.1.2</span>
 </div>
 </div>
@@ -336,49 +335,101 @@ blockquote ul, blockquote ol { margin-bottom: 0.2rem; }
 <li><strong>热加载</strong>：引入 <code>plugin-jar-core</code> 即可在任何 SpringBoot 项目中使用 JAR 插件热加载</li>
 <li><strong>远程执行</strong>：引入 <code>plugin-jar-remote-server</code> + <code>plugin-jar-remote-client</code> 即可实现分布式方法调用（无需 plugin-jar-core，通过 BeanResolver 从 Spring 容器获取 Bean）</li>
 <li><strong>两者结合</strong>：远程执行 + 热加载 = 分布式插件热更新，子节点自动同步新版本插件</li>
-<li><strong>SpringBoot 双版本兼容</strong>：热加载插件模块（plugin-jar-core, plugin-java-core）编译期不依赖 javax/jakarta Servlet API，通过 <code>NativeWebRequest</code> 抽象层 + 反射在运行时适配宿主版本，同一构件可运行在 SB 2.7（Spring 5.3, javax.servlet）和 SB 3.x（Spring 6, jakarta.servlet）环境中</li>
+
 </ul>
 
-<h6 id="overview-配置重构v012">配置重构（v0.1.2）</h6>
+<h6 id="overview-配置体系v012">配置体系（v0.1.2）</h6>
 
-<p><strong>v0.1.2 对 jaravel 的配置体系进行了重构</strong>，采用类似 Laravel <code>config/app.php</code> 的中央配置模式，通过 <code>@Import</code> 注解显式控制各功能模块的启用，而非依赖约定自动激活。</p>
+<blockquote>
+<p><strong>Jaravel 的绝大多数配置是通过「配置类（Java 代码）」完成的，而不是 application.yml。</strong>框架侧只保留「配置类源码模板」，业务工程通过 <code>artisan vendor:publish</code> 把配置类<strong>发布成自己的 Java 代码</strong>（默认 <code>src/main/java/&lt;basePackage&gt;/config/</code>），之后直接改代码：注册守卫/存储/磁盘/驱动/指令、声明功能开关，全部以编译期可见的 Java 方式完成。<code>application.yml</code> 只承担少量运行时参数（连接串、TTL、开关值等）。</p>
+</blockquote>
 
-<p><strong>设计理念</strong>：大部分功能应<strong>显式启用/激活</strong>，而非约定自动生效。这使开发者对框架行为有完全的可见性和控制力，避免「引入依赖即自动激活所有功能」带来的意外行为。</p>
+<p>机制：core 提供统一契约 <code>Publishable</code>（<code>PublishableConfig</code> 配置类源码 + <code>PublishableStatic</code> 静态前端资源），各模块实现后注册到 <code>PublishableRegistry</code>；artisan 的 <code>vendor:publish</code> 命令一次性扫描全部可发布项、按需发布（core 不依赖 artisan，「有 artisan 就能发布，没有也不影响」）。</p>
 
-<p><strong>中央配置类</strong>：</p>
+<p><strong>命令用法</strong>（<code>VendorPublishCommand</code>）：</p>
+
+<pre><code>artisan vendor:publish                        # 不带参数：只列出全部可发布项，不写文件
+artisan vendor:publish --all                  # 发布全部（19 个配置类 + 3 个静态资源）
+artisan vendor:publish --tag=&lt;模块&gt;           # 只发布该模块（同 tag 的配置类与资源一起发）
+artisan vendor:publish --tag=config           # 保留标签：只发布全部 Java 配置类
+artisan vendor:publish --tag=resources        # 保留标签：只发布全部静态前端资源
+artisan vendor:publish --tag=&lt;模块&gt; --force   # 覆盖已存在的文件
+artisan vendor:publish --list                 # 等价于不带参数，查看清单</code></pre>
+
+<p><strong>发布目标位置</strong>：配置类 → <code>&lt;output-dir&gt;/&lt;basePackage&gt;/config/&lt;类名&gt;.java</code>；静态资源 → <code>&lt;resources-dir&gt;/&lt;文件名&gt;</code>。三者由 <code>MakeCodeProperties</code> 提供，默认 <code>base-package = com.weacsoft.jaravel</code>、<code>output-dir = src/main/java</code>、<code>resources-dir = src/main/resources</code>。</p>
 
 <table>
-<tr><th>配置类</th><th>包路径</th><th>说明</th></tr>
-<tr><td><code>config/App.java</code></td><td><code>com.weacsoft.jaravel.vendor.config</code></td><td>中央配置入口，类似 Laravel 的 <code>config/app.php</code>。通过 <code>@Import</code> 显式导入各模块配置类，控制功能启用。用户通过修改此类决定加载哪些模块</td></tr>
-<tr><td><code>config/ViewConfig.java</code></td><td><code>com.weacsoft.jaravel.vendor.config.view</code></td><td>视图引擎配置。通过 <code>@RegisterView</code> 声明式注册 Blade 模板引擎实现（对齐 Laravel 的 Blade 服务提供者），由 <code>ViewAutoConfiguration</code> 收集并绑定 <code>ViewFacade</code></td></tr>
-<tr><td><code>config/DatabaseConfig.java</code></td><td><code>com.weacsoft.jaravel.vendor.config.database</code></td><td>数据库配置。控制多数据源管理、Eloquent ORM 集成等数据层功能的启用</td></tr>
-<tr><td><code>config/WireConfig.java</code></td><td><code>com.weacsoft.jaravel.vendor.config.wire</code></td><td>Wire 模块配置。控制 Wire 渲染模块（Livewire 风格反应式 UI）的启用与配置</td></tr>
+<tr><th>发布 tag</th><th>配置类</th><th>配置内容（代码 description 原文）</th></tr>
+<tr><td><code>app</code></td><td><code>AppConfig</code></td><td>应用中央配置（功能开关 / 服务别名 / typed 访问器），经 <code>@Import</code> 显式控制各功能模块启用</td></tr>
+<tr><td><code>auth</code></td><td><code>AuthConfig</code></td><td>守卫 / 用户提供者 / Session 存储注册</td></tr>
+<tr><td><code>cache</code></td><td><code>CacheConfig</code></td><td>缓存 store 注册（array / file / redis）</td></tr>
+<tr><td><code>captcha</code></td><td><code>CaptchaConfig</code></td><td>验证码管理器装配（五种类型注册，可插拔增删）</td></tr>
+<tr><td><code>database</code></td><td><code>DatabaseConfig</code></td><td>数据库连接注册（多连接别名）</td></tr>
+<tr><td><code>jblade</code></td><td><code>JbladeConfig</code></td><td>Blade 模板引擎配置（模板目录、后缀、默认视图实现、静态资源前缀）</td></tr>
+<tr><td><code>json</code></td><td><code>JsonConfig</code></td><td>JSON 编解码配置（Jackson 2 / Jackson 3 自动检测，可自定义 JsonCodec）</td></tr>
+<tr><td><code>migration</code></td><td><code>MigrationConfig</code></td><td>数据库迁移配置（迁移表、迁移源、自动执行）</td></tr>
+<tr><td><code>model-cache</code></td><td><code>ModelCacheConfig</code></td><td>模型缓存配置（缓存 store、默认 TTL、key 前缀）</td></tr>
+<tr><td><code>queue</code></td><td><code>QueueConfig</code></td><td>队列驱动注册（database / redis / sync）</td></tr>
+<tr><td><code>queue-database</code></td><td><code>QueueDatabaseConfig</code></td><td>数据库队列驱动配置（jobs 表、重试、轮询、worker 线程）</td></tr>
+<tr><td><code>view</code></td><td><code>ViewConfig</code></td><td>Blade 自定义指令注册（输出/条件指令，含静态资源处理器配置）</td></tr>
+<tr><td><code>redis</code></td><td><code>RedisConfig</code></td><td>Redis 多连接配置（client、options、connections）</td></tr>
+<tr><td><code>redis-cache</code></td><td><code>RedisCacheConfig</code></td><td>Redis 缓存驱动配置（连接名、自动注册开关）</td></tr>
+<tr><td><code>schedule</code></td><td><code>ScheduleConfig</code></td><td>定时任务调度配置（启用开关、任务注册入口）</td></tr>
+<tr><td><code>session-redis</code></td><td><code>SessionRedisConfig</code></td><td>Redis Session 驱动配置（连接、前缀、有效期、Cookie 名）</td></tr>
+<tr><td><code>storage</code></td><td><code>StorageConfig</code></td><td>文件磁盘注册（local / public / database）</td></tr>
+<tr><td><code>aether-upload</code></td><td><code>AetherUploadConfig</code></td><td>大文件分片上传配置（路由前缀、分组规则、中间件）</td></tr>
+<tr><td><code>wechat-sdk</code></td><td><code>WechatSdkConfig</code></td><td>微信 SDK 配置（公众号、小程序多账号与 HTTP 参数）</td></tr>
 </table>
 
-<p><strong>使用方式</strong>：</p>
+<table>
+<tr><th>发布 tag</th><th>静态资源</th><th>说明（代码 description 原文）</th></tr>
+<tr><td><code>wire</code></td><td><code>static/wire.js</code></td><td>Wire 单一运行时（核心部分更新 + 命名组件 + 透明导航，全部内联，零外部依赖）</td></tr>
+<tr><td><code>captcha</code></td><td><code>static/jaravel-captcha.js</code></td><td>验证码前端库（自包含，内联 CSS，无 mdui/jQuery 等外部依赖）</td></tr>
+<tr><td><code>aether-upload</code></td><td><code>static/aether-upload.js</code></td><td>大文件分片上传前端运行时</td></tr>
+</table>
 
-<pre><code>
-// config/App.java —— 中央配置入口
+<p>其中 <code>captcha</code>、<code>aether-upload</code> 两个 tag 同时拥有配置类和静态资源，<code>--tag=&lt;模块&gt;</code> 会一并发布。</p>
+
+<p>以核心配置类 <code>AppConfig</code> 为例（<code>artisan vendor:publish --tag=app</code> 在业务工程生成，对齐 Laravel <code>config/app.php</code>）：功能启用/禁用就是在 <code>@Import</code> 中显式加/减配置类——某个配置类还没发布时先注释对应行以免编译报错：</p>
+
+<pre><code>package com.weacsoft.jaravel.config;   // 包名 = 你的 basePackage
+
+import com.weacsoft.jaravel.vendor.core.Application;
+import com.weacsoft.jaravel.vendor.core.SpringContext;
+
 @Configuration
 @Import({
-    ViewConfig.class,           // 显式启用视图引擎
-    DatabaseConfig.class,       // 显式启用数据库层
-    WireConfig.class,           // 显式启用 Wire 渲染模块
-    // 如需启用其他模块，在此添加对应的 @Import
+    DatabaseConfig.class,
+    AuthConfig.class,
+    // ViewConfig.class,   按需取消注释
+    // SessionConfig.class,
+    // CacheConfig.class,
+    // StorageConfig.class
 })
-public class App {
-    // 中央配置，类似 Laravel 的 config/app.php
-    // 用户通过修改此类控制框架加载哪些功能模块
+public class AppConfig extends Application {
+    // 服务默认别名注册（对齐 Laravel aliases 数组），make("auth") 即可解析
+    static {
+        registerDefaultBinding("auth", AuthManager.class);
+        registerDefaultBinding("cache", CacheManager.class);
+        registerDefaultBinding("config", ConfigRepository.class);
+        registerDefaultBinding("event", Dispatcher.class);
+        registerDefaultBinding("session", SessionStore.class);
+        registerDefaultBinding("router", Router.class);
+    }
+    public static AppConfig app() { return SpringContext.bean(AppConfig.class); }
+    // typed 访问器：auth() / cache() / config() / event() / session() / router() / route()
 }
 </code></pre>
 
+<p>装配完成后即可通过 typed 访问器取用各管理器，无需强转：</p>
+
+<pre><code>if (AppConfig.app().auth().check()) { ... }   // 认证
+AppConfig.app().cache().store("redis");        // 缓存
+AppConfig.app().event().dispatch(evt);         // 事件</code></pre>
+
 <blockquote>
-<p><strong>注意</strong>：此配置重构不影响各模块的 <code>application.yml</code> 配置项（如 <code>jaravel.wire.enabled</code>、<code>jaravel.captcha.enabled</code> 等），这些配置项仍然有效。重构主要影响的是<strong>模块的自动装配激活方式</strong>：从「依赖即激活」改为「<code>@Import</code> 显式激活」。</p>
+<p><strong>已发布的配置类就是业务代码</strong>：守卫、store、磁盘、驱动、指令、功能开关等绝大多数配置都在这些 Java 配置类里修改（如 <code>jaravel/</code>、各业务工程 <code>config/</code> 包下的实例），这是框架设计的主配置通道；<code>application.yml</code> 的 <code>jaravel.*</code> 键只是运行时参数的补充。再次执行带 <code>--force</code> 的发布会覆盖已发布文件，发布前请确认修改已备份或合并。</p>
 </blockquote>
-
-<h6 id="overview-测试覆盖">测试覆盖</h6>
-
-<p>全部 31 个模块均有单元测试，共 857 个测试用例，覆盖核心功能、边界条件和异常处理。</p>
 
 </section>
 <h2 id="core">核心模块</h2>
@@ -4638,52 +4689,6 @@ jaravel:
 <blockquote>
 <p>集群部署时，所有有状态的中间件（Session、Cache、认证黑名单、限流计数等）都应切换到 Redis 后端，确保状态全局一致。仅无状态的处理逻辑（路由分发、中间件管道、响应构建等）可安全地在各节点独立运行。</p>
 </blockquote>
-</section>
-
-<section id="arch-update-2026-08" style="margin-top:3rem;padding:1.5rem;border:1px solid var(--rule);border-radius:8px;background:var(--bg2)">
-<h2>架构更新说明（2026-08）：database 与 jblade 解耦</h2>
-<p>为避免过度耦合（用 database 的 ORM/分页不必依赖模板引擎），框架把<strong>视图渲染契约</strong>与
-<strong>分页标准</strong>上提到 <code>core</code> 标准层，由 <code>jblade</code> 作为实现方：</p>
-<ul>
-  <li><code>core.view.Htmlable</code> / <code>core.view.HtmlString</code>：免转义 HTML 值对象契约（原位于 jblade，已上移）。</li>
-  <li><code>core.view.View</code>：视图渲染标准接口（<code>render</code> / <code>exists</code> / <code>name</code>）。<code>BladeView</code> 实现的是 <code>core.view.View</code>。</li>
-  <li><code>core.view.ViewManager</code>：视图管理者标准接口；<code>jblade.view.ViewManager</code> 实现它。</li>
-  <li><code>core.pagination.Paginator</code>：Laravel 风格分页器（实现 <code>Iterable</code> 与 <code>Htmlable</code>），<strong>不依赖任何具体模板引擎</strong>。</li>
-</ul>
-<p><code>database</code> 模块的 <code>BaseModel.paginate()</code> 返回的即是 <code>core.pagination.Paginator</code>，因此
-<strong>database 不再硬依赖 jblade</strong>。分页 HTML 通过 <code>Paginator.links(viewName)</code> 渲染：视图引擎（jblade）
-启动时经 <code>ViewFacade.bind()</code> 注入默认 <code>View</code>；若未引入 jblade（无默认视图），<code>links()</code>
-安全降级为空串（即「没有分页视图时该方法等同于未执行」）。</p>
-<p><strong>jblade 组件插槽转义修复</strong>：插槽内容已是渲染好的 HTML，现统一包装为 <code>core.view.HtmlString</code>（<code>Htmlable</code>）注入组件，使 <code>{{ $slot }}</code> 原样输出、不再二次 HTML 转义；而用户通过 <code>@component</code> 显式传入的数据变量仍按 <code>{{ }}</code> 正常转义（防 XSS）。同时明确支持 <code>{!! $html !!}</code> 原样输出与 <code>{{-- --}}</code> 注释（均已覆盖于 jblade 文档 10/11.4 节）。</p>
-<p><strong>utils.Maps / ResponseBuilder.map（不可变 Map 便捷构造）</strong>：新增 <code>com.weacsoft.jaravel.vendor.utils.Maps.of(...)</code> 替代 <code>Map.of</code>，允许空键值而不抛异常——键为 null/空字符串视为「没有这条数据」跳过，值为 null/空字符串则保留以便模板判空/条件渲染；返回保持插入顺序的不可变 Map。该工具已下沉到 <code>utils</code> 模块，<code>ResponseBuilder.map(...)</code> 静态方法直接复用。见 utils 文档「Maps」小节与 http 文档 6.2。</p>
-<p><strong>BaseModel.fill(Map) 简易填充</strong>：新增 <code>BaseModel.fill(Map&lt;String,Object&gt;)</code>，按属性名反射调用 setter 写入当前对象；键为 null/无对应 setter 的条目忽略（多余属性），值为 null/空串视为「不做任何操作」跳过，字符串值自动转换为 setter 声明的参数类型（数值、布尔、BigDecimal、LocalDate/LocalDateTime/LocalTime、Date、字符等）。常用于把请求/表单参数快速填充到模型后链式 <code>save()</code>。见 database 文档「fill()」小节。</p>
-<p style="color:var(--muted)">注：本快照站为历史预生成版本，详细内容以仓库内 Markdown 为准。</p>
-</section>
-
-<section id="arch-update-2026-08-05" style="margin-top:3rem;padding:1.5rem;border:1px solid var(--rule);border-radius:8px;background:var(--bg2)">
-<h2>2026-08-05 更新：Captcha 全场景修复 + fat-jar 部署支持</h2>
-
-<h3>Captcha 模块深度修复</h3>
-<p>修复场景白名单 403 验证失败的深层根因——场景注册表 <code>CaptchaSceneRegistry</code> 未做 <code>AppKey.resolve()</code> 全局密钥解析，导致带 <code>scene</code> 的 generate 与 verify 加解密密钥不对称。修复方案：</p>
-<ul>
-  <li><code>AbstractCaptcha</code> 加解密统一使用实例级 <code>this.properties</code>（已解析全局密钥），保证 generate 与 verify 密码参数对称。</li>
-  <li><code>CaptchaAutoConfiguration</code> 抽取 <code>resolveCoreProperties()</code> 共用方法，使 <code>captchaManager</code> 与 <code>captchaSceneRegistry</code> 共享同一份已解析配置。</li>
-  <li>合并凭证 <code>key = type + "." + captchaKey</code>：前端只需一个 key 即可提交验证。</li>
-  <li>密钥取值遵循「模块自身配置优先 → core 全局 <code>jaravel.key</code> 兜底」。</li>
-</ul>
-<p>E2E 验证：114 项断言全绿（桌面/移动端/平板端），<code>spring-boot:run</code> 与 <code>java -jar</code> 两种部署模式均通过。</p>
-
-<h3>fat-jar 模板编译与插件编译修复</h3>
-<p>Spring Boot 3.2 fat-jar 使用 <code>nested:</code> 协议加载嵌套 jar，<code>java.class.path</code> 仅含最外层 jar，导致 jblade 模板编译与 plugin-java-core 插件编译在 <code>java -jar</code> 模式下失败。修复方案：</p>
-<ul>
-  <li>新增共享工具 <code>RuntimeClasspath</code>（<code>com.weacsoft.jaravel.vendor.utils.runtime</code>）：检测 fat-jar → 展开 BOOT-INF/lib 与 BOOT-INF/classes 到临时目录 → 拼入 javac classpath。</li>
-  <li><code>BladeCompiler</code>：<code>resolveCompilerClasspath()</code> 委托给 <code>RuntimeClasspath.resolve()</code>。</li>
-  <li><code>BladeEngine</code>：<code>MemoryClassLoader</code> 父类加载器设为 <code>BladeEngine.class.getClassLoader()</code>（<code>LaunchedURLClassLoader</code>），确保编译后模板运行时能解析 <code>BladeTemplate</code>。</li>
-  <li><code>DynamicJavaCompiler</code>（plugin-java-core）：<code>buildClasspath()</code> 委托给 <code>RuntimeClasspath.resolve()</code>，<code>demo-greeting</code> 插件 fat-jar 启动注册成功。</li>
-</ul>
-<p>jblade 单元测试：52 通过，0 失败。</p>
-
-<p style="margin-top:0.75rem"><strong>目录导航</strong>：<a href="#cat-captcha">captcha 模块文档</a> · <a href="#captcha-captchamanager">CaptchaManager API</a> · <a href="#captcha-19-端到端测试">E2E 测试</a> · <a href="#jblade-5-bladecompiler-——-模板编译器">BladeCompiler</a></p>
 </section>
 </div>
 </div>
