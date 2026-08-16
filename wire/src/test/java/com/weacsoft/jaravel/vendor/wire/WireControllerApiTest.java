@@ -302,6 +302,132 @@ class WireControllerApiTest {
         assertEquals("x", decoded.get("name"));
     }
 
+    // ===== @WireQuery / wireQueryTemplates 模板作用域 =====
+    public static class ParentQueryController extends WireController {
+        @WireQuery(templates = {"mdui.admin.admin.list"}, defaultValue = "1")
+        public Long page;
+
+        @WireQuery(templates = {"mdui.admin.admin.list"})
+        public String search;
+
+        @Override
+        protected WireView render() {
+            return wireView("mdui.admin.admin.list");
+        }
+    }
+
+    public static class ChildQueryController extends ParentQueryController {
+        @Override
+        protected Map<String, String[]> wireQueryTemplates() {
+            return Map.of("page", new String[]{"mdui.admin.admin.list", "mdui.admin.admin.change"});
+        }
+    }
+
+    public static class MixedQueryController extends ParentQueryController {
+        @Override
+        protected Map<String, String[]> wireQueryTemplates() {
+            return Map.of("page", new String[]{"mdui.admin.admin.list", "mdui.admin.admin.change"});
+        }
+    }
+
+    public static class NameMappedQueryController extends WireController {
+        @WireQuery(name = "p", templates = {"mdui.admin.admin.list"}, defaultValue = "1")
+        public Long page;
+
+        @Override
+        protected Map<String, String[]> wireQueryTemplates() {
+            return Map.of("p", new String[]{"mdui.admin.admin.list", "mdui.admin.admin.detail"});
+        }
+
+        @Override
+        protected WireView render() {
+            return wireView("mdui.admin.admin.list");
+        }
+    }
+
+    private String pubBuildQueryUrl(WireController c, String basePath, String template) {
+        try {
+            java.lang.reflect.Method m = WireController.class.getDeclaredMethod("buildQueryUrl", String.class, String.class);
+            m.setAccessible(true);
+            return (String) m.invoke(c, basePath, template);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Test
+    void buildQueryUrl_noOverride_usesAnnotationTemplates() {
+        ParentQueryController c = new ParentQueryController();
+        c.page = 2L;
+        c.search = "foo";
+
+        String url = pubBuildQueryUrl(c, "/admin/admin", "mdui.admin.admin.list");
+        assertTrue(url.contains("?page=2"));
+        assertTrue(url.contains("search=foo"));
+
+        String url2 = pubBuildQueryUrl(c, "/admin/admin", "mdui.admin.admin.change");
+        assertFalse(url2.contains("page"));
+        assertFalse(url2.contains("search"));
+    }
+
+    @Test
+    void buildQueryUrl_override_expandsTemplates() {
+        ChildQueryController c = new ChildQueryController();
+        c.page = 3L;
+        c.search = "bar";
+
+        String url = pubBuildQueryUrl(c, "/admin/admin", "mdui.admin.admin.list");
+        assertTrue(url.contains("page=3"));
+        assertTrue(url.contains("search=bar"));
+
+        String url2 = pubBuildQueryUrl(c, "/admin/admin", "mdui.admin.admin.change");
+        assertTrue(url2.contains("page=3"));
+        assertFalse(url2.contains("search"));
+    }
+
+    @Test
+    void buildQueryUrl_defaultValue_filtered() {
+        ParentQueryController c = new ParentQueryController();
+        c.page = 1L;
+        c.search = "x";
+
+        String url = pubBuildQueryUrl(c, "/admin/admin", "mdui.admin.admin.list");
+        assertFalse(url.contains("page"));
+        assertTrue(url.contains("search=x"));
+    }
+
+    @Test
+    void buildQueryUrl_nameMapping_usesWireQueryName() {
+        NameMappedQueryController c = new NameMappedQueryController();
+        c.page = 2L;
+
+        String url = pubBuildQueryUrl(c, "/admin/admin", "mdui.admin.admin.list");
+        assertTrue(url.contains("?p=2"));
+        assertFalse(url.contains("page="));
+
+        String url2 = pubBuildQueryUrl(c, "/admin/admin", "mdui.admin.admin.detail");
+        assertTrue(url2.contains("p=2"));
+    }
+
+    @Test
+    void buildQueryUrl_emptyBasePath_returnsQueryOnly() {
+        ParentQueryController c = new ParentQueryController();
+        c.page = 5L;
+
+        String url = pubBuildQueryUrl(c, "", "mdui.admin.admin.list");
+        assertEquals("?page=5", url);
+    }
+
+    @Test
+    void buildQueryUrl_noMatchingValue_skips() {
+        ParentQueryController c = new ParentQueryController();
+        c.page = null;
+        c.search = null;
+
+        String url = pubBuildQueryUrl(c, "/admin/admin", "mdui.admin.admin.list");
+        assertEquals("/admin/admin", url);
+    }
+
     @Test
     void encodeDecodeSignedSnapshot_roundtrip_and_tamper_detection() {
         SampleController c = newController();

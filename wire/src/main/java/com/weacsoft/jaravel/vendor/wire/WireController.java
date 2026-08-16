@@ -232,6 +232,39 @@ public abstract class WireController {
     }
 
     /**
+     * 覆盖 {@link WireQuery} 注解中 {@code templates()} 的声明式映射。
+     * <p>
+     * 当控制器存在继承关系时,父类的 {@code @WireQuery(templates={...})} 可能只覆盖
+     * 部分场景,子类需要扩展或缩减生效模板。本方法提供集中覆盖,避免在每个子类中
+     * 重复标注注解。
+     * <p>
+     * <b>语义</b>:键为 {@code @WireQuery.name()}(未写 name 时用字段名),值为覆盖后的模板名数组。
+     * 空数组表示「所有模板都生效」,与注解的默认行为一致。
+     * <p>
+     * <b>优先级</b>:本方法返回值 > {@link WireQuery#templates()} 注解值。
+     * 未在本方法中声明的字段,仍按注解的 {@code templates()} 处理。
+     * <p>
+     * <pre>{@code
+     * // 父类标注:page 仅在 list 模板生效
+     * @WireQuery(templates = {"mdui.admin.admin.list"}, defaultValue = "1")
+     * public Long page;
+     *
+     * // 子类需要 page 在 change 模板也生效(如分页详情)
+     * @Override
+     * protected Map<String, String[]> wireQueryTemplates() {
+     *     Map<String, String[]> m = new HashMap<>(super.wireQueryTemplates());
+     *     m.put("page", new String[]{"mdui.admin.admin.list", "mdui.admin.admin.change"});
+     *     return m;
+     * }
+     * }</pre>
+     *
+     * @return 字段名 → 覆盖模板数组;默认 null(无覆盖,完全按注解)
+     */
+    protected Map<String, String[]> wireQueryTemplates() {
+        return null;
+    }
+
+    /**
      * 本控制器<b>强关联</b>的组件注册表(声明式)。
      * <p>
      * 返回「组件名 → 模板名」映射,例如:
@@ -893,7 +926,8 @@ public abstract class WireController {
             WireQuery wq = f.getAnnotation(WireQuery.class);
             if (wq == null) continue;
             // 模板作用域过滤:列表非空且当前模板不在列表内 → 跳过
-            String[] templates = wq.templates();
+            // 优先使用 wireQueryTemplates() 覆盖值
+            String[] templates = getEffectiveTemplates(wq, f);
             if (templates.length > 0) {
                 boolean hit = false;
                 for (String t : templates) {
@@ -920,6 +954,18 @@ public abstract class WireController {
             }
         }
         return sb.toString();
+    }
+
+    /**
+     * 获取字段的「有效模板列表」:优先取 {@link #wireQueryTemplates()} 覆盖值,
+     * 未覆盖时回退到 {@link WireQuery#templates()} 注解值。
+     */
+    private String[] getEffectiveTemplates(WireQuery wq, Field f) {
+        Map<String, String[]> overrides = wireQueryTemplates();
+        if (overrides == null) return wq.templates();
+        String key = (wq.name() != null && !wq.name().isEmpty()) ? wq.name() : f.getName();
+        String[] overridden = overrides.get(key);
+        return overridden != null ? overridden : wq.templates();
     }
 
     /** URL 查询参数编码(与 {@link com.weacsoft.jaravel.vendor.core.pagination.Paginator} 的编码一致)。 */

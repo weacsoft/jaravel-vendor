@@ -730,9 +730,16 @@ public abstract class BladeTemplate {
         componentCtx.setVariable("$slot", new HtmlString(defaultSlot == null ? "" : defaultSlot)); // 兼容旧版编译产物
         // 防御性快照:遍历前复制一份 slots,避免迭代过程中 context.getComponentSlots() 被并发
         // 修改(如其他线程的 clear/putAll)而抛 ConcurrentModificationException。
+        // 注意：null 值的 slot 不写入组件 ctx，否则组件内 {{ $name ?? 'default' }} 的 ??
+        // 无法触发（HtmlString 对象非 null，?? 返回 HtmlString 而非默认值）。
+        // 同样过滤字符串 "null"：@slot('value', $nullVar) 编译为
+        // slots.put("value", String.valueOf(v("nullVar")))，值为 null 时 String.valueOf 返回字符串 "null"，
+        // 同样会阻止 ?? 运算符生效。
         Map<String, String> slotsSnapshot = new HashMap<>(context.getComponentSlots());
         for (Map.Entry<String, String> slotEntry : slotsSnapshot.entrySet()) {
-            HtmlString htmlSlot = new HtmlString(slotEntry.getValue() == null ? "" : slotEntry.getValue());
+            String slotValue = slotEntry.getValue();
+            if (slotValue == null || "null".equals(slotValue)) continue;
+            HtmlString htmlSlot = new HtmlString(slotValue);
             componentCtx.setVariable(slotEntry.getKey(), htmlSlot);
             componentCtx.setVariable("$" + slotEntry.getKey(), htmlSlot);
         }
