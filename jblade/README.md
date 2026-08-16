@@ -177,6 +177,7 @@ com.weacsoft.jaravel.vendor
 | `String render(String templateName, Map<String, Object> variables)` | 渲染模板，注入变量，返回 HTML 字符串 |
 | `String render(String templateName)` | 渲染模板（无变量） |
 | `BladeTemplate loadTemplate(String templateName)` | 加载（编译 + 缓存）模板，返回 `BladeTemplate` 实例。内部按"查一级 → 查二级 → 编译 → 回填缓存"流程执行。**预编译模式**下优先从已加载字节码获取 `Class`，无需运行时编译 |
+| `int preheatTemplates()` | **预热**：扫描并编译缓存全部模板，返回成功数量。避免首次访问某页面时现场 javac 编译造成卡顿。由调用方主动触发（`ViewFacade.preheat()` 或在模板里 `{{ View::preheat() }}`），框架不会自动执行 |
 | `void clearCache()` | 清除所有缓存：一级缓存 + 二级缓存（按 key 逐个 `forget`，不调用 `flush()`）+ 模板实例缓存 |
 | `void clearTemplate(String templateName)` | 清除指定模板的所有缓存（一级 Class + 二级 CacheStore + 实例），不影响其他模板 |
 | `void clearTemplateInstanceCache()` | 仅清除模板实例缓存 |

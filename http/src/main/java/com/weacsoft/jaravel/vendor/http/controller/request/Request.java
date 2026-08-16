@@ -285,15 +285,25 @@ public class Request {
         return new LinkedHashMap<>(query);
     }
 
+    /**
+     * 取 query 参数(单参数重载)。
+     * 缺省或空串(经 ConvertEmptyStringsToNull 中间件转 null)时返回 {@code null},
+     * 而不是空串——便于在控制器里直接 {@code if (query("key") != null)} 判断。
+     *
+     * @param key 参数名
+     * @return 参数值;缺省/空串返回 null
+     */
     public String query(String key) {
-        return query(key, "");
+        // 走 String 重载:非 String 原始值(如 addQuery 写入的 Integer)经 toString 兜底
+        return query(key, (String) null);
     }
 
     public String query(String key, String defaultValue) {
-        String value = query(key, defaultValue.getClass());
+        String value = query(key, String.class);
         if (value == null) {
+            // 原始值可能非 String(如 replaceQuery 写入的对象),做 toString 兜底
             Object v = query.get(key);
-            if (v != null) {
+            if (v != null && !(v instanceof List)) {
                 value = v.toString();
             }
         }
@@ -301,6 +311,14 @@ public class Request {
     }
 
     public <T> T query(String key, T defaultValue) {
+        if (defaultValue == null) {
+            // 默认值为 null:无法推断 Class<T>,直接返回原始值(缺省/空串 → null)
+            Object raw = query.get(key);
+            if (raw instanceof List) {
+                raw = ((List<Object>) raw).get(0);
+            }
+            return (T) raw;
+        }
         T value = query(key, (Class<T>) defaultValue.getClass());
         return value != null ? value : defaultValue;
     }
@@ -336,15 +354,22 @@ public class Request {
         return new LinkedHashMap<>(input);
     }
 
+    /**
+     * 取 input 参数(单参数重载)。缺省或空串返回 {@code null}。
+     *
+     * @param key 参数名
+     * @return 参数值;缺省/空串返回 null
+     */
     public String input(String key) {
-        return input(key, "");
+        // 走 String 重载:非 String 原始值(如 addInput 写入的 Integer)经 toString 兜底
+        return input(key, (String) null);
     }
 
     public String input(String key, String defaultValue) {
-        String value = input(key, defaultValue.getClass());
+        String value = input(key, String.class);
         if (value == null) {
             Object v = input.get(key);
-            if (v != null) {
+            if (v != null && !(v instanceof List)) {
                 value = v.toString();
             }
         }
@@ -352,6 +377,13 @@ public class Request {
     }
 
     public <T> T input(String key, T defaultValue) {
+        if (defaultValue == null) {
+            Object raw = input.get(key);
+            if (raw instanceof List) {
+                raw = ((List<Object>) raw).get(0);
+            }
+            return (T) raw;
+        }
         T value = input(key, (Class<T>) defaultValue.getClass());
         return value != null ? value : defaultValue;
     }
@@ -418,15 +450,22 @@ public class Request {
         return new LinkedHashMap<>(header);
     }
 
+    /**
+     * 取 header 参数(单参数重载)。缺省返回 {@code null}。
+     *
+     * @param key 参数名
+     * @return 参数值;缺省返回 null
+     */
     public String header(String key) {
-        return header(key, "");
+        // 走 String 重载:非 String 原始值(如 addHeader 写入的 Integer)经 toString 兜底
+        return header(key, (String) null);
     }
 
     public String header(String key, String defaultValue) {
-        String value = header(key, defaultValue.getClass());
+        String value = header(key, String.class);
         if (value == null) {
             Object v = header.get(key);
-            if (v != null) {
+            if (v != null && !(v instanceof List)) {
                 value = v.toString();
             }
         }
@@ -434,6 +473,13 @@ public class Request {
     }
 
     public <T> T header(String key, T defaultValue) {
+        if (defaultValue == null) {
+            Object raw = header.get(key);
+            if (raw instanceof List) {
+                raw = ((List<Object>) raw).get(0);
+            }
+            return (T) raw;
+        }
         T value = header(key, (Class<T>) defaultValue.getClass());
         return value != null ? value : defaultValue;
     }
@@ -490,8 +536,14 @@ public class Request {
         return cookieMap;
     }
 
+    /**
+     * 取 cookie 参数(单参数重载)。缺省返回 {@code null}。
+     *
+     * @param key 参数名
+     * @return 参数值;缺省返回 null
+     */
     public String cookie(String key) {
-        return cookie(key, "");
+        return cookie(key, (String) null);
     }
 
     public String cookie(String key, String defaultValue) {
@@ -504,6 +556,14 @@ public class Request {
     }
 
     public <T> T cookie(String key, T defaultValue) {
+        if (defaultValue == null) {
+            for (Cookie cookie : cookies) {
+                if (cookie.getName().equals(key)) {
+                    return (T) cookie.getValue();
+                }
+            }
+            return null;
+        }
         T value = cookie(key, (Class<T>) defaultValue.getClass());
         return value != null ? value : defaultValue;
     }
@@ -545,15 +605,22 @@ public class Request {
         return new LinkedHashMap<>(session);
     }
 
+    /**
+     * 取 session 参数(单参数重载)。缺省返回 {@code null}。
+     *
+     * @param key 参数名
+     * @return 参数值;缺省/空串返回 null
+     */
     public String session(String key) {
-        return session(key, "");
+        // 走 String 重载:非 String 原始值(如 addSession 写入的 Long)经 toString 兜底
+        return session(key, (String) null);
     }
 
     public String session(String key, String defaultValue) {
-        String value = session(key, defaultValue.getClass());
+        String value = session(key, String.class);
         if (value == null) {
             Object v = session.get(key);
-            if (v != null) {
+            if (v != null && !(v instanceof List)) {
                 value = v.toString();
             }
         }
@@ -561,6 +628,13 @@ public class Request {
     }
 
     public <T> T session(String key, T defaultValue) {
+        if (defaultValue == null) {
+            Object raw = session.get(key);
+            if (raw instanceof List) {
+                raw = ((List<Object>) raw).get(0);
+            }
+            return (T) raw;
+        }
         T value = session(key, (Class<T>) defaultValue.getClass());
         return value != null ? value : defaultValue;
     }

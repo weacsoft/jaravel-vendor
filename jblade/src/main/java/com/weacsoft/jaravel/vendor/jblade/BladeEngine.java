@@ -3,6 +3,9 @@ package com.weacsoft.jaravel.vendor.jblade;
 import com.weacsoft.jaravel.vendor.cache.CacheStore;
 import com.weacsoft.jaravel.vendor.utils.memory.MemoryClassLoader;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.io.StringWriter;
 import java.io.Writer;
@@ -38,6 +41,8 @@ import java.util.function.Consumer;
 public class BladeEngine {
     /** 默认模板文件后缀，与 BladeCompiler.DEFAULT_SUFFIX 保持一致 */
     public static final String DEFAULT_SUFFIX = BladeCompiler.DEFAULT_SUFFIX;
+
+    private static final Logger log = LoggerFactory.getLogger(BladeEngine.class);
 
     private final BladeCompiler compiler;
     /** 一级缓存：模板名 → 编译后的 Class 对象（始终启用） */
@@ -493,6 +498,36 @@ public class BladeEngine {
         } catch (Exception ignored) {
             // 遍历异常忽略
         }
+    }
+
+    /**
+     * 预热:扫描并编译缓存所有模板(含继承链),避免首次访问某页面时现场 javac 编译造成卡顿。
+     * <p>
+     * 由用户自行调用(如启动完成后 {@code ViewFacade.preheat()},或在模板里
+     * {@code {{ View::preheat() }}}),框架<b>不会</b>自动触发。已编译过的模板直接命中缓存。
+     *
+     * @return 编译成功的模板数量
+     */
+    public int preheatTemplates() {
+        java.util.List<String> names = scanTemplateNames();
+        int ok = 0;
+        int failed = 0;
+        for (String name : names) {
+            try {
+                loadTemplate(name);
+                ok++;
+            } catch (Exception e) {
+                failed++;
+                // 单个模板编译失败不影响其余模板预热
+                if (log.isWarnEnabled()) {
+                    log.warn("[jblade] 预热编译失败: {} - {}", name, e.getMessage());
+                }
+            }
+        }
+        if (log.isInfoEnabled()) {
+            log.info("[jblade] 预热完成: 成功 {}, 失败 {}, 共 {}", ok, failed, names.size());
+        }
+        return ok;
     }
 
     /**

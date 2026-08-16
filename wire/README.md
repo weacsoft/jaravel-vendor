@@ -93,7 +93,7 @@ Route.post("/change", "AdminController::update").name("change");     // wire 局
 | 方法 | 说明 |
 |------|------|
 | `render()` | **必须实现**。返回 `WireView` 配置；只声明模板 + 额外数据，**不要**调用 `.bladeExtends(...)`（主页面布局由模板自身 `@extends` 决定，组件布局替换由 `wireLayoutReplacements()` 提供） |
-| `mount(Request)` | 可选。仅首次 `index()` 时调用，参数为 `Request`；可读取 `request.query()/input()` 初始化。Spring 单例 Bean 需在 `mount()` 里重置表单字段，避免上一次请求残留值泄漏进快照 |
+| `mount(Request)` | 可选。仅首次 `index()` 时调用，参数为 `Request`。**执行顺序**：框架先自动赋值（`request.all()` 按同名赋到 public 字段，带类型转换）再调用 `mount()`，因此 mount 里可直接读取 `this.page` 等已被赋值的字段，仅需处理字段名与参数名不一致的情况（如 `key`→`searchKey`）。Spring 单例 Bean 需在 `mount()` 里重置表单字段，避免上一次请求残留值泄漏进快照 |
 | `fill(key, value)` / `fill(Map)` | 可选。把键值对**直接赋**到 Controller 自己的 public 属性（同名赋值 + 基础类型转换），不做任何业务重写 |
 | `refresh(Map<String, Object> params)` | 可选。每次 wire 更新后重新加载展示数据（如重新查库），保持列表等数据最新。**调用时机**：`update()` 中 `invokeAction(action, params)` 执行完毕后、`renderSections()` 渲染 sections 前调用。**`params` 含义**：来自前端 POST 请求体 `wire_body` JSON 中的 `"params"` 字段，代表**本次请求前端传来的 action 参数**（不是快照状态）。例如：
   - `wire:click="delete(1)"` → `delete(Long id)` 由 `invokeAction` 按 `method(args)` 位置参数解析调用（`1` 经 `convertValue` 转 `Long`，见「参数化 action」）；`params` 字段作为同名下标回退（`params.get("0")`）。
@@ -294,7 +294,7 @@ public class AdminController extends WireController {
 
 | 请求类型 | 触发条件 | 处理流程 |
 |----------|---------|---------|
-| 直访 GET | 无 wire_body | `mount(request)` → `collectPublicFields` → `render()` → 整页渲染（模板自身 @extends）→ 注入 wire assets |
+| 直访 GET | 无 wire_body | `fill(request.all())` 自动赋值 → `mount(request)` → `collectPublicFields` → `render()` → 整页渲染（模板自身 @extends）→ 注入 wire assets |
 | Wire POST | 含 `wire_body` | `WireRequest.from` → 解码签名快照(HMAC 校验) → 合并 params(排除 @WireLocked) → `fill(data)` → `invokeAction(action, params)` → `refresh(params)` → 重新收集属性 → 渲染 sections(按 `getTemplateName()`) → 渲染临时组件 → 编码新快照 → JSON |
 | 传统表单 POST | 无 wire_body 的 POST | `fill(request.all())` → `invokeAction(getDefaultAction()="save")` → 重定向（action 显式 `WireEffects.redirect` 优先，否则 `getRedirectUrl`） |
 

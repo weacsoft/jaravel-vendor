@@ -62,4 +62,26 @@ public final class ViewFacade {
     public static ViewManager manager() {
         return manager;
     }
+
+    /**
+     * 预热全部模板:扫描并编译缓存所有模板类,避免首次访问某页面时现场编译造成卡顿。
+     * <p>
+     * 由调用方主动触发(启动完成后在 Java 代码里调用,或在模板里用
+     * {@code {{ View::preheat() }}} 输出调用),框架不会自动执行。
+     *
+     * @return 编译成功的模板数量
+     */
+    public static int preheat() {
+        View view = getView();
+        if (view instanceof BladeView) {
+            return ((BladeView) view).getEngine().preheatTemplates();
+        }
+        // 其他 View 实现:反射调用 preheatTemplates(存在时),不存在则返回 0
+        try {
+            java.lang.reflect.Method m = view.getClass().getMethod("preheatTemplates");
+            return (Integer) m.invoke(view);
+        } catch (Exception e) {
+            return 0;
+        }
+    }
 }

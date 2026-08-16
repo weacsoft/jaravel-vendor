@@ -267,9 +267,13 @@ public abstract class WireController {
         try {
             this.currentRequest = request;
             Map<String, Object> data = new LinkedHashMap<>();
-            // mount（仅首次加载时调用,从 Request 加载初始数据并赋值到 public 属性）
+            // 1. 自动赋值:request 的 query/input 参数按同名赋到 public 字段(带类型转换)。
+            //    不管有没有参数都执行(fill 空 map 为空操作)。这样 mount 里可以直接读取
+            //    this.xxx(如 this.page),无需再手动 request.query(...) 赋值。
+            fill(request.all());
+            // 2. mount(仅首次加载时调用,此时可读取已被自动赋值的字段做额外初始化)
             mount(request);
-            // 收集 public 属性
+            // 3. 收集 public 属性
             collectPublicFields(data);
             // render
             WireView view = render();

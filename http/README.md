@@ -621,6 +621,12 @@ Laravel 风格请求对象，封装 query、input、file、header、cookie、ses
 | `Set<String> getNames()` | input + query 的字段名并集 |
 | `boolean has(String key)` | query 或 input 是否包含该 key |
 
+> **使用注意（2026-08-16）**：`query(key)` / `input(key)` / `header(key)` / `session(key)` /
+> `cookie(key)` 等<b>单参数重载缺省时返回 `null`</b>（不再是空串）——配合
+> `ConvertEmptyStringsToNull` 中间件（空串已转 null），可直接 `if (request.query("key") != null)` 判断。
+> 泛型重载（`query(key, T defaultValue)`）传 `null` 默认值<b>不再 NPE</b>，按「缺省返回 null」处理；
+> 传非 null 默认值（如 `query("page", "1")`）时缺省仍返回该默认值。
+
 #### 写入方法（add / replace / remove）
 
 每个维度都提供 `addXxx`（追加，重复 key 转 List）、`replaceXxx`（覆盖）、`removeXxx`（删除）三组方法：

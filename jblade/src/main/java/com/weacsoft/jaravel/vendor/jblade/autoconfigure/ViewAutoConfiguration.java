@@ -4,6 +4,7 @@ import com.weacsoft.jaravel.vendor.cache.CacheManager;
 import com.weacsoft.jaravel.vendor.cache.CacheStore;
 import com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry;
 import com.weacsoft.jaravel.vendor.core.view.View;
+import com.weacsoft.jaravel.vendor.jblade.BladeFunctions;
 import com.weacsoft.jaravel.vendor.jblade.view.BladeView;
 import com.weacsoft.jaravel.vendor.jblade.view.RegisterView;
 import com.weacsoft.jaravel.vendor.jblade.view.ViewFacade;
@@ -94,6 +95,11 @@ public class ViewAutoConfiguration {
 
         // 绑定静态门面
         ViewFacade.bind(manager);
+        // 注册模板可调用的全局函数:{{ View::preheat() }} 在任意模板里预热编译所有模板。
+        // 由调用方主动触发(如应用启动完成后),框架不会自动执行。
+        if (!BladeFunctions.has("View::preheat")) {
+            BladeFunctions.register("View::preheat", args -> ViewFacade.preheat());
+        }
         View defaultView = manager.defaultView();
         log.info("[view] 默认 View 实现: {}",
                 defaultView == null ? "<none>" : defaultView.name());
