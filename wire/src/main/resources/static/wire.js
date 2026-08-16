@@ -372,6 +372,9 @@
             // pushUrl:仅用 history.pushState 改变地址栏,不发起请求、不刷新页面(bug2:
             // 点击「修改」后 URL 变为可分享的深链,但页面不整页重载)。
             if (data.effects.url) {
+                // 每次 pushUrl 前保存上一条 URL,供取消/返回时还原地址栏。
+                // 用户通常只会返回一次,保留一条即可;后端 backUrl 与它一致时互不冲突。
+                try { window.__wirePrevUrl = window.location.href; } catch (e) {}
                 try { history.pushState({ wireUrl: data.effects.url }, '', data.effects.url); } catch (e) {}
             }
             // redirect:透明导航(pushState + section diff),避免整页刷新(bug1:

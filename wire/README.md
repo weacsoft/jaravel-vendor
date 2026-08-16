@@ -17,6 +17,7 @@
 - [交互式组件下发](#交互式组件下发)
 - [命名组件（toast / confirm 等临时事务）](#命名组件toast--confirm-等临时事务)
 - [分页无感切换（Pagination）](#分页无感切换pagination)
+- [URL 查询参数：@WireQuery 注解](#url-查询参数wirequery-注解)
 - [前端事件系统](#前端事件系统)
 - [Section 排除列表](#section-排除列表)
 - [IDEA 模板语法提示（XSD 命名空间校验）](#idea-模板语法提示xsd-命名空间校验)
@@ -355,7 +356,14 @@ Wire 框架内置「分页器无感切换」能力：点击分页链接**不整�
 ```java
 public class AdminController extends WireController {
     @WireLocked public Paginator<Admin> paginator;   // 分页结果,标记 @WireLocked 不进快照
-    public Long page;                                // 当前页码(从 request.query("page","1") 读取并转 Long)
+    // 参与 URL 查询串:仅列表页生效;默认值 1(第 1 页时 URL 不带 ?page=1,翻页后才带 ?page=N)
+    @WireQuery(templates = {"mdui.admin.admin.list"}, defaultValue = "1")
+    public Long page;
+    // 搜索条件:URL 参数名用 name() 指定为 key/value(与搜索表单/mount 读取一致),非空才加入 URL
+    @WireQuery(name = "key", templates = {"mdui.admin.admin.list"})
+    public String searchKey;
+    @WireQuery(name = "value", templates = {"mdui.admin.admin.list"})
+    public String searchValue;
 
     private Paginator<Admin> queryPaginated() {
         QueryBuilder<Admin, Long> q = Admin.self().newQuery();
@@ -377,7 +385,7 @@ public class AdminController extends WireController {
 }
 ```
 
-- `$paginate` 是框架内置 magic action（`WireController.invokeAction` 中处理）：仅调用 `refresh(params)` 重载数据（**不调用任何 action 方法**），随后自动 `WireEffects.pushUrl(...)` 把地址栏同步为 `?page=N`（pageNum>1 时；=1 时还原为无参 URL，并保留 `key`/`value` 等已有的查询参数）。`pageNum` 取自前端分页拦截器。
+- `$paginate` 是框架内置 magic action（`WireController.invokeAction` 中处理）：仅调用 `refresh(params)` 重载数据（**不调用任何 action 方法**），随后自动 `WireEffects.pushUrl(...)` 基于 `@WireQuery` 注解字段生成带参 URL——`page=2` 时带 `?page=2`、`page=1`（等于 defaultValue）时还原无参 URL；`searchKey/searchValue` 非空时一并保留为 `key`/`value`。`pageNum` 取自前端分页拦截器。
 - `Paginator.links()` 需要注册 `ViewProvider`（`ViewFacade.bind()`）才能渲染分页模板；分页模板自身是普通 `.jblade`（如 `layouts.mdui.pageinator`），通过 `{{ $paginator->links() }}` 输出、放在 `[wire:pagination]` 容器内。
 
 ### 前端：wire:pagination 绑定
@@ -403,14 +411,51 @@ public class AdminController extends WireController {
    └─ wire.js bindPagination 拦截 → sendRequest(comp, '$paginate', {pageNum:2}, el, ['content'])
         └─ POST /admin/admin/change (wire_body, action=$paginate, params={pageNum:2})
              └─ WireController.invokeAction → refresh({pageNum:2}) 重载 paginator
-                  └─ WireEffects.pushUrl("/admin/admin?page=2")  ← 地址栏同步(保留搜索参数)
+                  └─ WireEffects.pushUrl( buildQueryUrl("/admin/admin") )  ← 基于 @WireQuery 生成
+                     (page=2 → ?page=2;searchKey/searchValue 非空 → &key=..&value=..)
         ← 响应 sections={content: 新列表 HTML} + effects.url="/admin/admin?page=2"
    └─ 前端 replaceSection 精准替换 content(暗色模式/对话框状态均保留,无整页刷新)
 ```
 
+「翻页 → 点修改 → 取消」的 URL 一致性：点修改时后端 `inferBackUrl()` 基于同一套 `@WireQuery` 字段生成 backUrl（如 `/admin/admin?page=2`），前端取消时优先还原 `window.__wirePrevUrl`（每次 pushUrl 前暂存的上一条 URL），两者一致——地址栏与内容始终同步，不再出现「内容在第 2 页、URL 却是无参列表页」的错位。
+
 ### 数据量注意
 
 分页模板用 `hasPages()` 决定是否渲染分页控件。若活跃记录数 ≤ 每页大小（如 10 条），`hasPages()` 为 false，`links()` 返回空串、分页器「消失」——这是数据量问题，不是 bug。
+
+---
+
+## URL 查询参数：@WireQuery 注解
+
+`@WireQuery` 标记 `WireController` 中**参与 URL 查询串**的 public 字段，使框架在生成 pushUrl / backUrl 时能**声明式**地自动带上这些参数，无需手写拼接。解决「翻页后 URL 带 `?page=2`，点修改再取消却还原成无参 URL、内容与地址栏错位」的问题。
+
+### 注解属性
+
+| 属性 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `name()` | `String` | 字段名 | 该参数在 URL 中使用的名字;字段名与 URL 参数名不一致时使用(如字段 `searchKey` → URL 参数 `key`) |
+| `templates()` | `String[]` | `{}`(所有模板) | 该参数生效的模板名列表;生成 URL 时以 `getTemplateName()` 为上下文匹配,列表非空且当前模板不在列表内 → 不加入 |
+| `defaultValue()` | `String` | `""`(未设置) | 默认值;当前值等于该值或为 `null` 时不加入 URL。默认空串表示「未设置默认值」→ 仅 null(及空串)时不加入 |
+
+### 过滤规则（WireController.buildQueryUrl）
+
+对每个被 `@WireQuery` 标记的 public 字段,按序过滤:
+1. `templates()` 非空且 `getTemplateName()` 不在列表内 → 跳过;
+2. 当前值为 `null` → 跳过;
+3. 当前值等于 `defaultValue()`(defaultValue 非空) → 跳过;
+4. 当前值为空串 → 跳过(与 null 等价处理);
+5. 其余按 `name()`(缺省用字段名)加入: `?name=value&...`。
+
+### 生成时机
+
+| 场景 | 使用的方法 | 效果 |
+|------|-----------|------|
+| `$paginate` 分页 | `WireEffects.pushUrl(buildQueryUrl(inferBasePath(req), getTemplateName()))` | 翻页地址栏同步 `?page=N`,翻回第 1 页(page=defaultValue)还原无参 |
+| 对话框返回 | `inferBackUrl(request)` = `buildQueryUrl(inferBasePath(req), getTemplateName())` | backUrl 带上 `?page=N` 等参数,「翻页 → 修改 → 取消」还原带参 URL |
+
+### 前端：保留上一条 URL
+
+`wire.js` 每次收到 `effects.url` 执行 `history.pushState` 前,先把当前地址存入 `window.__wirePrevUrl`(只保留一条,通常用户只会返回一次)。对话框取消时 `restoreBackUrl` **优先还原 `__wirePrevUrl`**,兜底用后端 `effects.backUrl` 生成的 `__wireBackUrl`——两套机制一致,互为保险。
 
 ---
 

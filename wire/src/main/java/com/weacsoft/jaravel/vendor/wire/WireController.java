@@ -613,35 +613,14 @@ public abstract class WireController {
         if ("$paginate".equals(action)) {
             // 分页请求:仅调用 refresh 重新加载数据,不调用任何 action 方法
             refresh(params);
-            // 同步地址栏为 ?page=N(保留已有查询参数,如搜索条件 key/value)。
-            // 前端收到 effects.url 后 history.pushState,不刷新页面;翻回第 1 页同样还原 URL。
-            if (params != null && params.get("pageNum") != null) {
-                try {
-                    int pageNum = Integer.parseInt(params.get("pageNum").toString());
-                    if (currentRequest != null) {
-                        // 主页面路径:POST 更新端点(如 /admin/admin/change)的 uri 不是列表页,
-                        // 用 inferBackUrl 去末段得到列表页路径(如 /admin/admin)。
-                        String basePath = inferBackUrl(currentRequest);
-                        if (basePath == null) basePath = "/";
-                        StringBuilder sb = new StringBuilder(basePath);
-                        Map<String, Object> qm = currentRequest.query();
-                        LinkedHashMap<String, Object> newQuery = new LinkedHashMap<>();
-                        for (Map.Entry<String, Object> e : qm.entrySet()) {
-                            String k = e.getKey();
-                            if ("page".equals(k) || e.getValue() == null) continue;
-                            newQuery.put(k, e.getValue());
-                        }
-                        if (pageNum > 1) newQuery.put("page", pageNum);
-                        boolean first = true;
-                        for (Map.Entry<String, Object> e : newQuery.entrySet()) {
-                            sb.append(first ? "?" : "&")
-                              .append(e.getKey()).append("=").append(encodeQueryParam(String.valueOf(e.getValue())));
-                            first = false;
-                        }
-                        WireEffects.pushUrl(sb.toString());
-                    }
-                } catch (NumberFormatException ignored) {
-                }
+            // 同步地址栏为 ?page=N:基于 @WireQuery 注解字段自动生成 URL——
+            // page 标注 @WireQuery(defaultValue="1") → page=2 时带 ?page=2、page=1 时还原无参;
+            // 搜索条件 searchKey/searchValue 标注 @WireQuery → 非空时一并保留。
+            // 前端收到 effects.url 后 history.pushState,不刷新页面。
+            if (currentRequest != null && params != null && params.get("pageNum") != null) {
+                String basePath = inferBasePath(currentRequest);
+                if (basePath == null) basePath = "/";
+                WireEffects.pushUrl(buildQueryUrl(basePath, getTemplateName()));
             }
             return;
         }
@@ -776,10 +755,25 @@ public abstract class WireController {
     }
 
     /**
-     * 从当前请求 URI 推断「返回 URL」:去掉最后一段路径。
-     * 例如 /admin/admin/change → /admin/admin，/admin/admin/change?id=5 → /admin/admin。
+     * 从当前请求 URI 推断「返回 URL」:去掉最后一段路径,并基于 {@link WireQuery}
+     * 注解字段自动附加查询参数。
+     * 例如 /admin/admin/change → /admin/admin;若此时 page=2(标注
+     * {@code @WireQuery(templates={"mdui.admin.admin.list"}, defaultValue="1")})
+     * → /admin/admin?page=2。使「翻页 → 点修改 → 取消」能还原带参 URL。
      */
     private String inferBackUrl(Request request) {
+        String basePath = inferBasePath(request);
+        if (basePath == null) return null;
+        // 基于 @WireQuery 注解字段附加查询参数(如 ?page=2),当前值等于 defaultValue 或
+        // 为 null(或空串)时不加入;templates() 非空时仅当 getTemplateName() 命中才加入。
+        return buildQueryUrl(basePath, getTemplateName());
+    }
+
+    /**
+     * 从请求 URI 去掉 query string 与最后一段路径,得到列表页基准路径。
+     * 例如 /admin/admin/change?id=5 → /admin/admin;/admin/admin?page=2 → /admin/admin。
+     */
+    private String inferBasePath(Request request) {
         try {
             String uri = request.uri();
             if (uri == null || uri.isEmpty() || uri.equals("/")) return null;
@@ -795,6 +789,54 @@ public abstract class WireController {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /**
+     * 基于 {@link WireQuery} 注解字段生成「带查询串的 URL」:
+     * <ul>
+     *   <li>只收集被 {@code @WireQuery} 标记的 public 字段;</li>
+     *   <li>当前值为 null 或空串,或 equals(defaultValue)(defaultValue 非空)时跳过;</li>
+     *   <li>URL 参数名取 {@code name()} 属性,为空时用字段名;</li>
+     *   <li>templates() 非空时,仅当 {@code template} 命中列表才加入(空数组=所有模板);</li>
+     *   <li>无匹配参数时原样返回 basePath,不附加多余的 {@code ?}。</li>
+     * </ul>
+     * 供 {@link #inferBackUrl(Request)} 与 {@code $paginate} 生成 pushUrl 使用。
+     */
+    protected String buildQueryUrl(String basePath, String template) {
+        if (basePath == null) basePath = "/";
+        StringBuilder sb = new StringBuilder(basePath);
+        boolean first = true;
+        for (Field f : findPublicFields(this.getClass())) {
+            WireQuery wq = f.getAnnotation(WireQuery.class);
+            if (wq == null) continue;
+            // 模板作用域过滤:列表非空且当前模板不在列表内 → 跳过
+            String[] templates = wq.templates();
+            if (templates.length > 0) {
+                boolean hit = false;
+                for (String t : templates) {
+                    if (t != null && t.equals(template)) { hit = true; break; }
+                }
+                if (!hit) continue;
+            }
+            try {
+                f.setAccessible(true);
+                Object val = f.get(this);
+                if (val == null) continue;
+                String s = String.valueOf(val);
+                // 默认值过滤:值等于 defaultValue(且 defaultValue 非空) → 跳过
+                String def = wq.defaultValue();
+                if (def != null && !def.isEmpty() && def.equals(s)) continue;
+                // 空串过滤:控制器字段可能为 ""(如 mount 里 request.query(key,"") 的默认值),
+                // 空参数没有意义,一并跳过(与 null 等价处理)。
+                if (s.isEmpty()) continue;
+                String paramName = (wq.name() != null && !wq.name().isEmpty()) ? wq.name() : f.getName();
+                sb.append(first ? "?" : "&")
+                  .append(paramName).append("=").append(encodeQueryParam(s));
+                first = false;
+            } catch (Exception ignored) {
+            }
+        }
+        return sb.toString();
     }
 
     /** URL 查询参数编码(与 {@link com.weacsoft.jaravel.vendor.core.pagination.Paginator} 的编码一致)。 */
