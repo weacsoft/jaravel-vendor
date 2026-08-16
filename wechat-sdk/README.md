@@ -288,12 +288,3 @@ Map<String, Object> result = miniProgramService.sendTemplateMessage(
 > **store 可配置**：`jaravel.wechat.cache-store` 控制首选缓存 store（默认为空字符串，使用 cache 模块默认 store，由 `jaravel.cache.default-store` 决定，不关心具体实现）。`OfficialAccountService`（jsapi_ticket 缓存）与 `AccessTokenManager`（access_token 缓存）均使用该配置值作为首选 store。显式指定的 store 未注册（未引入 `redis-cache` 模块或 Redis 未配置）时自动回退到默认 store，无需修改代码。
 >
 > 默认使用 cache 模块的默认 store（由 `jaravel.cache.default-store` 决定，不关心具体实现）。若需多实例共享，可显式将 `cache-store` 设为 `redis` 并引入 `redis-cache` 模块，`redis` store 会自动注册并被优先使用。
-
-## 线程安全
-
-| 组件 | 线程安全机制 |
-|---|---|
-| `AccessTokenManager` | 无状态单例，缓存委托给 `CacheStore`（array 基于 `ConcurrentHashMap`，redis 基于 Redis），OkHttp/ObjectMapper 线程安全 |
-| `OfficialAccountService` | 无状态单例，jsapi_ticket 缓存委托给 `CacheStore` |
-| `MiniProgramService` | 无状态单例，所有字段构造后不可变 |
-| `WechatProperties` | Spring Boot 配置属性绑定，启动后只读 |

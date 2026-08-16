@@ -22,7 +22,6 @@
 - [IDEA 模板语法提示（XSD 命名空间校验）](#idea-模板语法提示xsd-命名空间校验)
 - [认证过期无感重定向](#认证过期无感重定向)
 - [手动控制 wire.js 注入](#手动控制-wirejs-注入)
-- [线程安全说明](#线程安全说明)
 - [安全机制](#安全机制)
 
 ---
@@ -505,16 +504,6 @@ if (comp.script) {
 
 ---
 
-## Section 局部更新内部约定
-
-`wire.js` 在合并服务端 section HTML 时有两条**必须守住**的约束，否则会出现「暗色模式被冲掉」「提交后翻页无反应」等历史 bug：
-
-1. **只激活新插入片段内的脚本，不激活整个 parent**。`replaceSection` 注释标记分支在 `parent.insertBefore(tmpl.content, end)` 后调用 `activateScriptsInContext(tmpl.content)`（**传 `tmpl.content`，不是 `parent=body`**）。若传 `parent`，布局级脚本（`main.jblade` 里的 `$$(function(){ check_time() })` 等）会被重新执行——夜间 `check_time()` 触发 `change_style()` 把暗色模式 toggle 掉。
-
-2. **只请求「内容级」section，不请求外壳 section**。`getAllSections` 检测到页面存在 `content` 注释时**只返回 `['content']`**（无 content 如对话框组件场景再回退全部）。原因：普通 action 若请求并替换 `body` 等外层 section，会先移除其内部**嵌套**的 `content` 注释标记，之后 `findComment('content')` 找不到目标，表格等数据 section 永不更新（表现为「URL 变了但数据没变 / 提交后翻页无反应」）。页面外壳（body/css/style/bar_* 等）不参与局部更新，嵌套注释才能保留。
-
----
-
 ## 前端事件系统
 
 `wire.js` 暴露全局对象 `Wire`，提供前端事件系统。通过 `Wire.on` / `Wire.off` 注册和移除事件监听器，可在 Wire 生命周期钩子中执行自定义逻辑——典型场景是 DOM 更新后刷新第三方 UI 框架组件（如 mdui 的 `mdui.mutation()`）。事件监听器全局生效，对所有 Wire 组件实例触发。
@@ -648,41 +637,6 @@ jaravel-vendor/wire/xsd/wire.xsd
 
 ---
 
-## 参数化 action 设计原则（前后端职责分离）
-
-**核心原则**：`wire:click="edit(1)"` 这类表达式由前端 `wire.js` 的 `parseWireAction` 函数负责解析，后端只做方法名匹配和类型转换。
-
-### 前端职责（wire.js `parseWireAction`）
-
-| 表达式 | 解析结果 |
-|--------|---------|
-| `edit(1)` | `action="edit"`, `params={"0":"1"}` |
-| `role('admin')` | `action="role"`, `params={"0":"admin"}` |
-| `role('a,b', 2)` | `action="role"`, `params={"0":"a,b", "1":"2"}` |
-| `save` | `action="save"`, `params=null` |
-
-解析规则：
-1. 取首个 `(` 与配对 `)` 之间为参数区；
-2. 按逗号切分（**支持多参**）；
-3. 单引号内逗号不切分（字符串字面量保护）；
-4. 剥去字符串参数外层的单引号；
-5. 位置参数放入 `params` 的字符串下标。
-
-### 后端职责（WireController.invokeAction）
-
-1. 直接用 `action` 字符串匹配 public 方法（`findPublicMethod`）；
-2. 从 `params.get(String.valueOf(i))` 按位置下标读取参数；
-3. 经 `convertValue(val.toString(), paramTypes[i])` 按方法声明类型转换；
-4. 不做任何 action 字符串解析。
-
-### 设计理由
-
-- 前端有完整的表达式上下文，可以正确处理引号、逗号等语法；
-- 后端只做类型转换，职责单一，避免前后端双重解析导致的不一致；
-- 前端 `parseWireAction` 可复用，不依赖后端方法签名。
-
----
-
 ## 认证过期无感重定向
 
 Wire 实现了认证过期的「无感」重定向体验：当用户在 Wire 交互过程中 session 过期，前端会自动跳转到登录页，登录成功后回到之前的页面。
@@ -754,18 +708,9 @@ String jsPath = WireManager.getJsPath();
 
 ---
 
-## 线程安全说明
+## 使用注意
 
-| 类 | 线程安全性 | 说明 |
-| --- | --- | --- |
-| `WireController` | **请求级隔离** | Spring 单例 Bean，实例字段在多个请求间共享——**`mount()` 必须重置表单字段**；请求级 ThreadLocal（布局替换规则、组件队列）在请求 `finally` 中清除 |
-| `WireEffects` | **请求级隔离** | ThreadLocal 组件/事件/重定向/URL 队列，请求末 drain + 清理 |
-| `WireRequest` | **单请求隔离** | 每次请求通过 `from` 创建新实例，字段不可变 |
-| `WireManager` | **线程安全** | 无状态工具类，静态方法；`engine` 启动期单次写入后只读 |
-| `WireParentOverride` | **线程安全** | ThreadLocal 覆盖表，组件渲染期注册、渲染完清除 |
-| `wire.js` | 单组件隔离 | 前端运行时，每个 `wire:config` 对应一个 component 实例，`boundElements` Set 防止重复绑定 |
-
----
+`WireController` 是 Spring 单例，实例字段在多请求间共享——实现 `mount()` 时必须重置所有表单字段，避免上一个请求的数据串入下一个请求。
 
 ## 安全机制
 

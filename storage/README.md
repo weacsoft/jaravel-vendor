@@ -294,8 +294,6 @@ public class S3FilesystemDriver implements FilesystemDriver {
 
 ## 设计说明
 
-- **磁盘实例进程级共享**：`Filesystem` 无请求级可变状态，不使用 ThreadLocal，
-  所有实现必须线程安全（与 auth 的 guard 需要请求级缓存不同）。
 - **可见性跨平台**：Windows 等非 POSIX 系统上 `setVisibility` 静默忽略，
   `visibility()` 返回磁盘配置的默认值。
 - **`local` 与 `public` 是同一驱动**：`public` 只是语义别名，
@@ -328,12 +326,3 @@ jaravel:
 | --- | --- |
 | 本地（`supportsLocalPath()` 为 true） | `Files.move`，同分区为原子 rename、零拷贝 |
 | 远程（S3/OSS 等） | 流式 `putStream`，内存占用恒定 |
-
-## 测试
-
-```bash
-mvn -pl storage test
-```
-
-39 个用例，覆盖读写、流式 IO、目录操作、路径穿越防护、可见性、
-驱动工厂与 `StorageManager` 的磁盘解析/延迟创建。

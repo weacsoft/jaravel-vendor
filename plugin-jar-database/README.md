@@ -76,25 +76,6 @@
 
 5. **使用数据库持久化**：`HotPluginManager` 注入容器中唯一的 `MetadataPersistence` Bean（即 `ModelMetadataPersistence`），后续的 `save` / `load` / `loadAll` / `delete` 操作均走数据库。
 
-```
-引入依赖
-  │
-  ▼
-PluginJarDatabaseAutoConfiguration (@AutoConfigureBefore)
-  │  注册 ModelMetadataPersistence Bean
-  ▼
-PluginJarAutoConfiguration
-  │  @ConditionalOnMissingBean(MetadataPersistence.class) 命中已有 Bean
-  │  → 跳过 JsonMetadataPersistence
-  ▼
-HotPluginManager 注入 ModelMetadataPersistence
-  │
-  ▼
-jaravel 迁移系统自动执行 Migration_2024_01_03_CreatePluginMetadataTable
-  │  → 创建 plugin_metadata 表
-  ▼
-插件元数据读写均走数据库
-```
 
 ---
 

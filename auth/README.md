@@ -6,7 +6,6 @@
 ## 目录
 
 - [模块概述](#模块概述)
-- [设计原则：retrieveById 不缓存](#设计原则retrievebyid-不缓存)
 - [Maven 依赖](#maven-依赖)
 - [类总览](#类总览)
 - [契约层（contract）](#契约层contract)
@@ -35,7 +34,6 @@
   - [AuthProperties](#authproperties)
 - [配置项（application.yml）](#配置项applicationyml)
 - [完整使用示例](#完整使用示例)
-- [线程安全说明](#线程安全说明)
 
 ---
 
@@ -1085,41 +1083,6 @@ public Response logout() {
 
 ---
 
-## 线程安全说明
+## 使用注意
 
-Auth 模块在设计上充分考虑了并发场景，核心线程安全策略如下：
-
-### 1. 注册表（guards / providers / guardDrivers）
-
-使用 `ConcurrentHashMap` 和 `CopyOnWriteArrayList`，支持并发读写。
-
-- **注册阶段**：应用启动时由 ServiceProvider 调用 `registerProvider` / `registerGuard`，`AuthAutoConfiguration` 自动收集 `AuthGuardDriver` Bean 调用 `registerGuardDriver`。
-- **运行阶段**：请求线程调用 `guard(name)`。
-- 两者可安全并发。注册表本身是进程级共享的不可变配置（启动后不再修改），并发集合保证可见性与原子性。
-
-### 2. 请求级守卫实例（current）
-
-使用 `ThreadLocal<Map<String, AuthGuard>>`，每个请求线程持有独立的 `Map<String, AuthGuard>`。
-
-- `AuthGuard` 实例（如 `SessionGuard`、`JwtGuard`）中缓存的 `cachedUser`、`resolved`、`lastToken` 等可变状态天然按请求隔离，**不会**跨请求共享。
-- 请求结束时由 `AuthLifecycleFilter` 调用 `AuthManager.clear()` 清理 ThreadLocal，防止线程池复用导致的串态。
-
-### 3. defaultGuard
-
-启动阶段设置后不再变更，使用 `volatile` 修饰保证多线程可见性。
-
-### 4. AuthContext
-
-使用 `ThreadLocal<Request>` 持有当前请求，每请求独立，请求结束由 `AuthLifecycleFilter` 清理。
-
-### 关键约束
-
-> `AuthGuard` 实例**必须**通过 `AuthManager.guard(String)` 获取，不可跨请求缓存或共享，否则其内部的可变状态会串态。
-
-| 组件 | 隔离机制 | 生命周期 |
-|---|---|---|
-| `guards` / `providers` / `guardDrivers` | `ConcurrentHashMap` / `CopyOnWriteArrayList` | 进程级，启动后只读 |
-| `current`（守卫实例缓存） | `ThreadLocal` | 请求级，请求结束清理 |
-| `defaultGuard` | `volatile` | 进程级，启动后不变 |
-| `AuthContext`（当前请求） | `ThreadLocal` | 请求级，请求结束清理 |
-| `SessionGuard` 可变状态 | ThreadLocal 隔离 | 请求级 |
+`AuthGuard` 实例（如 `SessionGuard`）内部会缓存当前请求的用户等可变状态，**必须**通过 `AuthManager.guard(String)` 获取，不可跨请求缓存或共享。

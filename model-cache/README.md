@@ -7,17 +7,16 @@
 ## 目录
 
 - [1. 模块概述](#1-模块概述)
-- [2. 设计原理：版本化缓存失效](#2-设计原理版本化缓存失效)
-- [3. 依赖信息](#3-依赖信息)
-- [4. 类总览](#4-类总览)
-- [5. 快速开始](#5-快速开始)
-- [6. @CachableModel 注解](#6-cachablemodel-注解)
-- [7. ModelCacheService —— 核心服务](#7-modelcacheservice--核心服务)
-- [8. ModelCache —— 门面](#8-modelcache--门面)
-- [9. 配置选项](#9-配置选项)
-- [10. 使用示例](#10-使用示例)
-- [11. 与 cache 模块的关系](#11-与-cache-模块的关系)
-- [12. 注意事项与局限](#12-注意事项与局限)
+- [2. 依赖信息](#2-依赖信息)
+- [3. 类总览](#3-类总览)
+- [4. 快速开始](#4-快速开始)
+- [5. @CachableModel 注解](#5-cachablemodel-注解)
+- [6. ModelCacheService —— 核心服务](#6-modelcacheservice--核心服务)
+- [7. ModelCache —— 门面](#7-modelcache--门面)
+- [8. 配置选项](#8-配置选项)
+- [9. 使用示例](#9-使用示例)
+- [10. 与 cache 模块的关系](#10-与-cache-模块的关系)
+- [11. 注意事项与局限](#11-注意事项与局限)
 
 ---
 
@@ -37,39 +36,7 @@
 
 TTL 单位统一为**秒**（对齐 cache 模块）。
 
----
-
-## 2. 设计原理：版本化缓存失效
-
-Laravel 的 `laravel-model-caching` 通常依赖 Redis 的 tag 机制实现缓存批量失效。但 Jaravel-Vendor 的 `CacheStore` **不支持 tag**（array / file / database 驱动均无 tag 语义），因此本模块采用**版本号机制**替代 tag：
-
-### 工作流程
-
-1. **版本号键**：每个模型类在缓存中维护一个版本号，键为 `model-cache:{modelPrefix}:version`。
-2. **缓存键含版本号**：所有数据缓存键都拼入当前版本号：
-   - 主键查询：`model-cache:{modelPrefix}:v{version}:find:{id}`
-   - 任意查询：`model-cache:{modelPrefix}:v{version}:query:{queryKey}`
-3. **失效时递增版本号**：调用 `invalidate(Class)` 时，`increment` 版本号键。新请求读取到新版本号，生成新的缓存键，旧版本键不再被命中。
-4. **旧缓存自然清除**：旧版本缓存键不会被主动删除，而是随自身 TTL 到期后被驱动惰性清理（array 惰性删除、file/database 过期清理）。
-
-### 优势
-
-- 不依赖 tag，兼容 `cache` 模块全部驱动。
-- 失效操作为单次 `increment`，开销极低。
-- 无需遍历删除旧键，避免缓存抖动。
-
-### 取舍
-
-- 旧版本缓存会占用空间直到 TTL 到期，建议合理设置 TTL。
-- 单条记录失效 `invalidate(Class, id)` 仅 forget 主键查询键，不影响查询缓存（查询缓存可能含旧数据，需调用 `invalidate(Class)` 整体失效）。
-
-### 版本号初始化说明
-
-版本号不存在时初始化为 **1** 并写入缓存，确保首次 `invalidate` 调用 `increment` 后版本号变为 2（与初始 1 区分）。若不写入初始值，`increment` 对不存在的键会从 0 起算得到 1，导致版本号未变化、缓存未失效。
-
----
-
-## 3. 依赖信息
+## 2. 依赖信息
 
 ### Maven 坐标
 
@@ -96,7 +63,7 @@ Laravel 的 `laravel-model-caching` 通常依赖 Redis 的 tag 机制实现缓�
 
 ---
 
-## 4. 类总览
+## 3. 类总览
 
 ```
 com.weacsoft.jaravel.vendor.modelcache
@@ -109,7 +76,7 @@ com.weacsoft.jaravel.vendor.modelcache
 
 ---
 
-## 5. 快速开始
+## 4. 快速开始
 
 ### 1) 引入依赖
 
@@ -157,7 +124,7 @@ ModelCache.invalidate(User.class, 1L);
 
 ---
 
-## 6. @CachableModel 注解
+## 5. @CachableModel 注解
 
 `com.weacsoft.jaravel.vendor.modelcache.CachableModel`
 
@@ -196,7 +163,7 @@ public class User extends BaseModel<User, Long> { ... }
 
 ---
 
-## 7. ModelCacheService —— 核心服务
+## 6. ModelCacheService —— 核心服务
 
 `com.weacsoft.jaravel.vendor.modelcache.ModelCacheService`
 
@@ -221,7 +188,7 @@ public class User extends BaseModel<User, Long> { ... }
 
 ---
 
-## 8. ModelCache —— 门面
+## 7. ModelCache —— 门面
 
 `com.weacsoft.jaravel.vendor.modelcache.ModelCache`
 
@@ -242,7 +209,7 @@ public class User extends BaseModel<User, Long> { ... }
 
 ---
 
-## 9. 配置选项
+## 8. 配置选项
 
 配置前缀为 `jaravel.model-cache`，对应 `ModelCacheProperties` 类。
 
@@ -273,7 +240,7 @@ jaravel:
 
 ---
 
-## 10. 使用示例
+## 9. 使用示例
 
 ### 结合 BaseModel 的完整示例
 
@@ -338,7 +305,7 @@ boolean cachable = modelCacheService.isCachable(User.class);
 
 ---
 
-## 11. 与 cache 模块的关系
+## 10. 与 cache 模块的关系
 
 `model-cache` 是构建在 `cache` 模块之上的**高层封装**，二者关系如下：
 
@@ -362,7 +329,7 @@ ModelCache（门面，静态 API）
 
 ---
 
-## 12. 注意事项与局限
+## 11. 注意事项与局限
 
 1. **可选模块**：不引入 `model-cache` 依赖时，自动装配不会被加载，不影响其他模块。
 2. **需 cache 模块就绪**：自动装配带 `@ConditionalOnBean(CacheManager.class)`，仅当容器中存在 `CacheManager` Bean 时生效。

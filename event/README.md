@@ -23,7 +23,6 @@
 - [15. 示例：用户注册事件](#15-示例用户注册事件)
 - [16. EventAutoConfiguration —— 自动装配](#16-eventautoconfiguration--自动装配)
 - [17. 配置选项](#17-配置选项)
-- [18. 线程安全说明](#18-线程安全说明)
 
 ---
 
@@ -633,19 +632,3 @@ jaravel:
 - `retry.max-attempts` 不含首次执行，即总执行次数 = 1 + max-attempts。
 
 ---
-
-## 18. 线程安全说明
-
-| 类 | 线程安全性 | 说明 |
-| --- | --- | --- |
-| `EventDispatcher` | 线程安全 | 使用 `ConcurrentHashMap` + `CopyOnWriteArrayList` 维护事件-监听器映射。`queueEnabled` 为 `volatile`，保证可见性。并发注册与分发安全 |
-| `QueueManager` | 线程安全 | 使用 `ConcurrentHashMap` 维护队列名到执行器的映射，`computeIfAbsent` 保证每队列只创建一个执行器。`queuePoolSizes` 为 `ConcurrentHashMap`，构造后只读 |
-| `EventFacade` | 线程安全 | 静态方法，每次调用通过 `Facade.resolve()` 从容器解析 `Dispatcher`，无共享可变状态 |
-| `EventListenerRegistrar` | 单次执行 | `afterSingletonsInstantiated()` 在所有单例就绪后单线程调用，无需考虑并发 |
-| `EventServiceProvider` | 单次执行 | `register()` 在引导阶段单线程调用 |
-| `Event` / `Listener` / `ShouldQueue` | 取决于实现 | 接口/标记接口，线程安全性取决于具体实现类。建议监听器实现为无状态对象 |
-| `EventProperties` | 配置只读 | Spring Boot 配置属性绑定，启动后只读 |
-
-### 重试机制的线程安全
-
-`invokeWithRetry` 方法无共享可变状态，`listener` 与 `event` 由调用方保证可见性（通过线程池提交时的 happens-before 关系）。重试通过 `Thread.sleep` 实现，在队列线程池的工作线程中阻塞等待，不影响其它队列。所有重试耗尽后仅记录错误日志，不会中断其它监听器的执行。

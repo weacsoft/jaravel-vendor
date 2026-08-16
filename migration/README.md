@@ -30,7 +30,7 @@
 - [20. MigrationAutoConfiguration —— 自动装配](#20-migrationautoconfiguration--自动装配)
 - [21. 配置选项](#21-配置选项)
 - [22. 预编译 —— 开发阶段预编译工具](#22-预编译--开发阶段预编译工具)
-- [23. 线程安全说明](#23-线程安全说明)
+- [23. 使用注意](#23-使用注意)
 
 ---
 
@@ -1843,25 +1843,9 @@ java -cp migration.jar:utils.jar:mysql-connector.jar \
   migrate
 ```
 
----
+## 23. 使用注意
 
-## 23. 线程安全说明
-
-| 类 | 线程安全性 | 说明 |
-| --- | --- | --- |
-| `MigrationSource` | 线程安全 | 枚举类型，天然不可变 |
-| `Schema` | 单线程使用 | 内部 `JdbcTemplate` 线程安全，但 `databaseProductName` 在构造时一次性确定。`Schema` 实例本身无共享可变状态，可在多线程中使用，但迁移操作通常串行执行 |
-| `Blueprint` | 非线程安全 | 使用 `ArrayList` 存储列与命令，应在单线程内构建并消费。每个 `create()` / `table()` 调用创建独立的 `Blueprint` 实例 |
-| `ColumnDefinition` | 非线程安全 | 链式调用修改内部字段，应在单线程内使用。由 `Blueprint` 在单线程内创建 |
-| `ForeignKeyDefinition` | 非线程安全 | 同 `ColumnDefinition`，链式调用构建 |
-| `Migrator` | 需外部同步 | `run()` / `rollback()` 等方法操作 `MigrationRepository`，并发调用可能导致批次号冲突。应在单线程或加锁环境下调用 |
-| `MigrationRepository` | 需外部同步 | 基于 `JdbcTemplate`，SQL 操作本身原子，但 `getNextBatchNumber()` 与 `log()` 之间存在竞态，并发迁移需外部同步 |
-| `MigrationRunner` | 单次执行 | `CommandLineRunner.run()` 在启动时单线程调用，无需考虑并发 |
-| `MigrationScanner` | 单次使用 | 内部 `MemoryClassLoader` 懒加载，`finish()` 后释放。设计为单次加载-执行-释放生命周期，非线程安全 |
-| `MigrationPrecompiler` | 单次使用 | 预编译工具类，设计为单次编译生命周期。内部使用 `MigrationScanner` 编译并获取字节码，非线程安全 |
-| `MigrationPrecompilerMain` | 单次执行 | 命令行入口，`main()` 方法单线程调用，无需考虑并发 |
-| `MigrationGenerator` | 线程安全 | 静态方法，无共享可变状态，可安全并发调用（但同一文件路径并发写入会失败） |
-| `Dialect` / `AbstractDialect` | 线程安全 | 无状态策略对象，各方法无副作用 |
-| `DialectFactory` | 线程安全 | 静态工厂方法，每次返回新的 Dialect 实例 |
-| `MysqlDialect` 等 | 线程安全 | 不可变对象，构造后状态不变 |
-| `TableMigrator` | 单次使用 | 设计为单次迁移生命周期，内部不保持跨方法可变状态，但并发操作同一目标表需外部同步 |
+- `MigrationScanner` / `MigrationPrecompiler` 设计为**单次使用**：内部类加载器为懒加载，`finish()` 后即释放，请勿复用同一实例。
+- `Migrator.run()` / `rollback()` 与 `MigrationRepository` 的批次号推进**需外部同步**，并发迁移会导致批次号冲突。
+- `TableMigrator` 设计为单次迁移生命周期；并发操作同一目标表需外部同步。
+- `Blueprint` / `ColumnDefinition` / `ForeignKeyDefinition` 为链式构建对象，应在单线程内构建并消费。

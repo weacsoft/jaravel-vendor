@@ -17,7 +17,6 @@
 - [9. ResponseReturnValueHandler —— 返回值处理器](#9-responsereturnvaluehandler--返回值处理器)
 - [10. 自动装配清单](#10-自动装配清单)
 - [11. 配置选项](#11-配置选项)
-- [12. 线程安全说明](#12-线程安全说明)
 
 ---
 
@@ -533,15 +532,3 @@ returnValue == null？
 })
 public class MyApp { ... }
 ```
-
----
-
-## 12. 线程安全说明
-
-| 类 | 线程安全性 | 说明 |
-| --- | --- | --- |
-| `SpringBootRouteAutoConfiguration` | 线程安全 | `@Bean` 在启动阶段创建；`jaravelRouterFunction` 构建路由前调用 `scanMiddlewareAliases(applicationContext)` 在启动阶段一次性扫描注册 `@MiddlewareAlias` Bean 到 `MiddlewareAliasRegistry.getGlobal()`，并调用 `scanControllers(applicationContext)` 扫描控制器注册到 `ControllerRegistry.getGlobal()`（支持手动指定扫描包与自动扫描两种模式），之后只读（注册表内部使用 `ConcurrentHashMap`）；`ControllerRegistry.scanBasePackages` 为 `volatile` 字段，保证多线程可见性；构建的 `HandlerFunction` 为每次请求新建 `Request`，无共享可变状态。`RouteAuthHandler` 使用 ThreadLocal 或请求级清理，确保请求间隔离 |
-| `ResponseAutoConfiguration` | 线程安全 | 构造器在启动阶段一次性修改 `RequestMappingHandlerAdapter` 的处理器链，之后只读 |
-| `SpringBootRequestMVCResolver` | 线程安全 | `@Component` 单例，`resolveArgument` 每次调用构建新的 `Request`，无共享可变状态 |
-| `SpringBootResponseMVCResolver` | 线程安全 | `@ControllerAdvice` 单例，`beforeBodyWrite` 无状态，仅操作方法参数（每请求独立） |
-| `ResponseReturnValueHandler` | 线程安全 | 无实例字段，`handleReturnValue` 仅操作方法参数，每请求独立 |

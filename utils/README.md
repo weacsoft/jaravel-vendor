@@ -9,12 +9,11 @@
 - [1. 模块概述](#1-模块概述)
 - [2. 依赖信息](#2-依赖信息)
 - [3. 类总览](#3-类总览)
-- [4. 内存编译工作原理](#4-内存编译工作原理)
-- [5. SourceCodeJavaFileObject —— 源代码文件对象](#5-sourcecodejavafileobject--源代码文件对象)
-- [6. MemoryFileManager —— 内存文件管理器](#6-memoryfilemanager--内存文件管理器)
-- [7. MemoryClassLoader —— 内存类加载器](#7-memoryclassloader--内存类加载器)
-- [8. 使用示例](#8-使用示例)
-- [9. 线程安全说明](#9-线程安全说明)
+- [4. SourceCodeJavaFileObject —— 源代码文件对象](#4-sourcecodejavafileobject--源代码文件对象)
+- [5. MemoryFileManager —— 内存文件管理器](#5-memoryfilemanager--内存文件管理器)
+- [6. MemoryClassLoader —— 内存类加载器](#6-memoryclassloader--内存类加载器)
+- [7. 使用示例](#7-使用示例)
+- [8. Maps —— 不可变 Map 便捷构造器](#8-maps--不可变-map-便捷构造器)
 
 ---
 
@@ -105,20 +104,7 @@ MemoryClassLoader                 ← 从内存字节码加载类
 Class<?> 对象
 ```
 
----
-
-## 4. 内存编译工作原理
-
-Java 编译器 API（`javax.tools.JavaCompiler`）通过 `JavaFileManager` 抽象文件 I/O。本模块通过自定义 `JavaFileManager` 与 `JavaFileObject`，将编译的输入与输出都重定向到内存：
-
-1. **输入**：`SourceCodeJavaFileObject` 将源代码字符串包装为 `JavaFileObject`，编译器通过 `getCharContent()` 读取源码
-2. **编译**：`JavaCompiler` 编译源码，生成 class 字节码
-3. **输出拦截**：`MemoryFileManager` 重写 `getJavaFileForOutput()`，将编译器输出的字节码拦截到 `ClassFileJavaFileObject`（内部使用 `ByteArrayOutputStream`），而非写入磁盘
-4. **加载**：`MemoryClassLoader` 重写 `findClass()`，从内存中的字节码通过 `defineClass()` 定义并加载类
-
----
-
-## 5. SourceCodeJavaFileObject —— 源代码文件对象
+## 4. SourceCodeJavaFileObject —— 源代码文件对象
 
 `com.weacsoft.jaravel.vendor.utils.memory.SourceCodeJavaFileObject`
 
@@ -158,7 +144,7 @@ compilationUnits.add(source);
 
 ---
 
-## 6. MemoryFileManager —— 内存文件管理器
+## 5. MemoryFileManager —— 内存文件管理器
 
 `com.weacsoft.jaravel.vendor.utils.memory.MemoryFileManager`
 
@@ -225,7 +211,7 @@ try (MemoryFileManager fileManager = new MemoryFileManager(
 
 ---
 
-## 7. MemoryClassLoader —— 内存类加载器
+## 6. MemoryClassLoader —— 内存类加载器
 
 `com.weacsoft.jaravel.vendor.utils.memory.MemoryClassLoader`
 
@@ -268,7 +254,7 @@ Object instance = clazz.getDeclaredConstructor().newInstance();
 
 ---
 
-## 8. 使用示例
+## 7. 使用示例
 
 ### 完整的内存编译与加载流程
 
@@ -345,20 +331,7 @@ public class MemoryCompileExample {
 }
 ```
 
----
-
-## 9. 线程安全说明
-
-| 类 | 线程安全性 | 说明 |
-| --- | --- | --- |
-| `SourceCodeJavaFileObject` | 不可变 | 内部仅持有 `sourceCode` 字符串（不可变），构造后状态不变，可安全并发读取 |
-| `MemoryFileManager` | 非线程安全 | 内部使用 `ConcurrentHashMap` 存储生成的类，但 `getJavaFileForOutput()` 在并发编译时可能产生竞态。设计为单次编译生命周期内使用，非线程安全 |
-| `MemoryFileManager.ClassFileJavaFileObject` | 非线程安全 | 内部 `ByteArrayOutputStream` 非线程安全，由编译器在单线程内写入。编译完成后 `getBytes()` 可安全读取 |
-| `MemoryClassLoader` | 需外部同步 | `findClass()` 读取 `Map`（若为 `ConcurrentHashMap` 则读取线程安全），但 `defineClass()` 对同一类名重复调用会抛出异常。应在单线程内加载，加载后的 `Class` 对象可安全并发使用 |
-
----
-
-## 10. Maps —— 不可变 Map 便捷构造器
+## 8. Maps —— 不可变 Map 便捷构造器
 
 `com.weacsoft.jaravel.vendor.utils.Maps`
 

@@ -101,15 +101,6 @@ jaravel:
 6. **注册到容器**：通过 `PluginBeanRegistrar` 注册 Bean，通过 `PluginRouteRegistrar` 注册路由到 Spring 容器。
 7. **热更新**：修改 `.java` 文件后，执行「禁用插件 → 重新编译 → 创建新 ClassLoader → 重新注册」流程完成热重载。
 
-```
-.java 文件 ──读取──▶ JavaSourceFile ──编译──▶ Map<String, byte[]> ──加载──▶ DynamicClassLoader
-                                                                              │
-                                                                              ▼
-                                              @PluginComponent / @PluginMapping 反射扫描
-                                                                              │
-                                                                              ▼
-                                              PluginBeanRegistrar / PluginRouteRegistrar 注册
-```
 
 ---
 

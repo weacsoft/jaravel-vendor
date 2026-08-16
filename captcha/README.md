@@ -7,24 +7,21 @@
 ## 目录
 
 - [1. 核心特性](#1-核心特性)
-- [2. 架构设计](#2-架构设计)
-- [3. 依赖信息](#3-依赖信息)
-- [4. 快速开始](#4-快速开始)
-- [5. 五种验证码详解](#5-五种验证码详解)
-- [6. 无状态 token 验证](#6-无状态-token-验证)
-- [7. 配置说明](#7-配置说明)
-- [8. 轨迹验证](#8-轨迹验证)
-- [9. 可配置性](#9-可配置性)
-- [10. 自定义背景图](#10-自定义背景图)
-- [11. 水印](#11-水印)
-- [12. 存储选择](#12-存储选择)
-- [13. 自定义验证码类型](#13-自定义验证码类型)
-- [14. 前端 JavaScript API](#14-前端-javascript-api)
-- [15. 前端自包含与静态发布](#15-前端自包含与静态发布)
-- [16. 全屏弹层模式](#16-全屏弹层模式)
-- [17. 跨端兼容](#17-跨端兼容)
-- [18. 场景白名单与权限边界](#18-场景白名单与权限边界)
-- [19. 端到端测试](#19-端到端测试)
+- [2. 依赖信息](#2-依赖信息)
+- [3. 快速开始](#3-快速开始)
+- [4. 五种验证码详解](#4-五种验证码详解)
+- [5. 无状态 token 验证](#5-无状态-token-验证)
+- [6. 配置说明](#6-配置说明)
+- [7. 轨迹验证](#7-轨迹验证)
+- [8. 可配置性](#8-可配置性)
+- [9. 自定义背景图](#9-自定义背景图)
+- [10. 水印](#10-水印)
+- [11. 存储选择](#11-存储选择)
+- [12. 自定义验证码类型](#12-自定义验证码类型)
+- [13. 前端 JavaScript API](#13-前端-javascript-api)
+- [14. 前端自包含与静态发布](#14-前端自包含与静态发布)
+- [15. 全屏弹层模式](#15-全屏弹层模式)
+- [16. 场景白名单与权限边界](#16-场景白名单与权限边界)
 
 ---
 
@@ -49,47 +46,7 @@
 
 ---
 
-## 2. 架构设计
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      适配层（springboot 包）                  │
-│   CaptchaAutoConfiguration  +  CaptchaProperties(@ConfProps) │
-│   - 自动装配 CaptchaManager Bean                              │
-│   - 智能选择存储（CacheStore / Memory）                       │
-│   - 将 yml 配置转为核心层 CaptchaProperties                    │
-└───────────────────────────┬─────────────────────────────────┘
-                            │ 依赖（optional）
-┌───────────────────────────┴─────────────────────────────────┐
-│                      核心层（纯 Java）                        │
-│                                                              │
-│   CaptchaManager  ──管理──▶  Captcha（接口）                  │
-│        │                        ▲                            │
-│        │ 注册                   │ 实现                       │
-│        ▼                        │                            │
-│   type -> Captcha        AbstractCaptcha（模板方法）          │
-│                                 │                            │
-│              ┌──────────────────┼──────────────────┐         │
-│              │                  │                  │         │
-│        NumberCaptcha   ArithmeticCaptcha   SliderCaptcha   RotateCaptcha   ClickCaptcha
-│                                                              │
-│   CaptchaStore（SPI）◀── MemoryCaptchaStore / CacheStoreCaptchaStore
-│   CaptchaProperties（配置）   CaptchaResult（结果）           │
-└──────────────────────────────────────────────────────────────┘
-```
-
-### 分层说明
-
-| 层 | 包 | 职责 | 依赖 |
-| --- | --- | --- | --- |
-| 核心层 | `com.weacsoft.jaravel.vendor.captcha` | 验证码接口、抽象基类、五种实现、存储、配置、管理器 | 纯 JDK（`java.awt`） |
-| 适配层 | `com.weacsoft.jaravel.vendor.captcha.springboot` | SpringBoot 自动装配、`@ConfigurationProperties` 绑定 | SpringBoot 3（optional） |
-
-核心层的 `CaptchaStore` 通过 SPI 与存储解耦：默认使用 `MemoryCaptchaStore`；当项目引入 jaravel `cache` 模块时，可使用 `CacheStoreCaptchaStore` 将答案存入 Redis / 数据库，实现跨进程验证码共享。
-
----
-
-## 3. 依赖信息
+## 2. 依赖信息
 
 ### Maven 坐标
 
@@ -154,7 +111,7 @@
 
 ---
 
-## 4. 快速开始
+## 3. 快速开始
 
 ### 4.1 独立使用（无 SpringBoot）
 
@@ -251,7 +208,7 @@ boolean ok = manager.verify(result.getKey(), "ABC23");
 
 ---
 
-## 5. 五种验证码详解
+## 4. 五种验证码详解
 
 五种验证码共享同一套 `generate(captchaKey)` / `verify(captchaKey, userInput)` 接口，区别在于类型名、图片内容、用户输入含义与额外数据。
 
@@ -388,7 +345,7 @@ props.setTolerance(25);        // 25 像素容差
 
 ---
 
-## 6. 无状态 token 验证
+## 5. 无状态 token 验证
 
 除了默认的「基于 `CaptchaStore` 存储答案」的有状态验证外，`AbstractCaptcha` 还提供无状态 token 机制，适用于不希望（或无法）在服务端维护验证码存储的场景。
 
@@ -448,7 +405,7 @@ boolean ok1 = manager.verify(key, userInput);
 
 ---
 
-## 7. 配置说明
+## 6. 配置说明
 
 ### SpringBoot 配置（`application.yml`）
 
@@ -651,7 +608,7 @@ properties.setWatermarkScale(0.2f);                         // 图片水印缩�
 
 ---
 
-## 8. 轨迹验证
+## 7. 轨迹验证
 
 滑动（`slider`）与旋转（`rotate`）验证码在启用 `trajectory-enabled` 后，不仅校验用户提交的最终位置/角度，还会校验拖动过程产生的轨迹是否具有人类行为特征，从而有效防范自动化脚本直接提交最终值绕过验证。
 
@@ -760,7 +717,7 @@ jaravel:
 
 ---
 
-## 9. 可配置性
+## 8. 可配置性
 
 captcha 模块的视觉呈现高度可配置，所有视觉相关参数均集中在 `CaptchaProperties`（核心层）与 `springboot.CaptchaProperties`（SpringBoot 适配层）中，可通过 `application.yml` 或 Java 代码调整。
 
@@ -857,7 +814,7 @@ jaravel:
 
 ---
 
-## 10. 自定义背景图
+## 9. 自定义背景图
 
 滑动（`slider`）与旋转（`rotate`）验证码支持自定义背景图，替换默认的随机渐变背景，使验证码视觉更贴合业务场景（如使用品牌图片、风景图等作为底图）。
 
@@ -947,7 +904,7 @@ props.setBackgroundImageBase64(toBase64Image(160, 50));
 
 ---
 
-## 11. 水印
+## 10. 水印
 
 五种验证码（数字、算术、滑动、旋转、文字点选）均支持叠加**文字水印**和**图片水印**，用于版权标识、品牌曝光或防伪。水印由 `AbstractCaptcha.applyWatermark()` 统一处理，在验证码内容（字符、缺口、朝向标记等）绘制完成后叠加，不影响验证逻辑。
 
@@ -1031,7 +988,7 @@ CaptchaResult result = captcha.generate("my-key");  // 图片同时含文字水�
 
 ---
 
-## 12. 存储选择
+## 11. 存储选择
 
 验证码答案的存储通过 `CaptchaStore` 接口抽象，内置两种实现：
 
@@ -1133,7 +1090,7 @@ public class RedisCaptchaStore implements CaptchaStore {
 
 ---
 
-## 13. 自定义验证码类型
+## 12. 自定义验证码类型
 
 通过继承 `AbstractCaptcha` 实现自定义验证码，只需实现两个钩子方法：
 
@@ -1263,7 +1220,7 @@ verify(captchaKey, userInput)
 
 ---
 
-## 14. 前端 JavaScript API
+## 13. 前端 JavaScript API
 
 模块提供 `jaravel-captcha.js` 前端库（零依赖），封装验证码 UI 构建、事件绑定、轨迹采集与加密。前端采用**事件驱动模式**：用户完成验证操作后触发 `complete` 事件（不自动提交到后端），由业务方在事件回调中决定后续处理。
 
@@ -1536,7 +1493,7 @@ const captcha2 = Captcha.init('container2', {
 
 ---
 
-## 15. 前端自包含与静态发布
+## 14. 前端自包含与静态发布
 
 `jaravel-captcha.js` 是一个**零外部依赖**的单文件前端库：
 
@@ -1564,7 +1521,7 @@ artisan vendor:publish:static --tag=captcha --force
 
 > **注意**：`vendor:publish`（不带 `:static`）只发布 Java 配置类源码，**不会**发布任何前端静态资源；静态资源由独立的 `vendor:publish:static` 命令处理，两者完全隔离。
 
-## 16. 全屏弹层模式
+## 15. 全屏弹层模式
 
 所有验证码类型均支持弹层展示：
 
@@ -1587,16 +1544,7 @@ Captcha.init('captcha-host', {
 - 支持 `autoCloseDelay`（毫秒）：验证成功后自动关闭弹层；
 - `destroy()` 会彻底移除遮罩 DOM 并解除滚动锁，防止内存泄漏。
 
-## 17. 跨端兼容
-
-同一套 `jaravel-captcha.js` 代码同时兼容桌面与移动：
-
-- **事件统一**：内部使用 Pointer/Touch/Mouse 混合监听，桌面走鼠标事件，移动端走触摸事件；
-- **舞台缩放**：验证码图片原始像素尺寸作为「舞台基准宽度」，容器窄于该宽度时自动等比缩小（`transform: scale(k)`），用户输入按布局像素换算回原始像素提交后端；
-- **坐标换算**：滑动位移 = 屏幕位移 / 舞台缩放系数；点选坐标按图片在视口中的实际显示比例换算；
-- **触摸优化**：触摸事件 `passive:false` 防止滚动抢占，并通过 `touchend` 抑制幽灵点击。
-
-## 18. 场景白名单与权限边界
+## 16. 场景白名单与权限边界
 
 Captcha 模块参考 anji-plus/captcha 的 `CaptchaConfig / CaptchaVO` 分离思想，把参数分为两类：
 
@@ -1626,30 +1574,3 @@ Captcha.init('host', { type: 'click', scene: 'register' });
 ```
 
 非法/未知场景名安全回落全局默认配置，不会报错也不会降低难度。
-
-## 19. 端到端测试
-
-模块在 `jaravel/e2e/captcha-e2e.js` 提供基于 Playwright 的真实浏览器端到端测试，覆盖：
-
-- 桌面端（1280×900，鼠标事件）
-- 移动端（390×844，触摸事件，iPhone 12 尺寸）
-- 平板端（768×1024，触摸事件）
-
-验证内容：
-
-- 前端资源自包含（无 mdui、旧路径 404、独立页面可运行）
-- 配置权限边界（`config` 越权参数被丢弃、白名单场景生效、非法场景回落默认）
-- 响应式舞台（基准宽度、等比缩放、不溢出）
-- 五种验证码的生成、交互、后端闭环校验（滑动验证码通过 canvas 模板匹配还原真实缺口）
-- 全屏弹层模式（遮罩可见、居中、body 滚动锁、多种关闭方式、destroy 清理）
-
-运行方式：
-
-```bash
-cd jaravel
-# 确保应用运行于 localhost:8080
-NODE_PATH="$HOME/.workbuddy/binaries/node/workspace/node_modules" \
-  node e2e/captcha-e2e.js
-```
-
-本次改造完成后，114 项断言全部通过，0 失败。

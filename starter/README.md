@@ -14,7 +14,7 @@
 - [6. 自动装配内容](#6-自动装配内容)
 - [7. JWT 可选模块说明](#7-jwt-可选模块说明)
 - [8. 配置优先级](#8-配置优先级)
-- [9. 线程安全说明](#9-线程安全说明)
+- [9. 使用注意](#9-使用注意)
 
 ---
 
@@ -380,16 +380,6 @@ Config.get("app.debug");   // false（运行时覆盖代码级）
 Config.get("server.port"); // 8080（仅 yml 中有）
 ```
 
----
+## 9. 使用注意
 
-## 9. 线程安全说明
-
-| 组件 | 线程安全性 | 说明 |
-| --- | --- | --- |
-| `JaravelAutoConfiguration` | 线程安全 | `@AutoConfiguration` 在启动阶段创建 Bean，所有 `@Bean` 方法返回的新实例在启动后只读 |
-| `ConfigRepository` | 启动期写入，运行时只读 | `overrides` 与 `codeConfig` 使用 `LinkedHashMap`，启动阶段写入（`ConfigDefinitionRegistrar` 注册）、运行时通过 `Config` 门面只读。运行时调用 `Config.set` 并发写入需注意同步 |
-| `SpringContext` | 启动后只读 | `context` 静态字段在启动时单次写入，之后并发只读安全 |
-| `ConfigDefinitionRegistrar` | 启动期执行 | `SmartInitializingSingleton` 在所有单例就绪后单线程执行，无并发问题 |
-| `ProviderRegistry` | 启动期执行 | 同上，两阶段引导在单线程中完成 |
-
-> 总体而言，starter 装配的所有组件均遵循"启动阶段写入、运行时只读"的模式，运行时并发安全。唯一需注意的是 `Config.set` 的运行时写入，若在高并发场景频繁调用，建议外部加锁或在启动阶段完成所有配置写入。
+- `Config.set` 是运行时的配置写入入口；高并发场景建议所有配置写入在启动阶段完成，或对外部调用加锁。starter 装配的其余组件均为「启动写入、运行时只读」。

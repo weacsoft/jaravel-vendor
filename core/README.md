@@ -18,8 +18,7 @@
 - [10. 校验体系（FormRequest / Validator / Rule / Rules）](#10-校验体系formrequest--validator--rule--rules)
 - [11. 异常类（ValidationException / UnauthorizedException）](#11-异常类validationexception--unauthorizedexception)
 - [12. OnDriverInUseCondition —— 驱动按需装配条件](#12-ondriverinusecondition--驱动按需装配条件)
-- [13. 线程安全说明](#13-线程安全说明)
-- [14. 视图与分页标准层（view / pagination）](#14-视图与分页标准层view--pagination)
+- [13. 视图与分页标准层（view / pagination）](#13-视图与分页标准层view--pagination)
 
 ---
 
@@ -881,22 +880,7 @@ public class SessionRedisAutoConfiguration { ... }
 
 ---
 
-## 13. 线程安全说明
-
-| 类 | 线程安全性 | 说明 |
-| --- | --- | --- |
-| `Application` | 线程安全 | `singletons` 和 `factories` 使用 `ConcurrentHashMap`，支持并发读写。注册阶段（启动时）与解析阶段（运行时）可安全并发 |
-| `App` | 线程安全 | 无状态静态方法，委托给 `SpringContext` |
-| `SpringContext` | 需注意 | `context` 为静态字段，Spring 启动时单次写入，之后只读。写入与读取非原子，但 Spring 容器刷新完成后并发读取是安全的 |
-| `ConfigRepository` | 非线程安全 | `overrides` 与 `codeConfig` 使用 `LinkedHashMap`，`set` / `registerConfigDefinition` 写入与 `get` 并发读取时需外部同步。配置通常在启动阶段写入、运行时只读，实际使用中风险较低 |
-| `Validator` | 非线程安全 | `errors` 字段懒初始化且非同步，单个 `Validator` 实例应在单线程内使用（每次校验新建实例） |
-| `Rules` 内部规则 | 线程安全 | 所有规则实现为无状态对象（`EmailRule` 的 `Pattern` 为静态 final），可安全跨线程复用 |
-| `Str` / `Arr` / `Facade` / `Config` | 线程安全 | 均为无状态静态方法，可安全并发调用 |
-| `FormRequest` | 单线程使用 | 子类通常为每次请求新建实例，不应跨请求共享 |
-
----
-
-## 14. 视图与分页标准层（view / pagination）
+## 13. 视图与分页标准层（view / pagination）（view / pagination）
 
 为使「使用 `database` 模块的 ORM/分页不必依赖具体模板引擎」，core 定义了**视图渲染契约**与
 **Laravel 风格分页器**的标准层。模板引擎（如 `jblade`）作为实现方接入，框架其余部分只依赖以下抽象。

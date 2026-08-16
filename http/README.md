@@ -18,7 +18,7 @@
   - [4.6 VerifyCsrfToken](#46-verifycsrftoken)
   - [4.7 中间件别名与类引用（Middleware Alias & Class Resolution）](#47-中间件别名与类引用middleware-alias--class-resolution)
 - [5. 请求（Request / RequestFactory）](#5-请求request--requestfactory)
-- [6. 响应（Response / ResponseBuilder / RawResponse / JSONResponseResolver）](#6-响应response--responsebuilder--rawresponse--jsonresponseresolver)
+- [6. 响应（Response / ResponseBuilder / RawResponse）](#6-响应response--responsebuilder--rawresponse)
 - [7. 路由系统（Router / Route / RouteService）](#7-路由系统router--route--routeservice)
 - [8. 控制器契约（Controllers / ControllerRegistry / ControllerActionResolver）](#8-控制器契约controllers--controllerregistry--controlleractionresolver)
   - [8.1 Controllers 接口](#81-controllers-接口)
@@ -27,7 +27,7 @@
   - [8.4 控制器引用（Controller References）](#84-控制器引用controller-references)
   - [8.5 在路由中使用控制器引用](#85-在路由中使用控制器引用)
 - [9. 配置选项](#9-配置选项)
-- [10. 线程安全说明](#10-线程安全说明)
+- [10. 使用注意](#10-使用注意)
 - [11. 静态资源目录（StaticResource）](#11-静态资源目录staticresource)
   - [11.1 架构](#111-架构)
   - [11.2 使用示例](#112-使用示例)
@@ -107,8 +107,7 @@ com.weacsoft.jaravel.vendor
 │   │   └── RequestFactory             // 请求构建工厂
 │   ├── response
 │   │   ├── Response                   // 响应接口
-│   │   ├── ResponseBuilder            // 响应构建器（静态工厂）
-│   │   └── JSONResponseResolver       // JSON 响应工具
+│   │   └── ResponseBuilder            // 响应构建器（静态工厂）
 │   └── staticresource
 │       ├── StaticResourceProperties   // 静态资源配置属性
 │       ├── StaticResourceHandler      // 静态资源处理器（MIME 推断/路径安全/双模式加载）
@@ -762,7 +761,7 @@ Request current = RequestFactory.getCurrentRequest();
 
 ---
 
-## 6. 响应（Response / ResponseBuilder / RawResponse / JSONResponseResolver）
+## 6. 响应（Response / ResponseBuilder / RawResponse）
 
 ### 6.1 Response 接口
 
@@ -875,29 +874,6 @@ return ResponseBuilder.raw()
     .status(204)
     .body("");
 ```
-
-### 6.4 JSONResponseResolver
-
-`com.weacsoft.jaravel.vendor.http.response.JSONResponseResolver`
-
-JSON 响应工具，快速构造标准格式的响应 Map。
-
-| 方法签名 | 说明 |
-| --- | --- |
-| `static Map<String,Object> createErrorResponse(String message)` | 构造错误响应 `{"success":false,"message":...,"data":null}` |
-| `static Map<String,Object> createSuccessResponse()` | 构造成功响应（无数据） |
-| `static Map<String,Object> createSuccessResponse(Object[] data)` | 构造成功响应（带数据） |
-| `static Map<String,Object> createResponse(boolean success, String message, Object[] data)` | 构造完整响应 |
-
-```java
-Map<String, Object> ok = JSONResponseResolver.createSuccessResponse(new Object[]{user});
-// {"success": true, "message": "ok", "data": [user]}
-
-Map<String, Object> err = JSONResponseResolver.createErrorResponse("参数错误");
-// {"success": false, "message": "参数错误", "data": null}
-```
-
----
 
 ## 7. 路由系统（Router / Route / RouteService）
 
@@ -1282,27 +1258,9 @@ jaravel:
 
 ---
 
-## 10. 线程安全说明
+## 10. 使用注意
 
-| 类 | 线程安全性 | 说明 |
-| --- | --- | --- |
-| 所有中间件（`TrimStrings` / `ConvertEmptyStringsToNull` / `EncryptCookies` / `TrustProxies` / `VerifyCsrfToken`） | **线程安全** | 非 Spring Bean（不再标注 `@Component`），由框架通过反射实例化为单例。采用继承式配置，配置项通过覆盖 `protected` 方法返回，只要子类不在运行时引入可变状态即为线程安全；预定义实现本身无状态，可安全在并发请求间复用 |
-| `Middleware` / `NextFunction` | 线程安全 | 函数式接口，无状态 |
-| `MiddlewareAliasRegistry` | 线程安全 | 内部使用 `ConcurrentHashMap` 存储别名映射与 Class 映射，全局静态实例可在并发下安全注册与解析；`getRegisteredAliases()` / `getRegisteredClasses()` 返回不可修改视图 |
-| `Request` | **单请求隔离** | 每次请求新建实例，内部 Map 非线程安全。`RequestFactory` 通过 `ThreadLocal` 维护当前请求，确保请求间隔离。不应跨请求共享同一个 `Request` |
-| `RequestFactory` | 线程安全 | 静态方法无共享可变状态；`currentRequest` 为 `ThreadLocal`，天然线程隔离 |
-| `ResponseBuilder` | 线程安全 | 静态工厂方法，每次返回新的 `AbstractResponse` 实例。`ObjectMapper` 为静态 final 线程安全。`bladeEngine` 静态字段在启动阶段单次写入后只读 |
-| `JSONResponseResolver` | 线程安全 | 静态方法，`ObjectMapper` 为静态 final |
-| `Router` / `Route` | 启动期安全 | 内部使用 `CopyOnWriteArrayList`，适合启动阶段注册、运行时只读。运行时动态增删路由虽线程安全但开销较大 |
-| `RouteService` | 线程安全 | 纯静态无状态方法 |
-| `StaticResourceHandler` | 线程安全 | 字段 `final`（location/cacheMaxAge），MIME 表为静态 final 只读 Map，多请求只读复用 |
-| `StaticResourceRoute` | 启动期安全 | 通过 `Router.serveStatic()` 在启动阶段构造，handlers 列表构造后只读；运行时仅读 |
-| `StaticResourceProperties` | 线程安全 | 配置 POJO，启动阶段注入后只读 |
-| `Controllers` / `Controllers.Runner` | 取决于实现 | 函数式接口，线程安全性取决于具体 action 实现 |
-| `ControllerRegistry` | 线程安全 | 全局静态单例，内部使用 `ConcurrentHashMap` 存储 Class 映射与名称映射，可在并发下安全注册与解析；`getRegisteredClasses()` 返回不可修改视图 |
-| `ControllerActionResolver` | 线程安全 | 全部为静态方法，解析缓存使用 `ConcurrentHashMap`（`computeIfAbsent`），首次解析后并发请求直接复用缓存的 `Runner` |
-
----
+`Request` 实例为请求级对象（`RequestFactory` 以 `ThreadLocal` 维护当前请求），不应跨请求共享同一个 `Request` 实例。
 
 ## 11. 静态资源目录（StaticResource）
 

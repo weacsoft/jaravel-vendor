@@ -19,9 +19,8 @@
 - [配置项（application.yml）](#配置项applicationyml)
 - [黑名单功能](#黑名单功能)
 - [宽限期功能](#宽限期功能)
-- [核心流程详解](#核心流程详解)
 - [完整使用示例](#完整使用示例)
-- [线程安全说明](#线程安全说明)
+- [使用注意](#使用注意)
 
 ---
 
@@ -215,10 +214,6 @@ JWT 服务，对齐 manage8 的 `Tymon\JWTAuth`。提供 access token / refresh 
 ### 黑名单开关
 
 当 `JwtConfig.isBlacklistEnabled()` 为 `false`（默认）时，本类表现为标准 JWT：仅校验签名与过期，不依赖任何缓存。`blacklist(String)` 和 `isBlacklisted(String)` 成为空操作/始终返回 `false`。开启后才真正读写 `CacheStore`。
-
-### 线程安全
-
-本类为**无状态单例**（`config`、`key`、`blacklistStore` 均为构造后不可变字段），可被多线程并发安全调用。黑名单状态全部委托给 `CacheStore`（底层驱动如 `ArrayCacheDriver` / `FileCacheDriver` 自身线程安全）。当 `blacklistEnabled=false` 时 `blacklistStore` 可为 `null`。
 
 ### 构造器
 
@@ -1061,109 +1056,6 @@ JwtTokenResponseFilter（请求结束后）
 - 宽限期只对 **access token** 生效，refresh token 过期需走 `refresh()` 流程。
 - 宽限期窗口应设置合理（如 30~60 秒），过大会增加过期 token 被滥用的风险。
 
----
-
-## 核心流程详解
-
-### 1. Token 自动续期流程
-
-```
-客户端请求（携带 access token，未过期但已过半 TTL）
-  │
-  ▼
-JwtGuard.user()
-  ├── validate(token) → 通过
-  ├── 取出用户
-  └── shouldRefresh(token)？
-        ├── false → 正常返回用户，token() 返回 null
-        └── true  → lastToken = generate(主键)  // 签发新 token
-                     │
-                     ▼
-              JwtTokenResponseFilter 请求结束后：
-              response.setHeader("X-New-Token", newToken)
-              │
-              ▼
-        客户端从响应头取新 token，替换旧 token
-```
-
-`shouldRefresh` 判断逻辑：当 token 已过其 TTL 的一半时返回 `true`。已过期的 token 返回 `false`（应由 refresh token 换取新 token，或走宽限期）。
-
-### 2. 宽限期续期流程
-
-```
-客户端请求（携带已过期的 access token，宽限期内）
-  │
-  ▼
-JwtGuard.user()
-  ├── validate(token) → 失败（已过期）
-  ├── isInGracePeriod(token) && !isBlacklisted(token) → true
-  ├── getSubjectFromExpired(token) → subject
-  ├── cachedUser = provider.retrieveById(subject)
-  ├── lastToken = generate(主键)        // 签发新 token
-  └── blacklist(token)                   // 旧 token 加入黑名单
-        │
-        ▼
-请求正常执行，返回业务数据
-  │
-  ▼
-JwtTokenResponseFilter：response.setHeader("X-New-Token", newToken)
-  │
-  ▼
-客户端用新 token 替换旧 token
-（旧 token 已黑名单，再次使用会被拒绝）
-```
-
-### 3. Refresh Token 换取流程
-
-```
-客户端用 refresh token 请求刷新
-  │
-  ▼
-JwtGuard.refresh(refreshToken)
-  │
-  ▼
-JwtService.refresh(refreshToken)
-  ├── parse(refreshToken) → 签名/过期校验
-  ├── type == "refresh"？
-  ├── isBlacklisted(refreshToken)？
-  └── generate(subject) → 新 access token
-        │
-        ▼
-  JwtGuard:
-  ├── lastToken = 新 access token
-  ├── cachedUser = provider.retrieveById(subject)
-  └── 返回新 access token
-```
-
-> 注意：`refresh()` 只签发新 access token，不签发新 refresh token（对齐 `tymon/jwt-auth` 单次续期）。
-
-### 4. 登出流程
-
-```
-客户端请求登出（携带 access token）
-  │
-  ▼
-JwtGuard.logout()
-  ├── requestToken != null？
-  │     └── jwtService.blacklist(requestToken)
-  │           ├── blacklistEnabled=false → 空操作（标准 JWT）
-  │           └── blacklistEnabled=true
-  │                 ├── 计算剩余有效期
-  │                 └── blacklistStore.put(prefix + token, "1", 剩余秒数)
-  └── 清理请求级状态（cachedUser/lastToken/requestToken = null）
-        │
-        ▼
-后续请求携带同一 token（需 blacklistEnabled=true）：
-  JwtGuard.user()
-    └── validate(token)
-          └── isBlacklisted(token) → true → 返回 false
-                └── user() 返回 null → 认证失败
-```
-
-黑名单条目的 TTL 设为 token 剩余有效期，token 自然过期后黑名单条目自动清除，避免黑名单无限膨胀。
-
----
-
 ## 完整使用示例
 
 ### 1. 配置
@@ -1333,54 +1225,8 @@ public Response logout() {
 
 > 当 `blacklistEnabled=false`（标准 JWT）时，`logout()` 仅清理请求级状态，不会真正踢掉 token（标准 JWT 无服务端失效能力）。
 
----
+## 使用注意
 
-## 线程安全说明
-
-### 1. JwtService（无状态单例）
-
-本类为**无状态单例**，`config`、`key`、`blacklistStore` 均为构造后不可变字段，可被多线程并发安全调用。
-
-- 所有签发/解析/校验操作均为无状态计算，不持有任何可变状态。
-- 黑名单状态全部委托给 `CacheStore`，底层驱动（如 `ArrayCacheDriver` / `FileCacheDriver` / Redis）自身保证线程安全。
-- 当 `blacklistEnabled=false` 时 `blacklistStore` 为 `null`，`blacklist()` / `isBlacklisted()` 为空操作，无并发问题。
-- `SecretKey` 在构造时一次性生成，后续只读访问。
-
-### 2. JwtGuard（ThreadLocal 隔离）
-
-本守卫实例由 `AuthManager` 通过 `ThreadLocal` 按请求隔离，每个请求获得独立的 `JwtGuard` 实例。
-
-| 状态字段 | 隔离方式 | 说明 |
-|---|---|---|
-| `cachedUser` | ThreadLocal 隔离 | 请求级缓存，不跨请求共享 |
-| `resolved` | ThreadLocal 隔离 | 请求级标志 |
-| `lastToken` | ThreadLocal 隔离 | 请求级签发 token |
-| `requestToken` | ThreadLocal 隔离 | 请求级请求 token |
-
-请求结束时由 `AuthLifecycleFilter` 调用 `AuthManager.clear()` 清理 ThreadLocal，防止线程池复用导致的串态。
-
-### 3. JwtTokenResponseFilter
-
-该过滤器为无状态单例（`jwtConfig`、`authManager` 为构造后不可变字段），通过 `authManager.guard("jwt")` 获取当前请求的 ThreadLocal 隔离守卫实例，本身不持有可变状态，线程安全。
-
-### 4. 黑名单缓存
-
-黑名单存储委托给 `CacheStore`，其线程安全性取决于底层驱动：
-
-| 缓存 store | 线程安全 | 适用场景 |
-|---|---|---|
-| `array`（内存） | 线程安全（`ConcurrentHashMap`） | 单机部署 |
-| `file` | 线程安全（文件锁） | 多实例部署 |
-| `redis` | 线程安全（Redis 单线程模型） | 多实例部署，推荐 |
-
-### 线程安全总结
-
-| 组件 | 类型 | 线程安全机制 |
-|---|---|---|
-| `JwtService` | 无状态单例 | 不可变字段 + 委托 `CacheStore` |
-| `JwtGuard` | 请求级实例 | `AuthManager` 的 ThreadLocal 隔离 |
-| `JwtTokenResponseFilter` | 无状态单例 | 不可变字段 + 通过 ThreadLocal 守卫取 token |
-| `JwtConfig` | 不可变配置 | 构造后不再修改 |
-| 黑名单缓存 | 委托 `CacheStore` | 底层驱动自身线程安全 |
-
-> **关键约束**：`JwtGuard` 实例**必须**通过 `AuthManager.guard(String)` 获取，不可跨请求缓存或共享，否则其内部的可变状态会串态。`JwtService` 与 `JwtTokenResponseFilter` 作为无状态单例可安全地在任意线程共享调用。
+- `JwtGuard` 实例**必须**经 `AuthManager.guard(String)` 获取，它是请求级对象，**不可**跨请求缓存或共享（其内部可变状态会串态）。
+- `JwtService` 与 `JwtTokenResponseFilter` 是无状态单例，可安全地在任意线程共享调用。
+- 黑名单存储委托给 `CacheStore`，跨实例部署请选用 `file` / `redis` 驱动，而非 `array`（仅单机有效）。

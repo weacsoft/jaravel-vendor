@@ -13,7 +13,6 @@
 - [EloquentUserProvider](#eloquentuserprovider)
 - [配置项（application.yml）](#配置项applicationyml)
 - [完整使用示例](#完整使用示例)
-- [线程安全说明](#线程安全说明)
 
 ---
 
@@ -1050,61 +1049,6 @@ public Response login(@RequestBody LoginRequest req, UserProvider provider) {
 
 ---
 
-## 线程安全说明
-
-### 1. BaseModel 与 Spring 单例
-
-业务 Model 标注 `@Repository` 后为 Spring 单例。`gaarasonDataSource` 字段由容器注入（`@Lazy` 懒加载），构造后不再变更。
-
-- **数据库操作经由单例完成**：`new User()` 创建的普通实例调用 `save()` 时，通过 `SpringContext.bean(User.class)` 取回 Spring 单例执行，单例上的数据源字段已由容器注入。
-- **`getGaarasonDataSource()` 无状态**：仅读取注解与注入字段，无副作用，线程安全。
-
-### 2. @DataSource 注解读取
-
-`getGaarasonDataSource()` 通过 `this.getClass().getAnnotation(DataSource.class)` 读取注解，注解元数据为 JVM 级不可变，多线程读取安全。
-
-### 3. EloquentUserProvider
-
-`EloquentUserProvider` 持有 `model`（Spring 单例）与 `credentialField`（不可变 String），均为构造后不可变字段。`retrieveById` 与 `retrieveByCredentials` 委托给 gaarason 的 `Model.find` / `QueryBuilder`，后者自身保证线程安全。
-
-### 4. gaarason QueryBuilder
-
-gaarason 的 `QueryBuilder` 为每次查询创建新实例（非共享），线程安全。
-
-### 线程安全总结
-
-| 组件 | 类型 | 线程安全机制 |
-|---|---|---|
-| `BaseModel` 子类（Spring 单例） | 单例 | `gaarasonDataSource` 注入后不变；`getGaarasonDataSource()` 无状态读取 |
-| `@DataSource` 注解 | 元数据 | JVM 级不可变，多线程读取安全 |
-| `EloquentUserProvider` | 无状态 | 不可变字段 + 委托 gaarason 线程安全组件 |
-| `QueryBuilder` | 每次查询新建 | 实例不共享，天然线程安全 |
-| `GaarasonDataSource` | 单例 | Druid 数据源自身线程安全 |
-
-> **注意**：`BaseModel` 的实例方法（`save()`、`replicate()`）可在 `new` 创建的普通实例上调用，这些实例为线程局部对象，不应跨线程共享。所有实际的数据库操作均委托给 Spring 单例完成，单例本身线程安全。
-
----
-
-## 已知问题与兼容说明
-
-### SQLite 分页 `count()` 强转异常（已内置兼容）
-
-**现象**：使用 SQLite（或其他将 `COUNT()` 以 `Integer` 返回的 JDBC 驱动）时，调用模型的 `paginate()` 触发如下异常：
-
-```
-java.lang.ClassCastException: class java.lang.Integer cannot be cast to class java.lang.Long
-	at gaarason.database.contract.builder.Aggregates.count(Aggregates.java:36)
-	at gaarason.database.query.ExecuteLevel3Builder.paginate(ExecuteLevel3Builder.java:139)
-```
-
-**根因**：gaarason 的 `Aggregates.count()` 内部通过 `ObjectUtils.typeCast` 把聚合结果直接强转为 `Long`。SQLite JDBC 驱动对 `COUNT()` 返回 `Integer`，强转失败。`count()` 的声明返回类型为 `Long`，但底层结果类型取决于数据库驱动。
-
-**处理**：jaravel 的 `BaseModel.newQuery()` 已返回 `JaravelQueryBuilder`（对 gaarason `QueryBuilder` 的安全包装）。它在 `count()` 中捕获 `ClassCastException` 并回退到数值兼容的结果转换（`Number.longValue()` 兜底），对业务代码完全透明——`list.paginate(page, size)` 无需任何改动即可在 SQLite 下正常工作。
-
-> 该兼容为临时兜底方案。彻底的修复应在 gaarason `database-all` 的 `AbstractBuilder.aggregate` 中对聚合结果统一做 `Number` 兼容转换（而非裸强转），届时 jaravel 可移除该包装。
-
----
-
 ## 分页标准层与模块解耦
 
 `BaseModel.paginate(page, size)` 及其重载返回的是 **`core.pagination.Paginator`**（位于 `core` 标准层），
@@ -1126,6 +1070,4 @@ Paginator<User> list = User.self().paginate(page, 15).setPath("/users");
 //   {{ $list->links('layouts.mdui.pageinator') }}
 ```
 
-> 历史上 `Paginator` / `Htmlable` / `HtmlString` / `View` 曾位于 `jblade` 包内；现已统一上提到
-> `core` 标准层，`jblade` 仅作为 `core.view.View` 的实现方（`BladeView` 实现 `core.view.View`）。
 

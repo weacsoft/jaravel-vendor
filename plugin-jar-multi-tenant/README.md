@@ -14,7 +14,6 @@ JAR 插件多租户支持模块。引入后自动激活多租户插件模式，�
 - [配置](#配置)
 - [工作原理](#工作原理)
 - [共享接口](#共享接口)
-  - [设计理念](#设计理念)
   - [注册共享接口](#注册共享接口)
   - [调用共享接口](#调用共享接口)
   - [模板方法模式说明](#模板方法模式说明)
@@ -87,17 +86,6 @@ try {
 ## 共享接口
 
 plugin-jar-core 提供的共享接口机制（全手动指定、字符串驱动、反射封装、Map 传参）在多租户场景下完全可用，且由 `TenantAwareHotPluginManager` 自动处理 Bean 名称前缀化，调用方无需感知租户细节。
-
-### 设计理念
-
-共享接口的多租户支持遵循以下设计：
-
-| 设计点 | 说明 |
-|--------|------|
-| **注册时使用原始 Bean 名** | 注册共享接口时传入原始 Bean 名称（如 `blogController`），与单租户场景完全一致 |
-| **调用时自动前缀化** | `TenantAwareHotPluginManager.lookupSharedInterfaceBean()` 从 `descriptor.getPluginId()` 提取租户 ID，将 Bean 名称前缀化（如 `studentA:blogController`）后查找 |
-| **模板方法模式** | 反射调用逻辑（参数解析、方法查找、返回值转换）完全复用父类 `invokeSharedInterface`，子类仅重写 Bean 查找步骤 |
-| **调用方无感知** | 插件代码通过 `Application.invokeSharedInterface()` 调用时，无需关心租户前缀化，与单租户代码完全相同 |
 
 ### 注册共享接口
 

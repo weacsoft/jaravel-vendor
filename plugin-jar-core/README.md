@@ -15,14 +15,13 @@ JAR 插件系统核心库，提供动态加载/卸载 JAR 插件、三级 ClassL
 - [依赖引入](#依赖引入)
 - [配置](#配置)
 - [架构设计](#架构设计)
-  - [三级类加载器](#三级类加载器)
-  - [路由代理机制](#路由代理机制)
+  - [类加载与热更新](#类加载与热更新)
+  - [路由代理](#路由代理)
   - [插件间调用](#插件间调用)
 - [路由注册模式](#路由注册模式)
 - [核心 API](#核心-api)
   - [HotPluginManager 方法列表](#hotpluginmanager-方法列表)
 - [共享接口](#共享接口)
-  - [设计理念](#设计理念)
   - [注册共享接口](#注册共享接口)
   - [调用共享接口](#调用共享接口)
   - [共享接口 API 一览](#共享接口-api-一览)
@@ -103,107 +102,29 @@ jaravel:
 >
 > `PluginIntegration.getConfigValue()` 方法在 jaravel 可用时委托给 `Config.get()`，在纯 Spring Boot 环境下从 Spring `Environment` 读取。
 
----
-
 ## 架构设计
 
-### 三级类加载器
+### 类加载与热更新
 
-本模块采用三级 ClassLoader 隔离架构，确保插件之间、插件与主应用之间的类隔离，同时支持共享接口的热更新：
+插件系统的类加载分三个作用域，插件之间、插件与主应用之间相互隔离：
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  主 ClassLoader（Spring Boot 应用 ClassLoader）                   │
-│  ─────────────────────────────────────────────────────────────  │
-│  · Spring Boot 基础设施（Spring MVC / Bean 容器 / 自动装配）       │
-│  · Application 代理类（主 ClassLoader 中的单例）                   │
-│  · plugin-jar-core 核心类（HotPluginManager / 注解类等）           │
-└──────────────────────────────┬──────────────────────────────────┘
-                               │ parent
-┌──────────────────────────────▼──────────────────────────────────┐
-│  SharedClassLoader（可热替换，extends URLClassLoader）             │
-│  ─────────────────────────────────────────────────────────────  │
-│  · 共享接口 JAR（@SharedService 标注的接口定义）                    │
-│  · plugin-jar-core JAR（注解类 @PluginComponent / @PluginMapping） │
-│  · 版本号 version，可通过 updateSharedJar() 整体热替换              │
-└──────────────────────────────┬──────────────────────────────────┘
-                               │ parent
-        ┌──────────────────────┼──────────────────────┐
-        │                      │                      │
-┌───────▼────────┐    ┌────────▼───────┐    ┌────────▼───────┐
-│ PluginClassLoader│    │ PluginClassLoader│    │ PluginClassLoader│
-│ (插件 A)         │    │ (插件 B)         │    │ (插件 C)         │
-│ ────────────── │    │ ────────────── │    │ ────────────── │
-│ · 插件 A 的 JAR  │    │ · 插件 B 的 JAR  │    │ · 插件 C 的 JAR  │
-│ · 独立类空间     │    │ · 独立类空间     │    │ · 独立类空间     │
-└────────────────┘    └────────────────┘    └────────────────┘
-```
+1. **`Application` 代理类**：以 `com.weacsoft.jaravel.vendor.plugin.jar.annotation.Application` 开头的类始终从主 ClassLoader 加载。插件代码引用的 `Application` 与主应用中的是同一个类实例，保证代理引用一致。
+2. **共享包**：匹配 `sharedPackagePrefixes` 的类（共享接口、注解类）从 `SharedClassLoader` 加载。
+3. **插件自身类**：其余类从插件 JAR 的类空间加载。
 
-**类加载顺序**（`PluginClassLoader.loadClass()`）：
+`updateSharedJar()` 可整体热替换共享接口 JAR，无需重启应用或卸载插件。
 
-1. **Application 代理类**：以 `com.weacsoft.jaravel.vendor.plugin.jar.annotation.Application` 开头的类始终从主 ClassLoader 加载，确保插件通过统一代理访问主应用服务。
-2. **共享包前缀**：匹配 `sharedPackagePrefixes` 的类从 `SharedClassLoader` 加载（共享接口 + 注解类）。
-3. **插件自身类**：其余类由 `PluginClassLoader` 自身加载（插件 JAR 内的类）。
-4. **父类委托**：以上均未命中时委托父 ClassLoader（`SharedClassLoader` → 主 ClassLoader）加载。
+### 路由代理
 
-**热更新机制**：`updateSharedJar()` 会创建新的 `SharedClassLoader`，并逐个调用所有已启用插件的 `PluginClassLoader.updateSharedClassLoader()` 替换其父加载器引用。旧 `SharedClassLoader` 随后关闭，实现共享接口的热更新而无需重启应用或卸载插件。
-
-### 路由代理机制
-
-插件路由不直接注册到 Spring MVC 的 `@RequestMapping`，而是通过统一的 `PluginRouteHandler` 代理处理：
-
-```
-HTTP 请求
-  │
-  ▼
-Spring MVC (RequestMappingHandlerMapping)
-  │  匹配到插件路由 → 委托给 PluginRouteHandler Bean
-  ▼
-PluginRouteHandler.handleRequest(HttpServletRequest, HttpServletResponse)
-  │
-  ├── 1. 从请求中提取路径变量（path variables）
-  ├── 2. 在 routeRegistry（ConcurrentHashMap）中查找 RouteInfo
-  │      RouteInfo 包含：path / method / beanName / methodName / produces
-  ├── 3. 通过 beanRegistrar 从 Spring 容器获取插件 Bean 实例
-  ├── 4. 反射查找 Bean 的目标方法（findMethod）
-  ├── 5. 解析方法参数（resolveArguments：路径变量 / 请求参数 / 默认值）
-  ├── 6. 反射调用插件方法
-  └── 7. 将返回值按 produces 类型写入 HTTP 响应（writeResponse）
-```
-
-`PluginRouteRegistrar` 负责将插件路由注册到 Spring MVC 的 `RequestMappingHandlerMapping`，注册时创建 `RequestMappingInfo`（路径 + HTTP 方法），并映射到统一的 `PluginRouteHandler` Bean。注销时移除对应的 `RequestMappingInfo`。
+插件路由不直接注册到 `@RequestMapping`，而是由统一的 `PluginRouteHandler` 代理派发：反射定位插件 Bean 与方法，自动解析路径变量 / 请求参数并写回响应。路由的注册与注销由 `PluginRouteRegistrar` 维护。
 
 ### 插件间调用
 
-插件间调用通过 `Application` 代理实现。`Application` 是位于主 ClassLoader 中的单例类，持有 `HotPluginManager` 的引用（通过 `HotPluginManagerRef` 接口注入）：
-
-```
-插件 A                          主 ClassLoader                    Spring 容器
-  │                                │                                │
-  │  Application.getService(       │                                │
-  │    "plugin-b",                 │                                │
-  │    ServiceB.class,             │                                │
-  │    "serviceB")                 │                                │
-  │ ─────────────────────────────► │                                │
-  │                                │  getServiceFromPlugin(         │
-  │                                │    "plugin-b", "serviceB")     │
-  │                                │ ─────────────────────────────► │
-  │                                │                                │ 从容器获取
-  │                                │                                │ "serviceB" Bean
-  │                                │ ◄───────────────────────────── │ 返回实例
-  │ ◄───────────────────────────── │ 返回服务实例                     │
-  │  得到 ServiceB 实例             │                                │
-```
-
-`Application.getService()` 是静态方法，签名如下：
+插件间调用通过 `Application` 代理实现——从主应用容器中获取目标插件的 Bean 实例后直接调用方法：
 
 ```java
 public static Object getService(String pluginId, Class<?> serviceType, String beanName)
 ```
-
-由于 `Application` 类始终从主 ClassLoader 加载（`PluginClassLoader.isApplicationProxyClass()` 判断），插件代码引用的 `Application` 类与主应用中的是同一个类实例，从而保证了代理引用的一致性。
-
----
 
 ## 路由注册模式
 
@@ -386,17 +307,6 @@ Map<String, Object> result = hotPluginManager.invokeSharedInterface(
 ## 共享接口
 
 共享接口（Shared Interface）是一种轻量级的插件间调用机制。插件可以将自身某个 Bean 的某个方法注册为"共享接口"，其他模块（插件或主程序）通过全局唯一的接口名称即可反射调用，而无需在编译期依赖目标插件的具体类。
-
-### 设计理念
-
-共享接口的设计围绕以下四个核心原则：
-
-| 原则 | 说明 |
-|------|------|
-| **全手动指定** | 注册时全部使用字符串指定（接口名、插件 ID、Bean 名、方法名），不需要注解扫描，不需要接口预定义。开发时无需包含目标类 |
-| **字符串驱动** | 调用方只需知道接口名称字符串（如 `"admin.service.list"`），不依赖任何具体类型，实现真正的解耦 |
-| **反射封装** | 运行时由 `HotPluginManager` 通过反射查找 Bean 和方法并调用，调用方无需处理反射细节 |
-| **Map 传参** | 请求参数和返回值统一用 `Map<String, Object>` 表示，避免跨插件/跨模块的类型依赖问题，适合 JSON 友好的场景 |
 
 与 `Application.getService()` 的区别：
 

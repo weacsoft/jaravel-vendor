@@ -9,29 +9,7 @@
 
 ## 一、注解式注册机制
 
-### 1.1 设计目标
-
-对齐 Laravel 的 `ServiceProvider` 注册体验：在配置类中用注解声明组件，
-框架在启动时扫描并注册。**注册产物不进入 Spring BeanFactory**。
-
-### 1.2 为什么产物不进 Spring 容器
-
-Spring 的 bean name 全局唯一。若用 `@Bean("admin")` 注册名为 `admin` 的守卫，
-另一个模块也想注册名为 `admin` 的缓存 store，就会触发
-`BeanDefinitionOverrideException`。
-
-注解机制把**组件名称**与 **bean name** 解耦：
-
-- 注解方法本身写在 Spring 配置类上（可正常注入其他 Bean 作为方法参数）
-- 方法**返回的产物**只存入各模块自己的 Manager（如 `AuthManager`、`CacheManager`）
-
-因此 `@RegisterGuard("admin")` 与 `@RegisterCacheStore("admin")` 可以共存。
-
-> **注意**：扫描机制本身依赖 Spring 容器（遍历 `getBeanDefinitionNames()`、
-> 用 `getBean(type)` 解析方法参数）。所谓"不放进 Spring Bean"指的是**产物**，
-> 而非注解方法所在的配置类。
-
-### 1.3 注解一览
+### 1.1 注解一览
 
 | 注解 | 所属模块 | 产物类型 | 多实例 | 说明 |
 |------|---------|---------|-------|------|
@@ -50,7 +28,7 @@ Spring 的 bean name 全局唯一。若用 `@Bean("admin")` 注册名为 `admin`
 `@RegisterGuard("api")` + `GuardDefinition.of("jwt", "users")` 接入，
 避免同一概念存在两套注册表。
 
-### 1.4 命名多实例 vs 全局唯一
+### 1.2 命名多实例 vs 全局唯一
 
 **命名多实例**（guard / provider / cache store / disk / directive / view）：
 一个应用可注册任意多个不同名字的实例，通过名称选用，同名后注册者覆盖先注册者。
@@ -68,7 +46,7 @@ public SessionStore mySessionStore() { ... }
 
 同时存在多个 `override = true` 仍会报错。
 
-### 1.5 注册优先级
+### 1.3 注册优先级
 
 以 SessionStore 为例（其他单实例组件同理）：
 
@@ -80,7 +58,7 @@ public SessionStore mySessionStore() { ... }
 对命名多实例组件，**注解式注册优先于配置式注册**（如 `jaravel.storage.disks`），
 同名时注解覆盖配置。
 
-### 1.6 底层实现
+### 1.4 底层实现
 
 位于 `core` 模块 `com.weacsoft.jaravel.vendor.core.registrar` 包：
 

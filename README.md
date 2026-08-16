@@ -6,22 +6,6 @@ Java 版 Laravel 框架核心库，在 Spring Boot 3.2.12 基础上近乎 100% �
 
 所有 vendor 模块的包名统一为 `com.weacsoft.jaravel.vendor.*`，与业务项目的 `com.weacsoft.jaravel.*` 分离。
 
-## 设计理念
-
-- **保留 Spring Boot 底层能力**：`@Controller`、`@Service` 等 Spring 注解全部可用
-- **Laravel 风格 API**：门面（Facade）、配置（Config）、迁移（Migration）、认证（Auth）、中间件（Middleware）、事件（Event）、缓存（Cache）等概念与 Laravel 一一对应
-- **无状态中间件**：所有中间件为 Spring 管理的不可变单例，线程安全
-- **多 Guard / 多 Provider**：Auth 支持 JWT 和 Session 两种 Guard 驱动，可注册多个 Provider
-- **多数据库**：`@DataSource` 注解指定 Model 的数据源，迁移支持 MySQL/SQLite/H2/SQL Server/PostgreSQL/Oracle，内置跨库表迁移工具
-- **高级队列**：Event 系统支持 per-listener 队列、独立线程池、重试机制；queue-database 提供数据库持久化队列
-- **JWT 续期与登出**：Token 自动续期（可选）、登出黑名单（基于 Cache）
-- **Artisan CLI**：`java -jar app.jar artisan` 命令行入口，签名解析（参数/选项），与 HTTP 服务共存
-- **定时任务**：Cron 调度器，Laravel 风格链式 API（dailyAt/hourly/everyMinute），Redis 分布式锁防多机重复执行
-- **Redis 集成**：多命名连接管理（standalone/sentinel/cluster），Redis 缓存驱动、Redis Session 守卫实现多机同步
-- **Wire 响应式 UI**：Laravel Livewire 风格的全栈组件，服务端渲染 + 前端局部更新，支持 wire:model 双向绑定、wire:click 事件、延迟重定向、认证过期无感跳转
-- **多磁盘存储**：Storage 门面 + Filesystem 契约，`@RegisterDisk` 注解式注册磁盘，驱动 SPI 可扩展 S3/OSS，流式 IO 支持任意大小文件
-- **不限大小上传**：aether-upload 分片 + 断点/断线续传，落盘可直接走 storage 的任意磁盘
-
 > **注解注册 / 依赖回退 / 发布配置**：各模块的 `@RegisterXxx` 注解式注册机制、
 > 模块间"有则使用无则回退"策略、`artisan vendor:publish` 发布配置类、
 > 以及各模块的 artisan 命令与**数据库表要求**，
@@ -239,18 +223,7 @@ jarPluginManager.enablePlugin("my-plugin");  // 路由 /api/greeting 自动注�
 // 启动时自动扫描编译，无需手动操作
 ```
 
-## Spring Boot 版本兼容性
-
-本库基于 Spring Boot 3.2.x / Spring Framework 6.1.x / Java 17 编译，**同一套构件可同时运行在 SB3.x 和 SB4.x 上**，无需消费端额外配置。
-
-### 兼容性矩阵
-
-| Spring Boot | Spring Framework | Jackson | Servlet | 兼容性 |
-|---|---|---|---|---|
-| 3.2.x | 6.1.x | Jackson 2 (`com.fasterxml.jackson`) | 6.0 | 编译基线，完全支持 |
-| 4.0.x | 7.0.x | Jackson 3 (`tools.jackson`) | 6.1 | 运行时验证通过 |
-
-### JsonCodec SPI 机制
+## JSON 编解码（json 模块）
 
 库内部通过 `json` 模块（`com.weacsoft.jaravel.vendor.json`）抽象 JSON 编解码，不直接依赖任何 Jackson 版本：
 
@@ -259,26 +232,6 @@ jarPluginManager.enablePlugin("my-plugin");  // 路由 /api/greeting 自动注�
 - **`Jackson3JsonCodec`**：SB4 运行时自动选择（classpath 有 `tools.jackson.databind.ObjectMapper`）
 - **`JsonCodecHolder`**：全局持有器，Spring 环境下由 `JsonCodecAutoConfiguration` 注入，非 Spring 环境（如单元测试）自动检测 classpath
 - **`Json` 静态门面**：`Json.stringify(obj)` / `Json.parse(json, MyClass.class)` / `Json.parseToMap(json)` 等一行替换原 `ObjectMapper` 用法
-
-### 消费端使用
-
-SB3 和 SB4 项目只需正常引入依赖，无需任何额外配置：
-
-```xml
-<!-- SB3 项目：spring-boot-starter-parent 3.2.x -->
-<!-- SB4 项目：spring-boot-starter-parent 4.0.x -->
-<dependency>
-    <groupId>io.github.lijialong1313</groupId>
-    <artifactId>starter</artifactId>
-    <version>0.1.2</version>
-</dependency>
-```
-
-SB4 项目**无需**显式引入 Jackson 2 依赖，库会自动使用 SB4 自带的 Jackson 3。
-
-### plugin-jar-core / plugin-java-core 跨版本支持
-
-插件模块编译于 Spring 5.3 / SB 2.7（`provided` scope），通过 `NativeWebRequest` + 反射消除 servlet API 编译期依赖，支持 SB 2.7 / 3.x / 4.x 三大版本。
 
 ## 配置参考
 
@@ -392,28 +345,6 @@ jaravel:
 ## 版本
 
 当前版本：**0.1.2**（Maven Central 发布版本）
-
-### 0.1.2
-
-- jblade：移除与 utils 模块重复的内存编译类（MemoryClassLoader/MemoryFileManager/SourceCodeJavaFileObject/ClassFileJavaFileObject）与未使用的 StringUtils，改为 Maven 依赖 utils 模块复用内存编译基础设施
-- utils：MemoryClassLoader 新增 `removeAll()`/`getCompiledClassesName()` 方法；移除未使用的 slf4j-api 依赖；模块描述更新为"内存编译基础设施"
-- migration：27 个类按职责拆分为根包/dialect/engine/autoconfigure 四个子包，AutoConfiguration.imports 类名同步更新
-- cache：10 个类按职责拆分为根包/driver/store/autoconfigure 四个子包，AutoConfiguration.imports 类名同步更新
-- captcha：19 个类按职责拆分为根包/generator/store/crypto 四个子包
-- http：包结构重构为 Laravel 风格分层（route/http 第一层，controller/middleware 在 http 下，request/response 在 controller 下，staticresource 在 route 下）
-- http：删除未使用的 JSONResponseResolver 死代码
-- event：删除 src/main/java 中不应出现在生产源码中的 3 个示例类
-- captcha 测试：修复 NumberCaptchaTest 验证码一次性使用语义（testVerifyReusable -> testVerifySingleUse）
-- springboot：解耦对 auth 模块的 optional 依赖，使用 ObjectProvider 延迟获取
-- wechat-sdk：移除对 cache 具体实现类的直接依赖，改为通过 CacheManager 接口或 utils 内存 fallback
-- redis：RedisLockProvider 接口从 schedule 模块移至 redis 模块，修正依赖方向
-- plugin-jar-core/plugin-java-core：提取公共 invokeAndSetResult 方法到 PluginExecutionHelper
-
-遵循语义化版本规范（SemVer）：
-- `0.x.x`：初始开发阶段，API 可能变化
-- `1.0.0`：首个稳定版本
-- `1.x.0`：向后兼容的新功能
-- `1.0.x`：向后兼容的 bug 修复
 
 ## 许可证
 

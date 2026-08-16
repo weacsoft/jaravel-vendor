@@ -19,7 +19,6 @@
 - [11. DatabaseCacheDriver —— 数据库缓存驱动](#11-databasecachedriver--数据库缓存驱动)
 - [12. CacheAutoConfiguration —— 自动装配](#12-cacheautoconfiguration--自动装配)
 - [13. 配置选项](#13-配置选项)
-- [14. 线程安全说明](#14-线程安全说明)
 
 ---
 
@@ -727,15 +726,3 @@ java -jar app.jar artisan cache:table
 该命令按需创建 `DatabaseCacheDriver` 实例并调用 `createTable()` 创建缓存表（`CREATE TABLE IF NOT EXISTS`），自动适配 MySQL / PostgreSQL / SQLite / H2 / SQL Server 方言。表名由 `jaravel.cache.database-table` 或 `stores.database.table` 配置决定，默认为 `jaravel_cache`。
 
 ---
-
-## 14. 线程安全说明
-
-| 类 | 线程安全性 | 说明 |
-| --- | --- | --- |
-| `CacheManager` | 线程安全 | 使用 `ConcurrentHashMap` 维护 store 注册表，`defaultStore` 为普通 String 字段，建议在启动阶段设置后不再修改 |
-| `ArrayCacheDriver` | 线程安全 | 基于 `ConcurrentHashMap`，读写操作原子。惰性清理通过 `removeIf` / `remove` 实现，并发安全 |
-| `FileCacheDriver` | 部分线程安全 | 文件操作本身非原子，同一 key 的并发读写可能出现竞态（如同时写入同一文件）。不同 key 之间互不影响。`ObjectMapper` 为静态 final，线程安全 |
-| `DatabaseCacheDriver` | 线程安全 | 基于 `JdbcTemplate`（本身线程安全），可作为单例共享。过期记录通过单线程守护执行器异步删除；`ObjectMapper` 为静态 final，线程安全 |
-| `DefaultCacheStore` | 部分线程安全 | 委托给底层 `CacheDriver`，线程安全性取决于驱动。`increment` / `decrement` 采用 get-then-put 非原子实现，高并发场景下可能出现计数偏差 |
-| `Cache` | 线程安全 | 静态方法，每次调用通过 `Facade.resolve()` 从容器解析 `CacheManager`，无共享可变状态 |
-| `CacheProperties` | 配置只读 | Spring Boot 配置属性绑定，启动后只读 |
