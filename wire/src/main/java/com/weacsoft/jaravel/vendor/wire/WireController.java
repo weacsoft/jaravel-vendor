@@ -876,8 +876,10 @@ public abstract class WireController {
      * 例如 /admin/admin/change → /admin/admin;若此时 page=2(标注
      * {@code @WireQuery(templates={"mdui.admin.admin.list"}, defaultValue="1")})
      * → /admin/admin?page=2。使「翻页 → 点修改 → 取消」能还原带参 URL。
+     * <p>
+     * 子类可在 action 中调用此方法获取带查询参数的 backUrl(如保存后还原搜索+翻页状态)。
      */
-    private String inferBackUrl(Request request) {
+    protected String inferBackUrl(Request request) {
         String basePath = inferBasePath(request);
         if (basePath == null) return null;
         // 基于 @WireQuery 注解字段附加查询参数(如 ?page=2),当前值等于 defaultValue 或
