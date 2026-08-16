@@ -93,7 +93,7 @@ Route.post("/change", "AdminController::update").name("change");     // wire 局
 | 方法 | 说明 |
 |------|------|
 | `render()` | **必须实现**。返回 `WireView` 配置；只声明模板 + 额外数据，**不要**调用 `.bladeExtends(...)`（主页面布局由模板自身 `@extends` 决定，组件布局替换由 `wireLayoutReplacements()` 提供） |
-| `mount(Request)` | 可选。仅首次 `index()` 时调用，参数为 `Request`。**执行顺序**：框架先自动赋值（`request.all()` 按同名赋到 public 字段，带类型转换）再调用 `mount()`，因此 mount 里可直接读取 `this.page` 等已被赋值的字段，仅需处理字段名与参数名不一致的情况（如 `key`→`searchKey`）。Spring 单例 Bean 需在 `mount()` 里重置表单字段，避免上一次请求残留值泄漏进快照 |
+| `mount(Request)` | 可选。仅首次 `index()` 时调用，参数为 `Request`。**执行顺序**：框架先按 `@WireQuery` 声明自动绑定（URL 查询参数 → public 字段，含 `name()` 映射如 `key`→`searchKey`，缺省置 null）再调用 `mount()`，因此 mount 里可直接读取 `this.page` 等已绑定字段。**注意**：自动绑定是框架机制，不使用 `fill()`——`fill` 是主动调用的填值工具（类似 BaseModel.fill），不参与本流程。Spring 单例 Bean 需在 `mount()` 里重置非 `@WireQuery` 的表单字段，避免上一次请求残留值泄漏进快照 |
 | `fill(key, value)` / `fill(Map)` | 可选。把键值对**直接赋**到 Controller 自己的 public 属性（同名赋值 + 基础类型转换），不做任何业务重写 |
 | `refresh(Map<String, Object> params)` | 可选。每次 wire 更新后重新加载展示数据（如重新查库），保持列表等数据最新。**调用时机**：`update()` 中 `invokeAction(action, params)` 执行完毕后、`renderSections()` 渲染 sections 前调用。**`params` 含义**：来自前端 POST 请求体 `wire_body` JSON 中的 `"params"` 字段，代表**本次请求前端传来的 action 参数**（不是快照状态）。例如：
   - `wire:click="delete(1)"` → `delete(Long id)` 由 `invokeAction` 按 `method(args)` 位置参数解析调用（`1` 经 `convertValue` 转 `Long`，见「参数化 action」）；`params` 字段作为同名下标回退（`params.get("0")`）。
@@ -294,7 +294,7 @@ public class AdminController extends WireController {
 
 | 请求类型 | 触发条件 | 处理流程 |
 |----------|---------|---------|
-| 直访 GET | 无 wire_body | `fill(request.all())` 自动赋值 → `mount(request)` → `collectPublicFields` → `render()` → 整页渲染（模板自身 @extends）→ 注入 wire assets |
+| 直访 GET | 无 wire_body | `autoBindQueryParams`(@WireQuery 字段 ← URL 参数) → `mount(request)` → `collectPublicFields` → `render()` → 整页渲染（模板自身 @extends）→ 注入 wire assets |
 | Wire POST | 含 `wire_body` | `WireRequest.from` → 解码签名快照(HMAC 校验) → 合并 params(排除 @WireLocked) → `fill(data)` → `invokeAction(action, params)` → `refresh(params)` → 重新收集属性 → 渲染 sections(按 `getTemplateName()`) → 渲染临时组件 → 编码新快照 → JSON |
 | 传统表单 POST | 无 wire_body 的 POST | `fill(request.all())` → `invokeAction(getDefaultAction()="save")` → 重定向（action 显式 `WireEffects.redirect` 优先，否则 `getRedirectUrl`） |
 
@@ -433,9 +433,20 @@ public class AdminController extends WireController {
 
 | 属性 | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `name()` | `String` | 字段名 | 该参数在 URL 中使用的名字;字段名与 URL 参数名不一致时使用(如字段 `searchKey` → URL 参数 `key`) |
+| `name()` | `String` | 字段名 | 该参数在 URL 中使用的名字;字段名与 URL 参数名不一致时使用(如字段 `searchKey` → URL 参数 `key`)。**双向生效**：URL 生成时按此名拼接;请求自动绑定时也按此名把 URL 参数赋到字段 |
 | `templates()` | `String[]` | `{}`(所有模板) | 该参数生效的模板名列表;生成 URL 时以 `getTemplateName()` 为上下文匹配,列表非空且当前模板不在列表内 → 不加入 |
 | `defaultValue()` | `String` | `""`(未设置) | 默认值;当前值等于该值或为 `null` 时不加入 URL。默认空串表示「未设置默认值」→ 仅 null(及空串)时不加入 |
+
+### 请求自动绑定（autoBindQueryParams）
+
+首屏 `index()` 在 `mount()` 之前,框架把 URL 查询参数按 `@WireQuery` 声明**自动绑定**到字段
+（不使用 `fill()`——fill 是主动调用的填值工具）:
+
+- URL 参数名取 `name()`(缺省用字段名),如 `?key=name` → 字段 `searchKey`(标注 `@WireQuery(name="key")`);
+- 请求含该参数 → 按字段类型转换后赋值(如 `?page=2` → `Long page = 2L`);
+- 请求不含该参数 → 字段置 `null`(对齐「URL 参数决定状态」,防 Spring 单例残留泄漏)。
+
+因此 `mount()` 里可直接读取 `this.page`/`this.searchKey` 等已绑定字段,无需手动 `request.query(...)` 赋值。
 
 ### 过滤规则（WireController.buildQueryUrl）
 

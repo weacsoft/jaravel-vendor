@@ -24,7 +24,7 @@ import java.util.function.Consumer;
  * <p>
  * 用户继承此类并实现 {@link #render()} 即可获得完整的 Wire 能力:
  * <ul>
- *   <li>首屏渲染(index)：mount → collectPublicFields → fill → render → 套 layout → 注入 wire assets</li>
+ *   <li>首屏渲染(index)：autoBindQueryParams(@WireQuery ← URL 参数) → mount → collectPublicFields → render → 套 layout → 注入 wire assets</li>
  *   <li>局部更新(update)：decode snapshot → 合并 params(排除 @WireLocked) → invoke action → 重新 render sections → JSON 响应</li>
  *   <li>临时组件下发：action 中通过 {@code wire().component("name", params)} 添加,自动随响应下发</li>
  * </ul>
@@ -38,9 +38,10 @@ import java.util.function.Consumer;
  * <p>
  * 用户可选实现的:
  * <ul>
- *   <li>{@code protected void mount(Request request)} —— 初始化(仅首次 index() 调用),可读取 query/input</li>
- *   <li>{@code protected void fill(String key, Object value)} / {@code fill(Map)} —— 把键值对直接赋值到
- *       Controller 自己的 public 属性(等同于赋值,不做任何业务重写)</li>
+ *   <li>{@code protected void mount(Request request)} —— 初始化(仅首次 index() 调用,在 @WireQuery
+ *       自动绑定之后执行,可直接读取已绑定字段)</li>
+ *   <li>{@code protected void fill(String key, Object value)} / {@code fill(Map)} —— 主动调用的填值工具
+ *       (类似 BaseModel.fill),把键值对直接赋值到 Controller 自己的 public 属性,框架不会自动调用</li>
  *   <li>{@code protected void refresh(Map)} —— 每次 wire 更新后重新加载展示数据(如重新查库)</li>
  *   <li>{@code protected Map<String,String> wireLayoutReplacements()} —— 模板级布局替换注册表(声明式):
  *       返回「模板名 → 替换布局名」映射,声明一次即可。例如
@@ -112,8 +113,11 @@ public abstract class WireController {
      * 初始化方法,仅在首次 index() 请求时调用一次。
      * <p>
      * 语义等价于 Livewire 的 mount():用于加载初始数据(如从数据库查询 Model)。
-     * 参数为当前 {@link Request},子类可读取 {@code request.query()}/{@code request.input()} 等。
-     * 子类可在此通过 {@code fill(...)} 把数据赋值到 Controller 自己的 public 属性。
+     * 参数为当前 {@link Request}。**调用时机**:框架已先按 {@link WireQuery} 声明把 URL
+     * 查询参数自动绑定到字段(如 {@code this.page}、{@code this.searchKey},缺省置 null),
+     * 因此 mount 里可直接读取已绑定字段做额外初始化;也可通过 {@code fill(...)} 主动赋值。
+     * 子类可读取 {@code request.query()}/{@code request.input()} 等。
+     * 注意:自动绑定不使用 {@code fill()}——fill 是主动调用的填值工具。
      *
      * @param request 当前 HTTP 请求
      */
@@ -155,6 +159,47 @@ public abstract class WireController {
         if (data == null) return;
         for (Map.Entry<String, Object> entry : data.entrySet()) {
             fill(entry.getKey(), entry.getValue());
+        }
+    }
+
+    /**
+     * 自动绑定:把 URL 查询参数按 {@link WireQuery} 声明赋到对应的 public 字段。
+     * <p>
+     * 这是框架自己的「查询参数 → 字段」绑定机制,<b>不</b>等同 {@link #fill(Map)}——
+     * fill 是主动调用的填值工具(类似 BaseModel.fill),不参与本流程。
+     * 绑定规则(对每个标注 {@code @WireQuery} 的 public 字段):
+     * <ul>
+     *   <li>URL 参数名取 {@code name()} 属性,为空时用字段名(如字段 {@code searchKey}
+     *       标注 {@code @WireQuery(name="key")} → URL 参数 {@code key});</li>
+     *   <li>请求含该参数 → 按字段类型转换后赋值;</li>
+     *   <li>请求不含该参数 → 置 {@code null}(对齐「URL 参数决定状态」,防止 Spring 单例
+     *       上一次请求的残留值泄漏进快照)。</li>
+     * </ul>
+     * 在 {@link #index(Request)} 中于 {@code mount()} 之前调用,使 mount 里可直接读取
+     * 已绑定的字段(如 {@code this.page}),无需再手动 {@code request.query(...)} 赋值。
+     *
+     * @param request 当前请求
+     */
+    private void autoBindQueryParams(Request request) {
+        if (request == null) return;
+        Map<String, Object> all = request.all();
+        for (Field f : findPublicFields(this.getClass())) {
+            WireQuery wq = f.getAnnotation(WireQuery.class);
+            if (wq == null) continue;
+            String paramName = (wq.name() != null && !wq.name().isEmpty()) ? wq.name() : f.getName();
+            try {
+                f.setAccessible(true);
+                Object v = all.get(paramName);
+                if (v == null) {
+                    f.set(this, null);
+                } else if (v instanceof List) {
+                    List<?> list = (List<?>) v;
+                    f.set(this, list.isEmpty() ? null : convertValue(list.get(0).toString(), f.getType()));
+                } else {
+                    f.set(this, convertValue(v.toString(), f.getType()));
+                }
+            } catch (Exception ignored) {
+            }
         }
     }
 
@@ -261,17 +306,19 @@ public abstract class WireController {
     /**
      * GET 请求：首屏渲染。
      * <p>
-     * 流程:mount → collectPublicFields → fill → render(模板自身 @extends 整页) → 注入 wire assets。
+     * 流程:自动绑定(@WireQuery 字段 ← URL 查询参数) → mount → collectPublicFields →
+     * render(模板自身 @extends 整页) → 注入 wire assets。
      */
     public Response index(Request request) {
         try {
             this.currentRequest = request;
             Map<String, Object> data = new LinkedHashMap<>();
-            // 1. 自动赋值:request 的 query/input 参数按同名赋到 public 字段(带类型转换)。
-            //    不管有没有参数都执行(fill 空 map 为空操作)。这样 mount 里可以直接读取
-            //    this.xxx(如 this.page),无需再手动 request.query(...) 赋值。
-            fill(request.all());
-            // 2. mount(仅首次加载时调用,此时可读取已被自动赋值的字段做额外初始化)
+            // 1. 自动绑定:把 URL 查询参数按 @WireQuery 声明(含 name() 映射)赋到 public 字段。
+            //    这是框架自己的「查询参数 → 字段」绑定,不等同于 fill()——fill() 是主动调用的
+            //    填值工具(类似 BaseModel.fill),不参与本流程。缺省(请求无该参数)时字段置 null,
+            //    避免 Spring 单例上一次请求的残留值泄漏进快照。
+            autoBindQueryParams(request);
+            // 2. mount(仅首次加载时调用,此时可读取已被自动绑定的字段做额外初始化)
             mount(request);
             // 3. 收集 public 属性
             collectPublicFields(data);
