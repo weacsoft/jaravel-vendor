@@ -322,7 +322,7 @@
         }
     }
 
-    function sendRequest(comp, action, params, triggerEl, targetSections) {
+    function sendRequest(comp, action, params, triggerEl, targetSections, resolve, reject) {
         var updateUrl = comp.updateUrl;
         var el = triggerEl;
         while (el && el !== document) { if (el.hasAttribute && el.hasAttribute('wire:update')) { updateUrl = el.getAttribute('wire:update'); break; } el = el.parentElement; }
@@ -341,7 +341,7 @@
         var headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Wire-Request': 'true' };
         var csrf = getCookie('XSRF-TOKEN');
         if (csrf) headers['X-XSRF-TOKEN'] = decodeURIComponent(csrf);
-        fetch(updateUrl, {
+        var promise = fetch(updateUrl, {
             method: 'POST', headers: headers, body: body,
             credentials: 'same-origin', redirect: 'manual'
         }).then(function (resp) {
@@ -350,9 +350,17 @@
         }).then(function (data) {
             wireEmit('afterRequest', comp, data);
             handleResponse(comp, data);
+            return data;
         }).catch(function (e) {
             console.error('Wire 错误:', e);
+            throw e;
         });
+        // 若外部传入了 resolve/reject(即 Wire.call 场景),返回 Promise
+        if (resolve || reject) {
+            return promise.then(function (data) { resolve(data); return data; })
+                          .catch(function (e) { reject(e); throw e; });
+        }
+        return promise;
     }
 
     function handleResponse(comp, data) {
@@ -372,9 +380,13 @@
             // pushUrl:仅用 history.pushState 改变地址栏,不发起请求、不刷新页面(bug2:
             // 点击「修改」后 URL 变为可分享的深链,但页面不整页重载)。
             if (data.effects.url) {
-                // 每次 pushUrl 前保存上一条 URL,供取消/返回时还原地址栏。
-                // 用户通常只会返回一次,保留一条即可;后端 backUrl 与它一致时互不冲突。
-                try { window.__wirePrevUrl = window.location.href; } catch (e) {}
+                // 保存上一条 URL,供取消/返回时还原地址栏。
+                // 注意：save()/selectSubmit() 等提交 action 调用 pushUrl 还原列表页时，
+                // 不应该覆盖 __wirePrevUrl，否则对话框关闭时 restoreBackUrl 会读到错误值。
+                // 策略：只在 __wirePrevUrl 为空时才保存（即首次 pushUrl，通常是 edit/select）。
+                if (!window.__wirePrevUrl) {
+                    try { window.__wirePrevUrl = window.location.href; } catch (e) {}
+                }
                 try { history.pushState({ wireUrl: data.effects.url }, '', data.effects.url); } catch (e) {}
             }
             // redirect:透明导航(pushState + section diff),避免整页刷新(bug1:
@@ -454,7 +466,7 @@
                 }
                 if (!known) initComponent(cfg);
             }
-            // 执行内联脚本
+            // 执行内联脚本（必须在组件添加到 DOM 之后，确保 getElementById 等能正常工作）
             for (var t = 0; t < scriptTexts.length; t++) {
                 try { (function (body) { eval(body); })(scriptTexts[t]); } catch (e) { console.error('[Wire] 组件脚本执行失败:', e); }
             }
@@ -473,6 +485,25 @@
                         onStartFn(el, wireObj);
                     }
                 } catch (e) { console.error('[Wire] 生命周期脚本执行失败:', e); }
+            }
+            // 检查是否有兄弟 script 标签（模板把 script 放在根 div 外部的情况）
+            // 这些 script 不会被 firstElementChild 捕获，需要单独处理
+            var siblingScripts = wrap.querySelectorAll(':scope > script');
+            for (var ss = 0; ss < siblingScripts.length; ss++) {
+                var siblingScript = siblingScripts[ss];
+                var siblingType = (siblingScript.getAttribute('type') || '').toLowerCase();
+                if (siblingType === 'application/json' || siblingScript.hasAttribute('wire:config')) continue;
+                if (siblingScript.getAttribute('src')) {
+                    var freshSibling = document.createElement('script');
+                    for (var sa = 0; sa < siblingScript.attributes.length; sa++) {
+                        freshSibling.setAttribute(siblingScript.attributes[sa].name, siblingScript.attributes[sa].value);
+                    }
+                    freshSibling.type = 'application/javascript';
+                    // 将兄弟 script 移到根元素内部
+                    el.appendChild(freshSibling);
+                } else if (siblingScript.textContent && siblingScript.textContent.trim()) {
+                    try { (function (body) { eval(body); })(siblingScript.textContent); } catch (e) { console.error('[Wire] 组件脚本执行失败:', e); }
+                }
             }
         }
     }
@@ -589,6 +620,52 @@
         if (typeof sections === 'string') target = sections ? [sections] : null;
         else if (Array.isArray(sections)) target = sections.length ? sections : null;
         sendRequest(comp, action || '$refresh', params || {}, null, target);
+    };
+
+    /**
+     * 从 JS 代码直接调用后端 action（不依赖 HTML 属性）。
+     * <p>
+     * 支持两种参数映射模式：
+     * <ul>
+     *   <li><b>方案A（位置索引）</b>：后端方法无 @WireParam 注解时，按参数位置传递
+     *       <pre>Wire.call('edit', { id: 1 })    // → {"0":"1"} → edit(Long id)</pre>
+     *   </li>
+     *   <li><b>方案B（命名参数）</b>：后端方法有 @WireParam 注解时，按参数名匹配，顺序任意
+     *       <pre>Wire.call('update', { name: 'test', id: 1 })  // → {"name":"test","id":"1"}</pre>
+     *   </li>
+     * </ul>
+     *
+     * @param {string} action   方法名，如 'edit'、'delete'、'search'
+     * @param {object} [params] 参数对象
+     * @param {string} [updateUrl] 可选覆盖 updateUrl，不传则用组件默认地址
+     * @returns {Promise} 解析为后端响应 JSON（{sections, snapshot, effects}）
+     *
+     * @example
+     * // 方案A：位置索引（wire:click 兼容）
+     * Wire.call('edit', { id: 1 });
+     * Wire.call('delete', { id: 2 });
+     *
+     * // 方案B：命名参数（支持乱序）
+     * Wire.call('update', { name: 'test', id: 1 });
+     * Wire.call('update', { id: 1, name: 'test' });  // 顺序任意
+     */
+    Wire.call = function (action, params, updateUrl) {
+        var comp = Wire.components[0];
+        if (!comp) return Promise.reject(new Error('[Wire] 当前页面没有已注册的 Wire 组件'));
+        // 直接传递原始 params，不转换 key
+        // 后端通过 Java 8+ Parameter.getName() 获取参数名并匹配
+        var finalParams = params || {};
+        var originalUrl = comp.updateUrl;
+        if (updateUrl) {
+            comp.updateUrl = updateUrl;
+        }
+        return new Promise(function (resolve, reject) {
+            sendRequest(comp, action, finalParams, null, null, resolve, reject).finally(function () {
+                if (updateUrl) {
+                    comp.updateUrl = originalUrl;
+                }
+            });
+        });
     };
 
     window.Wire = Wire;

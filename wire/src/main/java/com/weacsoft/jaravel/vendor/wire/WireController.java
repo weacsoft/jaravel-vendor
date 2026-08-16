@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.Parameter;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -680,10 +681,10 @@ public abstract class WireController {
             return;
         }
 
-        // 参数化 action 解析由前端 wire.js 的 parseWireAction 负责:
-        //   wire:click="edit(1)"  →  action="edit", params={"0":"1"}
-        //   wire:click="role('admin')"  →  action="role", params={"0":"'admin'"}
-        // 后端直接按精确方法名查找，参数从 params 按位置下标读取。
+        // 参数解析三级降级：
+        // 1. 有 @WireParam 注解 → 按注解值匹配
+        // 2. 无注解但编译时保留参数名（-parameters） → 按参数名匹配
+        // 3. 无注解且未保留参数名 → 按位置匹配（wire:click 兼容）
         Method method = findPublicMethod(this.getClass(), action);
         if (method == null) {
             log.warn("未找到 action 方法: " + action);
@@ -697,11 +698,42 @@ public abstract class WireController {
             args = new Object[0];
         } else {
             args = new Object[paramTypes.length];
-            for (int i = 0; i < paramTypes.length; i++) {
-                Object val = params != null ? params.get(String.valueOf(i)) : null;
-                // 按 action 方法声明的参数类型做基础转换(如 Long/Integer/Boolean),
-                // 使 wire:click="delete(1)" 能正确映射到 delete(Long id)。
-                args[i] = val != null ? convertValue(val.toString(), paramTypes[i]) : null;
+            Parameter[] parameters = method.getParameters();
+
+            // 判断是否启用了 -parameters 编译选项（参数名非 "arg0" 等形式）
+            boolean hasParameters = parameters.length > 0
+                    && !parameters[0].getName().startsWith("arg");
+
+            for (int i = 0; i < parameters.length; i++) {
+                Object val = null;
+                String paramName = null;
+
+                // 优先级1：@WireParam 注解
+                WireParam wireParam = parameters[i].getAnnotation(WireParam.class);
+                if (wireParam != null) {
+                    paramName = wireParam.value();
+                    if (paramName.isEmpty()) {
+                        paramName = parameters[i].getName();
+                    }
+                }
+                // 优先级2：编译时参数名
+                else if (hasParameters) {
+                    paramName = parameters[i].getName();
+                }
+                // 优先级3：无参数名，按位置匹配（由下方 fallback 处理）
+
+                // 匹配参数
+                if (paramName != null && params != null) {
+                    val = params.get(paramName);
+                }
+                // 降级：按位置匹配
+                if (val == null) {
+                    val = params != null ? params.get(String.valueOf(i)) : null;
+                }
+
+                if (val != null) {
+                    args[i] = convertValue(String.valueOf(val), paramTypes[i]);
+                }
             }
         }
         try {
