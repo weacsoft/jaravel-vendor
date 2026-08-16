@@ -668,7 +668,7 @@ public abstract class WireController {
             // page 标注 @WireQuery(defaultValue="1") → page=2 时带 ?page=2、page=1 时还原无参;
             // 搜索条件 searchKey/searchValue 标注 @WireQuery → 非空时一并保留。
             // 前端收到 effects.url 后 history.pushState,不刷新页面。
-            if (currentRequest != null && params != null && params.get("pageNum") != null) {
+            if (currentRequest != null && params != null && params.get("page") != null) {
                 String basePath = inferBasePath(currentRequest);
                 if (basePath == null) basePath = "/";
                 WireEffects.pushUrl(buildQueryUrl(basePath, getTemplateName()));

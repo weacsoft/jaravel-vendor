@@ -377,15 +377,15 @@ public class AdminController extends WireController {
 
     @Override
     protected void refresh(Map<String, Object> params) {
-        if (params != null && params.containsKey("pageNum")) {
-            try { this.page = Long.valueOf(params.get("pageNum").toString()); } catch (Exception ignored) {}
+        if (params != null && params.containsKey("page")) {
+            try { this.page = Long.valueOf(params.get("page").toString()); } catch (Exception ignored) {}
         }
         this.paginator = queryPaginated();
     }
 }
 ```
 
-- `$paginate` 是框架内置 magic action（`WireController.invokeAction` 中处理）：仅调用 `refresh(params)` 重载数据（**不调用任何 action 方法**），随后自动 `WireEffects.pushUrl(...)` 基于 `@WireQuery` 注解字段生成带参 URL——`page=2` 时带 `?page=2`、`page=1`（等于 defaultValue）时还原无参 URL；`searchKey/searchValue` 非空时一并保留为 `key`/`value`。`pageNum` 取自前端分页拦截器。
+- `$paginate` 是框架内置 magic action（`WireController.invokeAction` 中处理）：仅调用 `refresh(params)` 重载数据（**不调用任何 action 方法**），随后自动 `WireEffects.pushUrl(...)` 基于 `@WireQuery` 注解字段生成带参 URL——`page=2` 时带 `?page=2`、`page=1`（等于 defaultValue）时还原无参 URL；`searchKey/searchValue` 非空时一并保留为 `key`/`value`。`page` 取自前端分页拦截器。
 - `Paginator.links()` 需要注册 `ViewProvider`（`ViewFacade.bind()`）才能渲染分页模板；分页模板自身是普通 `.jblade`（如 `layouts.mdui.pageinator`），通过 `{{ $paginator->links() }}` 输出、放在 `[wire:pagination]` 容器内。
 
 ### 前端：wire:pagination 绑定
@@ -402,15 +402,15 @@ public class AdminController extends WireController {
 </div>
 ```
 
-`wire.js` 的 `bindPagination` 会为 `[wire:pagination]` 容器内的 `a[href*="?page=N"]` 绑定点击拦截：阻止浏览器整页跳转，改为发 `$paginate` 请求（携带 `pageNum`/`perPage`），后端只精准刷新目标 section。分页链接格式需为 `?page=N`（可选 `&perPage=M`）。
+`wire.js` 的 `bindPagination` 会为 `[wire:pagination]` 容器内的 `a[href*="?page=N"]` 绑定点击拦截：阻止浏览器整页跳转，改为发 `$paginate` 请求（携带 `page`/`perPage`），后端只精准刷新目标 section。分页链接格式需为 `?page=N`（可选 `&perPage=M`）。
 
 ### 完整流程
 
 ```
 列表页点击 ?page=2 链接
-   └─ wire.js bindPagination 拦截 → sendRequest(comp, '$paginate', {pageNum:2}, el, ['content'])
-        └─ POST /admin/admin/change (wire_body, action=$paginate, params={pageNum:2})
-             └─ WireController.invokeAction → refresh({pageNum:2}) 重载 paginator
+   └─ wire.js bindPagination 拦截 → sendRequest(comp, '$paginate', {page:2}, el, ['content'])
+        └─ POST /admin/admin/change (wire_body, action=$paginate, params={page:2})
+             └─ WireController.invokeAction → refresh({page:2}) 重载 paginator
                   └─ WireEffects.pushUrl( buildQueryUrl("/admin/admin") )  ← 基于 @WireQuery 生成
                      (page=2 → ?page=2;searchKey/searchValue 非空 → &key=..&value=..)
         ← 响应 sections={content: 新列表 HTML} + effects.url="/admin/admin?page=2"

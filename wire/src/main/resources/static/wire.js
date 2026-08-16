@@ -311,7 +311,7 @@
                             if (!m) return; // 非分页链接，放行默认行为
                             e.preventDefault();
                             var target = container.getAttribute('wire:target') || '';
-                            var pparams = { pageNum: parseInt(m[1], 10) };
+                            var pparams = { page: parseInt(m[1], 10) };
                             var perMatch = href.match(/[?&]perPage=(\d+)/);
                             if (perMatch) pparams.perPage = parseInt(perMatch[1], 10);
                             sendRequest(comp, '$paginate', pparams, el, target ? [target] : null);
