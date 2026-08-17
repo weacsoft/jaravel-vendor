@@ -479,15 +479,22 @@ public abstract class WireController {
             // 计算 URL 变更(pushState):action 中通过 WireEffects.pushUrl 指定,
             // 前端仅用 history.pushState 改变地址栏(如点击「修改」后 URL 变深链),不刷新页面。
             String pushUrl = WireEffects.drainPushUrl();
-            // 计算返回 URL:优先使用 action 显式指定的(WireEffects.backUrl),
-            // 否则自动从当前请求 URI 推断(去掉最后一段路径)。
+            if (pushUrl != null && !pushUrl.isEmpty()) {
+                // 自动拼接 @WireQuery:pushUrl 目标是列表页路径(与当前请求的列表基准路径一致)时,
+                // 自动收集符合条件的 @WireQuery 字段拼成查询串(如 page=2&key=number&value=std)。
+                // 深链(如 /admin/admin/change?id=5)路径不同,原样保留,不拼列表参数。
+                // 前端因此无需自行缓存「上一条 URL」,地址栏状态完全由后端 pushUrl/backUrl 决定。
+                pushUrl = appendWireQueryToListUrl(pushUrl, request);
+            }
+            // 计算返回 URL:优先使用 action 显式指定的(WireEffects.backUrl,drain 取走并清理,
+            // 避免 ThreadLocal 残留被同线程的后续请求读到——Tomcat 线程池会复用线程,
+            // 残留值会让下一次 $paginate/edit 响应携带过期的 backUrl)。
+            // 否则自动从当前请求实时推断(去掉最后一段路径 + 按当前 @WireQuery 拼参),
+            // 保证 backUrl 始终反映「本次请求时」的列表状态(如翻回第 1 页后 page=1 被过滤)。
             // 例如:请求 URI=/admin/admin/change → backUrl=/admin/admin
-            String backUrl = WireEffects.getBackUrl();
+            String backUrl = WireEffects.drainBackUrl();
             if (backUrl == null || backUrl.isEmpty()) {
                 backUrl = inferBackUrl(request);
-                if (backUrl != null && !backUrl.isEmpty()) {
-                    WireEffects.backUrl(backUrl); // 设置回 ThreadLocal 供 renderComponents 使用
-                }
             }
 
             // 构建响应
@@ -699,14 +706,14 @@ public abstract class WireController {
         if ("$paginate".equals(action)) {
             // 分页请求:page 已由 update() 在 invokeAction 之前经 fill(data) 从 params 更新,
             // 因此这里无需再调用 refresh()(统一由 update() 主流程执行一次,避免重复查库)。
-            // 基于 @WireQuery 注解字段自动生成 URL——
-            // page 标注 @WireQuery(defaultValue="1") → page=2 时带 ?page=2、page=1 时还原无参;
-            // 搜索条件 searchKey/searchValue 标注 @WireQuery → 非空时一并保留。
+            // 只 push 列表基准路径,由 update() 统一经 appendWireQueryToListUrl 自动拼接
+            // @WireQuery 参数——page=2 时生成 ?page=2、page=1(默认值)时还原无参;
+            // 搜索条件 searchKey/searchValue 非空时一并保留。
             // 前端收到 effects.url 后 history.pushState,不刷新页面。
             if (currentRequest != null && params != null && params.get("page") != null) {
                 String basePath = inferBasePath(currentRequest);
                 if (basePath == null) basePath = "/";
-                WireEffects.pushUrl(buildQueryUrl(basePath, getTemplateName()));
+                WireEffects.pushUrl(basePath);
             }
             return;
         }
@@ -887,6 +894,35 @@ public abstract class WireController {
         if (basePath == null) return null;
         // 基于 @WireQuery 注解字段附加查询参数(如 ?page=2),当前值等于 defaultValue 或
         // 为 null(或空串)时不加入;templates() 非空时仅当 getTemplateName() 命中才加入。
+        return buildQueryUrl(basePath, getTemplateName());
+    }
+
+    /**
+     * 当 action 通过 {@code WireEffects.pushUrl} 指定的 URL 目标是「列表页路径」时,
+     * 自动收集符合条件的 {@link WireQuery} 字段拼接查询串——使子类写
+     * {@code WireEffects.pushUrl("/admin/admin")} 也能自动带上 page/key/value,
+     * 前端无需自行缓存「上一条 URL」。
+     * <p>
+     * 判断规则:取 pushUrl 的路径部分(去掉 query),与当前请求的列表基准路径
+     * ({@link #inferBasePath(Request)}) 比较:
+     * <ul>
+     *   <li>相同(如 pushUrl("/admin/admin") 且请求来自 /admin/admin/*)→ 用
+     *       {@link #buildQueryUrl(String, String)} 重建,自动带 @WireQuery 参数;</li>
+     *   <li>不同(深链,如 /admin/admin/change?id=5)→ 原样返回,不拼列表参数。</li>
+     * </ul>
+     */
+    private String appendWireQueryToListUrl(String pushUrl, Request request) {
+        if (pushUrl == null || pushUrl.isEmpty()) return pushUrl;
+        String basePath = inferBasePath(request);
+        if (basePath == null) return pushUrl;
+        // 提取 pushUrl 的路径部分(去掉 query/hash)
+        String path = pushUrl;
+        int qIdx = path.indexOf('?');
+        if (qIdx >= 0) path = path.substring(0, qIdx);
+        int hIdx = path.indexOf('#');
+        if (hIdx >= 0) path = path.substring(0, hIdx);
+        if (path.endsWith("/")) path = path.substring(0, path.length() - 1);
+        if (!basePath.equals(path)) return pushUrl;  // 深链,原样保留
         return buildQueryUrl(basePath, getTemplateName());
     }
 
