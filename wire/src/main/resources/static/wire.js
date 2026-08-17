@@ -363,6 +363,18 @@
         return promise;
     }
 
+    /**
+     * 提取 URL 的路径部分(忽略 query/hash),供 pushUrl 判断是否发生了路径级跳转。
+     * 例如 /admin/admin?page=2 → /admin/admin;/admin/admin/change?id=5 → /admin/admin/change。
+     */
+    function pathOfUrl(url) {
+        try { return new URL(url, window.location.href).pathname; } catch (e) {}
+        var i = url.indexOf('?');
+        var p = i >= 0 ? url.substring(0, i) : url;
+        var h = p.indexOf('#');
+        return h >= 0 ? p.substring(0, h) : p;
+    }
+
     function handleResponse(comp, data) {
         if (data.snapshot) {
             comp.snapshot = data.snapshot;
@@ -380,11 +392,14 @@
             // pushUrl:仅用 history.pushState 改变地址栏,不发起请求、不刷新页面(bug2:
             // 点击「修改」后 URL 变为可分享的深链,但页面不整页重载)。
             if (data.effects.url) {
-                // 保存上一条 URL,供取消/返回时还原地址栏。
-                // 注意：save()/selectSubmit() 等提交 action 调用 pushUrl 还原列表页时，
-                // 不应该覆盖 __wirePrevUrl，否则对话框关闭时 restoreBackUrl 会读到错误值。
-                // 策略：只在 __wirePrevUrl 为空时才保存（即首次 pushUrl，通常是 edit/select）。
-                if (!window.__wirePrevUrl) {
+                // __wirePrevUrl 语义:「对话框打开前」的列表页 URL,供取消/提交时还原地址栏。
+                // 仅在 pushUrl 目标路径与当前路径不同(列表页 → 编辑/角色深链,路径变深)时
+                // 暂存当前 URL;翻页($paginate 的 ?page=N)等路径不变的 pushUrl 不保存,
+                // 避免把「翻页前的 URL」误存,导致翻页后点修改再取消/提交还原到丢失 page=N
+                // 的旧地址(bug 根因)。
+                // save()/selectSubmit() 还原列表页的 pushUrl 路径变浅,同样不覆盖已保存值。
+                if (!window.__wirePrevUrl
+                        && pathOfUrl(window.location.href) !== pathOfUrl(data.effects.url)) {
                     try { window.__wirePrevUrl = window.location.href; } catch (e) {}
                 }
                 try { history.pushState({ wireUrl: data.effects.url }, '', data.effects.url); } catch (e) {}

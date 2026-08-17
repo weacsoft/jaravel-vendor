@@ -232,22 +232,39 @@ public class Request {
         return value != null ? value : defaultValue;
     }
 
+    @SuppressWarnings("unchecked")
     public <T> T get(String key, Class<T> clazz) {
+        Object value = null;
         if (input.containsKey(key)) {
-            Object value = input.get(key);
+            value = input.get(key);
             if (value instanceof List) {
-                return (T) ((List<Object>) value).get(0);
-            } else if (clazz.isInstance(value)) {
-                return (T) value;
+                value = ((List<Object>) value).get(0);
             }
         }
-        if (query.containsKey(key)) {
-            Object value = query.get(key);
+        if (value == null && query.containsKey(key)) {
+            value = query.get(key);
             if (value instanceof List) {
-                return (T) ((List<Object>) value).get(0);
-            } else if (clazz.isInstance(value)) {
-                return (T) value;
+                value = ((List<Object>) value).get(0);
             }
+        }
+        if (value == null) return null;
+        // 类型恰好匹配(如 String 值 + String.class)→ 直接返回
+        if (clazz.isInstance(value)) return (T) value;
+        // 类型不匹配:HTTP 查询参数/表单值通常是 String,而调用方常按目标类型请求
+        // (如 get("page", Long.class)/get("page", 1L))。此时尝试字符串→目标类型转换,
+        // 避免「非 String 默认值永远拿不到真实值、恒返回默认值」的隐性 bug。
+        // 转换失败时返回 null(由调用方回退默认值),与转换异常语义一致。
+        try {
+            String s = String.valueOf(value);
+            if (clazz == String.class) return (T) s;
+            if (clazz == Long.class || clazz == long.class) return (T) Long.valueOf(s);
+            if (clazz == Integer.class || clazz == int.class) return (T) Integer.valueOf(s);
+            if (clazz == Double.class || clazz == double.class) return (T) Double.valueOf(s);
+            if (clazz == Float.class || clazz == float.class) return (T) Float.valueOf(s);
+            if (clazz == Boolean.class || clazz == boolean.class) return (T) Boolean.valueOf(s);
+            if (clazz == Short.class || clazz == short.class) return (T) Short.valueOf(s);
+            if (clazz == Byte.class || clazz == byte.class) return (T) Byte.valueOf(s);
+        } catch (Exception ignored) {
         }
         return null;
     }

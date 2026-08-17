@@ -687,7 +687,8 @@ public abstract class WireController {
 
     private void invokeAction(String action, Map<String, Object> params) {
         if ("$refresh".equals(action)) {
-            refresh(params);
+            // $refresh 仅表示「重新加载数据」:refresh() 统一由 update() 主流程执行,
+            // 此处不再调用,避免单次请求重复执行 refresh(重复查库)。
             return;
         }
         if ("$sync".equals(action)) {
@@ -696,9 +697,9 @@ public abstract class WireController {
             return;
         }
         if ("$paginate".equals(action)) {
-            // 分页请求:仅调用 refresh 重新加载数据,不调用任何 action 方法
-            refresh(params);
-            // 同步地址栏为 ?page=N:基于 @WireQuery 注解字段自动生成 URL——
+            // 分页请求:page 已由 update() 在 invokeAction 之前经 fill(data) 从 params 更新,
+            // 因此这里无需再调用 refresh()(统一由 update() 主流程执行一次,避免重复查库)。
+            // 基于 @WireQuery 注解字段自动生成 URL——
             // page 标注 @WireQuery(defaultValue="1") → page=2 时带 ?page=2、page=1 时还原无参;
             // 搜索条件 searchKey/searchValue 标注 @WireQuery → 非空时一并保留。
             // 前端收到 effects.url 后 history.pushState,不刷新页面。
@@ -876,6 +877,10 @@ public abstract class WireController {
      * 例如 /admin/admin/change → /admin/admin;若此时 page=2(标注
      * {@code @WireQuery(templates={"mdui.admin.admin.list"}, defaultValue="1")})
      * → /admin/admin?page=2。使「翻页 → 点修改 → 取消」能还原带参 URL。
+     * <p>
+     * private:更新流程内部使用,不对外暴露,避免子类绕过框架直接调。
+     * 控制器 action 中如需还原列表页,由 update() 自动计算并随 response 下发
+     * {@code effects.backUrl},前端 {@code restoreBackUrl} 统一消费。
      */
     private String inferBackUrl(Request request) {
         String basePath = inferBasePath(request);

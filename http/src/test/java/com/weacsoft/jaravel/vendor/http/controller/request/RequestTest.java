@@ -168,4 +168,25 @@ class RequestTest {
         assertTrue(req.getNames().contains("b"));
         assertEquals(2, req.getNames().size());
     }
+
+    @Test
+    void testGetTypedConversion() {
+        // 回归:get(key, 非 String 默认值)必须能拿到真实值(类型转换),不能恒返回默认值。
+        // 旧实现用 clazz.isInstance(value) 判断,查询参数是 String/Integer 时对 Long 恒不匹配 → 返回 null → 默认值。
+        Request req = new Request();
+        req.addQuery("page", "2");      // URL 查询参数:字符串
+        req.addInput("size", 10);       // 表单值:Integer
+        req.addQuery("ratio", "1.5");
+
+        assertEquals(Long.valueOf(2L), req.get("page", 1L), "String 查询参数按 Long 默认值请求应转换");
+        assertEquals(Long.valueOf(2L), req.get("page", Long.class));
+        assertEquals(Integer.valueOf(2), req.get("page", Integer.class));
+        assertEquals(Integer.valueOf(10), req.get("size", 1));
+        assertEquals(11L, req.get("missing", 11L), "缺省键返回默认值");
+        assertEquals(Double.valueOf(1.5), req.get("ratio", 0.0d));
+        assertEquals("2", req.get("page", "default"), "String 默认值行为不变");
+        // 转换失败(非数字)→ null → 默认值
+        req.addQuery("bad", "abc");
+        assertEquals(7L, req.get("bad", 7L));
+    }
 }
