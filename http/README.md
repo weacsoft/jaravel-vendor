@@ -78,11 +78,18 @@
 
 | 依赖 | scope | 用途 |
 | --- | --- | --- |
-| `com.weacsoft:core` | compile | 门面、配置、工具类基础 |
-| `org.projectlombok:lombok` | optional | `@Getter` / `@Setter` |
+| `io.github.lijialong1313:core` | compile | 门面、配置、工具类基础，以及 core 标准层 `View` 契约（视图渲染解耦点） |
+| `io.github.lijialong1313:utils` | compile | 运行时工具（`Maps` / `WireMode` 等） |
+| `io.github.lijialong1313:artisan` | optional | CLI 命令集成（可选） |
+| `org.springframework.boot:spring-boot-autoconfigure` | compile | 自动装配 |
+| `org.projectlombok:lombok` | compile | `@Getter` / `@Setter` |
 | `jakarta.servlet:jakarta.servlet-api` | provided | Servlet API（Cookie、HttpServletRequest） |
 | `org.springframework:spring-webmvc` | compile | `MultipartFile`、`ServerRequest` 等 |
 | `com.fasterxml.jackson.core:jackson-databind` | compile | JSON 解析 |
+
+> 视图渲染（`ResponseBuilder.view()`）仅依赖 core 标准层的 `View` 契约
+> （`core.view.ViewManagerHolder`），具体模板引擎由使用者单独引入并在装配期注册
+> （如 `jblade` 模块的 `ViewAutoConfiguration`）；http 模块不再依赖 jblade。
 
 > 运行环境要求：JDK 17+，Spring Boot 3.2.12（Jakarta Servlet）。
 
@@ -811,14 +818,13 @@ Request current = RequestFactory.getCurrentRequest();
 | `static Response error(int status, String message)` | 自定义错误状态，JSON 格式 `{"message": "..."}` |
 | `static RawResponse raw()` | 创建空的 `RawResponse` 构建器，不预设任何 header / status，开发者自由组织（见 6.3） |
 | `static String toJson(Object data)` | 将对象序列化为 JSON 字符串 |
-| `static void setBladeEngine(Object engine)` | 注入 Blade 模板引擎实例（用于 `view`） |
 | `static Map<String, Object> map(Object... kvs)` | 便捷构造不可变 Map，替代 `Map.of`；支持空键值（键为 null/空字符串跳过，值原样保留），底层委托 `com.weacsoft.jaravel.vendor.utils.Maps` |
 
 ```java
 // JSON 响应
 Response r1 = ResponseBuilder.json(Map.of("id", 1, "name", "Alice"));
 
-// 视图响应（需先注入 BladeEngine）
+// 视图响应（需引入模板引擎模块，如 jblade，并在装配期注册 View）
 Response r2 = ResponseBuilder.view("user.profile", Map.of("user", user));
 
 // HTML 响应
@@ -846,7 +852,9 @@ Response r8 = ResponseBuilder.raw()
     .body("<xml><name>test</name></xml>");
 ```
 
-> `view` 方法依赖 jblade 模块。若未通过 `setBladeEngine` 注入引擎，调用时会抛 `RuntimeException("jblade 模块未引入")`。
+> `view` 方法仅依赖 core 标准层的 `View` 契约（`core.view.ViewManagerHolder`）。
+> 未引入任何模板引擎模块（如 jblade）完成 View 注册时，调用会抛
+> `IllegalStateException("未注册任何 View 实现…请引入模板引擎模块（如 jblade）…")`。
 
 ### 6.3 RawResponse
 

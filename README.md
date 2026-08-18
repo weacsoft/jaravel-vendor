@@ -24,7 +24,7 @@ Java 版 Laravel 框架核心库，在 Spring Boot 3.2.12 基础上近乎 100% �
 | auth | `auth` | AuthManager/Guard(JWT·Session)/UserProvider/Auth门面 | [README](auth/README.md) |
 | jwt | `jwt` | JWT认证插件（续期/登出黑名单/Cache集成） | [README](jwt/README.md) |
 | database | `database` | BaseModel(Eloquent合并模式)/@DataSource多数据源 | [README](database/README.md) |
-| migration | `migration` | Blueprint/Schema/Migrator/方言分包（运行时编译，3种源模式，MySQL/SQLite/H2/SQL Server/PostgreSQL/Oracle，跨库表迁移） | [README](migration/README.md) |
+| migration | `migration` | Blueprint/Schema/Migrator/方言分包（5种源模式：DIRECTORY/DIRECTORY_CLASSES/PACKAGED/JAR/CLASSPATH；MySQL/SQLite/H2/SQL Server/PostgreSQL/Oracle，跨库表迁移） | [README](migration/README.md) |
 | event | `event` | Dispatcher/Listener/QueueManager（多队列+重试） | [README](event/README.md) |
 | redis | `redis` | RedisManager/RedisProperties（多命名连接，standalone/sentinel/cluster，分布式锁） | [README](redis/README.md) |
 | redis-cache | `redis-cache` | RedisCacheDriver（CacheDriver实现，多机缓存同步） | [README](redis-cache/README.md) |
@@ -127,8 +127,12 @@ public class User extends BaseModel<User, Long> implements Authenticatable {
     @Primary @Column(name = "id") private Long id;
     @Column(name = "name")  private String name;
 
-    public static User find(Long id) { return BaseModel.find(User.class, id); }
-    public static List<User> all()   { return BaseModel.all(User.class); }
+    // 静态访问统一入口（每个业务 Model 声明一次）
+    public static User self() { return BaseModel.self(User.class); }
+
+    // 静态快捷方法由业务 Model 按需声明，委托给 self()
+    public static User find(Long id) { return self().find(id).toObject(); }
+    public static List<User> all()  { return self().findAll().toObjectList(); }
 }
 
 // 多数据库
@@ -241,9 +245,10 @@ jaravel:
     default-guard: api
   jwt:
     secret: your-secret-key
-    ttl: 3600
+    ttl: 3600000                   # Token 有效期（毫秒，默认 3600000）
     refresh-enabled: true        # JWT自动续期（默认启用）
-    blacklist-store: array       # 登出黑名单缓存（默认array，可选file）
+    blacklist-enabled: false     # 登出黑名单开关（默认 false，需显式开启才生效）
+    blacklist-store: ""          # 登出黑名单缓存 store（默认空=使用 cache 默认 store，可选 file 等）
   event:
     queue:
       default:
@@ -254,7 +259,7 @@ jaravel:
   cache:
     default-store: array         # 默认缓存驱动
   migration:
-    source: DIRECTORY            # 迁移源模式：DIRECTORY/JAR/CLASSPATH
+    source: DIRECTORY            # 迁移源模式：DIRECTORY / DIRECTORY_CLASSES / PACKAGED / JAR / CLASSPATH
     auto-run: true               # 启动时自动迁移
   schedule:
     enabled: true                # 启用定时任务调度
@@ -285,8 +290,13 @@ jaravel:
       cookie: manage_session
   queue:
     database:
-      table: jobs
-      max-attempts: 3
+      table: jobs                # 任务表名（默认 jobs）
+      retry-after: 1800          # 可重试延迟（秒，默认 1800）
+      retry-delay-ms: 1000       # 重试间隔（毫秒，默认 1000）
+      poll-interval-ms: 1000     # 轮询间隔（毫秒，默认 1000）
+      worker-threads: 1          # 每队列工作线程数（默认 1）
+      auto-start: false          # 应用启动时自动启动 worker（默认 false）
+      max-attempts: 3            # 最大重试次数
       queues:
         - default
         - score
@@ -304,7 +314,7 @@ jaravel:
 
 ### 迁移源模式
 
-迁移模块支持 3 种源模式，适应不同的部署环境：
+迁移模块支持 5 种源模式，适应不同的部署环境：
 
 ```yaml
 # 目录模式（需要 JDK）
@@ -313,6 +323,18 @@ jaravel:
     source: DIRECTORY
     directory: migrations
     auto-run: false
+
+# 预编译目录模式（只需要 JRE）
+jaravel:
+  migration:
+    source: DIRECTORY_CLASSES
+    classes-dir: precompiled/migrations
+
+# 打包模式（只需要 JRE，zip 包）
+jaravel:
+  migration:
+    source: PACKAGED
+    package-path: /path/to/migrations.jmigration.zip
 
 # JAR 模式（只需要 JRE）
 jaravel:
@@ -339,7 +361,7 @@ jaravel:
 
 | 资源 | 路径 | 说明 |
 |------|------|------|
-| API 文档站点 | [https://weacsoft.github.io/jaravel-vendor/](https://weacsoft.github.io/jaravel-vendor/) | 32 个模块完整 API 参考（GitHub Pages） |
+| API 文档站点 | [https://weacsoft.github.io/jaravel-vendor/](https://weacsoft.github.io/jaravel-vendor/) | 31 个模块完整 API 参考（GitHub Pages） |
 | Demo 项目 | `../jaravel/` | 展示全部 jaravel 能力的前后端分离示例项目（Laravel 文档风格） |
 
 ## 版本

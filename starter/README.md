@@ -1,6 +1,6 @@
 # starter 模块
 
-> Jaravel-Vendor 的 Spring Boot Starter，一键引入全部 Laravel 风格组件。只需添加一个 Maven 依赖，即可获得中间件、Auth、Validation、Config、Eloquent ORM、迁移、缓存、事件、JBlade 模板引擎全套能力。包名统一为 `com.weacsoft.jaravel.vendor.springboot`。
+> Jaravel-Vendor 的 Spring Boot Starter，一键引入基础必选的 Laravel 风格组件。只需添加一个 Maven 依赖，即可获得中间件、Auth、Validation、Config、Eloquent ORM、迁移、缓存、事件等全套能力（Blade 模板引擎 `jblade` 为可选模块，按需引入）。包名统一为 `com.weacsoft.jaravel.vendor.springboot`。
 
 ---
 
@@ -25,8 +25,8 @@
 引入 `jaravel-starter` 后，框架自动完成以下工作：
 
 1. **注册核心基础设施**：`ConfigRepository`（配置仓库）、`SpringContext`（上下文持有器）、`ConfigDefinitionRegistrar`（代码级配置注册器）、`ProviderRegistry`（服务提供者注册器）。
-2. **聚合基础必选模块自动装配**：通过传递依赖引入 `core`、`http`、`springboot`、`auth`、`database`、`migration`、`cache`、`storage`、`jblade`、`event`、`artisan`、`schedule` 共 12 个基础模块，各模块的 `@AutoConfiguration` 类由 Spring Boot 自动加载。
-3. **启用 Laravel 风格基础开发**：中间件管道、路由系统、Form Request 校验、门面（Facade）、配置仓库、Eloquent ORM、数据库迁移、缓存、事件分发、Blade 模板渲染全部就绪。
+2. **聚合基础必选模块自动装配**：通过传递依赖引入 `core`、`http`、`springboot`、`auth`、`database`、`migration`、`cache`、`storage`、`event`、`artisan`、`schedule` 共 11 个基础模块，各模块的 `@AutoConfiguration` 类由 Spring Boot 自动加载。
+3. **启用 Laravel 风格基础开发**：中间件管道、路由系统、Form Request 校验、门面（Facade）、配置仓库、Eloquent ORM、数据库迁移、缓存、事件分发全部就绪（Blade 模板渲染由可选的 `jblade` 模板引擎模块提供，按需引入）。
 
 > 设计对齐 Laravel：**starter 只聚合基础必选组件，不假设用户一定有 Redis 或一定使用微信/队列**。Redis、微信、Wire、数据库队列、JWT 等均为**可选扩展模块**，由用户按需单独引入。
 >
@@ -62,10 +62,10 @@
 | Spring Boot 集成 | `springboot` | RouterFunction 桥接、Request 注入、Response 处理 | ✅ 是 |
 | 认证 | `auth` | Auth 门面、Session Guard、UserProvider | ✅ 是 |
 | 数据库 | `database` | Eloquent ORM（基于 gaarason/database）、BaseModel、DataSource | ✅ 是 |
-| 迁移 | `migration` | 数据库迁移（运行时编译，3 种源模式）、Schema 构建器、Blueprint | ✅ 是 |
+| 迁移 | `migration` | 数据库迁移（5 种源模式）、Schema 构建器、Blueprint | ✅ 是 |
 | 缓存 | `cache` | 缓存管理器、Array/File 驱动 | ✅ 是 |
 | 文件存储 | `storage` | Storage 门面、local/public/framework 磁盘驱动 | ✅ 是 |
-| 模板引擎 | `jblade` | Blade 模板编译与渲染（表达式编译） | ✅ 是 |
+| 模板引擎 | `jblade` | Blade 模板编译与渲染（表达式编译） | ❌ 可选，按需引入 |
 | 事件 | `event` | 事件分发器、监听器注册、队列支持 | ✅ 是 |
 | 命令行工具 | `artisan` | Artisan CLI 命令框架 | ✅ 是 |
 | 定时任务 | `schedule` | 定时任务调度器 | ✅ 是 |
@@ -264,11 +264,10 @@ router.post("/users", request -> {
 | --- | --- |
 | auth | AuthManager、AuthGuard、SessionGuard、认证中间件 |
 | database | DataSource、Eloquent ORM（gaarason/database） |
-| migration | MigrationRunner、MigrationRepository、Schema（3 种源模式） |
+| migration | MigrationRunner、MigrationRepository、Schema（5 种源模式） |
 | cache | CacheManager、Cache 驱动（Array/File） |
 | storage | StorageManager、Disk 驱动（local/public/framework）、StorageConfig 发布 |
 | event | EventDispatcher、EventListenerRegistrar、QueueManager |
-| jblade | BladeEngine、BladeCompiler（模板渲染，表达式编译） |
 | artisan | Artisan CLI 命令注册与调度 |
 | schedule | 定时任务调度器、Cron 表达式解析 |
 
@@ -277,6 +276,7 @@ router.post("/users", request -> {
 | 模块 | 自动装配内容 |
 | --- | --- |
 | redis | Redis 连接配置、连接池管理（多机同步基础） |
+| jblade | BladeEngine、BladeCompiler（模板渲染，表达式编译） |
 | redis-cache | Redis 缓存驱动（多机缓存同步） |
 | session-redis | Redis Session 守卫（多机 Session 同步） |
 | wire | Laravel Livewire 风格的部分更新组件 |
@@ -288,7 +288,7 @@ router.post("/users", request -> {
 
 ## 7. JWT 可选模块说明
 
-**JWT 模块（`com.weacsoft:jwt`）不在 starter 中聚合**，属于可选模块。这是有意设计：
+**JWT 模块（`io.github.lijialong1313:jwt`）不在 starter 中聚合**，属于可选模块。这是有意设计：
 
 - JWT 依赖 `jjwt` 库，并非所有应用都需要 JWT 认证。
 - 不强制引入可减少不必要的依赖体积。

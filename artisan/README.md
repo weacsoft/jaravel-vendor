@@ -230,9 +230,10 @@ public class User extends BaseModel<User, Long> {
     @Column(name = "updated_at")
     private String updatedAt;
 
-    public static User find(Long id) { return BaseModel.find(User.class, id); }
-    public static List<User> all() { return BaseModel.all(User.class); }
-    public static QueryBuilder<User, Long> query() { return BaseModel.query(User.class); }
+    public static User self() { return BaseModel.self(User.class); }
+    public static User find(Long id) { return self().find(id).toObject(); }
+    public static List<User> all() { return self().findAll().toObjectList(); }
+    public static QueryBuilder<User, Long> query() { return self().newQuery(); }
 }
 ```
 

@@ -49,10 +49,10 @@ public class MigrationPublishableConfig implements PublishableConfig {
                  *   migration:
                  *     enabled: true            # 是否启用迁移模块，默认 true
                  *     table: migrations        # 迁移版本记录表名，默认 migrations
-                 *     source: DIRECTORY        # 迁移源：DIRECTORY / CLASSES / PACKAGE / JAR
+                 *     source: DIRECTORY        # 迁移源：DIRECTORY / DIRECTORY_CLASSES / PACKAGED / JAR / CLASSPATH
                  *     directory: migrations    # source=DIRECTORY 时的迁移脚本目录
-                 *     classes-dir: ""          # source=CLASSES 时的已编译迁移类目录
-                 *     package-path: ""         # source=PACKAGE 时的迁移类包名
+                 *     classes-dir: ""          # source=DIRECTORY_CLASSES 时的已编译迁移类目录
+                 *     package-path: ""         # source=PACKAGED 时的预编译打包文件路径（如 .jmigration.zip）
                  *     jar-path: ""             # source=JAR 时的 jar 路径
                  *     package-in-jar: false    # 迁移类是否打包在 jar 内，默认 false
                  *     auto-run: false          # 应用启动时是否自动执行迁移，默认 false

@@ -67,7 +67,7 @@
 
 | 依赖 | 用途 |
 | --- | --- |
-| `com.weacsoft:core` | `Facade` 基础设施、`ServiceProvider` 基类 |
+| `io.github.lijialong1313:core` | `Facade` 基础设施、`ServiceProvider` 基类 |
 | `org.springframework.boot:spring-boot-autoconfigure` | 自动装配 |
 | `org.slf4j:slf4j-api` | 日志门面 |
 

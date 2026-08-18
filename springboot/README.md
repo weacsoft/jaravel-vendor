@@ -53,8 +53,8 @@
 
 | 依赖 | scope | 用途 |
 | --- | --- | --- |
-| `com.weacsoft:http` | compile | 路由、中间件、Request / Response |
-| `com.weacsoft:auth` | optional | `AuthContext` / `AuthManager`（认证上下文） |
+| `io.github.lijialong1313:http` | compile | 路由、中间件、Request / Response |
+| `io.github.lijialong1313:auth` | optional | `AuthContext` / `AuthManager`（认证上下文） |
 | `org.springframework:spring-webmvc` | compile | `RouterFunction`、`HandlerMethodArgumentResolver` 等 |
 | `org.springframework.boot:spring-boot-autoconfigure` | compile | `@AutoConfiguration` 自动装配支持 |
 | `jakarta.servlet:jakarta.servlet-api` | provided | Servlet API |
@@ -72,6 +72,13 @@ com.weacsoft.jaravel.vendor.springboot
 ├── SpringBootRequestMVCResolver        // Request 参数解析器（@Component）
 ├── SpringBootResponseMVCResolver       // Response 响应体处理器（@ControllerAdvice）
 ├── ResponseReturnValueHandler          // Response 返回值处理器
+├── JsonCodecAutoConfiguration          // JsonCodec 自动装配（按 classpath 选择 Jackson2/3 实现，注入 JsonCodecHolder）
+├── BladeDirectiveRegistrar             // 扫描 @RegisterDirective 注解方法，注册 Blade 自定义指令（jblade 的 Spring 上下文侧）
+├── RouteAuthHandler                    // 路由认证处理器接口（解耦 springboot 对 auth 的 optional 依赖）
+├── AuthRouteAuthHandler                // auth 存在时的实现：请求前后设置/清理 AuthContext（@ConditionalOnClass）
+├── DefaultRouteAuthHandler             // auth 模块不存在时的 no-op 兜底实现
+├── JsonPublishableConfig               // json 模块发布配置模板（json 零 Spring 依赖 + core 反向依赖 json，放本模块避免循环依赖）
+├── ViewPublishableConfig               // jblade 视图模块发布配置模板（@RegisterDirective 示例、静态资源配置）
 └── annotation
     └── MiddlewareAlias                // 中间件别名注解（纯注解，不组合 @Component）
 ```

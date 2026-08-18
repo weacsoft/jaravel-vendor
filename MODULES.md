@@ -19,10 +19,12 @@
 | `@RegisterCacheStore` | cache | `CacheStore` | ✅ 命名多实例 | 缓存 store，`defaultStore = true` 设为默认 |
 | `@RegisterDisk` | storage | `DiskDefinition` / `Filesystem` | ✅ 命名多实例 | 文件磁盘，`defaultDisk = true` 设为默认 |
 | `@RegisterConnection` | database | `GaarasonDataSource` | ✅ 命名多实例 | 数据源连接 |
-| `@RegisterQueueDriver` | queue-database | `QueueDriver` | ❌ **全局唯一** | 队列驱动 |
+| `@RegisterQueueDriver` | core（queue-database 使用） | `QueueDriver` | ❌ **全局唯一** | 队列驱动（注解定义在 core 模块） |
 | `@RegisterCommand` | artisan | `ArtisanCommand` | ✅ 命名多实例 | Artisan 命令（通过 CommandRegistrar 注册到 ArtisanApplication，不作为 Spring Bean） |
 | `@RegisterDirective` | jblade | `Handler` / `Condition` | ✅ 命名多实例 | Blade 自定义指令 |
 | `@RegisterView` | jblade | `View` | ✅ 命名多实例 | 自定义视图 |
+| `@RegisterLockProvider` | core | `LockProvider` | ✅ 命名多实例 | 分布式锁提供者，`defaultProvider = true` 设为默认 |
+| `@RegisterSchedule` | schedule | 定时任务 | ✅ 命名多实例 | 定时任务注册 |
 
 **jwt 模块没有自己的注解**：它提供 `JwtGuardDriver`，通过 auth 的
 `@RegisterGuard("api")` + `GuardDefinition.of("jwt", "users")` 接入，
@@ -205,7 +207,7 @@ artisan 在各模块的 pom 中均为 `optional`。模块注册命令的方式�
 > `jobs` 和 `failed_jobs` 两张表的建表代码。随后执行 `artisan migrate` 即可创建表。
 
 队列消费者 `DatabaseQueueWorker` 是**后台 Bean**，
-由 `jaravel.queue.worker.enabled` 控制随应用启动，**不是** artisan 命令。
+由 `jaravel.queue.database.auto-start` 控制随应用启动（默认 `false`），**不是** artisan 命令。
 
 ### 3.3 auth 模块
 

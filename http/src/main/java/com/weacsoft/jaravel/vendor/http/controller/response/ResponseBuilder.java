@@ -1,6 +1,7 @@
 package com.weacsoft.jaravel.vendor.http.controller.response;
 
-import com.weacsoft.jaravel.vendor.jblade.view.ViewFacade;
+import com.weacsoft.jaravel.vendor.core.view.View;
+import com.weacsoft.jaravel.vendor.core.view.ViewManagerHolder;
 import com.weacsoft.jaravel.vendor.json.Json;
 import com.weacsoft.jaravel.vendor.utils.Maps;
 import jakarta.servlet.http.Cookie;
@@ -52,6 +53,9 @@ public class ResponseBuilder {
 
     /**
      * 渲染视图。
+     * <p>
+     * 仅依赖 core 标准层的 {@link View} 契约（{@link ViewManagerHolder} 持有）：
+     * 具体模板引擎（如 jblade）由使用者单独引入并在装配期注册，http 模块本身不依赖任何模板引擎。
      *
      * @param templateName 模板名，如 {@code "pages.home"}
      * @param data         模板变量
@@ -76,7 +80,13 @@ public class ResponseBuilder {
                         renderData = new java.util.LinkedHashMap<>(data != null ? data : java.util.Collections.emptyMap());
                         renderData.put("__wire_mode", true);
                     }
-                    return ViewFacade.getView().render(templateName, renderData);
+                    View view = ViewManagerHolder.defaultView();
+                    if (view == null) {
+                        throw new IllegalStateException(
+                                "[view] 未注册任何 View 实现：http 模块不内建模板引擎，"
+                                + "请引入模板引擎模块（如 jblade）完成 View 注册后再调用 ResponseBuilder.view()");
+                    }
+                    return view.render(templateName, renderData);
                 } catch (RuntimeException e) {
                     throw e;
                 } catch (Exception e) {

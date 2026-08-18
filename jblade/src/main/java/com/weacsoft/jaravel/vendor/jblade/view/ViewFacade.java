@@ -8,7 +8,7 @@ import com.weacsoft.jaravel.vendor.core.view.ViewProvider;
 /**
  * 视图渲染静态门面（对齐 {@code ResponseBuilder} / {@code Auth} 等门面设计）。
  * <p>
- * 业务侧不再手动 {@code setBladeEngine}，而是直接 {@code ViewFacade.getView().render(...)}。
+ * 业务侧不再手动注入模板引擎实例，而是直接 {@code ViewFacade.getView().render(...)}。
  * 当前激活的 {@link View} 由 {@link ViewManager} 解析（声明 → 配置 → 默认）。
  * 门面在 {@link #bind(ViewManager)} 时，会同时把默认视图注入到 core 标准层的
  * {@link Paginator}，使非模板模块（database）也能借助 core 的 {@link Paginator}
@@ -24,6 +24,9 @@ public final class ViewFacade {
 
     public static void bind(ViewManager manager) {
         ViewFacade.manager = manager;
+        // 同时注册到 core 标准层持有器：http 等模块仅依赖 core 的 View 契约，
+        // 通过 ViewManagerHolder 取用当前默认视图，与 jblade 完全解耦。
+        com.weacsoft.jaravel.vendor.core.view.ViewManagerHolder.set(manager);
         // 把默认视图注入 core 标准层的 Paginator，实现解耦的分页渲染。
         Paginator.setDefaultViewProvider(() -> manager.defaultView());
     }

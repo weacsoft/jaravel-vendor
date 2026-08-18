@@ -78,7 +78,6 @@ public class QueueDatabaseAutoConfiguration {
      * 数据库队列驱动 bean。
      * <p>
      * 仅当 driver 不为 sync 且尚无 {@link QueueDriver} bean 且存在 {@link DataSource} 时创建。
-     * 当 driver=redis 但 RedisManager 不可用时，作为回退驱动自动创建。
      */
     @Bean
     @ConditionalOnMissingBean(QueueDriver.class)

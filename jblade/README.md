@@ -87,7 +87,7 @@ jblade 支持两种运行模式：
 
 | 依赖 | 用途 |
 | --- | --- |
-| `com.weacsoft:cache` | 可选依赖，提供 `CacheStore` 接口用于二级缓存（跨进程共享字节码，`optional = true`） |
+| `io.github.lijialong1313:cache` | 可选依赖，提供 `CacheStore` 接口用于二级缓存（跨进程共享字节码，`optional = true`） |
 | `org.springframework:spring-core` | `ClassPathResource` 读取 classpath 模板文件 |
 
 > 运行环境要求：

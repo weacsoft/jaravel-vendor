@@ -32,9 +32,9 @@ Database 模块是 Jaravel 框架的数据库 ORM 层，基于 `gaarason/databas
 | Model 的 `$connection` 属性 | `@DataSource` 注解 |
 | `EloquentUserProvider` | `EloquentUserProvider` |
 | `$model->save()` | `BaseModel.save()` |
-| `Model::find($id)` | `BaseModel.find(Class, id)` |
-| `Model::all()` | `BaseModel.all(Class)` |
-| `Model::query()` | `BaseModel.query(Class)` |
+| `Model::find($id)` | `BaseModel.self(User.class).find(id).toObject()`（业务 Model 声明 `self()` 后可写 `User.self().find(id).toObject()`） |
+| `Model::all()` | `BaseModel.self(User.class).findAll().toObjectList()` |
+| `Model::query()` | `BaseModel.self(User.class).newQuery()` |
 | `$model->replicate()` | `BaseModel.replicate()` |
 | `orderBy('col', 'desc')` | `orderBy("col", "desc")` / `orderBy("col", OrderBy.DESC)` |
 | `Model::query()->where()->delete()` | `query().where("id", id).delete()` |
@@ -443,17 +443,21 @@ public class User extends BaseModel<User, Long> {
     @Column
     private String number;
 
-    // 静态查询方法（委托给 BaseModel 工具方法，Java 静态方法不可继承故需手动声明）
+    // 静态访问统一入口 + 静态快捷方法（委托给 self()，Java 静态方法不可继承故需手动声明）
+    public static User self() {
+        return BaseModel.self(User.class);
+    }
+
     public static User find(Long id) {
-        return BaseModel.find(User.class, id);
+        return self().find(id).toObject();
     }
 
     public static List<User> all() {
-        return BaseModel.all(User.class);
+        return self().findAll().toObjectList();
     }
 
     public static QueryBuilder<User, Long> query() {
-        return BaseModel.query(User.class);
+        return self().newQuery();
     }
 
     // getter/setter ...
@@ -893,17 +897,21 @@ public class User extends BaseModel<User, Long> implements Authenticatable {
     @Column
     private LocalDateTime deletedAt;   // 软删除列（配合 BaseModel 软删除作用域）
 
-    // ---- 静态查询方法（委托给 BaseModel） ----
+    // ---- 静态访问入口 + 静态查询方法（委托给 self()） ----
+    public static User self() {
+        return BaseModel.self(User.class);
+    }
+
     public static User find(Long id) {
-        return BaseModel.find(User.class, id);
+        return self().find(id).toObject();
     }
 
     public static List<User> all() {
-        return BaseModel.all(User.class);
+        return self().findAll().toObjectList();
     }
 
     public static QueryBuilder<User, Long> query() {
-        return BaseModel.query(User.class);
+        return self().newQuery();
     }
 
     // ---- Authenticatable 实现 ----
@@ -936,16 +944,20 @@ public class Product extends BaseModel<Product, Long> {
     @Column private String name;
     @Column private Double price;
 
+    public static Product self() {
+        return BaseModel.self(Product.class);
+    }
+
     public static Product find(Long id) {
-        return BaseModel.find(Product.class, id);
+        return self().find(id).toObject();
     }
 
     public static List<Product> all() {
-        return BaseModel.all(Product.class);
+        return self().findAll().toObjectList();
     }
 
     public static QueryBuilder<Product, Long> query() {
-        return BaseModel.query(Product.class);
+        return self().newQuery();
     }
 
     // getter/setter ...

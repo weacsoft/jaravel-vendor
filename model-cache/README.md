@@ -254,20 +254,25 @@ import org.springframework.stereotype.Repository;
 @CachableModel(ttl = 600)     // 开启缓存，TTL 600 秒
 public class User extends BaseModel<User, Long> {
 
+    // 静态访问统一入口（真实查询入口）
+    public static User self() {
+        return BaseModel.self(User.class);
+    }
+
     public static User find(Long id) {
-        // 委托给 ModelCache：命中返回缓存，未命中执行 loader（BaseModel.find）并回填
-        return ModelCache.find(User.class, id, () -> BaseModel.find(User.class, id));
+        // 委托给 ModelCache：命中返回缓存，未命中执行 loader（真实查询）并回填
+        return ModelCache.find(User.class, id, () -> self().find(id).toObject());
     }
 
     public static List<User> all() {
-        return ModelCache.findAll(User.class, "all", () -> BaseModel.all(User.class));
+        return ModelCache.findAll(User.class, "all", () -> self().findAll().toObjectList());
     }
 
     // 条件查询：用条件字符串作为 queryKey
     public static User findByName(String name) {
         String queryKey = "name:" + name;
         return (User) ModelCache.query(User.class, queryKey,
-                () -> BaseModel.query(User.class).where("name", name).first().toObject());
+                () -> self().newQuery().where("name", name).first().toObject());
     }
 }
 ```

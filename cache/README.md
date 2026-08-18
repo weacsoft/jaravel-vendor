@@ -72,7 +72,7 @@ TTL 单位统一为**秒**（对齐 Laravel），`ttl <= 0` 表示永不过期�
 
 | 依赖 | 用途 |
 | --- | --- |
-| `com.weacsoft:core` | `Facade` 基础设施（`Cache` 门面通过 `Facade.resolve()` 解析 `CacheManager`） |
+| `io.github.lijialong1313:core` | `Facade` 基础设施（`Cache` 门面通过 `Facade.resolve()` 解析 `CacheManager`） |
 | `org.springframework.boot:spring-boot-autoconfigure` | 自动装配 |
 | `com.fasterxml.jackson.core:jackson-databind` | `FileCacheDriver` / `DatabaseCacheDriver` 的 JSON 序列化 |
 | `org.springframework:spring-jdbc`（optional） | `DatabaseCacheDriver` 的数据库操作（`JdbcTemplate`）；仅使用 array/file 驱动时无需引入 |

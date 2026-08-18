@@ -163,8 +163,8 @@ public DataSource mysqlConnection() {
 
 | 依赖 | 用途 |
 | --- | --- |
-| `com.weacsoft:core` | Facade 基础设施 |
-| `com.weacsoft:utils` | 内存编译基础设施（`MemoryClassLoader` / `MemoryFileManager` / `SourceCodeJavaFileObject`） |
+| `io.github.lijialong1313:core` | Facade 基础设施 |
+| `io.github.lijialong1313:utils` | 内存编译基础设施（`MemoryClassLoader` / `MemoryFileManager` / `SourceCodeJavaFileObject`） |
 | `org.springframework:spring-jdbc` | `JdbcTemplate` 执行 SQL DDL |
 | `org.springframework.boot:spring-boot-autoconfigure` | 自动装配 |
 | `org.slf4j:slf4j-api` | 日志门面 |
