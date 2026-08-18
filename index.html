@@ -195,7 +195,7 @@ blockquote ul, blockquote ol { margin-bottom: 0.2rem; }
 <a href="#cache" class="group">缓存与事件</a>
 <a href="#cat-cache" class="sub" title="ArrayStore 内存缓存，CacheManager 多 store 切换，remember/increment">cache — 缓存系统</a>
 <a href="#cat-event" class="sub" title="EventDispatcher 事件分发，同步/异步执行，ShouldQueue 队列事件">event — 事件系统</a>
-<a href="#cat-redis-config" class="sub" title="多 Redis 连接管理，集群/哨兵模式">redis-config — Redis 配置</a>
+<a href="#cat-redis" class="sub" title="多 Redis 连接管理，集群/哨兵模式">redis — Redis 配置</a>
 <a href="#cat-redis-cache" class="sub" title="Redis 缓存驱动工厂，按需创建驱动，JSON 序列化，TTL 管理">redis-cache — Redis 缓存</a>
 <a href="#cli" class="group">CLI 工具</a>
 <a href="#cat-artisan" class="sub" title="Laravel artisan 风格 CLI，make:xxx 代码生成（controller/model/migration 等 8 种），make:all 一键生成">artisan — Artisan 命令行</a>
@@ -270,7 +270,7 @@ blockquote ul, blockquote ol { margin-bottom: 0.2rem; }
 <tr><td>模板</td><td>jblade</td><td>Blade 模板引擎</td></tr>
 <tr><td>数据</td><td>database, migration, model-cache, queue-database</td><td>数据源、迁移、缓存、队列</td></tr>
 <tr><td>认证</td><td>auth, jwt, session-redis</td><td>认证、JWT、会话</td></tr>
-<tr><td>缓存</td><td>cache, event, redis-config, redis-cache</td><td>缓存、事件、Redis</td></tr>
+<tr><td>缓存</td><td>cache, event, redis, redis-cache</td><td>缓存、事件、Redis</td></tr>
 <tr><td>CLI</td><td>artisan, schedule</td><td>命令行、定时任务</td></tr>
 <tr><td>热加载</td><td>plugin-jar-core, plugin-java-core, plugin-jar-multi-tenant</td><td>JAR 热加载→Java文件→多租户</td></tr>
 <tr><td>远程执行</td><td>plugin-jar-remote-server, plugin-jar-remote-client</td><td>TCP→HTTP→树形→热加载结合</td></tr>
@@ -293,7 +293,7 @@ blockquote ul, blockquote ol { margin-bottom: 0.2rem; }
 <tr><td>redis-cache</td><td><code>jaravel.cache.stores.*.driver: redis</code></td><td>不装配，不连接 Redis</td></tr>
 <tr><td>cache 的 database 驱动</td><td><code>jaravel.cache.stores.*.driver: database</code></td><td>不装配，无需数据源</td></tr>
 <tr><td>queue-database</td><td><code>jaravel.queue.driver: database</code></td><td>不装配，回退 <code>sync</code></td></tr>
-<tr><td>queue-redis</td><td><code>jaravel.queue.driver: redis</code></td><td>不装配，回退 <code>sync</code></td></tr>
+<tr><td>queue-database（redis 驱动）</td><td><code>jaravel.queue.driver: redis</code></td><td>不装配，回退 <code>sync</code></td></tr>
 <tr><td>auth — session 守卫</td><td><code>jaravel.auth.guards.*.driver: session</code> 或<strong>未写 driver（兜底）</strong></td><td>—（自身即兜底默认驱动）</td></tr>
 <tr><td>auth — jwt 守卫</td><td><code>jaravel.auth.guards.*.driver: jwt</code></td><td>不装配（<strong>JWT 不在兜底</strong>）</td></tr>
 <tr><td>storage — local 磁盘</td><td><code>jaravel.storage.disks.*.driver: local</code> / <code>public</code> 或<strong>未写 driver（兜底）</strong></td><td>—（自身即兜底默认驱动）</td></tr>
@@ -1477,7 +1477,7 @@ worker.start();</code></pre>
 </table>
 </div>
 <div class="api-class">
-<p><b>RedisQueueDriver</b> — 基于 redis-config 模块 RedisManager 的 Redis 队列驱动，使用 ZSet/List 实现延迟与保留队列</p>
+<p><b>RedisQueueDriver</b> — 基于 redis 模块 RedisManager 的 Redis 队列驱动，使用 ZSet/List 实现延迟与保留队列</p>
 <table class="cfg">
 <tr><th>方法签名</th><th>参数</th><th>用途</th></tr>
 <tr><td><code>RedisQueueDriver(RedisManager redisManager, String connectionName, long retryAfterSeconds, int failedJobRetentionDays)</code></td><td>Redis 管理器（不可为 null）、连接名（空为默认连接）、重试超时秒数、失败任务保留天数</td><td>构造 Redis 队列驱动</td></tr>
@@ -2039,13 +2039,13 @@ EventListenerRegistrar registrar = new EventListenerRegistrar(dispatcher, applic
 </table>
 </div>
 </section>
-<section id="cat-redis-config">
-<h3>redis-config — Redis 配置</h3>
+<section id="cat-redis">
+<h3>redis — Redis 配置</h3>
 <p class="module-desc">多 Redis 连接管理，集群/哨兵模式</p>
 <blockquote>
-<p>Module: <code>redis-config</code> | Package: <code>com.weacsoft.jaravel.vendor.redis</code> | Version: 0.1.2</p>
+<p>Module: <code>redis</code> | Package: <code>com.weacsoft.jaravel.vendor.redis</code> | Version: 0.1.2</p>
 </blockquote>
-<h4 id="redis-config-自动配置参数">SpringBoot 自动配置参数</h4>
+<h4 id="redis-自动配置参数">SpringBoot 自动配置参数</h4>
 <p>配置前缀 <code>jaravel.redis</code>。在 <code>application.yml</code> 中通过以下键自动加载：</p>
 <table class="cfg">
 <tr><th>配置项</th><th>类型</th><th>默认值</th><th>说明</th></tr>
@@ -2064,15 +2064,15 @@ EventListenerRegistrar registrar = new EventListenerRegistrar(dispatcher, applic
 <tr><td><code>jaravel.redis.connections.&lt;name&gt;.sentinels</code></td><td><code>String</code></td><td><code>—</code></td><td>哨兵节点列表 host:port,host:port</td></tr>
 <tr><td><code>jaravel.redis.connections.&lt;name&gt;.clusterNodes</code></td><td><code>String</code></td><td><code>—</code></td><td>集群节点列表 host:port,host:port</td></tr>
 </table>
-<h4 id="redis-config-自动装配">自动装配（@Import / AutoConfiguration，按创建顺序）</h4>
+<h4 id="redis-自动装配">自动装配（@Import / AutoConfiguration，按创建顺序）</h4>
 <p>框架按下列顺序创建对象（即 Spring 容器装配的 Bean 顺序）：</p>
 <ol>
 <li>redisManager(RedisManager)：new RedisManager(properties)，管理所有命名连接。条件：类级 @ConditionalOnClass(RedisManager) + @ConditionalOnProperty(prefix=jaravel.redis, name=connections)；方法 @ConditionalOnMissingBean。依赖：RedisProperties。</li>
 <li>redisLockProvider(RedisLockProvider)：new RedisLockProviderImpl(redisManager, null)，Redis 分布式锁提供者。条件：方法 @ConditionalOnMissingBean + @ConditionalOnClass(RedisLockProvider)。依赖：RedisManager。</li>
 <li>redisPublishableConfig(RedisPublishableConfig)：发布配置元数据。条件：类级 @ConditionalOnClass(PublishableConfig)；方法 @ConditionalOnMissingBean。无依赖。</li>
 </ol>
-<h4 id="redis-config-手动装配">手动装配（无 SpringBoot 配置文件时的顺序）</h4>
-<p class="manual-note">redis-config 仅有运行时配置（RedisManager）与构建期发布配置（RedisPublishableConfig）两类 Bean；类级 @ConditionalOnProperty(jaravel.redis.connections) 默认不成立，需先声明连接配置才会装配运行时 Bean。</p>
+<h4 id="redis-手动装配">手动装配（无 SpringBoot 配置文件时的顺序）</h4>
+<p class="manual-note">redis 仅有运行时配置（RedisManager）与构建期发布配置（RedisPublishableConfig）两类 Bean；类级 @ConditionalOnProperty(jaravel.redis.connections) 默认不成立，需先声明连接配置才会装配运行时 Bean。</p>
 <p class="manual-intro">本模块以 Spring Boot 自动装配为主；不使用自动配置时，自行编写 @Configuration 并按以下顺序注册 Bean：</p>
 <p>不使用自动配置时，需自行按以下顺序创建对象并注册（等价于上一步自动装配所做的事）：</p>
 <ol>
@@ -2080,7 +2080,7 @@ EventListenerRegistrar registrar = new EventListenerRegistrar(dispatcher, applic
 <li>按需注册 redisLockProvider —— new RedisLockProviderImpl(redisManager, null)，需 classpath 存在 RedisLockProvider 且用 @ConditionalOnMissingBean。</li>
 <li>注册 redisPublishableConfig —— new RedisPublishableConfig()。</li>
 </ol>
-<h4 id="redis-config-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
+<h4 id="redis-手动初始化代码">手动初始化代码（可直接复制，按 1→N 顺序）</h4>
 <p>不使用自动配置、或想在单元测试 / 脚本中手动装配时，可直接复制以下代码。代码中已按依赖顺序用 <code>// 1.</code> … <code>// N.</code> 标注，并写明每一步创建的是<b>哪个类的实例</b>及其<b>所需参数</b>：</p>
 <pre><code>// 1. 构建连接配置：host / port / database / 超时（毫秒）
 RedisProperties.ConnectionConfig conn = new RedisProperties.ConnectionConfig();
@@ -2099,7 +2099,7 @@ RedisLockProvider lock = new RedisLockProviderImpl(redis, null);
 // 5. 取同步命令接口执行命令；应用关闭时 shutdown() 释放连接与共享资源
 redis.sync("default").set("k", "v");
 redis.shutdown();</code></pre>
-<h4 id="redis-config-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
+<h4 id="redis-公开API">公开 API（类 / 方法 / 参数 / 用途）</h4>
 <p>本模块向业务代码公开以下类与方法：</p>
 <div class="api-class">
 <p><b>com.weacsoft.jaravel.vendor.redis.RedisManager</b> — Redis 连接管理器，按名称管理多个 Lettuce 连接，支持单机 / 哨兵 / 集群三种模式</p>
@@ -2318,7 +2318,7 @@ int exitCode = app.call("make:controller", new String[]{"UserController"});</cod
 <h3>schedule — 定时任务</h3>
 <p class="module-desc">Cron 表达式调度，分布式锁，链式调用（everyMinute/hourly/dailyAt）</p>
 <blockquote>
-<p>分布式锁通过 <code>RedisLockProvider</code> 接口抽象，由 <code>redis-config</code> 模块提供实现。schedule 模块本身不直接依赖 redis-config，当 redis-config 不存在时分布式锁任务降级为单机执行。</p>
+<p>分布式锁通过 <code>RedisLockProvider</code> 接口抽象，由 <code>redis</code> 模块提供实现。schedule 模块本身不直接依赖 redis，当 redis 不存在时分布式锁任务降级为单机执行。</p>
 </blockquote>
 <h4 id="schedule-自动配置参数">SpringBoot 自动配置参数</h4>
 <p>配置前缀 <code>jaravel.schedule</code>。在 <code>application.yml</code> 中通过以下键自动加载：</p>
@@ -4375,7 +4375,7 @@ ConfigDefinitionRegistrar registrar = new ConfigDefinitionRegistrar();
 // 4. 服务提供者注册表：聚合容器中全部 ServiceProvider 并按序执行 register/boot
 ProviderRegistry providerRegistry = new ProviderRegistry(providers);</code></pre>
 <h4 id="starter-功能说明">功能说明</h4>
-<p>starter 是 Jaravel 的聚合入口模块，本身几乎不含业务代码，而是通过 pom 依赖一次性引入 core、http、springboot、auth、database、migration、cache、storage、jblade、event、artisan、schedule 以及 spring-boot-starter-web，让应用引入单个依赖即可获得全套能力。其中 core 提供 Facade、配置体系与 ServiceProvider 生命周期，http 提供路由、控制器与中间件，auth 提供认证与守卫，database 与 migration 提供 Eloquent 风格 ORM 和迁移，cache、storage 分别提供缓存与文件存储抽象，jblade 提供 Blade 模板引擎，event、schedule、artisan 分别提供事件分发、任务调度与命令行工具。starter 自身仅由 JaravelAutoConfiguration 做辅助初始化：注册 ConfigRepository 统一配置读取、ConfigDefinitionRegistrar 收集代码级配置、SpringContext 让门面能解析容器 Bean、ProviderRegistry 聚合并引导所有 ServiceProvider。这四个 Bean 都带 @ConditionalOnMissingBean，应用可自行覆盖；各子模块的具体功能仍由各自的 AutoConfiguration 独立装配，starter 只负责保证核心底座先于它们就绪。</p>
+<p>starter 是 Jaravel 的聚合入口模块，本身几乎不含业务代码，而是通过 pom 依赖一次性引入 core、http、springboot、auth、database、migration、cache、storage、event、artisan、schedule 以及 spring-boot-starter-web，让应用引入单个依赖即可获得基础全套能力。其中 core 提供 Facade、配置体系与 ServiceProvider 生命周期，http 提供路由、控制器与中间件，auth 提供认证与守卫，database 与 migration 提供 Eloquent 风格 ORM 和迁移，cache、storage 分别提供缓存与文件存储抽象，Blade 模板引擎 jblade 为可选模块（按需单独引入），event、schedule、artisan 分别提供事件分发、任务调度与命令行工具。starter 自身仅由 JaravelAutoConfiguration 做辅助初始化：注册 ConfigRepository 统一配置读取、ConfigDefinitionRegistrar 收集代码级配置、SpringContext 让门面能解析容器 Bean、ProviderRegistry 聚合并引导所有 ServiceProvider。这四个 Bean 都带 @ConditionalOnMissingBean，应用可自行覆盖；各子模块的具体功能仍由各自的 AutoConfiguration 独立装配，starter 只负责保证核心底座先于它们就绪。</p>
 </section>
 <section id="cat-cluster">
 <h2>cluster — 集群部署</h2>
@@ -4383,7 +4383,7 @@ ProviderRegistry providerRegistry = new ProviderRegistry(providers);</code></pre
 <p>Module: 跨模块专题 | Version: 0.1.2</p>
 </blockquote>
 
-<p>当应用从单机部署扩展到服务器集群（多实例）部署时，必须解决<strong>会话（Session）共享</strong>与<strong>缓存（Cache）共享</strong>问题。Jaravel 通过 <code>session-redis</code> 与 <code>redis-cache</code> 两个模块，配合 <code>redis-config</code> 基础设施模块，提供开箱即用的集群共享方案。所有节点连接同一 Redis 集群，会话与缓存数据集中存储，任意节点的写入对其他节点立即可见。</p>
+<p>当应用从单机部署扩展到服务器集群（多实例）部署时，必须解决<strong>会话（Session）共享</strong>与<strong>缓存（Cache）共享</strong>问题。Jaravel 通过 <code>session-redis</code> 与 <code>redis-cache</code> 两个模块，配合 <code>redis</code> 基础设施模块，提供开箱即用的集群共享方案。所有节点连接同一 Redis 集群，会话与缓存数据集中存储，任意节点的写入对其他节点立即可见。</p>
 
 <h3 id="cluster-架构总览">架构总览</h3>
 
@@ -4475,12 +4475,12 @@ Cache::forget(&quot;user:profile:1&quot;);
 </code></pre>
 
 <blockquote>
-<p><code>redis-cache</code> 与 <code>session-redis</code> 可使用同一 Redis 实例的不同数据库（database），或使用 <code>redis-config</code> 模块配置独立的命名连接（default / cache / session），实现物理隔离。</p>
+<p><code>redis-cache</code> 与 <code>session-redis</code> 可使用同一 Redis 实例的不同数据库（database），或使用 <code>redis</code> 模块配置独立的命名连接（default / cache / session），实现物理隔离。</p>
 </blockquote>
 
-<h3 id="cluster-redis-基础设施">Redis 基础设施（redis-config 模块）</h3>
+<h3 id="cluster-redis-基础设施">Redis 基础设施（redis 模块）</h3>
 
-<p><code>redis-config</code> 模块对齐 Laravel <code>RedisManager</code>，基于 Lettuce 客户端管理多个命名连接，是 <code>redis-cache</code>、<code>session-redis</code> 等模块的基础依赖。支持三种部署模式：</p>
+<p><code>redis</code> 模块对齐 Laravel <code>RedisManager</code>，基于 Lettuce 客户端管理多个命名连接，是 <code>redis-cache</code>、<code>session-redis</code> 等模块的基础依赖。支持三种部署模式：</p>
 
 <table>
 <tr><th>模式</th><th>说明</th><th>适用场景</th></tr>
@@ -4489,7 +4489,7 @@ Cache::forget(&quot;user:profile:1&quot;);
 <tr><td><code>cluster</code>（集群）</td><td>连接 Redis Cluster，数据分片存储</td><td>大规模数据 / 高吞吐场景</td></tr>
 </table>
 
-<p>命名连接机制：<code>redis-config</code> 管理多个命名连接（如 <code>default</code>、<code>cache</code>、<code>session</code>），每个连接可独立配置 host、port、database、password、模式等。<code>redis-cache</code> 默认使用 <code>cache</code> 连接，<code>session-redis</code> 默认使用 <code>session</code> 连接，互不干扰。</p>
+<p>命名连接机制：<code>redis</code> 管理多个命名连接（如 <code>default</code>、<code>cache</code>、<code>session</code>），每个连接可独立配置 host、port、database、password、模式等。<code>redis-cache</code> 默认使用 <code>cache</code> 连接，<code>session-redis</code> 默认使用 <code>session</code> 连接，互不干扰。</p>
 
 <h3 id="cluster-配置示例">配置示例</h3>
 
@@ -4499,7 +4499,7 @@ Cache::forget(&quot;user:profile:1&quot;);
 
 <pre><code>
 jaravel:
-  # ─── Redis 基础设施（redis-config 模块）───
+  # ─── Redis 基础设施（redis 模块）───
   redis:
     default:
       host: 127.0.0.1
@@ -4671,8 +4671,8 @@ jaravel:
 <ul>
 <li><strong>负载均衡会话保持</strong>：使用 Redis 共享会话后，<strong>无需</strong>在负载均衡器配置会话粘性（sticky session）。任意节点均可处理任意请求，会话从 Redis 恢复。</li>
 <li><strong>Cookie 域名</strong>：确保 Session Cookie 的 <code>domain</code> 覆盖所有节点访问的域名（如 <code>.example.com</code>），使 Cookie 在所有子域名下生效。</li>
-<li><strong>Redis 高可用</strong>：生产环境推荐 sentinel 或 cluster 模式，避免 Redis 单点故障导致全局会话失效。<code>redis-config</code> 基于 Lettuce 客户端，自动支持哨兵故障转移与集群拓扑刷新。</li>
-<li><strong>连接隔离</strong>：通过 <code>redis-config</code> 的命名连接机制，为 <code>cache</code> 与 <code>session</code> 配置不同 database（standalone/sentinel）或不同前缀（cluster），避免 Key 冲突。</li>
+<li><strong>Redis 高可用</strong>：生产环境推荐 sentinel 或 cluster 模式，避免 Redis 单点故障导致全局会话失效。<code>redis</code> 基于 Lettuce 客户端，自动支持哨兵故障转移与集群拓扑刷新。</li>
+<li><strong>连接隔离</strong>：通过 <code>redis</code> 的命名连接机制，为 <code>cache</code> 与 <code>session</code> 配置不同 database（standalone/sentinel）或不同前缀（cluster），避免 Key 冲突。</li>
 <li><strong>序列化兼容</strong>：会话与缓存中存储的对象需可序列化。集群中所有节点应部署相同版本的应用，确保类定义一致，避免反序列化失败。</li>
 <li><strong>滑动过期与性能</strong>：会话滑动过期在每次 <code>save()</code> 时刷新 TTL，高频访问的会话不会过期。如需限制绝对过期时间，可在业务层额外记录首次登录时间并校验。</li>
 <li><strong>JWT 黑名单共享</strong>：若使用 JWT 认证并开启黑名单模式，应将黑名单 store 设为 <code>redis</code>，确保登出后所有节点都能识别失效 token。</li>
