@@ -434,8 +434,42 @@ public class AdminController extends WireController {
 | 属性 | 类型 | 默认 | 说明 |
 |------|------|------|------|
 | `name()` | `String` | 字段名 | 该参数在 URL 中使用的名字;字段名与 URL 参数名不一致时使用(如字段 `searchKey` → URL 参数 `key`)。**双向生效**：URL 生成时按此名拼接;请求自动绑定时也按此名把 URL 参数赋到字段 |
-| `templates()` | `String[]` | `{}`(所有模板) | 该参数生效的模板名列表;生成 URL 时以 `getTemplateName()` 为上下文匹配,列表非空且当前模板不在列表内 → 不加入 |
+| `templates()` | `String[]` | `{}`(所有模板) | 该参数生效的模板名列表;生成 URL 时以 `getTemplateName()` 为上下文匹配,列表非空且当前模板不在列表内 → 不加入。可通过 `wireQueryTemplates()` 集中覆盖(见下) |
 | `defaultValue()` | `String` | `""`(未设置) | 默认值;当前值等于该值或为 `null` 时不加入 URL。默认空串表示「未设置默认值」→ 仅 null(及空串)时不加入 |
+
+### 覆盖生效模板（wireQueryTemplates）
+
+`wireQueryTemplates()` 提供对 `templates()` 的**声明式集中覆盖**，常用于父类标注、子类按页扩展生效模板（避免在每个子类重复标注注解）。
+
+**键的语义**：键为**字段名（属性名）**，与 `@WireQuery.name()` 无关。用字段名而非前端 query 名做键的原因：不同页面（控制器）的后端属性可能不同，但前端 query 名可能相同（如多页都用 `key`）；若按前端名做键，同一键会命中多个字段，后端无法区分。而一个字段最多只有一个 `name()`（字段→query 名 1:1），按字段名做键无歧义——不同 query 对应同一字段不可能发生。
+
+```java
+// 父类标注:page 仅在 list 模板生效
+@WireQuery(templates = {"mdui.admin.admin.list"}, defaultValue = "1")
+public Long page;
+
+// 子类需要 page 在 change 模板也生效(如分页详情)
+@Override
+protected Map<String, String[]> wireQueryTemplates() {
+    Map<String, String[]> m = new HashMap<>(super.wireQueryTemplates());
+    m.put("page", new String[]{"mdui.admin.admin.list", "mdui.admin.admin.change"});
+    return m;
+}
+```
+
+字段名与 query 名不一致时（如 `searchKey` 标注 `@WireQuery(name="key")`），键**仍是字段名 `"searchKey"`**，而不是注解名 `"key"`：
+
+```java
+@WireQuery(name = "key")
+public String searchKey;
+
+@Override
+protected Map<String, String[]> wireQueryTemplates() {
+    return Map.of("searchKey", new String[]{"mdui.admin.admin.list"});
+}
+```
+
+优先级：`wireQueryTemplates()` 覆盖值 > 注解 `templates()`；未声明覆盖的字段仍按注解处理。
 
 ### 请求自动绑定（autoBindQueryParams）
 
@@ -451,7 +485,7 @@ public class AdminController extends WireController {
 ### 过滤规则（WireController.buildQueryUrl）
 
 对每个被 `@WireQuery` 标记的 public 字段,按序过滤:
-1. `templates()` 非空且 `getTemplateName()` 不在列表内 → 跳过;
+1. 有效模板列表非空(优先取 `wireQueryTemplates()` 按**字段名**覆盖值,未覆盖时用注解 `templates()`)且 `getTemplateName()` 不在列表内 → 跳过;
 2. 当前值为 `null` → 跳过;
 3. 当前值等于 `defaultValue()`(defaultValue 非空) → 跳过;
 4. 当前值为空串 → 跳过(与 null 等价处理);

@@ -238,7 +238,11 @@ public abstract class WireController {
      * 部分场景,子类需要扩展或缩减生效模板。本方法提供集中覆盖,避免在每个子类中
      * 重复标注注解。
      * <p>
-     * <b>语义</b>:键为 {@code @WireQuery.name()}(未写 name 时用字段名),值为覆盖后的模板名数组。
+     * <b>键的语义</b>:键为<b>字段名(属性名)</b>,与 {@code @WireQuery.name()} 无关。
+     * 用字段名而非前端 query 名做键的原因:不同页面(控制器)的后端属性可能不同,
+     * 但前端 query 名可能相同(如多页都用 {@code key});若按前端名做键,同一键会命中
+     * 多个字段,后端无法区分。而一个字段最多只有一个 {@code name()}(
+     * 字段→query 名 1:1),按字段名做键无歧义——不同 query 对应同一字段不可能发生。
      * 空数组表示「所有模板都生效」,与注解的默认行为一致。
      * <p>
      * <b>优先级</b>:本方法返回值 > {@link WireQuery#templates()} 注解值。
@@ -255,6 +259,18 @@ public abstract class WireController {
      *     Map<String, String[]> m = new HashMap<>(super.wireQueryTemplates());
      *     m.put("page", new String[]{"mdui.admin.admin.list", "mdui.admin.admin.change"});
      *     return m;
+     * }
+     * }</pre>
+     * <p>
+     * 字段名与 query 名不一致时(如 {@code searchKey} 标注 {@code @WireQuery(name="key")}),
+     * 键仍为字段名 {@code "searchKey"},而不是注解名 {@code "key"}:
+     * <pre>{@code
+     * @WireQuery(name = "key")
+     * public String searchKey;
+     *
+     * @Override
+     * protected Map<String, String[]> wireQueryTemplates() {
+     *     return Map.of("searchKey", new String[]{"mdui.admin.admin.list"});
      * }
      * }</pre>
      *
@@ -1000,12 +1016,16 @@ public abstract class WireController {
     /**
      * 获取字段的「有效模板列表」:优先取 {@link #wireQueryTemplates()} 覆盖值,
      * 未覆盖时回退到 {@link WireQuery#templates()} 注解值。
+     * <p>
+     * 覆盖映射的<b>键恒为字段名(属性名)</b>,与 {@code @WireQuery.name()} 无关——
+     * 不同页面(控制器)的后端属性可能不同,但前端 query 名可能相同(如多页都用
+     * {@code key});若按前端名做键,同一键会命中多个字段,后端无法区分。而一个字段
+     * 最多只有一个 {@code name()}(字段→query 名 1:1),按字段名做键无歧义。
      */
     private String[] getEffectiveTemplates(WireQuery wq, Field f) {
         Map<String, String[]> overrides = wireQueryTemplates();
         if (overrides == null) return wq.templates();
-        String key = (wq.name() != null && !wq.name().isEmpty()) ? wq.name() : f.getName();
-        String[] overridden = overrides.get(key);
+        String[] overridden = overrides.get(f.getName());
         return overridden != null ? overridden : wq.templates();
     }
 

@@ -11,8 +11,10 @@ import lombok.Setter;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
@@ -29,6 +31,10 @@ public class Router {
     /** 单值参数替换用：匹配 URI 中的第一个 {xxx} 占位符（预编译，避免每次调用重新编译正则）。 */
     private static final java.util.regex.Pattern FIRST_PLACEHOLDER =
             java.util.regex.Pattern.compile("\\{[^/{}]+\\}");
+
+    /** 可选占位符 {xxx?}：未在 params 中提供时整段移除（对齐 Laravel 可选参数缺省行为）。 */
+    private static final java.util.regex.Pattern OPTIONAL_PLACEHOLDER =
+            java.util.regex.Pattern.compile("\\{[^/{}]+\\?\\}");
 
     private final List<RouteDefinition> routes = new CopyOnWriteArrayList<>();
     private final List<Router> routers = new CopyOnWriteArrayList<>();
@@ -527,7 +533,12 @@ public class Router {
      * 未命中再走 nameIndex→getFullUri→参数替换路径，结果写入 urlIndex 供后续零计算命中。
      * <p>
      * {@code params} 为 {@link Map} 时按参数名替换 {@code {key}} / {@code {key?}}；
-     * 为单值时替换第一个占位符。
+     * <b>未匹配任何占位符的剩余参数按 Laravel 语义追加为查询串</b>
+     * （如 {@code route("admin.role.permission.index", Map.of("id", "1"))}
+     * → {@code /admin/role/permission?id=1}）。为单值时替换第一个占位符。
+     * <p>
+     * 未提供的可选占位符 {@code {key?}} 会整段移除（对齐 Laravel：可选参数缺省时
+     * 不出现在 URL 中），如 {@code /posts/{slug?}} 无 {@code slug} → {@code /posts}。
      *
      * @param name   路由别名（如 {@code "admin.user.show"}）
      * @param params 路径参数（Map 或单值，为 null 时不替换）
@@ -556,7 +567,8 @@ public class Router {
         }
         if (def == null) {
             log.warn("[route] url('{}') 未找到对应路由别名, 退化为路径映射", name);
-            return "/" + name.replace('.', '/');
+            // 退化路径同样把 Map 剩余参数拼成查询串（如 /admin/role/permission?id=1）
+            return appendExtraQuery("/" + name.replace('.', '/'), params);
         }
         String uri = def.getFullUri();
         if (uri == null) {
@@ -566,14 +578,28 @@ public class Router {
             uri = "/" + uri;
         }
         if (params instanceof Map) {
-            for (Map.Entry<?, ?> e : ((Map<?, ?>) params).entrySet()) {
+            Map<?, ?> map = (Map<?, ?>) params;
+            Set<String> consumed = new HashSet<>();
+            // 1. 按名替换路径占位符 {key} / {key?}，记录已消耗的 key
+            for (Map.Entry<?, ?> e : map.entrySet()) {
                 String key = String.valueOf(e.getKey());
                 String value = e.getValue() == null ? "" : String.valueOf(e.getValue());
-                uri = uri.replace("{" + key + "?}", value).replace("{" + key + "}", value);
+                if (uri.contains("{" + key + "?}") || uri.contains("{" + key + "}")) {
+                    uri = uri.replace("{" + key + "?}", value).replace("{" + key + "}", value);
+                    consumed.add(key);
+                }
             }
+            // 2. 先移除未提供的可选占位符 {xxx?}（对齐 Laravel：可选参数缺省时整段移除），
+            //    再把未匹配任何占位符的剩余参数追加为查询串（对齐 Laravel route('name', [...])）
+            uri = stripUnusedOptional(uri);
+            uri = appendExtraQuery(uri, map, consumed);
         } else if (params != null) {
             uri = FIRST_PLACEHOLDER.matcher(uri)
                     .replaceFirst(java.util.regex.Matcher.quoteReplacement(String.valueOf(params)));
+            uri = stripUnusedOptional(uri);
+        } else {
+            // 无参数:仅移除可选占位符（/posts/{slug?} → /posts）
+            uri = stripUnusedOptional(uri);
         }
 
         // 无参数结果写入 urlIndex 供后续零计算命中
@@ -584,6 +610,52 @@ public class Router {
             entry.urlIndex.putIfAbsent(target, uri);
         }
         return uri;
+    }
+
+    /**
+     * 移除未提供的可选占位符 {@code {xxx?}}（对齐 Laravel：可选参数缺省时整段移除），
+     * 并清理移除后可能留下的尾斜杠（/posts/{slug?} → /posts/ → /posts）。
+     */
+    private static String stripUnusedOptional(String uri) {
+        uri = OPTIONAL_PLACEHOLDER.matcher(uri).replaceAll("");
+        if (uri.length() > 1 && uri.endsWith("/")) {
+            uri = uri.substring(0, uri.length() - 1);
+        }
+        return uri;
+    }
+
+    /**
+     * 把 Map 中「未消耗(未匹配任何占位符)」的参数追加为 URL 编码的查询串。
+     * null 值无意义,直接跳过,不生成 {@code ?key=}。
+     */
+    private static String appendExtraQuery(String uri, Map<?, ?> params, Set<String> consumed) {
+        if (params == null || params.isEmpty()) return uri;
+        List<String> parts = null;
+        for (Map.Entry<?, ?> e : params.entrySet()) {
+            String key = String.valueOf(e.getKey());
+            if (consumed.contains(key)) continue;
+            Object v = e.getValue();
+            if (v == null) continue;
+            if (parts == null) parts = new ArrayList<>();
+            parts.add(encodeUrlParam(key) + "=" + encodeUrlParam(String.valueOf(v)));
+        }
+        if (parts == null || parts.isEmpty()) return uri;
+        return uri + "?" + String.join("&", parts);
+    }
+
+    /** 路由别名未命中、退化为路径映射时的兼容入口（无已消耗键）。 */
+    private static String appendExtraQuery(String uri, Object params) {
+        if (!(params instanceof Map)) return uri;
+        return appendExtraQuery(uri, (Map<?, ?>) params, java.util.Collections.emptySet());
+    }
+
+    /** 查询串参数编码（application/x-www-form-urlencoded，空格编码为 +）。 */
+    private static String encodeUrlParam(String s) {
+        try {
+            return java.net.URLEncoder.encode(s, "UTF-8");
+        } catch (java.io.UnsupportedEncodingException e) {
+            return s;
+        }
     }
 
     /**

@@ -1253,9 +1253,11 @@ Route.prefix("admin").name("admin").group(() -> {
 
 #### 参数替换规则（route）
 
-- 若 `params` 为 `Map`：按 `{key}` 占位符逐一代换，例如 `route('image.show', Map.of("id", 42))` 对 `Route.get("/img/{id}", ...)` → `/img/42`。
+- 若 `params` 为 `Map`：按 `{key}` / `{key?}` 占位符逐一代换，例如 `route('image.show', Map.of("id", 42))` 对 `Route.get("/img/{id}", ...)` → `/img/42`。
+- **未匹配任何占位符的 Map 剩余参数按 Laravel 语义追加为 URL 编码的查询串**：如 `route('admin.role.permission.index', Map.of("id", "1"))` 对 `Route.get("/admin/role/permission", ...)` → `/admin/role/permission?id=1`；`route('user.show', Map.of("id", 5, "foo", "bar"))` 对 `/users/{id}` → `/users/5?foo=bar`。`null` 值的参数不拼接。
+- **未提供的可选占位符 `{key?}` 整段移除**（对齐 Laravel 可选参数缺省行为）：如 `/posts/{slug?}` 未传 `slug` → `/posts`。
 - 若 `params` 为单个值（非 Map）：替换路径中**第一个** `{...}` 占位符。
-- 未匹配到路由名：回退为 `/` + 名称中点号替换为斜杠（如 `route('admin.login')` 回退 `/admin/login`），保证不抛错。
+- 未匹配到路由名：回退为 `/` + 名称中点号替换为斜杠（如 `route('admin.login')` 回退 `/admin/login`），Map 剩余参数仍会拼成查询串，保证不抛错。
 - 未提供第二参时 `params = null`，路径无占位符则原样输出。
 
 #### 在 Java 中生成 URL（AppConfig.app().route()）

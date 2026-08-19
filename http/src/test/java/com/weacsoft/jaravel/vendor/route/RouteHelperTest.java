@@ -39,6 +39,16 @@ class RouteHelperTest {
     }
 
     @Test
+    void routeWithUnmatchedParamsAppendsQueryString() {
+        RouteHelper.setRouter(sampleRouter());
+
+        // 无占位符路由 + Map 参数 → 未匹配参数追加为查询串（对齐 Laravel route('name', [...])）
+        assertEquals("/admin/login?id=1", RouteHelper.route("admin.login", Map.of("id", "1")));
+        // 流式调用行为一致
+        assertEquals("/admin/login?id=1", RouteHelper.instance().route("admin.login", Map.of("id", "1")));
+    }
+
+    @Test
     void urlNormalizesPath() {
         // 静态调用
         assertEquals("/admin/login", RouteHelper.url("admin/login"));

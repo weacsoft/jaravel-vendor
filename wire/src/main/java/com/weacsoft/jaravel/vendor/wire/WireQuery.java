@@ -45,6 +45,9 @@ public @interface WireQuery {
      * 该 query 参数生效的模板名列表;空数组表示所有模板都生效。
      * 生成 URL 时以 {@code getTemplateName()} 为上下文匹配:
      * 列表非空且当前模板不在列表内时,该参数不加入 URL。
+     * <p>
+     * 可通过 {@code WireController.wireQueryTemplates()} 集中覆盖;
+     * 注意该覆盖映射的<b>键是字段名(属性名)</b>,与 {@link #name()} 无关。
      */
     String[] templates() default {};
 

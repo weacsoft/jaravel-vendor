@@ -24,6 +24,8 @@ import static org.junit.jupiter.api.Assertions.*;
  *   <li>{@code invokeAction} 按 action 声明参数类型做转换(Long/Boolean 等)</li>
  *   <li>{@code buildUpdateUrl} 在路由名缺失时回退为 request.uri() 且不抛异常</li>
  *   <li>{@code encodeSignedSnapshot} 自动排除 {@code @WireLocked} 字段</li>
+ *   <li>{@code wireQueryTemplates()} 覆盖键为<b>字段名</b>(与 @WireQuery.name() 无关),
+ *       用注解名做键不命中</li>
  * </ul>
  *
  * <p>注：{@code $sync}(仅返回 snapshot,不重渲染 section) 与 {@code $refresh} 依赖完整渲染链路
@@ -336,6 +338,24 @@ class WireControllerApiTest {
 
         @Override
         protected Map<String, String[]> wireQueryTemplates() {
+            // 键为字段名 "page",与 @WireQuery.name()("p") 无关
+            return Map.of("page", new String[]{"mdui.admin.admin.list", "mdui.admin.admin.detail"});
+        }
+
+        @Override
+        protected WireView render() {
+            return wireView("mdui.admin.admin.list");
+        }
+    }
+
+    /** 错误写法对照:用注解名做键,新语义下不会命中任何字段。 */
+    public static class WrongKeyQueryController extends WireController {
+        @WireQuery(name = "p", templates = {"mdui.admin.admin.list"}, defaultValue = "1")
+        public Long page;
+
+        @Override
+        protected Map<String, String[]> wireQueryTemplates() {
+            // 注解名 "p" 不是字段名 → 不匹配 → 回退注解 templates(仅 list 生效)
             return Map.of("p", new String[]{"mdui.admin.admin.list", "mdui.admin.admin.detail"});
         }
 
@@ -397,15 +417,31 @@ class WireControllerApiTest {
     }
 
     @Test
-    void buildQueryUrl_nameMapping_usesWireQueryName() {
+    void buildQueryUrl_nameMapping_overrideKeyIsFieldName() {
         NameMappedQueryController c = new NameMappedQueryController();
         c.page = 2L;
 
+        // URL 参数名仍按 @WireQuery.name() = "p" 拼接(与覆盖键无关)
         String url = pubBuildQueryUrl(c, "/admin/admin", "mdui.admin.admin.list");
         assertTrue(url.contains("?p=2"));
         assertFalse(url.contains("page="));
 
+        // wireQueryTemplates 覆盖键是字段名 "page":detail 模板也生效
         String url2 = pubBuildQueryUrl(c, "/admin/admin", "mdui.admin.admin.detail");
+        assertTrue(url2.contains("p=2"));
+    }
+
+    @Test
+    void buildQueryUrl_annotationNameKeyIsNotMatched() {
+        WrongKeyQueryController c = new WrongKeyQueryController();
+        c.page = 2L;
+
+        // 注解名 "p" 不是字段名 → 覆盖不命中 → detail 模板回退注解 templates(仅 list)→ 不拼 page
+        String url = pubBuildQueryUrl(c, "/admin/admin", "mdui.admin.admin.detail");
+        assertFalse(url.contains("p="));
+
+        // list 模板仍按注解 templates 生效
+        String url2 = pubBuildQueryUrl(c, "/admin/admin", "mdui.admin.admin.list");
         assertTrue(url2.contains("p=2"));
     }
 

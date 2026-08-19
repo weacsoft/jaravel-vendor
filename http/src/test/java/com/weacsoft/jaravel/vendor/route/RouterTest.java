@@ -520,6 +520,59 @@ class RouterTest {
     }
 
     @Test
+    void testUrlWithUnmatchedMapParamsAppendsQueryString() {
+        Router router = new Router();
+        router.get("/admin/role/permission", NOOP).name("admin.role.permission.index");
+
+        // 无占位符路由 + Map 参数 → 未匹配参数追加为查询串（对齐 Laravel route('name', [...])）
+        assertEquals("/admin/role/permission?id=1",
+                router.url("admin.role.permission.index", Map.of("id", "1")));
+    }
+
+    @Test
+    void testUrlWithMapParamsMixedPlaceholderAndQueryString() {
+        Router router = new Router();
+        router.get("/users/{id}", NOOP).name("user.show");
+
+        // {id} 替换进路径,剩余 foo 追加为查询串
+        assertEquals("/users/5?foo=bar",
+                router.url("user.show", Map.of("id", 5, "foo", "bar")));
+    }
+
+    @Test
+    void testUrlQueryStringValuesAreUrlEncoded() {
+        Router router = new Router();
+        router.get("/search", NOOP).name("search");
+
+        // Map.of 迭代顺序不确定,断言不依赖参数顺序
+        String url = router.url("search", Map.of("key", "名称", "value", "a+b"));
+        assertTrue(url.startsWith("/search?"));
+        assertTrue(url.contains("key=%E5%90%8D%E7%A7%B0"), "中文值应 URL 编码, 实际: " + url);
+        assertTrue(url.contains("value=a%2Bb"), "特殊字符应 URL 编码, 实际: " + url);
+    }
+
+    @Test
+    void testUrlWithOptionalPlaceholderMissingStripped() {
+        Router router = new Router();
+        router.get("/posts/{slug?}", NOOP).name("post.show");
+
+        // 未提供可选占位符 → 整段移除,不留尾斜杠（对齐 Laravel）
+        assertEquals("/posts", router.url("post.show"));
+        // 提供无关参数时,可选占位符仍被移除,无关参数进查询串
+        assertEquals("/posts?id=x", router.url("post.show", Map.of("id", "x")));
+    }
+
+    @Test
+    void testUrlNotFoundStillAppendsMapParamsAsQueryString() {
+        Router router = new Router();
+        router.get("/known", NOOP).name("known");
+
+        // 未命中别名退化为路径映射(/ + 点转斜杠,保留 .index)时,Map 参数仍追加为查询串
+        assertEquals("/admin/role/permission/index?id=1",
+                router.url("admin.role.permission.index", Map.of("id", "1")));
+    }
+
+    @Test
     void testUrlWithSingleParamReplacesFirstPlaceholder() {
         Router router = new Router();
         router.get("/users/{id}", NOOP).name("user.show");
