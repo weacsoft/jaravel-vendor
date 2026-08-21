@@ -82,9 +82,12 @@ public class JaravelOracleGrammar extends OracleGrammar {
     /**
      * 覆盖默认表名/别名 SQL 片段，使限定表名逐段加引号、别名无点。
      * <pre>
-     * from   → "JW_USER"."ZF_JWC_XSJBXXB" as "JW_USER_ZF_JWC_x9k2"
+     * from   → "JW_USER"."ZF_JWC_XSJBXXB" "JW_USER_ZF_JWC_x9k2"
      * update → "JW_USER"."ZF_JWC_XSJBXXB"
      * </pre>
+     * 注意：别名不使用 {@code AS} 关键字——实测目标服务端（Oracle 8i 时代语法/
+     * Oracle 协议兼容库）拒绝 {@code FROM 表 AS 别名} 并报 ORA-00933，
+     * 而 {@code FROM 表 别名} 形式在 Oracle 8~21 全系均合法，兼容性最好。
      */
     @Override
     protected List<SQLPartInfo> getDefault(SQLPartType type) {
@@ -94,7 +97,7 @@ public class JaravelOracleGrammar extends OracleGrammar {
         }
         if (type == SQLPartType.FROM) {
             return Collections.singletonList(simpleInstanceSQLPartInfo(
-                quoteSegments(alias.getTable()) + " as " + symbol + alias + symbol, null));
+                quoteSegments(alias.getTable()) + " " + symbol + alias + symbol, null));
         }
         return super.getDefault(type);
     }
