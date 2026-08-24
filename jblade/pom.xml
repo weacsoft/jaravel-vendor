@@ -3,23 +3,51 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
+
     <parent>
-        <groupId>com.weacsoft</groupId>
-        <artifactId>Jaravel</artifactId>
-        <version>0.0.1-SNAPSHOT</version>
+        <groupId>io.github.lijialong1313</groupId>
+        <artifactId>jaravel-vendor</artifactId>
+        <version>0.1.2</version>
     </parent>
 
     <artifactId>jblade</artifactId>
+    <name>jblade</name>
+    <description>JBlade：Laravel Blade 风格的模板引擎，支持编译期生成、继承、组件等特性</description>
+
     <dependencies>
         <dependency>
-            <groupId>${project.groupId}</groupId>
-            <artifactId>util</artifactId>
-            <version>${project.version}</version>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>utils</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>cache</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- Artisan CLI：可选，引入后自动注册 view:cache / view:clear 命令 -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>artisan</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-core</artifactId>
+        </dependency>
+        <!-- SpringBoot 自动装配注解（@ConditionalOnClass / @ConditionalOnMissingBean） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
-    <properties>
-        <maven.compiler.source>8</maven.compiler.source>
-        <maven.compiler.target>8</maven.compiler.target>
-    </properties>
-
 </project>
+

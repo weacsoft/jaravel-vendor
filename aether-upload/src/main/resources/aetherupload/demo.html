@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AetherUpload 上传演示</title>
+<style>
+  :root { --primary: #4f6ef7; --bg: #f5f7fb; --card: #fff; --text: #2b2d42; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text);
+         display: flex; justify-content: center; padding: 40px 16px; min-height: 100vh; }
+  .card { background: var(--card); border-radius: 14px; box-shadow: 0 6px 24px rgba(40,60,120,.10);
+          width: 100%; max-width: 620px; padding: 32px; }
+  h1 { font-size: 20px; margin-bottom: 6px; }
+  p.sub { color: #8a8fa3; font-size: 13px; margin-bottom: 22px; }
+  .row { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+  label { font-size: 13px; color: #5b5f73; }
+  input[type=text], select { padding: 7px 10px; border: 1px solid #dce0ec; border-radius: 8px; font-size: 13px; }
+  .drop { border: 2px dashed #c9d2ee; border-radius: 12px; padding: 34px; text-align: center;
+          color: #7a80995e; color: #7a8099; cursor: pointer; transition: .2s; margin-bottom: 18px; }
+  .drop.on { border-color: var(--primary); background: #f0f3ff; }
+  .bar-wrap { background: #eceff7; border-radius: 999px; height: 18px; overflow: hidden; margin: 14px 0 6px; }
+  .bar { height: 100%; width: 0; border-radius: 999px; transition: width .25s;
+         background: linear-gradient(90deg, #6d8bff, var(--primary)); }
+  .pct { font-size: 13px; color: #5b5f73; text-align: right; }
+  .btns { display: flex; gap: 10px; margin-top: 16px; }
+  button { flex: 1; padding: 10px 0; border: 0; border-radius: 9px; font-size: 14px; cursor: pointer;
+           background: var(--primary); color: #fff; transition: .15s; }
+  button.ghost { background: #eef1fb; color: var(--primary); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .log { margin-top: 18px; background: #0f1222; color: #9fe8a9; border-radius: 10px; padding: 12px;
+         font: 12px/1.7 Consolas, monospace; height: 150px; overflow: auto; white-space: pre-wrap; }
+  .tag { font-size: 12px; background: #eef1fb; color: var(--primary); border-radius: 6px; padding: 2px 8px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>AetherUpload 大文件上传演示</h1>
+  <p class="sub">分片上传 · 百分比进度 · 断点/断线续传 · base64 传输 · 同步上传</p>
+
+  <div class="row">
+    <label>上传组</label>
+    <input type="text" id="group" value="file" style="width:110px">
+    <label>base64</label>
+    <select id="b64"><option value="auto">跟随后端配置</option><option value="true">开启</option><option value="false">关闭</option></select>
+    <span class="tag" id="cfgTag">配置未加载</span>
+  </div>
+
+  <div class="drop" id="drop">点击选择文件 或 拖拽到此处（大小不限）</div>
+  <input type="file" id="file" hidden>
+
+  <div class="bar-wrap"><div class="bar" id="bar"></div></div>
+  <div class="pct" id="pct">0%</div>
+
+  <div class="btns">
+    <button id="btnUpload" disabled>分片上传</button>
+    <button id="btnSync" class="ghost" disabled>同步上传（小文件）</button>
+    <button id="btnPause" class="ghost" disabled>暂停</button>
+    <button id="btnResume" class="ghost" disabled>续传</button>
+    <button id="btnAbort" class="ghost" disabled>中止</button>
+  </div>
+
+  <div class="log" id="log"></div>
+</div>
+
+<script src="aether-upload.js"></script>
+<script>
+(function () {
+  var endpoint = location.pathname.replace(/\/demo\/?$/, '');
+  var picked = null, uploader = null;
+  var $ = function (id) { return document.getElementById(id); };
+
+  function log(msg) {
+    var el = $('log');
+    el.textContent += '[' + new Date().toLocaleTimeString() + '] ' + msg + '\n';
+    el.scrollTop = el.scrollHeight;
+  }
+  function setProgress(p) {
+    $('bar').style.width = p + '%';
+    $('pct').textContent = p + '%';
+  }
+  function buttons(state) {
+    $('btnUpload').disabled = !state.upload;
+    $('btnSync').disabled = !state.sync;
+    $('btnPause').disabled = !state.pause;
+    $('btnResume').disabled = !state.resume;
+    $('btnAbort').disabled = !state.abort;
+  }
+
+  function makeUploader() {
+    var b64 = $('b64').value;
+    uploader = new AetherUploader({
+      endpoint: endpoint,
+      group: $('group').value || 'file',
+      base64: b64 === 'auto' ? undefined : b64 === 'true',
+      onProgress: function (percent) { setProgress(percent); },
+      onSuccess: function (result) {
+        setProgress(100);
+        log('上传完成: ' + (result.savedPath || result.resourceId));
+        buttons({ upload: true, sync: true });
+      },
+      onError: function (err) {
+        log('错误: ' + err.message + '（可点击「续传」从断点继续）');
+        buttons({ upload: true, sync: true, resume: true, abort: true });
+      },
+      onAbort: function () {
+        log('已中止');
+        setProgress(0);
+        buttons({ upload: true, sync: true });
+      }
+    });
+    uploader._loadConfig().then(function (cfg) {
+      $('cfgTag').textContent = '分片 ' + Math.round(cfg.chunkSize / 1024) + 'KB'
+        + (cfg.base64 ? ' · base64' : ' · 二进制')
+        + (cfg.maxSize > 0 ? ' · 限 ' + Math.round(cfg.maxSize / 1048576) + 'MB' : ' · 大小不限');
+    }).catch(function (e) { log('拉取组配置失败: ' + e.message); });
+    return uploader;
+  }
+
+  $('drop').onclick = function () { $('file').click(); };
+  $('drop').ondragover = function (e) { e.preventDefault(); this.classList.add('on'); };
+  $('drop').ondragleave = function () { this.classList.remove('on'); };
+  $('drop').ondrop = function (e) {
+    e.preventDefault(); this.classList.remove('on');
+    if (e.dataTransfer.files.length) { pick(e.dataTransfer.files[0]); }
+  };
+  $('file').onchange = function () { if (this.files.length) { pick(this.files[0]); } };
+
+  function pick(f) {
+    picked = f;
+    $('drop').textContent = f.name + '（' + (f.size / 1048576).toFixed(2) + ' MB）';
+    setProgress(0);
+    buttons({ upload: true, sync: true });
+    log('已选择: ' + f.name);
+  }
+
+  $('btnUpload').onclick = function () {
+    if (!picked) { return; }
+    makeUploader().upload(picked);
+    buttons({ pause: true, abort: true });
+    log('开始分片上传...');
+  };
+  $('btnSync').onclick = function () {
+    if (!picked) { return; }
+    makeUploader().uploadSync(picked);
+    log('开始同步上传...');
+  };
+  $('btnPause').onclick = function () {
+    uploader && uploader.pause();
+    buttons({ upload: true, sync: true, resume: true, abort: true });
+    log('已暂停（断点保留在服务端）');
+  };
+  $('btnResume').onclick = function () {
+    uploader && uploader.resume();
+    buttons({ pause: true, abort: true });
+    log('从断点续传...');
+  };
+  $('btnAbort').onclick = function () { uploader && uploader.abort(); };
+})();
+</script>
+</body>
+</html>

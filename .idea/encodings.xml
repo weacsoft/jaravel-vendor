@@ -1,19 +1,63 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="Encoding">
+    <file url="file://$USER_HOME$/src/main/java" charset="UTF-8" />
+    <file url="file://$USER_HOME$/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/aether-upload/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/artisan/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/artisan/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/auth-driver-session/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/auth-driver-session/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/auth-provider-database/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/auth-provider-database/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/auth/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/auth/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/cache/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/cache/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/captcha/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/core/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/database/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/event/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/http/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/interface/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/interface/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/jblade/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/jblade/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/json/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/jwt/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/jwt/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/listener/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/listener/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/migration/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/model-cache/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/plugin-jar-core/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/plugin-jar-database/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/plugin-jar-multi-tenant/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/plugin-jar-remote-client/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/plugin-jar-remote-server/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/plugin-java-core/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/queue-database/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/redis-cache/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/redis-config/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/request/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/request/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/response/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/response/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/route/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/route/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/schedule/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/session-redis/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/springboot-starter/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/springboot-starter/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/springboot/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/starter/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/storage/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/util/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/util/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/utils/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/wechat-sdk/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/wire/src/main/java" charset="UTF-8" />
   </component>
 </project>

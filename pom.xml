@@ -1,78 +1,465 @@
-<?xml version="1.0" encoding="UTF-8"?>
+﻿<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-    <groupId>com.weacsoft</groupId>
-    <artifactId>Jaravel</artifactId>
-    <version>1.0.0</version>
+
+    <!-- Jaravel-Vendor : Laravel 风格的 SpringBoot 3 多模块框架（适配器包，类比 PHP vendor 目录） -->
+    <groupId>io.github.lijialong1313</groupId>
+    <artifactId>jaravel-vendor</artifactId>
+    <version>0.1.2</version>
     <packaging>pom</packaging>
+    <name>jaravel-vendor</name>
+    <description>Laravel 风格的 SpringBoot 3 高性能多模块框架：配置 / 路由 / 中间件 / Auth / Eloquent ORM / 迁移 / 缓存 /
+        事件 / 校验
+    </description>
+    <url>https://github.com/weacsoft/jaravel-vendor</url>
+
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <id>lijialong1313</id>
+            <name>lijialong</name>
+            <email>834337589@qq.com</email>
+            <roles>
+                <role>Project Manager</role>
+                <role>Developer</role>
+            </roles>
+        </developer>
+    </developers>
+
+    <scm>
+        <connection>scm:git:https://github.com/weacsoft/jaravel-vendor.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/weacsoft/jaravel-vendor.git</developerConnection>
+        <url>https://github.com/weacsoft/jaravel-vendor</url>
+    </scm>
+
     <modules>
-        <module>request</module>
-        <module>response</module>
-        <module>route</module>
-        <module>springboot-starter</module>
-        <module>util</module>
+        <module>core</module>
+        <!-- JSON 编解码 SPI（Jackson 2/3 双支持，无 Spring 依赖） -->
+        <module>json</module>
+        <!-- 通用工具：内存编译（MemoryClassLoader 等） -->
+        <module>utils</module>
+        <module>http</module>
         <module>jblade</module>
+        <module>auth</module>
+        <module>jwt</module>
+        <module>database</module>
+        <module>migration</module>
+        <module>cache</module>
+        <!-- 模型缓存（可选，引入后可在 Model 类上启用查询缓存） -->
+        <module>model-cache</module>
+        <module>event</module>
+        <!-- Redis 连接管理（多机 session/缓存同步基础） -->
+        <module>redis</module>
+        <module>redis-cache</module>
+        <module>session-redis</module>
+        <!-- Artisan CLI 命令框架 -->
+        <module>artisan</module>
+        <!-- 定时任务调度器 -->
+        <module>schedule</module>
+        <!-- 数据库队列驱动 -->
+        <module>queue-database</module>
+        <module>springboot</module>
+        <module>starter</module>
+        <!-- 插件系统模块（可选，按需引入） -->
+        <module>plugin-jar-core</module>
+        <module>plugin-jar-database</module>
+        <module>plugin-java-core</module>
+        <!-- 插件多租户支持（可选，引入后自动启用租户隔离） -->
+        <module>plugin-jar-multi-tenant</module>
+        <!-- 插件远程执行（P2SP 主从，可选，服务端+客户端各一个模块） -->
+        <module>plugin-jar-remote-server</module>
+        <module>plugin-jar-remote-client</module>
+        <!-- 微信 SDK（公众号 / 小程序 API，对齐 overtrue/laravel-wechat） -->
         <module>wechat-sdk</module>
+        <!-- 验证码模块（图片数字/算术/滑动/旋转，核心层无 SpringBoot 依赖） -->
+        <module>captcha</module>
+        <!-- Wire：Laravel Livewire 风格的部分更新模块，支持自定义 update URL 和 @section 无感 wire 更新 -->
+        <module>wire</module>
+        <!-- Storage：多磁盘文件存储（Filesystem 契约、local 驱动、@RegisterDisk 注解式注册，对齐 Laravel Storage） -->
+        <module>storage</module>
+        <!-- AetherUpload：不限大小分片上传（断点/断线续传、base64 传输、多组配置，对齐 peinhu/AetherUpload） -->
+        <module>aether-upload</module>
     </modules>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.2.12</version>
+        <relativePath/>
+    </parent>
+
     <properties>
-        <java.version>11</java.version>
+        <java.version>17</java.version>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <gaarason.database.version>7.0.15</gaarason.database.version>
+        <jjwt.version>0.12.6</jjwt.version>
+        <slf4j.version>1.7.36</slf4j.version>
+        <asm.version>9.7</asm.version>
+        <okhttp.version>4.12.0</okhttp.version>
+        <jackson3.version>3.0.2</jackson3.version>
+
+        <!-- 覆盖 Spring Boot 管理的依赖版本（安全补丁） -->
+        <jackson-bom.version>2.18.2</jackson-bom.version>
+        <logback.version>1.5.18</logback.version>
+        <assertj.version>3.27.3</assertj.version>
+        <xmlunit2.version>2.10.0</xmlunit2.version>
+        <json-smart.version>2.5.2</json-smart.version>
+        <spring-framework.version>6.1.21</spring-framework.version>
+        <tomcat.version>10.1.54</tomcat.version>
+        <netty.version>4.1.133.Final</netty.version>
     </properties>
+
     <repositories>
-        <repository>
-            <id>jitpack.io</id>
-            <url>https://jitpack.io</url>
-        </repository>
     </repositories>
+
     <dependencyManagement>
         <dependencies>
+            <!-- 内部模块 -->
             <dependency>
-                <groupId>org.projectlombok</groupId>
-                <artifactId>lombok</artifactId>
-                <version>1.18.36</version>
-                <scope>provided</scope>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>core</artifactId>
+                <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>jakarta.servlet</groupId>
-                <artifactId>jakarta.servlet-api</artifactId>
-                <version>[6.0.0,6.1.0]</version>
-                <scope>provided</scope>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>utils</artifactId>
+                <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>org.springframework</groupId>
-                <artifactId>spring-webmvc</artifactId>
-                <version>[6.0.0,7.0.0)</version>
-                <scope>provided</scope>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>http</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>jblade</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>auth</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>jwt</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>database</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>migration</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>cache</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>event</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>redis</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>redis-cache</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>session-redis</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>artisan</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>schedule</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>queue-database</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>springboot</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>starter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <!-- 插件系统模块 -->
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>plugin-jar-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>plugin-jar-database</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>plugin-java-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>plugin-jar-multi-tenant</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>plugin-jar-remote-server</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>plugin-jar-remote-client</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <!-- 微信 SDK -->
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>wechat-sdk</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>captcha</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>wire</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>storage</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>aether-upload</artifactId>
+                <version>${project.version}</version>
             </dependency>
 
+            <!-- Laravel 风格 ORM : gaarason/database-core（替代 database-spring-boot-starter，手动 @Bean 创建数据源） -->
             <dependency>
-                <groupId>cn.hutool</groupId>
-                <artifactId>hutool-json</artifactId>
-                <version>[5.7,)</version>
+                <groupId>io.github.gaarason</groupId>
+                <artifactId>database-core</artifactId>
+                <version>${gaarason.database.version}</version>
+            </dependency>
+            <!-- database-query 依赖 database-core，提供 QueryBuilder；database 模块直接引用 -->
+            <dependency>
+                <groupId>io.github.gaarason</groupId>
+                <artifactId>database-query</artifactId>
+                <version>${gaarason.database.version}</version>
+            </dependency>
+
+            <!-- Druid 数据源，用于 database 模块手动创建 GaarasonDataSource -->
+            <dependency>
+                <groupId>com.alibaba</groupId>
+                <artifactId>druid</artifactId>
+                <version>1.2.24</version>
+            </dependency>
+
+            <!-- JWT -->
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-api</artifactId>
+                <version>${jjwt.version}</version>
             </dependency>
             <dependency>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-autoconfigure</artifactId>
-                <version>[3.0.0,4.0.0)</version>
-                <scope>provided</scope>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-impl</artifactId>
+                <version>${jjwt.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-jackson</artifactId>
+                <version>${jjwt.version}</version>
+            </dependency>
+
+            <!-- SLF4J（plugin-jar-core/plugin-java-core 兼容 SB2.7，使用 1.7.x） -->
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>${slf4j.version}</version>
+            </dependency>
+
+            <!-- ASM 字节码扫描（plugin-jar-core） -->
+            <dependency>
+                <groupId>org.ow2.asm</groupId>
+                <artifactId>asm</artifactId>
+                <version>${asm.version}</version>
+            </dependency>
+
+            <!-- OkHttp（wechat-sdk） -->
+            <dependency>
+                <groupId>com.squareup.okhttp3</groupId>
+                <artifactId>okhttp</artifactId>
+                <version>${okhttp.version}</version>
+            </dependency>
+
+            <!-- Jackson 2 显式版本管理（SB3/SB4 双兼容） -->
+            <!-- SB4 使用 tools.jackson（Jackson 3），不管理 com.fasterxml.jackson.core GA； -->
+            <!-- 本库内部使用 com.fasterxml.jackson.databind.ObjectMapper，需保证 Jackson 2 在类路径上。 -->
+            <!-- 此处显式声明版本，使消费端（无论 SB3 还是 SB4）均能传递获取 Jackson 2.18.2。 -->
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-databind</artifactId>
+                <version>${jackson-bom.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-core</artifactId>
+                <version>${jackson-bom.version}</version>
+            </dependency>
+            <!-- gaarason/database 的 JsonConversion 依赖 jsr310 的 LocalDateTimeSerializer -->
+            <!-- SB3 由 spring-boot-starter-json 传递提供；SB4 切换至 Jackson 3 不再传递，故需显式声明 -->
+            <dependency>
+                <groupId>com.fasterxml.jackson.datatype</groupId>
+                <artifactId>jackson-datatype-jsr310</artifactId>
+                <version>${jackson-bom.version}</version>
+            </dependency>
+
+            <!-- Jackson 3（SB4 运行时使用，json 模块编译期 provided） -->
+            <dependency>
+                <groupId>tools.jackson.core</groupId>
+                <artifactId>jackson-databind</artifactId>
+                <version>${jackson3.version}</version>
+            </dependency>
+
+            <!-- json SPI 模块 -->
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>json</artifactId>
+                <version>${project.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
+
+    <dependencies>
+        <!-- 全局 provided : Lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+    </dependencies>
+
     <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.1</version>
-                <configuration>
-                    <source>1.8</source>
-                    <target>1.8</target>
-                    <encoding>UTF-8</encoding>
-                </configuration>
-            </plugin>
-        </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>release-central</id>
+            <build>
+                <plugins>
+                    <!-- 正式发布禁用原生deploy，交给central插件处理 -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-deploy-plugin</artifactId>
+                        <version>3.1.1</version>
+                        <configuration>
+                            <skip>true</skip>
+                        </configuration>
+                    </plugin>
+                    <!-- 中央库发布插件 -->
+                    <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <version>0.9.0</version>
+                        <extensions>true</extensions>
+                        <configuration>
+                            <publishingServerId>ossrh</publishingServerId>
+                        </configuration>
+                    </plugin>
+
+                    <!-- 源码包（发布必填） -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-source-plugin</artifactId>
+                        <version>3.3.1</version>
+                        <executions>
+                            <execution>
+                                <id>attach-sources</id>
+                                <goals>
+                                    <goal>jar-no-fork</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <!-- 文档包（发布必填） -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-javadoc-plugin</artifactId>
+                        <version>3.1.1</version>
+                        <configuration>
+                            <charset>UTF-8</charset>
+                            <encoding>UTF-8</encoding>
+                            <docencoding>UTF-8</docencoding>
+                            <additionalJOption>-Xdoclint:none</additionalJOption>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>attach-javadocs</id>
+                                <goals>
+                                    <goal>jar</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <!-- GPG签名（发布必填） -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <execution>
+                                <id>sign-artifacts</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>sign</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

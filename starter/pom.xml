@@ -1,0 +1,87 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.lijialong1313</groupId>
+        <artifactId>jaravel-vendor</artifactId>
+        <version>0.1.2</version>
+    </parent>
+
+    <artifactId>starter</artifactId>
+    <name>starter</name>
+    <description>SpringBoot 自动装配：一键引入 Laravel 风格基础组件（redis / wechat / wire / queue-database / jwt 等为可选模块，按需引入）</description>
+
+    <dependencies>
+        <!-- ============ 基础必选模块（每个 Laravel 风格应用都自带） ============ -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>http</artifactId>
+        </dependency>
+        <!-- SpringBoot 集成：RouterFunction 路由桥接、Request 注入、Response 处理 -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>springboot</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>auth</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>database</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>migration</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>cache</artifactId>
+        </dependency>
+        <!-- 文件存储（Laravel Storage 风格：local/public/framework 磁盘，基础必选） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>storage</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>event</artifactId>
+        </dependency>
+        <!-- Artisan CLI 命令框架 -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>artisan</artifactId>
+        </dependency>
+        <!-- 定时任务调度器 -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>schedule</artifactId>
+        </dependency>
+
+        <!-- ============ 以下为可选扩展模块，不纳入 starter 聚合，用户按需引入 ============
+             jblade             Blade 模板引擎（并非所有项目都有界面，按需引入）
+             redis              Redis 连接管理（多机 session/缓存同步基础）
+             redis-cache        Redis 缓存驱动（多机缓存同步）
+             session-redis      Redis Session 守卫（多机 Session 同步）
+             wechat-sdk        微信公众号 / 小程序 API（对齐 overtrue/laravel-wechat）
+             wire              Laravel Livewire 风格的部分更新模块
+             queue-database    数据库队列驱动（Java 有原生多线程，队列非强制，按需启用）
+             jwt               JWT 认证（auth 的可选 Guard 扩展）
+             注：storage 已升级为基础必选模块（见上方），不再列为可选。
+        -->
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+            <optional>true</optional>
+        </dependency>
+    </dependencies>
+</project>
+

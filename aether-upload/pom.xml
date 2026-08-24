@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.lijialong1313</groupId>
+        <artifactId>jaravel-vendor</artifactId>
+        <version>0.1.2</version>
+    </parent>
+
+    <artifactId>aether-upload</artifactId>
+    <name>aether-upload</name>
+    <description>大文件上传：不限大小分片上传 / 断点续传 / 断线续传 / base64 分片传输 / 多组配置（内存或 Cache/Redis 记录头）/ 上传事件 / 自定义路由与中间件，对齐 Laravel peinhu/AetherUpload</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>core</artifactId>
+        </dependency>
+        <!-- 路由 / 控制器 / 中间件 -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>http</artifactId>
+        </dependency>
+        <!-- 事件：上传生命周期事件分发 -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>event</artifactId>
+        </dependency>
+        <!-- 缓存：记录头统一由 cache 模块管理（配置 redis store 即为 redis 记录头） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>cache</artifactId>
+        </dependency>
+        <!-- 存储：上传完成后的落盘统一走 Filesystem 抽象（组配置 disk 后可落到任意磁盘/驱动） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>storage</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.servlet</groupId>
+            <artifactId>jakarta.servlet-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/pom/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>com.weacsoft</groupId>
+        <groupId>io.github.lijialong1313</groupId>
         <artifactId>jaravel-vendor</artifactId>
-        <version>1.0.0</version>
+        <version>0.1.2</version>
     </parent>
 
     <artifactId>wechat-sdk</artifactId>
@@ -15,15 +15,20 @@
     <description>微信 SDK：公众号 / 小程序 API 访问，对齐 PHP overtrue/laravel-wechat（EasyWeChat）</description>
 
     <dependencies>
-        <!-- 内部模块：缓存（AccessToken 缓存基础） -->
+        <!-- 内部模块：缓存（AccessToken / jsapi_ticket 缓存基础，提供 CacheManager/CacheStore） -->
         <dependency>
-            <groupId>com.weacsoft</groupId>
+            <groupId>io.github.lijialong1313</groupId>
             <artifactId>cache</artifactId>
         </dependency>
-        <!-- 内部模块：Redis 连接管理（AccessToken 分布式缓存） -->
+        <!-- 内部模块：core（PublishableConfig 静态注册） -->
         <dependency>
-            <groupId>com.weacsoft</groupId>
-            <artifactId>redis-config</artifactId>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>core</artifactId>
+        </dependency>
+        <!-- 内部模块：utils（SimpleMemoryCache fallback 基础设施，CacheManager.createDefaultStore() 依赖） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>utils</artifactId>
         </dependency>
         <!-- Spring Boot 自动装配 -->
         <dependency>
@@ -38,7 +43,6 @@
         <dependency>
             <groupId>com.squareup.okhttp3</groupId>
             <artifactId>okhttp</artifactId>
-            <version>4.12.0</version>
         </dependency>
         <!-- Jackson：JSON 解析（Spring Boot 已管理版本） -->
         <dependency>
@@ -56,5 +60,16 @@
             <artifactId>spring-boot-configuration-processor</artifactId>
             <optional>true</optional>
         </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 </project>
+

@@ -1,0 +1,490 @@
+package com.weacsoft.jaravel.vendor.http.controller.response;
+
+import com.weacsoft.jaravel.vendor.core.view.View;
+import com.weacsoft.jaravel.vendor.core.view.ViewManagerHolder;
+import com.weacsoft.jaravel.vendor.json.Json;
+import com.weacsoft.jaravel.vendor.utils.Maps;
+import jakarta.servlet.http.Cookie;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+public class ResponseBuilder {
+
+    /**
+     * 便捷构造不可变 Map，用于替代 {@code Map.of(...)}。
+     *
+     * <p>与 {@code Map.of} 不同，本方法允许传入 {@code null} / 空字符串键值而不会抛异常：</p>
+     * <ul>
+     *     <li>键为 {@code null} 或空字符串 → 跳过该条目（视为没有这条数据）。</li>
+     *     <li>值为 {@code null} 或空字符串 → 保留该条目（模板中渲染为空、{@code @if} 判空为假）。</li>
+     * </ul>
+     *
+     * <p>参数按 (key, value) 成对传入，保持插入顺序，返回不可变 Map。底层委托 {@link Maps#of(Object...)}。</p>
+     *
+     * <p>示例：</p>
+     * <pre>{@code
+     * return ResponseBuilder.view("mdui.admin.item", ResponseBuilder.map("setting", item));
+     * }</pre>
+     *
+     * @param kvs 交替出现的 key/value
+     * @return 不可变 Map<String, Object>
+     */
+    public static Map<String, Object> map(Object... kvs) {
+        return Maps.of(kvs);
+    }
+
+    public static Response ok() {
+        return new AbstractResponse() {
+            @Override
+            public int getStatus() {
+                return 200;
+            }
+
+            @Override
+            public String getContent() {
+                return "ok";
+            }
+        };
+    }
+
+    /**
+     * 渲染视图。
+     * <p>
+     * 仅依赖 core 标准层的 {@link View} 契约（{@link ViewManagerHolder} 持有）：
+     * 具体模板引擎（如 jblade）由使用者单独引入并在装配期注册，http 模块本身不依赖任何模板引擎。
+     *
+     * @param templateName 模板名，如 {@code "pages.home"}
+     * @param data         模板变量
+     */
+    public static Response view(String templateName, Map<String, Object> data) {
+        return new AbstractResponse() {
+            {
+                addHeader("Content-Type", "text/html; charset=utf-8");
+                addHeader("X-Template-Name", templateName);
+            }
+
+            @Override
+            public int getStatus() {
+                return 200;
+            }
+
+            @Override
+            public String getContent() {
+                try {
+                    Map<String, Object> renderData = data;
+                    if (com.weacsoft.jaravel.vendor.utils.WireMode.isActive()) {
+                        renderData = new java.util.LinkedHashMap<>(data != null ? data : java.util.Collections.emptyMap());
+                        renderData.put("__wire_mode", true);
+                    }
+                    View view = ViewManagerHolder.defaultView();
+                    if (view == null) {
+                        throw new IllegalStateException(
+                                "[view] 未注册任何 View 实现：http 模块不内建模板引擎，"
+                                + "请引入模板引擎模块（如 jblade）完成 View 注册后再调用 ResponseBuilder.view()");
+                    }
+                    return view.render(templateName, renderData);
+                } catch (RuntimeException e) {
+                    throw e;
+                } catch (Exception e) {
+                    throw new RuntimeException("Failed to render template: " + templateName, e);
+                }
+            }
+        };
+    }
+
+    // Wire 功能由 wire 模块的 WireController / WireManager 提供
+
+    public static Response json(Object data) {
+        return new AbstractResponse() {
+            {
+                addHeader("Content-Type", "application/json; charset=utf-8");
+            }
+
+            @Override
+            public int getStatus() {
+                return 200;
+            }
+
+            @Override
+            public String getContent() {
+                try {
+                    return Json.stringify(data);
+                } catch (Exception e) {
+                    throw new RuntimeException("JSON 序列化失败", e);
+                }
+            }
+        };
+    }
+
+    public static Response content(String content) {
+        return new AbstractResponse() {
+            {
+                addHeader("Content-Type", "text/plain; charset=utf-8");
+            }
+
+            @Override
+            public int getStatus() {
+                return 200;
+            }
+
+            @Override
+            public String getContent() {
+                return content;
+            }
+        };
+    }
+
+    /**
+     * HTML 响应。
+     *
+     * @param html HTML 内容
+     * @return Content-Type 为 text/html 的响应
+     */
+    public static Response html(String html) {
+        return new AbstractResponse() {
+            {
+                addHeader("Content-Type", "text/html; charset=utf-8");
+            }
+
+            @Override
+            public int getStatus() {
+                return 200;
+            }
+
+            @Override
+            public String getContent() {
+                return html;
+            }
+        };
+    }
+
+    public static Response file(byte[] data, String filename) {
+        return new AbstractResponse() {
+            {
+                addHeader("Content-Type", "application/octet-stream");
+                addHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
+            }
+
+            @Override
+            public int getStatus() {
+                return 200;
+            }
+
+            @Override
+            public String getContent() {
+                return null;
+            }
+
+            @Override
+            public byte[] getBytes() {
+                return data;
+            }
+        };
+    }
+
+    /**
+     * 构建静态资源响应（inline 显示，带缓存头和 MIME 类型）。
+     * <p>
+     * 与 {@link #file} 不同，此方法用于服务静态资源文件（css/js/图片等），
+     * 设置正确的 Content-Type 和 Cache-Control 头，浏览器直接渲染而非下载。
+     *
+     * @param data        文件内容
+     * @param mimeType    MIME 类型（如 {@code text/css}）
+     * @param cacheMaxAge 缓存时间（秒）
+     * @return 静态资源响应
+     */
+    public static Response staticFile(byte[] data, String mimeType, int cacheMaxAge) {
+        return new AbstractResponse() {
+            {
+                addHeader("Content-Type", mimeType);
+                addHeader("Cache-Control", "public, max-age=" + cacheMaxAge);
+                addHeader("Content-Length", String.valueOf(data.length));
+            }
+
+            @Override
+            public int getStatus() {
+                return 200;
+            }
+
+            @Override
+            public String getContent() {
+                return null;
+            }
+
+            @Override
+            public byte[] getBytes() {
+                return data;
+            }
+        };
+    }
+
+    public static Response unauthorized(String message) {
+        return error(401, message);
+    }
+
+    public static Response forbidden(String message) {
+        return error(403, message);
+    }
+
+    public static Response error(int status, String message) {
+        return new AbstractResponse() {
+            {
+                addHeader("Content-Type", "application/json; charset=utf-8");
+            }
+
+            @Override
+            public int getStatus() {
+                return status;
+            }
+
+            @Override
+            public String getContent() {
+                try {
+                    Map<String, String> map = new HashMap<>();
+                    map.put("message", message);
+                    return Json.stringify(map);
+                } catch (Exception e) {
+                    throw new RuntimeException("JSON 序列化失败", e);
+                }
+            }
+        };
+    }
+
+    /**
+     * 返回错误响应，附带额外的 redirect 字段。
+     * 用于 Wire 请求认证过期时，告知前端跳转到登录页。
+     *
+     * @param status    HTTP 状态码（如 401）
+     * @param message   错误消息
+     * @param redirect  重定向 URL（如 /login）
+     */
+    public static Response error(int status, String message, String redirect) {
+        return new AbstractResponse() {
+            {
+                addHeader("Content-Type", "application/json; charset=utf-8");
+            }
+
+            @Override
+            public int getStatus() {
+                return status;
+            }
+
+            @Override
+            public String getContent() {
+                try {
+                    Map<String, Object> map = new LinkedHashMap<>();
+                    map.put("message", message);
+                    map.put("redirect", redirect);
+                    return Json.stringify(map);
+                } catch (Exception e) {
+                    throw new RuntimeException("JSON 序列化失败", e);
+                }
+            }
+        };
+    }
+
+    public static Response redirect(String url) {
+        return new AbstractResponse() {
+            {
+                addHeader("Location", url);
+            }
+
+            @Override
+            public int getStatus() {
+                return 302;
+            }
+
+            @Override
+            public String getContent() {
+                return "";
+            }
+        };
+    }
+
+    /** 将对象序列化为 JSON 字符串 */
+    public static String toJson(Object data) {
+        try {
+            return Json.stringify(data);
+        } catch (Exception e) {
+            throw new RuntimeException("JSON 序列化失败", e);
+        }
+    }
+
+    // ===== Raw 模式 =====
+
+    /**
+     * Raw 模式：创建一个完全空的响应构建器，开发者自由组织 header 和 body。
+     * <p>
+     * 不预设任何 Content-Type 或状态码，全部由开发者决定。
+     * 如果最终没有设置 Content-Type，框架会在写入 HTTP 响应时兜底为 {@code text/plain;charset=utf-8}。
+     *
+     * <h3>使用示例</h3>
+     * <pre>{@code
+     * // 自定义 XML 响应
+     * return ResponseBuilder.raw()
+     *     .status(200)
+     *     .header("Content-Type", "application/xml;charset=utf-8")
+     *     .header("X-Custom-Header", "hello")
+     *     .body("<xml><name>test</name></xml>");
+     *
+     * // 自定义二进制响应
+     * return ResponseBuilder.raw()
+     *     .status(200)
+     *     .header("Content-Type", "image/png")
+     *     .body(imageBytes);
+     *
+     * // 不设 Content-Type，框架兜底为 text/plain
+     * return ResponseBuilder.raw()
+     *     .status(204)
+     *     .body("");
+     * }</pre>
+     *
+     * @return RawResponse 构建器
+     */
+    public static RawResponse raw() {
+        return new RawResponse();
+    }
+
+    /**
+     * Raw 响应构建器：链式设置 status / header / cookie / body，不预设任何值。
+     */
+    public static class RawResponse implements Response {
+        private int status = 200;
+        private final Map<String, List<String>> headers = new LinkedHashMap<>();
+        private final List<Cookie> cookies = new ArrayList<>();
+        private String content;
+        private byte[] bytes;
+
+        /**
+         * 设置 HTTP 状态码（默认 200）。
+         */
+        public RawResponse status(int status) {
+            this.status = status;
+            return this;
+        }
+
+        /**
+         * 添加响应头。
+         */
+        public RawResponse header(String name, String value) {
+            headers.computeIfAbsent(name, k -> new ArrayList<>()).add(value);
+            return this;
+        }
+
+        /**
+         * 设置 Content-Type。
+         */
+        public RawResponse contentType(String contentType) {
+            headers.put("Content-Type", new ArrayList<>(List.of(contentType)));
+            return this;
+        }
+
+        /**
+         * 添加 Cookie。
+         */
+        public RawResponse cookie(Cookie cookie) {
+            cookies.add(cookie);
+            return this;
+        }
+
+        /**
+         * 添加 Cookie（简易方式）。
+         */
+        public RawResponse cookie(String name, String value) {
+            cookies.add(new Cookie(name, value));
+            return this;
+        }
+
+        /**
+         * 设置文本响应体。
+         */
+        public Response body(String content) {
+            this.content = content;
+            return this;
+        }
+
+        /**
+         * 设置二进制响应体。
+         */
+        public Response body(byte[] bytes) {
+            this.bytes = bytes;
+            return this;
+        }
+
+        // ===== Response 接口实现 =====
+
+        @Override
+        public int getStatus() {
+            return status;
+        }
+
+        @Override
+        public Map<String, List<String>> getHeaders() {
+            return new LinkedHashMap<>(headers);
+        }
+
+        @Override
+        public void addHeader(String name, String value) {
+            headers.computeIfAbsent(name, k -> new ArrayList<>()).add(value);
+        }
+
+        @Override
+        public Cookie[] getCookies() {
+            return cookies.toArray(new Cookie[0]);
+        }
+
+        @Override
+        public void addCookie(Cookie cookie) {
+            cookies.add(cookie);
+        }
+
+        @Override
+        public void addCookie(String name, String value) {
+            cookies.add(new Cookie(name, value));
+        }
+
+        @Override
+        public String getContent() {
+            return content;
+        }
+
+        @Override
+        public byte[] getBytes() {
+            return bytes;
+        }
+    }
+
+    private static abstract class AbstractResponse implements Response {
+        protected final Map<String, List<String>> headers = new HashMap<>();
+        protected final List<Cookie> cookies = new ArrayList<>();
+
+        @Override
+        public Map<String, List<String>> getHeaders() {
+            return new HashMap<>(headers);
+        }
+
+        @Override
+        public void addHeader(String name, String value) {
+            headers.computeIfAbsent(name, k -> new ArrayList<>()).add(value);
+        }
+
+        @Override
+        public Cookie[] getCookies() {
+            return cookies.toArray(new Cookie[0]);
+        }
+
+        @Override
+        public void addCookie(Cookie cookie) {
+            cookies.add(cookie);
+        }
+
+        @Override
+        public void addCookie(String name, String value) {
+            cookies.add(new Cookie(name, value));
+        }
+    }
+}
