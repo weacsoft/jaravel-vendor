@@ -70,6 +70,17 @@ public class WechatProperties {
     private boolean enabled = true;
 
     /**
+     * access_token 获取模式：
+     * <ul>
+     *   <li>{@code legacy}（默认）：GET {@code cgi-bin/token}（传统接口）</li>
+     *   <li>{@code stable}：POST {@code cgi-bin/stable_token}（官方新版稳定接口，
+     *       配额与失效策略更优，推荐新接入使用）</li>
+     * </ul>
+     * 两种模式取到的 token 等价、可混用，仅获取路径不同。
+     */
+    private String tokenMode = "legacy";
+
+    /**
      * 缓存 store 名称，用于 access_token / jsapi_ticket 缓存。
      * <p>
      * 为空时使用 cache 模块的默认 store（由 {@code jaravel.cache.default-store} 决定），
@@ -93,6 +104,17 @@ public class WechatProperties {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    /**
+     * @return access_token 获取模式（legacy/stable）
+     */
+    public String getTokenMode() {
+        return tokenMode;
+    }
+
+    public void setTokenMode(String tokenMode) {
+        this.tokenMode = tokenMode;
     }
 
     public String getCacheStore() {
@@ -151,7 +173,16 @@ public class WechatProperties {
     public MiniAppConfig getMiniApp(String configName) {
         String name = (configName == null || configName.isEmpty()) ? "default" : configName;
         MiniAppConfig config = miniApps.get(name);
-        if (config == null && !"default".equals(name)) {
+        if (config != null) {
+            return config;
+        }
+        if (!"default".equals(name)) {
+            // 支持用 appId 直接定位小程序命名配置
+            for (MiniAppConfig candidate : miniApps.values()) {
+                if (name.equals(candidate.getAppId())) {
+                    return candidate;
+                }
+            }
             config = miniApps.get("default");
         }
         return config;
@@ -175,6 +206,17 @@ public class WechatProperties {
 
         /** 公众号消息加解密密钥（EncodingAESKey） */
         private String aesKey;
+
+        /**
+         * 接收消息模式：
+         * <ul>
+         *   <li>{@code plain}（默认）：明文模式，推送/回复为明文 XML</li>
+         *   <li>{@code safe}：加密模式，推送/回复整体 AES 加密于 {@code Encrypt}，
+         *       需同时配置 {@code token} 与 {@code aes-key}</li>
+         * </ul>
+         * 对应微信「消息与推送 - 消息加解密」的配置项。
+         */
+        private String messageMode = "plain";
 
         /** OAuth 授权配置 */
         private OauthConfig oauth = new OauthConfig();
@@ -209,6 +251,17 @@ public class WechatProperties {
 
         public void setAesKey(String aesKey) {
             this.aesKey = aesKey;
+        }
+
+        /**
+         * @return 接收消息模式（plain/safe，默认 plain）
+         */
+        public String getMessageMode() {
+            return messageMode;
+        }
+
+        public void setMessageMode(String messageMode) {
+            this.messageMode = messageMode;
         }
 
         public OauthConfig getOauth() {

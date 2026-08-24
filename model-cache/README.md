@@ -44,7 +44,7 @@ TTL 单位统一为**秒**（对齐 cache 模块）。
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>model-cache</artifactId>
-    <version>0.1.2</version>
+    <version>0.1.3</version>
 </dependency>
 ```
 
@@ -84,13 +84,13 @@ com.weacsoft.jaravel.vendor.modelcache
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>model-cache</artifactId>
-    <version>0.1.2</version>
+    <version>0.1.3</version>
 </dependency>
 <!-- cache 模块（必需，提供 CacheManager） -->
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>cache</artifactId>
-    <version>0.1.2</version>
+    <version>0.1.3</version>
 </dependency>
 ```
 

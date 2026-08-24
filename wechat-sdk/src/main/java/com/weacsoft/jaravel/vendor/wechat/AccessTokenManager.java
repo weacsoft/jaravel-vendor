@@ -3,8 +3,10 @@ package com.weacsoft.jaravel.vendor.wechat;
 import com.weacsoft.jaravel.vendor.cache.CacheManager;
 import com.weacsoft.jaravel.vendor.cache.CacheStore;
 import com.weacsoft.jaravel.vendor.json.Json;
+import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
+import okhttp3.RequestBody;
 import okhttp3.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,11 +56,21 @@ public class AccessTokenManager {
     /** Token 提前过期缓冲时间（秒），防止临界点失效 */
     private static final long EXPIRY_BUFFER_SECONDS = 300;
 
+    /** 获取模式：传统接口 {@code GET cgi-bin/token} */
+    public static final String TOKEN_MODE_LEGACY = "legacy";
+    /** 获取模式：官方稳定接口 {@code POST cgi-bin/stable_token} */
+    public static final String TOKEN_MODE_STABLE = "stable";
+
+    private static final MediaType JSON_MEDIA_TYPE = MediaType.parse("application/json; charset=utf-8");
+
     /** OkHttp 客户端（线程安全，复用连接池） */
     private final OkHttpClient httpClient;
 
     /** 缓存仓库（优先配置的 store，未注册时回退 array） */
     private final CacheStore cacheStore;
+
+    /** 获取模式：legacy（默认）| stable，决定请求 {@code cgi-bin/token} 还是 {@code cgi-bin/stable_token} */
+    private final String tokenMode;
 
     /**
      * 构造 Access Token 管理器。
@@ -84,8 +96,32 @@ public class AccessTokenManager {
     public AccessTokenManager(OkHttpClient httpClient,
                               CacheManager cacheManager,
                               String preferredStore) {
+        this(httpClient, cacheManager, preferredStore, TOKEN_MODE_LEGACY);
+    }
+
+    /**
+     * 构造 Access Token 管理器，指定缓存 store 与获取模式。
+     * <p>
+     * 获取模式（对应 {@code jaravel.wechat.token-mode}）：
+     * <ul>
+     *   <li>{@code legacy}（默认）：GET {@code cgi-bin/token}，传统接口</li>
+     *   <li>{@code stable}：POST {@code cgi-bin/stable_token}，官方稳定接口（配额更优，推荐新接入）</li>
+     * </ul>
+     * 两种模式拿到的 access_token 等价（同一 appId 共用票据池）。
+     *
+     * @param httpClient       OkHttp 客户端
+     * @param cacheManager     缓存管理器（可为 null）
+     * @param preferredStore   首选缓存 store 名称
+     * @param tokenMode        获取模式（legacy/stable，忽略大小写；null/空按 legacy）
+     */
+    public AccessTokenManager(OkHttpClient httpClient,
+                              CacheManager cacheManager,
+                              String preferredStore,
+                              String tokenMode) {
         this.httpClient = httpClient;
-        this.cacheStore = resolveStore(cacheManager, preferredStore);
+        this.cacheStore = WechatCacheResolver.resolve(cacheManager, preferredStore);
+        this.tokenMode = (tokenMode == null || tokenMode.isEmpty())
+                ? TOKEN_MODE_LEGACY : tokenMode.toLowerCase();
     }
 
     /**
@@ -179,7 +215,12 @@ public class AccessTokenManager {
     /**
      * 调用微信 API 获取 access_token。
      * <p>
-     * API: {@code GET https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid={appId}&secret={secret}}
+     * 两种模式：
+     * <ul>
+     *   <li>legacy: {@code GET /cgi-bin/token?grant_type=client_credential&appid={appId}&secret={secret}}</li>
+     *   <li>stable: {@code POST /cgi-bin/stable_token}，请求体
+     *       {@code {"grant_type":"client_credential","appid":"…","secret":"…"}}（官方稳定接口）</li>
+     * </ul>
      *
      * @param appId  微信 AppID
      * @param secret 微信 AppSecret
@@ -188,16 +229,27 @@ public class AccessTokenManager {
      */
     @SuppressWarnings("unchecked")
     private Map<String, Object> requestTokenFromWechat(String appId, String secret) {
-        String url = API_BASE_URL + "/cgi-bin/token?grant_type=client_credential"
-                + "&appid=" + appId + "&secret=" + secret;
-
-        Request request = new Request.Builder().url(url).get().build();
+        Request request;
+        if (TOKEN_MODE_STABLE.equals(tokenMode)) {
+            Map<String, Object> tokenBody = new java.util.LinkedHashMap<>();
+            tokenBody.put("grant_type", "client_credential");
+            tokenBody.put("appid", appId);
+            tokenBody.put("secret", secret);
+            request = new Request.Builder()
+                    .url(API_BASE_URL + "/cgi-bin/stable_token")
+                    .post(RequestBody.create(Json.stringify(tokenBody), JSON_MEDIA_TYPE))
+                    .build();
+        } else {
+            String url = API_BASE_URL + "/cgi-bin/token?grant_type=client_credential"
+                    + "&appid=" + appId + "&secret=" + secret;
+            request = new Request.Builder().url(url).get().build();
+        }
 
         try (Response response = httpClient.newCall(request).execute()) {
             String body = response.body() != null ? response.body().string() : "";
             if (!response.isSuccessful()) {
-                logger.error("[wechat] 获取 AccessToken HTTP 失败: appId={}, code={}, body={}",
-                        appId, response.code(), body);
+                logger.error("[wechat] 获取 AccessToken HTTP 失败: appId={}, mode={}, code={}, body={}",
+                        appId, tokenMode, response.code(), body);
                 throw new RuntimeException("获取 AccessToken HTTP 失败: " + response.code());
             }
 
@@ -220,32 +272,4 @@ public class AccessTokenManager {
         }
     }
 
-    /**
-     * 解析缓存仓库：使用 cache 模块的默认 store，或显式指定的 store。
-     * <p>
-     * 当 {@code preferredStore} 为 null 或空时，使用 {@link CacheManager#store()} 获取默认 store
-     *（由 {@code jaravel.cache.default-store} 决定，不关心具体实现）。
-     * 当指定了具体 store 名时，按名解析，未注册时回退到默认 store。
-     * <p>
-     * 当 {@link CacheManager} 为空（cache 自动装配未启用）时，使用独立的内存 store 保证 SDK 仍可用。
-     *
-     * @param cacheManager 缓存管理器，可为 null
-     * @param preferredStore 首选 store 名，为空时使用默认 store
-     * @return 解析出的缓存仓库
-     */
-    private static CacheStore resolveStore(CacheManager cacheManager, String preferredStore) {
-        if (cacheManager == null) {
-            logger.warn("[wechat] CacheManager 未注入，AccessToken 使用本地内存缓存");
-            return CacheManager.createDefaultStore();
-        }
-        if (preferredStore == null || preferredStore.isEmpty()) {
-            return cacheManager.store();
-        }
-        try {
-            return cacheManager.store(preferredStore);
-        } catch (IllegalStateException e) {
-            logger.debug("[wechat] 缓存 store '{}' 未注册，AccessToken 回退到默认 store: {}", preferredStore, e.getMessage());
-            return cacheManager.store();
-        }
-    }
 }

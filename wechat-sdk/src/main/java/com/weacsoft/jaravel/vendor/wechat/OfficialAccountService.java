@@ -2,58 +2,74 @@ package com.weacsoft.jaravel.vendor.wechat;
 
 import com.weacsoft.jaravel.vendor.cache.CacheManager;
 import com.weacsoft.jaravel.vendor.cache.CacheStore;
-import com.weacsoft.jaravel.vendor.json.Json;
-import okhttp3.MediaType;
-import okhttp3.MultipartBody;
+import com.weacsoft.jaravel.vendor.wechat.jsdk.JssdkConfig;
+import com.weacsoft.jaravel.vendor.wechat.message.Image;
+import com.weacsoft.jaravel.vendor.wechat.message.MenuMessage;
+import com.weacsoft.jaravel.vendor.wechat.message.Message;
+import com.weacsoft.jaravel.vendor.wechat.message.MiniProgramPage;
+import com.weacsoft.jaravel.vendor.wechat.message.MpNews;
+import com.weacsoft.jaravel.vendor.wechat.message.MpNewsArticle;
+import com.weacsoft.jaravel.vendor.wechat.message.Music;
+import com.weacsoft.jaravel.vendor.wechat.message.News;
+import com.weacsoft.jaravel.vendor.wechat.message.Text;
+import com.weacsoft.jaravel.vendor.wechat.message.Video;
+import com.weacsoft.jaravel.vendor.wechat.message.Voice;
+import com.weacsoft.jaravel.vendor.wechat.message.WeChatCard;
+import com.weacsoft.jaravel.vendor.wechat.menu.Menu;
+import com.weacsoft.jaravel.vendor.wechat.response.WeChatResponse;
+import com.weacsoft.jaravel.vendor.wechat.response.WechatApiException;
+import com.weacsoft.jaravel.vendor.wechat.template.SubscriptionNotice;
+import com.weacsoft.jaravel.vendor.wechat.template.TemplateMessage;
+import com.weacsoft.jaravel.vendor.wechat.transport.JacksonJsonEncoder;
+import com.weacsoft.jaravel.vendor.wechat.transport.RequestJsonEncoder;
+import com.weacsoft.jaravel.vendor.wechat.transport.WechatTransport;
+import com.weacsoft.jaravel.vendor.wechat.user.MaterialItem;
+import com.weacsoft.jaravel.vendor.wechat.user.Tag;
+import com.weacsoft.jaravel.vendor.wechat.user.WeChatUser;
 import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.HashMap;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 /**
- * 微信公众号服务，对齐 PHP 项目的 {@code WechatService}。
+ * 微信公众号服务：类型化的 API 门面。
  * <p>
- * 封装微信公众号全部常用 API，包括用户信息、模板消息、菜单管理、标签管理、
- * 素材管理、客服消息、JSSDK 配置等。所有 API 调用通过 OkHttp 执行，
- * JSON 响应通过 {@link Json} 解析。
+ * 对齐 EasyWeChat（overtrue/wechat 5.x）的对象模型：发送侧用
+ * {@link com.weacsoft.jaravel.vendor.wechat.message.Message} 消息族 + {@link template.TemplateMessage}/
+ * {@link template.SubscriptionNotice}，读取侧返回类型化 DTO（{@link WeChatUser}/{@link Tag}/
+ * {@link MaterialItem}），发送/管理动作返回 {@link WeChatResponse}（errcode/errmsg/msgid 可检查、可 {@code as()}）。
  *
- * <h3>PHP 对齐关系</h3>
- * <table border="1">
- * <tr><th>PHP WechatService 方法</th><th>Java OfficialAccountService 方法</th></tr>
- * <tr><td>getApplication()</td><td>getAccessToken(configName)</td></tr>
- * <tr><td>getUserData(openid)</td><td>getUserData(openid)</td></tr>
- * <tr><td>sendTemplate(...)</td><td>sendTemplate(...)</td></tr>
- * <tr><td>getMenu() / setMenu(json)</td><td>getMenu() / setMenu(menuJson)</td></tr>
- * <tr><td>createTag / getTag / deleteTag</td><td>createTag / getTags / deleteTag</td></tr>
- * <tr><td>batchTagging / batchUnTagging</td><td>batchTagging / batchUnTagging</td></tr>
- * <tr><td>uploadImageTemp / uploadImageFull</td><td>uploadImageTemp / uploadImageFull</td></tr>
- * <tr><td>downloadImageFull / deleteImageFull</td><td>downloadImageFull / deleteImageFull</td></tr>
- * <tr><td>getMaterialList</td><td>getMaterialList</td></tr>
- * <tr><td>sendMessage(data)</td><td>sendMessage(data)</td></tr>
- * <tr><td>sendTyping(openid, command)</td><td>sendTyping(openid, command)</td></tr>
- * <tr><td>controllerbuildJsSdkConfig(...)</td><td>buildJsSdkConfig(...)</td></tr>
- * </table>
+ * <h3>功能面（官方 API 全覆盖）</h3>
+ * <ul>
+ *   <li><b>用户</b>：getUser / updateRemark / listUserOpenids / batchGetUsers</li>
+ *   <li><b>标签</b>：createTag / getTags / deleteTag / batchTagging / batchUnTagging</li>
+ *   <li><b>模板消息</b>：sendTemplate（服务号）/ sendSubscriptionNotice（订阅通知，官方主推）</li>
+ *   <li><b>菜单</b>：setMenu / getCustomMenu / deleteMenu（类型化 {@link Menu}）</li>
+ *   <li><b>素材</b>：uploadTemp / uploadPermanent / uploadImageTemp / uploadImageFull /
+ *       getMaterial / deleteMaterial / listMaterial / ocrCheck</li>
+ *   <li><b>客服消息</b>：sendCustomerMessage（11 种消息类型 + customservice + aimsgcontext）/
+ *       setTyping / sendText / sendImage / sendVoice / sendVideo / sendMusic / sendNews /
+ *       sendMpNews / sendMpNewsArticle / sendCard / sendMiniProgramPage / sendMsgMenu</li>
+ *   <li><b>二维码</b>：createTemporaryQrCode / createPermanentQrCode</li>
+ *   <li><b>JSSDK</b>：buildJsSdkConfig → {@link JssdkConfig}（jsapi_ticket 走 cache 模块缓存）</li>
+ *   <li><b>接收消息</b>：server() → {@link WeChatServer}（验签/加解密/被动回复，plain/safe 双模式）</li>
+ * </ul>
  *
  * <h3>多配置支持</h3>
- * 支持多公众号配置（如 default、snsapi_userinfo），每个方法可通过 configName 参数
- * 指定使用哪个配置，默认使用 default。
+ * 支持多公众号命名配置（声明 {@code @RegisterWechatOfficialAccount} &gt; yml &gt; 兜底默认）；
+ * 每个方法都有「默认 default」与「指定 configName」两种重载。
  *
  * <h3>线程安全</h3>
- * 本类为无状态单例（配置、客户端、解析器均为构造后不可变字段），可被多线程并发安全调用。
- * JSSDK ticket 通过 cache 模块的 {@link CacheStore} 缓存（使用 cache 默认 store），线程安全。
+ * 本类无状态（票据缓存走 cache 模块的 {@link CacheStore}，OkHttp 线程安全），可跨线程共享。
  *
  * @author weacsoft
  */
@@ -61,17 +77,23 @@ public class OfficialAccountService {
 
     private static final Logger logger = LoggerFactory.getLogger(OfficialAccountService.class);
 
-    /** 微信 API 基础地址 */
-    private static final String API_BASE_URL = "https://api.weixin.qq.com";
-
-    /** JSON 媒体类型 */
-    private static final MediaType JSON_MEDIA_TYPE = MediaType.parse("application/json; charset=utf-8");
-
     /** JSSDK ticket 缓存键前缀，完整 key 格式：wechat:jsapi_ticket:{appId} */
     private static final String TICKET_CACHE_PREFIX = "wechat:jsapi_ticket:";
 
     /** JSSDK ticket 提前过期缓冲时间（秒） */
     private static final long TICKET_BUFFER_SECONDS = 300;
+
+    /** user/info/batchget 单次上限（官方：100） */
+    private static final int BATCH_USER_INFO_LIMIT = 100;
+
+    /** tags/members/batchtagging 单次上限（官方：50） */
+    private static final int BATCH_TAGGING_LIMIT = 50;
+
+    /** getall 单页上限（官方：10000） */
+    private static final int GETALL_PAGE_SIZE = 10000;
+
+    /** getall 最大翻页次数（安全上限，防无限循环） */
+    private static final int GETALL_MAX_PAGES = 2000;
 
     /** Access Token 管理器 */
     private final AccessTokenManager accessTokenManager;
@@ -79,14 +101,14 @@ public class OfficialAccountService {
     /** 微信配置属性 */
     private final WechatProperties properties;
 
-    /** OkHttp 客户端 */
-    private final OkHttpClient httpClient;
+    /** HTTP 传输层 */
+    private final WechatTransport transport;
 
-    /** 缓存仓库（用于 JSSDK ticket 缓存，使用 cache 模块的默认 store） */
+    /** 缓存仓库（用于 jsapi_ticket 缓存） */
     private final CacheStore cacheStore;
 
     /**
-     * 便捷构造器：cacheManager 为 {@code null}（内部回退到内存缓存）。
+     * 便捷构造（默认 JSON 编码器 + 无 cache 管理器）。
      *
      * @param accessTokenManager Access Token 管理器
      * @param properties         微信配置属性
@@ -95,61 +117,61 @@ public class OfficialAccountService {
     public OfficialAccountService(AccessTokenManager accessTokenManager,
                                   WechatProperties properties,
                                   OkHttpClient httpClient) {
-        this(accessTokenManager, properties, httpClient, null);
+        this(accessTokenManager, properties, httpClient, new JacksonJsonEncoder(), null);
     }
 
     /**
      * 构造公众号服务。
-     * <p>
-     * 通过 {@link CacheManager} 解析缓存仓库用于 JSSDK ticket 缓存：使用 cache 模块的默认 store
-     *（由 {@code jaravel.cache.default-store} 决定），或通过 {@code jaravel.wechat.cache-store}
-     * 显式指定 store 名。
      *
      * @param accessTokenManager Access Token 管理器
      * @param properties         微信配置属性
      * @param httpClient         OkHttp 客户端
-     * @param cacheManager       缓存管理器（由 cache 模块提供，用于 JSSDK ticket 缓存）
+     * @param encoder            请求体 JSON 编码器
+     * @param cacheManager       缓存管理器（用于 jsapi_ticket 缓存，可为 null）
      */
     public OfficialAccountService(AccessTokenManager accessTokenManager,
                                   WechatProperties properties,
                                   OkHttpClient httpClient,
+                                  RequestJsonEncoder encoder,
                                   CacheManager cacheManager) {
         this.accessTokenManager = accessTokenManager;
         this.properties = properties;
-        this.httpClient = httpClient;
-        this.cacheStore = resolveStore(cacheManager, properties != null ? properties.getCacheStore() : "");
+        this.transport = new WechatTransport(httpClient, encoder);
+        this.cacheStore = WechatCacheResolver.resolve(cacheManager,
+                properties != null ? properties.getCacheStore() : "");
     }
 
     // ==================== 用户管理 ====================
 
     /**
-     * 获取用户基本信息，对齐 PHP {@code WechatService::getUserData(openid)}。
+     * 获取用户基本信息。
      * <p>
-     * API: {@code GET /cgi-bin/user/info?openid={openid}&lang=zh_CN}
+     * API: {@code GET /cgi-bin/user/info}
      *
      * @param openid 用户 openid
-     * @return 用户信息（subscribe, openid, nickname, sex, city, ... 等）
+     * @return 用户信息（类型化）
      */
-    public Map<String, Object> getUserData(String openid) {
-        return getUserData(openid, "default");
+    public WeChatUser getUser(String openid) {
+        return getUser(openid, null);
     }
 
     /**
      * 获取用户基本信息（指定配置）。
      *
      * @param openid     用户 openid
-     * @param configName 公众号配置名
+     * @param configName 公众号配置名（null 用 default）
      * @return 用户信息
      */
-    public Map<String, Object> getUserData(String openid, String configName) {
-        String token = getAccessToken(configName);
-        String url = API_BASE_URL + "/cgi-bin/user/info?access_token=" + token
-                + "&openid=" + openid + "&lang=zh_CN";
-        return executeGet(url, "getUserData");
+    public WeChatUser getUser(String openid, String configName) {
+        WeChatResponse resp = wechatGet("cgi-bin/user/info",
+                Map.of("access_token", accessToken(configName), "openid", openid, "lang", "zh_CN"),
+                "getUser");
+        resp.requireSuccess("getUser");
+        return WeChatUser.fromResponse(resp);
     }
 
     /**
-     * 设置用户备注名，对齐微信 API。
+     * 设置用户备注名。
      * <p>
      * API: {@code POST /cgi-bin/user/info/updateremark}
      *
@@ -157,8 +179,8 @@ public class OfficialAccountService {
      * @param remark 备注名
      * @return API 响应
      */
-    public Map<String, Object> updateUserRemark(String openid, String remark) {
-        return updateUserRemark(openid, remark, "default");
+    public WeChatResponse updateRemark(String openid, String remark) {
+        return updateRemark(openid, remark, null);
     }
 
     /**
@@ -169,124 +191,122 @@ public class OfficialAccountService {
      * @param configName 公众号配置名
      * @return API 响应
      */
-    public Map<String, Object> updateUserRemark(String openid, String remark, String configName) {
-        String token = getAccessToken(configName);
-        Map<String, Object> body = new HashMap<>();
+    public WeChatResponse updateRemark(String openid, String remark, String configName) {
+        Map<String, Object> body = new LinkedHashMap<>();
         body.put("openid", openid);
         body.put("remark", remark);
-        return executePostJson(API_BASE_URL + "/cgi-bin/user/info/updateremark?access_token=" + token,
-                body, "updateUserRemark");
+        return wechatPost("cgi-bin/user/info/updateremark", tokenQuery(configName), body, "updateRemark");
     }
 
-    // ==================== 模板消息 ====================
-
     /**
-     * 发送模板消息，对齐 PHP {@code WechatService::sendTemplate(template_id, openid, data, url, miniprogram)}。
+     * 拉取全部关注用户 openid（自动翻页 user/getall）。
      * <p>
-     * API: {@code POST /cgi-bin/message/template/send}
+     * API: {@code POST /cgi-bin/user/getall}
      *
-     * @param templateId  模板 ID
-     * @param openid      接收者 openid
-     * @param data        模板数据（key -> {value, color}）
-     * @param url         点击跳转 URL（可为 null）
-     * @param miniprogram 小程序跳转信息（可为 null，包含 appid、pagepath）
-     * @return API 响应（含 msgid）
+     * @return 全部关注用户 openid 列表
      */
-    public Map<String, Object> sendTemplate(String templateId, String openid, Map<String, Object> data,
-                                            String url, Map<String, Object> miniprogram) {
-        return sendTemplate(templateId, openid, data, url, miniprogram, "default");
+    public List<String> listUserOpenids() {
+        return listUserOpenids(null);
     }
 
     /**
-     * 发送模板消息（指定配置）。
-     *
-     * @param templateId  模板 ID
-     * @param openid      接收者 openid
-     * @param data        模板数据
-     * @param url         点击跳转 URL（可为 null）
-     * @param miniprogram 小程序跳转信息（可为 null）
-     * @param configName  公众号配置名
-     * @return API 响应（含 msgid）
-     */
-    public Map<String, Object> sendTemplate(String templateId, String openid, Map<String, Object> data,
-                                            String url, Map<String, Object> miniprogram, String configName) {
-        String token = getAccessToken(configName);
-        Map<String, Object> body = new HashMap<>();
-        body.put("touser", openid);
-        body.put("template_id", templateId);
-        body.put("data", data);
-        if (url != null && !url.isEmpty()) {
-            body.put("url", url);
-        }
-        if (miniprogram != null && !miniprogram.isEmpty()) {
-            body.put("miniprogram", miniprogram);
-        }
-        return executePostJson(API_BASE_URL + "/cgi-bin/message/template/send?access_token=" + token,
-                body, "sendTemplate");
-    }
-
-    // ==================== 菜单管理 ====================
-
-    /**
-     * 获取自定义菜单，对齐 PHP {@code WechatService::getMenu()}。
-     * <p>
-     * API: {@code GET /cgi-bin/menu/get}
-     *
-     * @return 菜单配置
-     */
-    public Map<String, Object> getMenu() {
-        return getMenu("default");
-    }
-
-    /**
-     * 获取自定义菜单（指定配置）。
+     * 拉取全部关注用户 openid（指定配置，自动翻页）。
      *
      * @param configName 公众号配置名
-     * @return 菜单配置
+     * @return 全部关注用户 openid 列表
      */
-    public Map<String, Object> getMenu(String configName) {
-        String token = getAccessToken(configName);
-        String url = API_BASE_URL + "/cgi-bin/menu/get?access_token=" + token;
-        return executeGet(url, "getMenu");
+    @SuppressWarnings("unchecked")
+    public List<String> listUserOpenids(String configName) {
+        List<String> all = new ArrayList<>();
+        String nextOpenid = null;
+        for (int page = 0; page < GETALL_MAX_PAGES; page++) {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("count", GETALL_PAGE_SIZE);
+            if (nextOpenid != null) {
+                body.put("next_openid", nextOpenid);
+            }
+            WeChatResponse resp = wechatPost("cgi-bin/user/getall", tokenQuery(configName), body, "listUserOpenids");
+            resp.requireSuccess("listUserOpenids");
+            Object dataRaw = resp.raw().get("data");
+            Object listRaw = null;
+            if (dataRaw instanceof Map<?, ?> dataMap) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> data = (Map<String, Object>) dataMap;
+                listRaw = data.get("openid_list");
+            }
+            if (!(listRaw instanceof List<?> list) || list.isEmpty()) {
+                break;
+            }
+            for (Object o : list) {
+                if (o instanceof String s) {
+                    all.add(s);
+                }
+            }
+            Object noid = resp.raw().get("next_openid");
+            nextOpenid = (noid instanceof String s && !s.isEmpty()) ? s : null;
+        }
+        logger.info("[wechat] listUserOpenids 完成: 共 {} 人", all.size());
+        return List.copyOf(all);
     }
 
     /**
-     * 创建自定义菜单，对齐 PHP {@code WechatService::setMenu(json)}。
+     * 批量获取用户信息（单页 ≤100，超出自动分批，user/info/batchget）。
      * <p>
-     * API: {@code POST /cgi-bin/menu/create}
+     * 官方说明：已取关的用户不会返回，返回列表可能少于请求数。
      *
-     * @param menuJson 菜单 JSON 结构（button 数组）
-     * @return API 响应
+     * @param openids openid 列表（建议 ≤1000，内部按 100/批分页）
+     * @return 用户信息列表
      */
-    public Map<String, Object> setMenu(Object menuJson) {
-        return setMenu(menuJson, "default");
+    public List<WeChatUser> batchGetUsers(List<String> openids) {
+        return batchGetUsers(openids, null);
     }
 
     /**
-     * 创建自定义菜单（指定配置）。
+     * 批量获取用户信息（指定配置）。
      *
-     * @param menuJson   菜单 JSON 结构
+     * @param openids    openid 列表
      * @param configName 公众号配置名
-     * @return API 响应
+     * @return 用户信息列表
      */
-    public Map<String, Object> setMenu(Object menuJson, String configName) {
-        String token = getAccessToken(configName);
-        return executePostJson(API_BASE_URL + "/cgi-bin/menu/create?access_token=" + token,
-                menuJson, "setMenu");
+    @SuppressWarnings("unchecked")
+    public List<WeChatUser> batchGetUsers(List<String> openids, String configName) {
+        if (openids == null || openids.isEmpty()) {
+            return List.of();
+        }
+        List<WeChatUser> users = new ArrayList<>();
+        for (int i = 0; i < openids.size(); i += BATCH_USER_INFO_LIMIT) {
+            List<String> chunk = openids.subList(i, Math.min(i + BATCH_USER_INFO_LIMIT, openids.size()));
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("user_list", chunk);
+            body.put("lang", "zh_CN");
+            WeChatResponse resp = wechatPost("cgi-bin/user/info/batchget", tokenQuery(configName), body, "batchGetUsers");
+            resp.requireSuccess("batchGetUsers");
+            Object userlistRaw = resp.raw().get("userlist");
+            if (userlistRaw instanceof List<?> userlist) {
+                for (Object o : userlist) {
+                    if (o instanceof Map<?, ?> om) {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> m = (Map<String, Object>) om;
+                        users.add(WeChatUser.from(m));
+                    }
+                }
+            }
+        }
+        return List.copyOf(users);
     }
 
     // ==================== 标签管理 ====================
 
     /**
-     * 创建标签，对齐 PHP {@code WechatService::createTag(name)}。
+     * 创建标签。
      * <p>
      * API: {@code POST /cgi-bin/tags/create}
      *
-     * @param name 标签名（不超过 30 字符）
-     * @return API 响应（含 tag.id 与 tag.name）
+     * @param name 标签名（≤30 字符）
+     * @return API 响应（含 tag.id / tag.name）
      */
-    public Map<String, Object> createTag(String name) {
-        return createTag(name, "default");
+    public WeChatResponse createTag(String name) {
+        return createTag(name, null);
     }
 
     /**
@@ -296,25 +316,21 @@ public class OfficialAccountService {
      * @param configName 公众号配置名
      * @return API 响应
      */
-    public Map<String, Object> createTag(String name, String configName) {
-        String token = getAccessToken(configName);
-        Map<String, Object> body = new HashMap<>();
-        Map<String, Object> tag = new HashMap<>();
-        tag.put("name", name);
-        body.put("tag", tag);
-        return executePostJson(API_BASE_URL + "/cgi-bin/tags/create?access_token=" + token,
-                body, "createTag");
+    public WeChatResponse createTag(String name, String configName) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("tag", Map.of("name", name));
+        return wechatPost("cgi-bin/tags/create", tokenQuery(configName), body, "createTag");
     }
 
     /**
-     * 获取标签列表，对齐 PHP {@code WechatService::getTag()}。
+     * 获取标签列表。
      * <p>
      * API: {@code GET /cgi-bin/tags/get}
      *
      * @return 标签列表
      */
-    public Map<String, Object> getTags() {
-        return getTags("default");
+    public List<Tag> getTags() {
+        return getTags(null);
     }
 
     /**
@@ -323,528 +339,794 @@ public class OfficialAccountService {
      * @param configName 公众号配置名
      * @return 标签列表
      */
-    public Map<String, Object> getTags(String configName) {
-        String token = getAccessToken(configName);
-        String url = API_BASE_URL + "/cgi-bin/tags/get?access_token=" + token;
-        return executeGet(url, "getTags");
+    @SuppressWarnings("unchecked")
+    public List<Tag> getTags(String configName) {
+        WeChatResponse resp = wechatGet("cgi-bin/tags/get", tokenQuery(configName), "getTags");
+        resp.requireSuccess("getTags");
+        Object raw = resp.raw().get("tagid_list");
+        List<Tag> tags = new ArrayList<>();
+        if (raw instanceof List<?> list) {
+            for (Object o : list) {
+                if (o instanceof Map<?, ?> om) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> m = (Map<String, Object>) om;
+                    tags.add(Tag.from(m));
+                }
+            }
+        }
+        return List.copyOf(tags);
     }
 
     /**
-     * 删除标签，对齐 PHP {@code WechatService::deleteTag(id)}。
+     * 删除标签（已删除标签不会删除已打标的用户，用户变为无标签状态）。
      * <p>
      * API: {@code POST /cgi-bin/tags/delete}
      *
-     * @param id 标签 ID
+     * @param tagId 标签 id
      * @return API 响应
      */
-    public Map<String, Object> deleteTag(int id) {
-        return deleteTag(id, "default");
+    public WeChatResponse deleteTag(int tagId) {
+        return deleteTag(tagId, null);
     }
 
     /**
      * 删除标签（指定配置）。
      *
-     * @param id         标签 ID
+     * @param tagId      标签 id
      * @param configName 公众号配置名
      * @return API 响应
      */
-    public Map<String, Object> deleteTag(int id, String configName) {
-        String token = getAccessToken(configName);
-        Map<String, Object> body = new HashMap<>();
-        Map<String, Object> tag = new HashMap<>();
-        tag.put("id", id);
-        body.put("tag", tag);
-        return executePostJson(API_BASE_URL + "/cgi-bin/tags/delete?access_token=" + token,
-                body, "deleteTag");
+    public WeChatResponse deleteTag(int tagId, String configName) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("tag", Map.of("id", tagId));
+        return wechatPost("cgi-bin/tags/delete", tokenQuery(configName), body, "deleteTag");
     }
 
     /**
-     * 批量为用户打标签，对齐 PHP {@code WechatService::batchTagging}。
+     * 批量为用户打标签（官方单次 ≤50 个 openid，超出自动分批）。
      * <p>
      * API: {@code POST /cgi-bin/tags/members/batchtagging}
      *
-     * @param tagId   标签 ID
-     * @param openids 用户 openid 列表（最多 50 个）
-     * @return API 响应
+     * @param tagId   标签 id
+     * @param openids openid 列表
+     * @return 最后一批的 API 响应（各批均成功才返回）
      */
-    public Map<String, Object> batchTagging(int tagId, List<String> openids) {
-        return batchTagging(tagId, openids, "default");
+    public WeChatResponse batchTagging(int tagId, List<String> openids) {
+        return batchTagging(tagId, openids, null);
     }
 
     /**
-     * 批量为用户打标签（指定配置）。
+     * 批量为用户打标签（指定配置，超出 50 个自动分批）。
      *
-     * @param tagId      标签 ID
-     * @param openids    用户 openid 列表
+     * @param tagId      标签 id
+     * @param openids    openid 列表
      * @param configName 公众号配置名
-     * @return API 响应
+     * @return 最后一批的 API 响应
      */
-    public Map<String, Object> batchTagging(int tagId, List<String> openids, String configName) {
-        String token = getAccessToken(configName);
-        Map<String, Object> body = new HashMap<>();
-        body.put("tagid", tagId);
-        body.put("openid_list", openids);
-        return executePostJson(API_BASE_URL + "/cgi-bin/tags/members/batchtagging?access_token=" + token,
-                body, "batchTagging");
+    public WeChatResponse batchTagging(int tagId, List<String> openids, String configName) {
+        WeChatResponse last = null;
+        for (int i = 0; i < openids.size(); i += BATCH_TAGGING_LIMIT) {
+            List<String> chunk = openids.subList(i, Math.min(i + BATCH_TAGGING_LIMIT, openids.size()));
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("tagid", tagId);
+            body.put("openid_list", chunk);
+            last = wechatPost("cgi-bin/tags/members/batchtagging", tokenQuery(configName), body, "batchTagging");
+            last.requireSuccess("batchTagging");
+        }
+        return last != null ? last : WeChatResponse.of(Map.of("tagid", tagId, "openid_count", openids.size()));
     }
 
     /**
-     * 批量取消用户标签，对齐 PHP {@code WechatService::batchUnTagging}。
+     * 批量为用户取消标签（官方单次 ≤50，超出自动分批）。
      * <p>
      * API: {@code POST /cgi-bin/tags/members/batchuntagging}
      *
-     * @param tagId   标签 ID
-     * @param openids 用户 openid 列表
-     * @return API 响应
+     * @param tagId   标签 id
+     * @param openids openid 列表
+     * @return 最后一批的 API 响应（各批均成功才返回）
      */
-    public Map<String, Object> batchUnTagging(int tagId, List<String> openids) {
-        return batchUnTagging(tagId, openids, "default");
+    public WeChatResponse batchUnTagging(int tagId, List<String> openids) {
+        return batchUnTagging(tagId, openids, null);
     }
 
     /**
-     * 批量取消用户标签（指定配置）。
+     * 批量为用户取消标签（指定配置，超出 50 个自动分批）。
      *
-     * @param tagId      标签 ID
-     * @param openids    用户 openid 列表
+     * @param tagId      标签 id
+     * @param openids    openid 列表
+     * @param configName 公众号配置名
+     * @return 最后一批的 API 响应
+     */
+    public WeChatResponse batchUnTagging(int tagId, List<String> openids, String configName) {
+        WeChatResponse last = null;
+        for (int i = 0; i < openids.size(); i += BATCH_TAGGING_LIMIT) {
+            List<String> chunk = openids.subList(i, Math.min(i + BATCH_TAGGING_LIMIT, openids.size()));
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("tagid", tagId);
+            body.put("openid_list", chunk);
+            last = wechatPost("cgi-bin/tags/members/batchuntagging", tokenQuery(configName), body, "batchUnTagging");
+            last.requireSuccess("batchUnTagging");
+        }
+        return last != null ? last : WeChatResponse.of(Map.of("tagid", tagId, "openid_count", openids.size()));
+    }
+
+    // ==================== 模板消息 / 订阅通知 ====================
+
+    /**
+     * 发送服务号模板消息。
+     * <p>
+     * API: {@code POST /cgi-bin/message/template/send}
+     *
+     * @param message 模板消息（含 touser/template_id/data 等）
+     * @return API 响应（业务返回 msgid）
+     */
+    public WeChatResponse sendTemplate(TemplateMessage message) {
+        return sendTemplate(message, null);
+    }
+
+    /**
+     * 发送服务号模板消息（指定配置）。
+     *
+     * @param message    模板消息
      * @param configName 公众号配置名
      * @return API 响应
      */
-    public Map<String, Object> batchUnTagging(int tagId, List<String> openids, String configName) {
-        String token = getAccessToken(configName);
-        Map<String, Object> body = new HashMap<>();
-        body.put("tagid", tagId);
-        body.put("openid_list", openids);
-        return executePostJson(API_BASE_URL + "/cgi-bin/tags/members/batchuntagging?access_token=" + token,
-                body, "batchUnTagging");
+    public WeChatResponse sendTemplate(TemplateMessage message, String configName) {
+        return wechatPost("cgi-bin/message/template/send", tokenQuery(configName),
+                message.toJsonBody(), "sendTemplate");
+    }
+
+    /**
+     * 发送订阅通知（官方主推消息类型）。
+     * <p>
+     * API: {@code POST /cgi-bin/message/template/subscribe}
+     *
+     * @param notice 订阅通知（含 touser/template_id/title/content）
+     * @return API 响应（业务返回 msgid；失败会推送 subscribe_msg_sent_event 事件）
+     */
+    public WeChatResponse sendSubscriptionNotice(SubscriptionNotice notice) {
+        return sendSubscriptionNotice(notice, null);
+    }
+
+    /**
+     * 发送订阅通知（指定配置）。
+     *
+     * @param notice     订阅通知
+     * @param configName 公众号配置名
+     * @return API 响应
+     */
+    public WeChatResponse sendSubscriptionNotice(SubscriptionNotice notice, String configName) {
+        return wechatPost("cgi-bin/message/template/subscribe", tokenQuery(configName),
+                notice.toJsonBody(), "sendSubscriptionNotice");
+    }
+
+    // ==================== 菜单管理 ====================
+
+    /**
+     * 创建自定义菜单（全量覆盖现有菜单）。
+     * <p>
+     * API: {@code POST /cgi-bin/menu/create}
+     *
+     * @param menu 菜单（≤3 个顶层按钮，两级以内）
+     * @return API 响应
+     */
+    public WeChatResponse setMenu(Menu menu) {
+        return setMenu(menu, null);
+    }
+
+    /**
+     * 创建自定义菜单（指定配置）。
+     *
+     * @param menu       菜单
+     * @param configName 公众号配置名
+     * @return API 响应
+     */
+    public WeChatResponse setMenu(Menu menu, String configName) {
+        return wechatPost("cgi-bin/menu/create", tokenQuery(configName), menu.toJson(), "setMenu");
+    }
+
+    /**
+     * 获取自定义菜单（类型化回读）。
+     * <p>
+     * API: {@code GET /cgi-bin/menu/get}
+     *
+     * @return 菜单（含子菜单）
+     */
+    public Menu getCustomMenu() {
+        return getCustomMenu(null);
+    }
+
+    /**
+     * 获取自定义菜单（指定配置）。
+     *
+     * @param configName 公众号配置名
+     * @return 菜单
+     */
+    public Menu getCustomMenu(String configName) {
+        WeChatResponse resp = wechatGet("cgi-bin/menu/get", tokenQuery(configName), "getCustomMenu");
+        resp.requireSuccess("getCustomMenu");
+        Object menuNode = resp.raw().get("menu");
+        if (!(menuNode instanceof Map)) {
+            throw new WechatApiException("getCustomMenu 响应缺少 menu 节点");
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> menuMap = (Map<String, Object>) menuNode;
+        return Menu.fromJsonMap(menuMap);
+    }
+
+    /**
+     * 删除自定义菜单。
+     * <p>
+     * API: {@code POST /cgi-bin/menu/delete}
+     *
+     * @return API 响应
+     */
+    public WeChatResponse deleteMenu() {
+        return deleteMenu(null);
+    }
+
+    /**
+     * 删除自定义菜单（指定配置）。
+     *
+     * @param configName 公众号配置名
+     * @return API 响应
+     */
+    public WeChatResponse deleteMenu(String configName) {
+        return wechatPost("cgi-bin/menu/delete", tokenQuery(configName), Map.of(), "deleteMenu");
     }
 
     // ==================== 素材管理 ====================
 
     /**
-     * 上传临时图片素材，对齐 PHP {@code WechatService::uploadImageTemp(path)}。
+     * 上传临时素材（3 天有效，media_id 可用于客服消息）。
      * <p>
-     * API: {@code POST cgi-bin/media/upload?type=image}
-     * 临时素材有效期为 3 天，media_id 可用于发送客服消息等场景。
+     * API: {@code POST /cgi-bin/media/upload?type={type}}
      *
-     * @param path 本地图片文件路径
-     * @return API 响应（含 media_id、type、created_at）
+     * @param path 本地文件路径
+     * @param type 素材类型：image / voice / video / thumb
+     * @return API 响应（media_id / created_at）
      */
-    public Map<String, Object> uploadImageTemp(String path) {
-        return uploadImageTemp(path, "default");
+    public WeChatResponse uploadTemp(String path, String type) {
+        return uploadTemp(path, type, null);
     }
 
     /**
-     * 上传临时图片素材（指定配置）。
+     * 上传临时素材（指定配置）。
      *
-     * @param path       本地图片文件路径
+     * @param path       本地文件路径
+     * @param type       素材类型
      * @param configName 公众号配置名
      * @return API 响应
      */
-    public Map<String, Object> uploadImageTemp(String path, String configName) {
-        String token = getAccessToken(configName);
-        String url = API_BASE_URL + "/cgi-bin/media/upload?access_token=" + token + "&type=image";
-        return uploadFile(url, path, "media", "uploadImageTemp");
+    public WeChatResponse uploadTemp(String path, String type, String configName) {
+        Map<String, String> query = new LinkedHashMap<>(tokenQuery(configName));
+        query.put("type", type);
+        return wechatUpload("cgi-bin/media/upload", query, path, "uploadTemp");
     }
 
     /**
-     * 上传永久图片素材，对齐 PHP {@code WechatService::uploadImageFull(path)}。
+     * 上传永久素材（不过期，有数量限额）。
      * <p>
-     * API: {@code POST /cgi-bin/material/add_material?type=image}
-     * 永久素材不会过期，但有数量限制。
+     * API: {@code POST /cgi-bin/material/add_material?type={type}}
      *
-     * @param path 本地图片文件路径
-     * @return API 响应（含 media_id、url）
+     * @param path 本地文件路径
+     * @param type 素材类型：image / voice / video（图文走图文素材接口，本通道不适用）
+     * @return API 响应（media_id / url）
      */
-    public Map<String, Object> uploadImageFull(String path) {
-        return uploadImageFull(path, "default");
+    public WeChatResponse uploadPermanent(String path, String type) {
+        return uploadPermanent(path, type, null);
     }
 
     /**
-     * 上传永久图片素材（指定配置）。
+     * 上传永久素材（指定配置）。
      *
-     * @param path       本地图片文件路径
+     * @param path       本地文件路径
+     * @param type       素材类型
      * @param configName 公众号配置名
      * @return API 响应
      */
-    public Map<String, Object> uploadImageFull(String path, String configName) {
-        String token = getAccessToken(configName);
-        String url = API_BASE_URL + "/cgi-bin/material/add_material?access_token=" + token + "&type=image";
-        return uploadFile(url, path, "media", "uploadImageFull");
+    public WeChatResponse uploadPermanent(String path, String type, String configName) {
+        Map<String, String> query = new LinkedHashMap<>(tokenQuery(configName));
+        query.put("type", type);
+        return wechatUpload("cgi-bin/material/add_material", query, path, "uploadPermanent");
     }
 
     /**
-     * 获取永久素材，对齐 PHP {@code WechatService::downloadImageFull(media_id)}。
+     * 上传临时图片素材（便捷方法）。
+     *
+     * @param path 本地图片路径
+     * @return API 响应
+     */
+    public WeChatResponse uploadImageTemp(String path) {
+        return uploadTemp(path, "image");
+    }
+
+    /**
+     * 上传永久图片素材（便捷方法）。
+     *
+     * @param path 本地图片路径
+     * @return API 响应
+     */
+    public WeChatResponse uploadImageFull(String path) {
+        return uploadPermanent(path, "image");
+    }
+
+    /**
+     * 获取单个永久素材（图文返回图文数组，其他返回下载 URL）。
      * <p>
      * API: {@code POST /cgi-bin/material/get_material}
      *
-     * @param mediaId 永久素材 media_id
-     * @return API 响应（图片素材返回素材 URL 等信息）
+     * @param mediaId 素材 media_id
+     * @return API 响应（item 数组 / url）
      */
-    public Map<String, Object> downloadImageFull(String mediaId) {
-        return downloadImageFull(mediaId, "default");
+    public WeChatResponse getMaterial(String mediaId) {
+        return getMaterial(mediaId, null);
     }
 
     /**
-     * 获取永久素材（指定配置）。
+     * 获取单个永久素材（指定配置）。
      *
-     * @param mediaId    永久素材 media_id
+     * @param mediaId    素材 media_id
      * @param configName 公众号配置名
      * @return API 响应
      */
-    public Map<String, Object> downloadImageFull(String mediaId, String configName) {
-        String token = getAccessToken(configName);
-        Map<String, Object> body = new HashMap<>();
+    public WeChatResponse getMaterial(String mediaId, String configName) {
+        Map<String, Object> body = new LinkedHashMap<>();
         body.put("media_id", mediaId);
-        return executePostJson(API_BASE_URL + "/cgi-bin/material/get_material?access_token=" + token,
-                body, "downloadImageFull");
+        return wechatPost("cgi-bin/material/get_material", tokenQuery(configName), body, "getMaterial");
     }
 
     /**
-     * 删除永久素材，对齐 PHP {@code WechatService::deleteImageFull(media_id)}。
+     * 删除永久素材。
      * <p>
      * API: {@code POST /cgi-bin/material/del_material}
      *
-     * @param mediaId 永久素材 media_id
+     * @param mediaId 素材 media_id
      * @return API 响应
      */
-    public Map<String, Object> deleteImageFull(String mediaId) {
-        return deleteImageFull(mediaId, "default");
+    public WeChatResponse deleteMaterial(String mediaId) {
+        return deleteMaterial(mediaId, null);
     }
 
     /**
      * 删除永久素材（指定配置）。
      *
-     * @param mediaId    永久素材 media_id
+     * @param mediaId    素材 media_id
      * @param configName 公众号配置名
      * @return API 响应
      */
-    public Map<String, Object> deleteImageFull(String mediaId, String configName) {
-        String token = getAccessToken(configName);
-        Map<String, Object> body = new HashMap<>();
+    public WeChatResponse deleteMaterial(String mediaId, String configName) {
+        Map<String, Object> body = new LinkedHashMap<>();
         body.put("media_id", mediaId);
-        return executePostJson(API_BASE_URL + "/cgi-bin/material/del_material?access_token=" + token,
-                body, "deleteImageFull");
+        return wechatPost("cgi-bin/material/del_material", tokenQuery(configName), body, "deleteMaterial");
     }
 
     /**
-     * 获取素材列表，对齐 PHP {@code WechatService::getMaterialList()}。
+     * 获取素材列表（官方分页：offset / count，count ≤20）。
      * <p>
      * API: {@code POST /cgi-bin/material/batchget_material}
      *
-     * @param type  素材类型（image / video / voice / news）
-     * @param page  页码（从 0 开始）
-     * @param count 每页数量（1-20）
-     * @return API 响应（含 total_count、item_count、item 列表）
+     * @param type   素材类型：image / voice / video / news
+     * @param offset 偏移（0 起）
+     * @param count  每页数量（1-20）
+     * @return 素材条目列表
      */
-    public Map<String, Object> getMaterialList(String type, int page, int count) {
-        return getMaterialList(type, page, count, "default");
+    public List<MaterialItem> listMaterial(String type, int offset, int count) {
+        return listMaterial(type, offset, count, null);
     }
 
     /**
      * 获取素材列表（指定配置）。
      *
      * @param type       素材类型
-     * @param page       页码（从 0 开始）
-     * @param count      每页数量
+     * @param offset     偏移（0 起）
+     * @param count      每页数量（1-20）
+     * @param configName 公众号配置名
+     * @return 素材条目列表
+     */
+    @SuppressWarnings("unchecked")
+    public List<MaterialItem> listMaterial(String type, int offset, int count, String configName) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("type", type);
+        body.put("offset", offset);
+        body.put("count", count);
+        WeChatResponse resp = wechatPost("cgi-bin/material/batchget_material", tokenQuery(configName), body, "listMaterial");
+        resp.requireSuccess("listMaterial");
+        Object raw = resp.raw().get("item");
+        List<MaterialItem> items = new ArrayList<>();
+        if (raw instanceof List<?> list) {
+            for (Object o : list) {
+                if (o instanceof Map<?, ?> om) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> m = (Map<String, Object>) om;
+                    items.add(MaterialItem.from(m));
+                }
+            }
+        }
+        return List.copyOf(items);
+    }
+
+    /**
+     * 微信 OCR（图片识别文字 / 识别二维码）。
+     * <p>
+     * API: {@code POST /cgi-bin/media/ocr}；type=1 识别文字，type=2 识别二维码。
+     * 每日限额 10000 次。
+     *
+     * @param mediaId 素材 media_id
+     * @return API 响应（type=1 时为 data 文本数组）
+     */
+    public WeChatResponse ocrCheck(String mediaId) {
+        return ocrCheck(mediaId, null);
+    }
+
+    /**
+     * 微信 OCR（指定配置）。
+     *
+     * @param mediaId    素材 media_id
      * @param configName 公众号配置名
      * @return API 响应
      */
-    public Map<String, Object> getMaterialList(String type, int page, int count, String configName) {
-        String token = getAccessToken(configName);
-        Map<String, Object> body = new HashMap<>();
-        body.put("type", type);
-        body.put("offset", page * count);
-        body.put("count", count);
-        return executePostJson(API_BASE_URL + "/cgi-bin/material/batchget_material?access_token=" + token,
-                body, "getMaterialList");
+    public WeChatResponse ocrCheck(String mediaId, String configName) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("media_id", mediaId);
+        body.put("type", 1);
+        return wechatPost("cgi-bin/media/ocr", tokenQuery(configName), body, "ocrCheck");
     }
 
     // ==================== 客服消息 ====================
 
     /**
-     * 发送客服消息，对齐 PHP {@code WechatService::sendMessage(data)}。
+     * 发送客服消息（统一入口，11 种消息类型共享）。
      * <p>
-     * API: {@code POST cgi-bin/message/custom/send}
+     * API: {@code POST /cgi-bin/message/custom/send}
+     * <p>
+     * 官方规则：
+     * <ul>
+     *   <li>用户 48h 内发消息才能收到（被动窗口）；菜单点击/关注/扫码 5 分钟内可发</li>
+     *   <li>用户主动消息后 5min 内可发 5 条；菜单场景 1min 内 3 条</li>
+     *   <li>news 客服消息条数 ≤1（微信 45008 约束，已在 {@link News} 内强制）</li>
+     * </ul>
      *
-     * @param data 消息体（含 touser、msgtype、text/image/... 等）
-     * @return API 响应
+     * @param message 消息对象（已 {@code toUser(openid)}；可选 {@code withKfAccount}/{@code withAiMsg}）
+     * @return API 响应（业务返回 msgid）
      */
-    public Map<String, Object> sendMessage(Map<String, Object> data) {
-        return sendMessage(data, "default");
+    public WeChatResponse sendCustomerMessage(Message message) {
+        return sendCustomerMessage(message, null);
     }
 
     /**
      * 发送客服消息（指定配置）。
      *
-     * @param data       消息体
+     * @param message    消息对象
      * @param configName 公众号配置名
      * @return API 响应
      */
-    public Map<String, Object> sendMessage(Map<String, Object> data, String configName) {
-        String token = getAccessToken(configName);
-        return executePostJson(API_BASE_URL + "/cgi-bin/message/custom/send?access_token=" + token,
-                data, "sendMessage");
+    public WeChatResponse sendCustomerMessage(Message message, String configName) {
+        return wechatPost("cgi-bin/message/custom/send", tokenQuery(configName),
+                message.toJsonBody(), "sendCustomerMessage");
+    }
+
+    /** 发送文本客服消息（便捷）。 */
+    public WeChatResponse sendText(String openid, String content) {
+        return sendCustomerMessage(new Text(content).toUser(openid));
+    }
+
+    /** 发送图片客服消息（便捷）。 */
+    public WeChatResponse sendImage(String openid, String mediaId) {
+        return sendCustomerMessage(new Image(mediaId).toUser(openid));
+    }
+
+    /** 发送语音客服消息（便捷）。 */
+    public WeChatResponse sendVoice(String openid, String mediaId) {
+        return sendCustomerMessage(new Voice(mediaId).toUser(openid));
+    }
+
+    /** 发送视频客服消息（便捷）。 */
+    public WeChatResponse sendVideo(String openid, Video video) {
+        return sendCustomerMessage(video.toUser(openid));
+    }
+
+    /** 发送音乐客服消息（便捷）。 */
+    public WeChatResponse sendMusic(String openid, Music music) {
+        return sendCustomerMessage(music.toUser(openid));
+    }
+
+    /** 发送图文客服消息（便捷，≤1 条图文）。 */
+    public WeChatResponse sendNews(String openid, News news) {
+        return sendCustomerMessage(news.toUser(openid));
+    }
+
+    /** 发送公众号图文（mpnews，media_id）客服消息（便捷）。 */
+    public WeChatResponse sendMpNews(String openid, MpNews mpNews) {
+        return sendCustomerMessage(mpNews.toUser(openid));
+    }
+
+    /** 发送发布图文（mpnewsarticle，article_id）客服消息（便捷，官方推荐）。 */
+    public WeChatResponse sendMpNewsArticle(String openid, MpNewsArticle article) {
+        return sendCustomerMessage(article.toUser(openid));
+    }
+
+    /** 发送卡券客服消息（便捷）。 */
+    public WeChatResponse sendCard(String openid, WeChatCard card) {
+        return sendCustomerMessage(card.toUser(openid));
+    }
+
+    /** 发送小程序卡片客服消息（便捷）。 */
+    public WeChatResponse sendMiniProgramPage(String openid, MiniProgramPage page) {
+        return sendCustomerMessage(page.toUser(openid));
+    }
+
+    /** 发送菜单客服消息（msgmenu，便捷）。 */
+    public WeChatResponse sendMsgMenu(String openid, MenuMessage msgMenu) {
+        return sendCustomerMessage(msgMenu.toUser(openid));
     }
 
     /**
-     * 发送客服输入状态，对齐 PHP {@code WechatService::sendTyping(openid, command)}。
+     * 设置客服打字状态。
      * <p>
      * API: {@code POST /cgi-bin/message/custom/typing}
      *
-     * @param openid  用户 openid
-     * @param command 命令：typing（正在输入）/ cancel_typing（取消输入）
+     * @param openid 用户 openid
+     * @param typing true=正在输入（typing），false=取消（cancel_typing）
      * @return API 响应
      */
-    public Map<String, Object> sendTyping(String openid, int command) {
-        return sendTyping(openid, command, "default");
+    public WeChatResponse setTyping(String openid, boolean typing) {
+        return setTyping(openid, typing, null);
     }
 
     /**
-     * 发送客服输入状态（指定配置）。
+     * 设置客服打字状态（指定配置）。
      *
      * @param openid     用户 openid
-     * @param command    命令：0=typing，1=cancel_typing
+     * @param typing     true=正在输入，false=取消
      * @param configName 公众号配置名
      * @return API 响应
      */
-    public Map<String, Object> sendTyping(String openid, int command, String configName) {
-        String token = getAccessToken(configName);
-        Map<String, Object> body = new HashMap<>();
+    public WeChatResponse setTyping(String openid, boolean typing, String configName) {
+        Map<String, Object> body = new LinkedHashMap<>();
         body.put("touser", openid);
-        body.put("command", command == 0 ? "typing" : "cancel_typing");
-        return executePostJson(API_BASE_URL + "/cgi-bin/message/custom/typing?access_token=" + token,
-                body, "sendTyping");
+        body.put("command", typing ? "typing" : "cancel_typing");
+        return wechatPost("cgi-bin/message/custom/typing", tokenQuery(configName), body, "setTyping");
     }
 
-    // ==================== JSSDK 配置 ====================
+    // ==================== 二维码 ====================
 
     /**
-     * 构建 JSSDK 配置，对齐 PHP {@code WechatService::controllerbuildJsSdkConfig(url, jsApiList, openTagList, debug)}。
+     * 创建临时二维码（带场景值，60 秒至 30 天过期，自动失效）。
      * <p>
-     * JSSDK 配置用于前端页面调用微信 JSSDK 能力（如分享、扫一扫、地理位置等）。
-     * 签名算法：
+     * API: {@code POST /cgi-bin/qrcode/create}（action_name=QR_LIMIT_SCENE）
+     *
+     * @param scene         场景字符串（≤128 字节，字母/数字/常用符号）
+     * @param expireSeconds 过期秒数（60 ~ 30*24*3600）
+     * @return API 响应（ticket / expire_in / url）
+     */
+    public WeChatResponse createTemporaryQrCode(String scene, int expireSeconds) {
+        if (expireSeconds < 60 || expireSeconds > 30 * 24 * 3600) {
+            throw new IllegalArgumentException("临时二维码有效期必须在 60 秒到 30 天之间"
+                    + "（当前 " + expireSeconds + "）");
+        }
+        return createTemporaryQrCode(scene, expireSeconds, null);
+    }
+
+    /**
+     * 创建临时二维码（指定配置）。
+     *
+     * @param scene         场景字符串
+     * @param expireSeconds 过期秒数
+     * @param configName    公众号配置名
+     * @return API 响应
+     */
+    public WeChatResponse createTemporaryQrCode(String scene, int expireSeconds, String configName) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("action_name", "QR_LIMIT_SCENE");
+        Map<String, Object> sceneInfo = new LinkedHashMap<>();
+        sceneInfo.put("scene_id", 0);
+        sceneInfo.put("scene_str", scene);
+        body.put("action_info", Map.of("scene", sceneInfo));
+        body.put("expire_in", expireSeconds);
+        return wechatPost("cgi-bin/qrcode/create", tokenQuery(configName), body, "createTemporaryQrCode");
+    }
+
+    /**
+     * 创建永久二维码（带场景值）。
+     * <p>
+     * API: {@code POST /cgi-bin/qrcode/create}（action_name=QR_LIMIT）
+     *
+     * @param scene 场景字符串
+     * @return API 响应（ticket / url）
+     */
+    public WeChatResponse createPermanentQrCode(String scene) {
+        return createPermanentQrCode(scene, null);
+    }
+
+    /**
+     * 创建永久二维码（指定配置）。
+     *
+     * @param scene      场景字符串
+     * @param configName 公众号配置名
+     * @return API 响应
+     */
+    public WeChatResponse createPermanentQrCode(String scene, String configName) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("action_name", "QR_LIMIT");
+        Map<String, Object> sceneInfo = new LinkedHashMap<>();
+        sceneInfo.put("scene_id", 0);
+        sceneInfo.put("scene_str", scene);
+        body.put("action_info", Map.of("scene", sceneInfo));
+        return wechatPost("cgi-bin/qrcode/create", tokenQuery(configName), body, "createPermanentQrCode");
+    }
+
+    // ==================== JSSDK ====================
+
+    /**
+     * 构建 JSSDK 配置（类型化对象；jsapi_ticket 走 cache 模块缓存）。
+     * <p>
+     * 签名算法（官方）：
      * <ol>
-     *   <li>获取 jsapi_ticket（缓存）</li>
-     *   <li>生成随机 noncestr 与当前 timestamp</li>
-     *   <li>拼接签名串：{@code jsapi_ticket={ticket}&noncestr={nonce}&timestamp={ts}&url={url}}</li>
-     *   <li>对签名串做 SHA1 哈希，得到 signature</li>
+     *   <li>取 jsapi_ticket（缓存 key {@code wechat:jsapi_ticket:{appId}}，TTL=expires_in-300，最小 60）</li>
+     *   <li>拼接 {@code jsapi_ticket=…&noncestr=…&timestamp=…&url=…}</li>
+     *   <li>SHA1 得 signature</li>
      * </ol>
      *
-     * @param url         当前页面 URL（不含 # 及之后部分）
-     * @param jsApiList   需要使用的 JS 接口列表（如 ["chooseImage", "previewImage"]）
-     * @param openTagList 开放标签列表（如 ["wx-open-launch-app"]，可为 null）
-     * @param debug       是否开启调试模式
-     * @return JSSDK 配置（appId, timestamp, nonceStr, signature, jsApiList, openTagList, debug）
+     * @param url         当前页面 URL（去除 # 后）
+     * @param jsApiList   要使用的 JS 接口
+     * @param openTagList 开放标签（可空）
+     * @param debug       是否调试模式
+     * @return JSSDK 配置（含 appId/timestamp/nonceStr/signature/jsApiList/openTagList/debug，
+     *     可 {@code toJsonBody()} 或 {@code toJavascript()} 直出前端代码）
      */
-    public Map<String, Object> buildJsSdkConfig(String url, List<String> jsApiList,
-                                                List<String> openTagList, boolean debug) {
-        return buildJsSdkConfig(url, jsApiList, openTagList, debug, "default");
+    public JssdkConfig buildJsSdkConfig(String url, List<String> jsApiList,
+                                        List<String> openTagList, boolean debug) {
+        return buildJsSdkConfig(url, jsApiList, openTagList, debug, null);
     }
 
     /**
-     * 构建 JSSDK 配置（指定配置）。
+     * 构建 JSSDK 配置（指定公众号配置）。
      *
      * @param url         当前页面 URL
      * @param jsApiList   JS 接口列表
-     * @param openTagList 开放标签列表（可为 null）
-     * @param debug       是否调试模式
+     * @param openTagList 开放标签（可空）
+     * @param debug       是否调试
      * @param configName  公众号配置名
      * @return JSSDK 配置
      */
-    public Map<String, Object> buildJsSdkConfig(String url, List<String> jsApiList,
-                                                List<String> openTagList, boolean debug,
-                                                String configName) {
-        WechatProperties.OfficialAccountConfig config = properties.getOfficialAccount(configName);
-        if (config == null) {
-            throw new IllegalStateException("未找到公众号配置: " + configName);
-        }
-
-        // 获取 jsapi_ticket
+    public JssdkConfig buildJsSdkConfig(String url, List<String> jsApiList,
+                                        List<String> openTagList, boolean debug,
+                                        String configName) {
+        WechatProperties.OfficialAccountConfig config = resolveConfig(configName);
         String ticket = getJsApiTicket(configName);
         String nonceStr = UUID.randomUUID().toString().replace("-", "");
         String timestamp = String.valueOf(System.currentTimeMillis() / 1000);
-
-        // 拼接签名串并 SHA1
         String signStr = "jsapi_ticket=" + ticket + "&noncestr=" + nonceStr
                 + "&timestamp=" + timestamp + "&url=" + url;
         String signature = sha1(signStr);
-
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("appId", config.getAppId());
-        result.put("timestamp", timestamp);
-        result.put("nonceStr", nonceStr);
-        result.put("signature", signature);
-        result.put("jsApiList", jsApiList);
-        if (openTagList != null) {
-            result.put("openTagList", openTagList);
-        }
-        result.put("debug", debug);
-
         logger.debug("[wechat] JSSDK 配置生成成功: appId={}, url={}", config.getAppId(), url);
-        return result;
+        return new JssdkConfig(config.getAppId(), timestamp, nonceStr, signature,
+                jsApiList, openTagList, debug);
     }
 
-    // ==================== 内部辅助方法 ====================
+    // ==================== 接收消息 ====================
 
     /**
-     * 获取指定配置的 access_token。
+     * 获取「接收消息」服务端（验签/加解密/被动回复）。
+     * <p>
+     * 消息模式由 {@code jaravel.wechat.official-accounts.{name}.message-mode}（plain/safe）决定。
+     *
+     * @return 服务端实例
+     */
+    public WeChatServer server() {
+        return server(null);
+    }
+
+    /**
+     * 获取指定配置的「接收消息」服务端。
      *
      * @param configName 公众号配置名
+     * @return 服务端实例
+     */
+    public WeChatServer server(String configName) {
+        return new WeChatServer(properties, configName);
+    }
+
+    // ==================== 令牌 ====================
+
+    /**
+     * 获取指定配置的 access_token（走 cache 模块缓存；token 模式由
+     * {@code jaravel.wechat.token-mode} 决定 legacy/stable）。
+     *
+     * @param configName 公众号配置名（null 用 default）
      * @return access_token
      */
-    private String getAccessToken(String configName) {
+    public String getAccessToken(String configName) {
+        return accessToken(configName);
+    }
+
+    /**
+     * @return 底层 Access Token 管理器（供高级用法/失效重置）
+     */
+    public AccessTokenManager tokenManager() {
+        return accessTokenManager;
+    }
+
+    // ==================== 内部辅助 ====================
+
+    private WechatProperties.OfficialAccountConfig resolveConfig(String configName) {
         WechatProperties.OfficialAccountConfig config = properties.getOfficialAccount(configName);
         if (config == null) {
-            throw new IllegalStateException("未找到公众号配置: " + configName);
+            throw new IllegalStateException("未找到公众号配置: "
+                    + (configName == null ? "default" : configName)
+                    + "（可通过 @RegisterWechatOfficialAccount 声明或 yml 配置）");
+        }
+        return config;
+    }
+
+    private Map<String, String> tokenQuery(String configName) {
+        WechatProperties.OfficialAccountConfig config = resolveConfig(configName);
+        if (config.getAppId() == null || config.getSecret() == null) {
+            throw new IllegalStateException("公众号配置 \"" + configName + "\" 缺少 appId 或 secret");
+        }
+        return Map.of("access_token", accessTokenManager.getToken(config.getAppId(), config.getSecret()));
+    }
+
+    private String accessToken(String configName) {
+        WechatProperties.OfficialAccountConfig config = resolveConfig(configName);
+        if (config.getAppId() == null || config.getSecret() == null) {
+            throw new IllegalStateException("公众号配置 \"" + configName + "\" 缺少 appId 或 secret");
         }
         return accessTokenManager.getToken(config.getAppId(), config.getSecret());
     }
 
+    private WeChatResponse wechatGet(String path, Map<String, String> query, String operation) {
+        return transport.get(path, query, operation);
+    }
+
+    private WeChatResponse wechatPost(String path, Map<String, String> query, Object body, String operation) {
+        return transport.postJson(path, query, body, operation);
+    }
+
+    private WeChatResponse wechatUpload(String path, Map<String, String> query, String filePath, String operation) {
+        File file = new File(filePath);
+        if (!file.exists()) {
+            throw new IllegalArgumentException("文件不存在: " + filePath);
+        }
+        return transport.upload(path, query, file, "media", operation);
+    }
+
     /**
-     * 获取 jsapi_ticket（带缓存），对齐 EasyWeChat 的 jsapi_ticket 缓存机制。
+     * 获取 jsapi_ticket（带缓存）。
      * <p>
-     * 缓存 key 格式：{@code wechat:jsapi_ticket:{appId}}，TTL = expires_in - 300（提前 5 分钟过期）。
-     * 缓存仓库使用 cache 模块的默认 store（由 {@code jaravel.cache.default-store} 决定）。
-     * <p>
-     * API: {@code GET /cgi-bin/ticket/getticket?type=jsapi}
+     * 缓存 key：{@code wechat:jsapi_ticket:{appId}}，TTL = expires_in - 300（最小 60）。
+     * 缓存仓库：cache 模块默认 store（或 {@code jaravel.wechat.cache-store} 指定）。
      *
      * @param configName 公众号配置名
      * @return jsapi_ticket
      */
+    @SuppressWarnings("unchecked")
     private String getJsApiTicket(String configName) {
-        WechatProperties.OfficialAccountConfig config = properties.getOfficialAccount(configName);
-        if (config == null) {
-            throw new IllegalStateException("未找到公众号配置: " + configName);
-        }
+        WechatProperties.OfficialAccountConfig config = resolveConfig(configName);
         String appId = config.getAppId();
         String cacheKey = TICKET_CACHE_PREFIX + appId;
 
-        // 1. 优先从缓存读取
         String cached = cacheStore.get(cacheKey, String.class);
         if (cached != null && !cached.isEmpty()) {
             return cached;
         }
 
-        // 2. 缓存未命中，请求微信 API
-        String token = accessTokenManager.getToken(config.getAppId(), config.getSecret());
-        String url = API_BASE_URL + "/cgi-bin/ticket/getticket?access_token=" + token + "&type=jsapi";
-        Map<String, Object> result = executeGet(url, "getJsApiTicket");
-
-        String ticket = (String) result.get("ticket");
-        if (ticket == null || ticket.isEmpty()) {
-            throw new RuntimeException("获取 jsapi_ticket 失败: " + result.get("errmsg"));
+        WeChatResponse resp = wechatGet("cgi-bin/ticket/getticket",
+                Map.of("access_token", accessToken(configName), "type", "jsapi"), "getJsApiTicket");
+        resp.requireSuccess("getJsApiTicket");
+        Object ticketRaw = resp.raw().get("ticket");
+        if (ticketRaw == null || String.valueOf(ticketRaw).isEmpty()) {
+            throw new WechatApiException("getJsApiTicket 响应缺少 ticket 字段");
         }
-
-        int expiresIn = result.get("expires_in") != null
-                ? ((Number) result.get("expires_in")).intValue() : 7200;
+        String ticket = String.valueOf(ticketRaw);
+        int expiresIn = resp.raw().get("expires_in") instanceof Number n ? n.intValue() : 7200;
         long ttlSeconds = Math.max(expiresIn - TICKET_BUFFER_SECONDS, 60);
-
-        // 3. 写入缓存
         cacheStore.put(cacheKey, ticket, ttlSeconds);
-
         logger.info("[wechat] 获取 jsapi_ticket 成功: appId={}, expires_in={}s", appId, expiresIn);
         return ticket;
     }
 
-    /**
-     * 执行 GET 请求并解析 JSON 响应。
-     *
-     * @param url       完整请求 URL
-     * @param operation 操作名（用于日志）
-     * @return 解析后的 Map
-     */
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> executeGet(String url, String operation) {
-        Request request = new Request.Builder().url(url).get().build();
-        try (Response response = httpClient.newCall(request).execute()) {
-            return parseResponse(response, operation);
-        } catch (IOException e) {
-            logger.error("[wechat] {} 网络异常: {}", operation, e.getMessage());
-            throw new RuntimeException(operation + " 网络异常: " + e.getMessage(), e);
-        }
-    }
-
-    /**
-     * 执行 POST 请求（JSON body）并解析响应。
-     *
-     * @param url       完整请求 URL
-     * @param body      请求体对象（将序列化为 JSON）
-     * @param operation 操作名
-     * @return 解析后的 Map
-     */
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> executePostJson(String url, Object body, String operation) {
-        try {
-            String json = Json.stringify(body);
-            RequestBody requestBody = RequestBody.create(json, JSON_MEDIA_TYPE);
-            Request request = new Request.Builder().url(url).post(requestBody).build();
-            try (Response response = httpClient.newCall(request).execute()) {
-                return parseResponse(response, operation);
-            }
-        } catch (IOException e) {
-            logger.error("[wechat] {} 网络异常: {}", operation, e.getMessage());
-            throw new RuntimeException(operation + " 网络异常: " + e.getMessage(), e);
-        }
-    }
-
-    /**
-     * 上传文件（multipart/form-data）并解析响应。
-     *
-     * @param url       完整请求 URL
-     * @param path      本地文件路径
-     * @param formName  表单字段名（media / media 等）
-     * @param operation 操作名
-     * @return 解析后的 Map
-     */
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> uploadFile(String url, String path, String formName, String operation) {
-        File file = new File(path);
-        if (!file.exists()) {
-            throw new IllegalArgumentException("文件不存在: " + path);
-        }
-        RequestBody fileBody = RequestBody.create(file, MediaType.parse("application/octet-stream"));
-        MultipartBody multipart = new MultipartBody.Builder()
-                .setType(MultipartBody.FORM)
-                .addFormDataPart(formName, file.getName(), fileBody)
-                .build();
-        Request request = new Request.Builder().url(url).post(multipart).build();
-        try (Response response = httpClient.newCall(request).execute()) {
-            return parseResponse(response, operation);
-        } catch (IOException e) {
-            logger.error("[wechat] {} 网络异常: {}", operation, e.getMessage());
-            throw new RuntimeException(operation + " 网络异常: " + e.getMessage(), e);
-        }
-    }
-
-    /**
-     * 解析 HTTP 响应为 Map。
-     *
-     * @param response  OkHttp 响应
-     * @param operation 操作名
-     * @return 解析后的 Map
-     */
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> parseResponse(Response response, String operation) throws IOException {
-        String body = response.body() != null ? response.body().string() : "";
-        if (!response.isSuccessful()) {
-            logger.error("[wechat] {} HTTP 失败: code={}, body={}", operation, response.code(), body);
-            throw new RuntimeException(operation + " HTTP 失败: " + response.code());
-        }
-        Map<String, Object> result = Json.parseToMap(body);
-        // 检查微信业务错误码（errcode 非 0 表示失败，部分接口无 errcode 字段）
-        Object errcode = result.get("errcode");
-        if (errcode != null && errcode instanceof Number && ((Number) errcode).intValue() != 0) {
-            logger.warn("[wechat] {} 业务失败: errcode={}, errmsg={}", operation, errcode, result.get("errmsg"));
-        }
-        return result;
-    }
-
-    /**
-     * SHA1 哈希计算。
-     *
-     * @param input 输入字符串
-     * @return SHA1 十六进制摘要
-     */
     private static String sha1(String input) {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-1");
@@ -856,35 +1138,6 @@ public class OfficialAccountService {
             return sb.toString();
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("SHA-1 算法不可用", e);
-        }
-    }
-
-    /**
-     * 解析缓存仓库：使用 cache 模块的默认 store，或显式指定的 store。
-     * <p>
-     * 当 {@code preferredStore} 为 null 或空时，使用 {@link CacheManager#store()} 获取默认 store
-     *（由 {@code jaravel.cache.default-store} 决定，不关心具体实现）。
-     * 当指定了具体 store 名时，按名解析，未注册时回退到默认 store。
-     * <p>
-     * 当 {@link CacheManager} 为空（cache 自动装配未启用）时，使用独立的内存 store 保证 SDK 仍可用。
-     *
-     * @param cacheManager 缓存管理器，可为 null
-     * @param preferredStore 首选 store 名，为空时使用默认 store
-     * @return 解析出的缓存仓库
-     */
-    private static CacheStore resolveStore(CacheManager cacheManager, String preferredStore) {
-        if (cacheManager == null) {
-            logger.warn("[wechat] CacheManager 未注入，jsapi_ticket 使用本地内存缓存");
-            return CacheManager.createDefaultStore();
-        }
-        if (preferredStore == null || preferredStore.isEmpty()) {
-            return cacheManager.store();
-        }
-        try {
-            return cacheManager.store(preferredStore);
-        } catch (IllegalStateException e) {
-            logger.debug("[wechat] 缓存 store '{}' 未注册，jsapi_ticket 回退到默认 store: {}", preferredStore, e.getMessage());
-            return cacheManager.store();
         }
     }
 }

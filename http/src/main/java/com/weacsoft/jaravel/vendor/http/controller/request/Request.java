@@ -826,6 +826,48 @@ public class Request {
     }
 
     /**
+     * 获取完整 URL（协议 + 主机 + URI + query），对齐 Laravel 的 $request->fullUrl()。
+     * <p>
+     * 代理场景下优先采用 X-Forwarded-Proto / X-Forwarded-Host 头还原真实入口地址
+     * （与 {@link #ip()} 的代理意识一致）。
+     *
+     * @return 完整 URL（如 {@code https://example.com/weapp?from=mp}），request 不可用时返回空串
+     */
+    public String fullUrl() {
+        if (request == null) {
+            return "";
+        }
+        String scheme = firstHeaderValue(header("X-Forwarded-Proto"));
+        if (scheme == null || scheme.isEmpty()) {
+            scheme = request.isSecure() ? "https" : "http";
+        }
+        String host = firstHeaderValue(header("X-Forwarded-Host"));
+        if (host == null || host.isEmpty()) {
+            host = header("Host");
+        }
+        if (host == null || host.isEmpty()) {
+            host = request.getServerName();
+            int port = request.getServerPort();
+            if (port != 80 && port != 443) {
+                host = host + ":" + port;
+            }
+        }
+        String url = scheme + "://" + host + (uri().isEmpty() ? "/" : uri());
+        String qs = request.getQueryString();
+        if (qs != null && !qs.isEmpty()) {
+            url = url + "?" + qs;
+        }
+        return url;
+    }
+
+    private static String firstHeaderValue(String joined) {
+        if (joined == null || joined.isEmpty()) {
+            return null;
+        }
+        return joined.split(",")[0].trim();
+    }
+
+    /**
      * 获取请求路径（Servlet 路径），对齐 Laravel 的 $request->path()。
      *
      * @return 请求路径，request 不可用时返回空串

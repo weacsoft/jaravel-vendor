@@ -79,7 +79,7 @@ jblade 支持两种运行模式：
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>jblade</artifactId>
-    <version>0.1.2</version>
+    <version>0.1.3</version>
 </dependency>
 ```
 
