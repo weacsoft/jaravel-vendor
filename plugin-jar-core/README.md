@@ -68,7 +68,7 @@ JAR 插件系统核心库，提供动态加载/卸载 JAR 插件、三级 ClassL
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>plugin-jar-core</artifactId>
-    <version>0.1.3</version>
+    <version>0.1.2</version>
 </dependency>
 ```
 
@@ -262,7 +262,7 @@ private HotPluginManager hotPluginManager;
 
 ```java
 // 1. 初始化共享 ClassLoader（通常在启动时由自动装配完成）
-hotPluginManager.initSharedClassLoader(Path.of("shared-api.jar"), "0.1.3");
+hotPluginManager.initSharedClassLoader(Path.of("shared-api.jar"), "0.1.2");
 
 // 2. 从文件注册插件（持久化）
 String pluginId = hotPluginManager.registerPluginFromPath(
@@ -533,7 +533,7 @@ manager.reloadPluginFromBytes("my-plugin", newJarBytes);
     <dependency>
         <groupId>io.github.lijialong1313</groupId>
         <artifactId>plugin-jar-core</artifactId>
-        <version>0.1.3</version>
+        <version>0.1.2</version>
         <scope>provided</scope>
     </dependency>
 </dependencies>
@@ -688,7 +688,7 @@ public interface MetadataPersistence {
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>plugin-jar-database</artifactId>
-    <version>0.1.3</version>
+    <version>0.1.2</version>
 </dependency>
 ```
 

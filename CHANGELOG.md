@@ -3,7 +3,7 @@
 本项目所有显著变更都记录在此文件。
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，语义化版本基于 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
-## [0.1.3] - 2026-07-14
+## [Unreleased]（目标版本 0.1.2 · 待发布）
 
 ### Added（新增）
 
@@ -33,7 +33,6 @@
 
 ### Changed（变更）
 
-- 全仓库版本 `0.1.2` → `0.1.3`（pom + 全部文档版本引用）。
 - 中间件不再注册为 Spring Bean：classpath 扫描 + 继承式配置，支持 Class 对象/类名/字符串别名三种引用；自动扫描跳过已手动注册的实例。
 - `csrf_field`/`@csrf`/`csrf_token`/`@csor`… 改为框架开箱即用内置注册（注册后自检，失败可见而非静默空值）；`VerifyCsrfToken` 未启用时输出空串。
 - `asset()` 与 `url()` 语义一致（移除 `/assets` 前缀）；`@route` 指令编译目标修正为 `route`。

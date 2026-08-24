@@ -1,7 +1,7 @@
 # plugin-jar-multi-tenant
 
 > 包名：com.weacsoft.jaravel.vendor.plugin.jar.multitenant
-> 版本：0.1.3
+> 版本：0.1.2
 
 JAR 插件多租户支持模块。引入后自动激活多租户插件模式，同一 JAR 可按租户隔离地重复加载，Bean 名称和路由路径自动按租户前缀化。同时为共享接口提供租户感知能力，多租户场景下共享接口调用自动处理 Bean 名称前缀化。
 
@@ -41,7 +41,7 @@ JAR 插件多租户支持模块。引入后自动激活多租户插件模式，�
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>plugin-jar-multi-tenant</artifactId>
-    <version>0.1.3</version>
+    <version>0.1.2</version>
 </dependency>
 ```
 

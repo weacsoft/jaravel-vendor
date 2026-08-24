@@ -1,6 +1,6 @@
 # Jaravel-Vendor 集群部署指南
 
-> 版本：0.1.3
+> 版本：0.1.2
 >
 > 本文档讲解如何将 jaravel-vendor 部署到服务器集群（多应用节点）环境，重点说明 Session 共享、缓存共享、Redis 基础设施、模型缓存等在多机场景下的配置与原理。
 
@@ -607,7 +607,7 @@ jaravel:
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>starter</artifactId>
-    <version>0.1.3</version>
+    <version>0.1.2</version>
 </dependency>
 ```
 
@@ -617,7 +617,7 @@ jaravel:
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>model-cache</artifactId>
-    <version>0.1.3</version>
+    <version>0.1.2</version>
 </dependency>
 ```
 

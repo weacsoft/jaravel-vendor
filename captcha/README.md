@@ -54,7 +54,7 @@
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>captcha</artifactId>
-    <version>0.1.3</version>
+    <version>0.1.2</version>
 </dependency>
 ```
 
@@ -66,7 +66,7 @@
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>captcha</artifactId>
-    <version>0.1.3</version>
+    <version>0.1.2</version>
 </dependency>
 <!-- 无需引入 spring-boot，核心层可独立运行 -->
 ```
@@ -77,7 +77,7 @@
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>captcha</artifactId>
-    <version>0.1.3</version>
+    <version>0.1.2</version>
 </dependency>
 <!-- 引入 spring-boot-starter 即可触发自动装配 -->
 ```
@@ -90,12 +90,12 @@
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>captcha</artifactId>
-    <version>0.1.3</version>
+    <version>0.1.2</version>
 </dependency>
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>cache</artifactId>
-    <version>0.1.3</version>
+    <version>0.1.2</version>
 </dependency>
 ```
 

@@ -6,7 +6,7 @@
     <parent>
         <groupId>io.github.lijialong1313</groupId>
         <artifactId>jaravel-vendor</artifactId>
-        <version>0.1.3</version>
+        <version>0.1.2</version>
     </parent>
     <artifactId>springboot</artifactId>
     <name>springboot</name>

@@ -102,7 +102,7 @@ JWT 模块通过 `blacklistEnabled` 与 `gracePeriodSeconds` 两个配置项的�
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>jwt</artifactId>
-    <version>0.1.3</version>
+    <version>0.1.2</version>
 </dependency>
 ```
 

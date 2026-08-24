@@ -64,7 +64,7 @@ TTL 单位统一为**秒**（对齐 Laravel），`ttl <= 0` 表示永不过期�
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>cache</artifactId>
-    <version>0.1.3</version>
+    <version>0.1.2</version>
 </dependency>
 ```
 
@@ -168,7 +168,7 @@ long remaining = Cache.decrement("stock:100", 1);
 
 // 读取或回填
 Object config = Cache.remember("app:config", 300, () -> loadConfigFromDb());
-Object forever = Cache.rememberForever("app:version", () -> "0.1.3");
+Object forever = Cache.rememberForever("app:version", () -> "0.1.2");
 
 // 清空
 Cache.flush();
