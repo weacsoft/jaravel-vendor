@@ -1,4 +1,4 @@
-package com.weacsoft.jaravel.vendor.cache.artisan;
+package com.weacsoft.jaravel.vendor.cache.database.artisan;
 
 import com.weacsoft.jaravel.vendor.artisan.ArtisanCommand;
 import com.weacsoft.jaravel.vendor.migration.MigrationGenerator;

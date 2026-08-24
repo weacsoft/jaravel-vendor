@@ -9,7 +9,8 @@ import java.lang.annotation.Target;
  * 声明式注册缓存 Store，替代 {@code @Bean} 方式（避免 bean name 冲突）。
  * <p>
  * 标注在 {@code @Configuration} 类的方法上，方法返回 {@link CacheStore}（或其子类型）。
- * {@link com.weacsoft.jaravel.vendor.cache.autoconfigure.CacheStoreRegistrar CacheStoreRegistrar}
+ * springboot 模块的 {@code CacheStoreRegistrar}
+ * （{@code com.weacsoft.jaravel.vendor.springboot.cache.CacheStoreRegistrar}）
  * 会在所有 Bean 初始化完成后扫描此注解，调用方法并按 {@link #value()} 指定的名称注册到
  * {@link CacheManager}。
  *

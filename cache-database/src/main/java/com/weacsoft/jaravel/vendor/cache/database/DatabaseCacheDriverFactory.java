@@ -1,7 +1,8 @@
-package com.weacsoft.jaravel.vendor.cache.driver;
+package com.weacsoft.jaravel.vendor.cache.database;
 
 import com.weacsoft.jaravel.vendor.cache.CacheDriver;
 import com.weacsoft.jaravel.vendor.cache.CacheDriverFactory;
+import com.weacsoft.jaravel.vendor.database.ConnectionManager;
 
 import javax.sql.DataSource;
 import java.util.Map;
@@ -10,18 +11,23 @@ import java.util.function.Supplier;
 /**
  * 数据库缓存驱动工厂，支持 {@code "database"} 驱动名。
  *
- * <h3>惰性 + 解耦</h3>
+ * <h3>连接走 database 模块</h3>
  * 工厂本身<b>不持有</b> {@link DataSource} 实例，而是持有一个 {@link Supplier}，
  * 只有当 {@code jaravel.cache.stores} 中真的配置了 {@code driver: database}、
  * 触发 {@link #create(Map)} 时，才去解析数据源。带来两个好处：
  * <ul>
- *   <li><b>不与 Spring 绑定</b>：解析顺序为「先查 jaravel database 模块的连接注册表，
- *       找不到再回退 Spring 容器」，与 Model 的连接解析语义完全一致；</li>
- *   <li><b>用上了才装配</b>：没用 database 缓存驱动时，不会因为缺少 {@code DataSource}
- *       而影响应用启动。</li>
+ *   <li><b>走 database 模块</b>：连接首选 {@link ConnectionManager} 连接注册表（{@code @RegisterConnection}
+ *       声明的连接），别名解析直接调用 {@link ConnectionManager#rawDataSource(String)}，
+ *       不经过 Spring 容器——与 Model 的连接解析语义一致；</li>
+ *   <li><b>用上了才装配</b>：没用 database 缓存驱动时，不会因为缺少数据源而影响应用启动。</li>
  * </ul>
  *
- * @see com.weacsoft.jaravel.vendor.cache.autoconfigure.CacheDataSourceResolver
+ * <h3>Supplier 可注入 Spring 回退</h3>
+ * Spring 环境下的自动装配（{@code springboot} 模块）会注入
+ * 「先 {@code ConnectionManager} 默认连接，找不到再查 Spring 容器 {@code DataSource} Bean」的组合解析器，
+ * 本模块自身对 Spring 零依赖。
+ *
+ * @see #fromConnectionManager()
  */
 public class DatabaseCacheDriverFactory implements CacheDriverFactory {
 
@@ -38,12 +44,21 @@ public class DatabaseCacheDriverFactory implements CacheDriverFactory {
     }
 
     /**
-     * 以惰性解析器构建（框架默认使用）。
+     * 以惰性解析器构建（Spring 自动装配使用，可叠加容器回退）。
      *
      * @param dataSourceSupplier 数据源解析器，在 {@link #create(Map)} 时调用
      */
     public DatabaseCacheDriverFactory(Supplier<DataSource> dataSourceSupplier) {
         this.dataSourceSupplier = dataSourceSupplier;
+    }
+
+    /**
+     * 使用 database 模块默认连接构建（纯 jaravel 环境的标准用法，无 Spring）。
+     *
+     * @return 工厂
+     */
+    public static DatabaseCacheDriverFactory fromConnectionManager() {
+        return new DatabaseCacheDriverFactory(ConnectionManager::defaultRawDataSource);
     }
 
     @Override
@@ -84,20 +99,12 @@ public class DatabaseCacheDriverFactory implements CacheDriverFactory {
     }
 
     /**
-     * 按别名解析连接，database 模块不存在时返回 {@code null}。
+     * 按别名解析 database 模块的原始数据源，不存在时返回 {@code null}。
      *
      * @param alias 连接别名
      * @return 数据源
      */
     private DataSource resolveByAlias(String alias) {
-        try {
-            Class<?> managerClass = Class.forName(
-                    "com.weacsoft.jaravel.vendor.database.ConnectionManager");
-            return (DataSource) managerClass
-                    .getMethod("rawDataSource", String.class)
-                    .invoke(null, alias);
-        } catch (ReflectiveOperationException | RuntimeException e) {
-            return null;
-        }
+        return ConnectionManager.rawDataSource(alias);
     }
 }

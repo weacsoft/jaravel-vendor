@@ -26,7 +26,7 @@ import org.springframework.context.annotation.Bean;
  * 可将完成的文件落到任意磁盘/驱动），未配置 disk 时直接写本地 {@code save-dir}。
  */
 @AutoConfiguration(afterName = {
-        "com.weacsoft.jaravel.vendor.cache.autoconfigure.CacheAutoConfiguration",
+        "com.weacsoft.jaravel.vendor.springboot.cache.CacheAutoConfiguration",
         "com.weacsoft.jaravel.vendor.storage.autoconfigure.StorageAutoConfiguration"
 })
 @EnableConfigurationProperties(AetherUploadProperties.class)

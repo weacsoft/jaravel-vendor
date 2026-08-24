@@ -17,6 +17,7 @@
 - [9. ResponseReturnValueHandler —— 返回值处理器](#9-responsereturnvaluehandler--返回值处理器)
 - [10. 自动装配清单](#10-自动装配清单)
 - [11. 配置选项](#11-配置选项)
+- [12. 缓存自动装配 —— CacheAutoConfiguration](#12-缓存自动装配--cacheautoconfiguration)
 
 ---
 
@@ -511,6 +512,10 @@ returnValue == null？
 | `Controllers` 实现类（控制器） | Spring Bean 或纯类 | `scanControllers()` | 启动时由 `SpringBootRouteAutoConfiguration.scanControllers()` 扫描注册到 `ControllerRegistry.getGlobal()`；手动指定扫描包模式下通过 classpath 扫描 + `AutowireCapableBeanFactory` 实例化（无需 `@Component`），自动扫描模式下通过 `getBeansOfType` 获取（需 `@Component`） |
 | `baseRouter` (Router) | `@Bean` | `SpringBootRouteAutoConfiguration` | 基础路由器（可覆盖） |
 | `jaravelRouterFunction` (RouterFunction) | `@Bean` | `SpringBootRouteAutoConfiguration` | Spring 路由函数 |
+| `CacheAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.cache`） | imports 文件 | 缓存装配：驱动工厂 + `CacheManager` + `@RegisterCacheStore` 扫描 + vendor:publish 注册 |
+| `CacheArtisanAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.cache`） | imports 文件 | 注册 `cache:table` artisan 命令（artisan + cache-database 在 classpath 时） |
+| `cacheStoreRegistrar` (CacheStoreRegistrar) | `@Bean` | `CacheAutoConfiguration` | 扫描 `@RegisterCacheStore` 注解方法并注册 store |
+| `databaseCacheDriverFactory` (DatabaseCacheDriverFactory) | `@Bean`（条件装配） | `CacheAutoConfiguration.DatabaseCacheConfiguration` | 数据库缓存驱动工厂；仅当 `cache-database` 在 classpath **且** 配置声明了 `driver: database` 的 store 时装配 |
 
 > 注意：`@Component` / `@ControllerAdvice` 标注的类需要应用的主类包路径能扫描到 `com.weacsoft.jaravel.vendor.springboot`。若应用包名不同，需手动 `@ComponentScan` 或通过 `@AutoConfiguration` 的 imports 文件确保 `@AutoConfiguration` 类被加载（`@AutoConfiguration` 类内部的 `@Bean` 不受组件扫描限制）。
 
@@ -539,3 +544,33 @@ returnValue == null？
 })
 public class MyApp { ... }
 ```
+
+---
+
+## 12. 缓存自动装配 —— CacheAutoConfiguration
+
+`com.weacsoft.jaravel.vendor.springboot.cache.*`
+
+缓存的 **Spring 装配统一收口在本模块**（cache 核心模块零 Spring 依赖）：
+
+| 类 | 职责 |
+| --- | --- |
+| `CacheProperties` | `@ConfigurationProperties(prefix="jaravel.cache")` 绑定（映射为 cache 模块的纯 Java `CacheConfig` 后交给 `CacheManager`） |
+| `CacheAutoConfiguration` | 注册 array/file 驱动工厂、装配 `CacheManager`（收集所有 `CacheDriverFactory` + 按 stores 配置创建）、`vendor:publish` 注册（`CachePublishableConfig`） |
+| `CacheAutoConfiguration.DatabaseCacheConfiguration` | database 驱动工厂条件装配：`@ConditionalOnClass(DatabaseCacheDriverFactory.class)` + `OnDatabaseCacheStoreCondition`（声明了 `driver: database` 才装配）；数据源解析顺序「`ConnectionManager` 注册表 → Spring 容器 `DataSource` Bean」 |
+| `CacheStoreRegistrar` | 扫描 `@RegisterCacheStore` 注解方法，反射调用后注册 store（继承 core `AnnotationDrivenRegistrar`） |
+| `OnDatabaseCacheStoreCondition` | 「声明了 `driver: database` 才装配」判定（继承 core `OnDriverInUseCondition`） |
+| `CacheArtisanAutoConfiguration` | artisan + cache-database 在 classpath 时注册 `cache:table` 命令 |
+
+```java
+@EnableConfigurationProperties(CacheProperties.class)
+@Bean
+public CacheManager cacheManager(CacheProperties properties, List<CacheDriverFactory> factories) {
+    CacheManager manager = new CacheManager();
+    factories.forEach(manager::registerDriverFactory);
+    manager.initFromConfig(properties.toCacheConfig());  // Spring 属性 → cache 模块纯 Java 配置
+    return manager;
+}
+```
+
+> 详细行为（stores 配置、TTL、upsert 方言、artisan 命令、第三方驱动扩展）见 [cache/README.md](../cache/README.md) 第 12–13 节与 [cache-database/README.md](../cache-database/README.md)。

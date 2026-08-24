@@ -12,7 +12,7 @@
 
     <artifactId>cache</artifactId>
     <name>cache</name>
-    <description>缓存：Cache 门面 / CacheStore 仓库 / Array·File·Database 驱动 / CacheManager 多仓库管理，对齐 Laravel Cache</description>
+    <description>缓存核心：Cache 门面 / CacheStore 仓库 / Array·File 驱动 / CacheManager 多仓库管理 / 发布配置声明，零 Spring 依赖（对齐 Laravel Cache）。数据库驱动见 cache-database 模块，Spring 自动装配见 springboot 模块</description>
 
     <dependencies>
         <dependency>
@@ -25,39 +25,12 @@
             <artifactId>utils</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-autoconfigure</artifactId>
-        </dependency>
-        <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
-        </dependency>
-        <!-- DatabaseCacheDriver 依赖，optional=true：仅使用 array/file 驱动的应用无需引入 -->
-        <dependency>
-            <groupId>org.springframework</groupId>
-            <artifactId>spring-jdbc</artifactId>
-            <optional>true</optional>
-        </dependency>
-        <!-- Artisan CLI 集成（optional：仅 SpringBoot 环境下注册 cache:table 命令） -->
-        <dependency>
-            <groupId>io.github.lijialong1313</groupId>
-            <artifactId>artisan</artifactId>
-            <optional>true</optional>
-        </dependency>
-        <!-- 迁移文件生成（optional：cache:table 命令生成迁移文件时使用） -->
-        <dependency>
-            <groupId>io.github.lijialong1313</groupId>
-            <artifactId>migration</artifactId>
-            <optional>true</optional>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-configuration-processor</artifactId>
-            <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>

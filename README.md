@@ -19,7 +19,8 @@ Java 版 Laravel 框架核心库，在 Spring Boot 3.2.12 基础上近乎 100% �
 | json | `json` | JSON 编解码 SPI（Jackson 2/3 双支持，自动检测 classpath，无 Spring 依赖） | - |
 | utils | `utils` | 内存编译基础设施（MemoryClassLoader 等，jblade/migration 复用） | [README](utils/README.md) |
 | http | `http` | Middleware管道/Request·Response/路由系统 | [README](http/README.md) |
-| cache | `cache` | CacheManager/驱动分包/Cache门面 | [README](cache/README.md) |
+| cache | `cache` | CacheManager/驱动分包/Cache门面（零 Spring 依赖） | [README](cache/README.md) |
+| cache-database | `cache-database` | DatabaseCacheDriver/database驱动工厂（原生 JDBC 走 database 模块，不依赖 spring-jdbc，可选） | [README](cache-database/README.md) |
 | jblade | `jblade` | Blade模板引擎（@if/@foreach/@extends等指令，表达式编译） | [README](jblade/README.md) |
 | auth | `auth` | AuthManager/Guard(JWT·Session)/UserProvider/Auth门面 | [README](auth/README.md) |
 | jwt | `jwt` | JWT认证插件（续期/登出黑名单/Cache集成） | [README](jwt/README.md) |
@@ -37,7 +38,7 @@ Java 版 Laravel 框架核心库，在 Spring Boot 3.2.12 基础上近乎 100% �
 | captcha | `captcha` | 验证码生成器/存储/加密分子包（number/arithmetic/slider/rotate，轨迹验证，水印） | [README](captcha/README.md) |
 | wechat-sdk | `wechat-sdk` | 微信SDK（公众号/小程序API，对齐overtrue/laravel-wechat） | [README](wechat-sdk/README.md) |
 | **model-cache** | `model-cache` | 模型查询缓存（版本化失效，@CachableModel注解按需开启，可选） | [README](model-cache/README.md) |
-| starter | `starter` | 聚合Starter（引入即自动装配基础模块；redis/wechat/wire/queue-database/jwt/model-cache 等为可选扩展，按需引入） | [README](starter/README.md) |
+| starter | `starter` | 聚合Starter（引入即自动装配基础模块；redis/wechat/wire/queue-database/cache-database/jwt/model-cache 等为可选扩展，按需引入） | [README](starter/README.md) |
 | **plugin-jar-core** | `plugin-jar-core` | JAR插件系统（动态加载/卸载/三级ClassLoader/ASM扫描/动态路由） | [README](plugin-jar-core/README.md) |
 | **plugin-jar-database** | `plugin-jar-database` | JAR插件数据库持久化（BaseModel/自动建表/多实例共享） | [README](plugin-jar-database/README.md) |
 | **plugin-java-core** | `plugin-java-core` | Java文件插件系统（动态编译.java/热更新/轻量替代JAR） | [README](plugin-java-core/README.md) |

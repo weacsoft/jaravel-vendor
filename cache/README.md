@@ -1,6 +1,9 @@
 # cache 模块
 
-> Jaravel-Vendor 的缓存模块，提供 Laravel 风格的 `Cache` 门面、`CacheStore` 仓库抽象、`CacheDriverFactory` 驱动工厂（按需创建），内置 `ArrayCacheDriver`（内存）、`FileCacheDriver`（文件）、`DatabaseCacheDriver`（数据库）三种驱动，以及 `CacheManager` 多仓库管理。redis 驱动位于独立的 `redis-cache` 模块。采用**工厂模式 + 配置驱动按需创建**（对齐 Laravel `CacheManager`），只有配置在 `stores` 中的 Store 才会被创建，驱动实例在创建 Store 时才实例化。包名统一为 `com.weacsoft.jaravel.vendor.cache`。
+> Jaravel-Vendor 的缓存核心模块（**零 Spring 依赖**），提供 Laravel 风格的 `Cache` 门面、`CacheStore` 仓库抽象、`CacheDriverFactory` 驱动工厂（按需创建），内置 `ArrayCacheDriver`（内存）、`FileCacheDriver`（文件）两种驱动，以及 `CacheManager` 多仓库管理。
+> 驱动按职责拆分到可选模块：数据库驱动见 **`cache-database`**（走 `database` 模块连接，原生 JDBC，不用 spring-jdbc）、Redis 驱动见 **`redis-cache`**。
+> Spring 自动装配（`CacheAutoConfiguration` / `CacheProperties` / artisan 集成 / vendor:publish）统一位于 **`springboot`** 模块。
+> 采用**工厂模式 + 配置驱动按需创建**（对齐 Laravel `CacheManager`），只有配置在 `stores` 中的 Store 才会被创建，驱动实例在创建 Store 时才实例化。包名统一为 `com.weacsoft.jaravel.vendor.cache`。
 
 ---
 
@@ -35,7 +38,7 @@
 | 驱动工厂（按需创建） | `CacheDriverFactory` | `support(driver)` + `create(config)`，对齐 Auth 模块工厂模式 |
 | `"array"` 驱动 | `ArrayCacheDriver` | 基于 `ConcurrentHashMap` 的内存缓存 |
 | `"file"` 驱动 | `FileCacheDriver` | 基于文件系统的缓存（Jackson 序列化） |
-| `"database"` 驱动 | `DatabaseCacheDriver` | 基于关系型数据库的缓存（JdbcTemplate，需手动建表） |
+| `"database"` 驱动 | `DatabaseCacheDriver`（`cache-database` 模块） | 基于关系型数据库的缓存（原生 JDBC 走 database 模块，需手动建表） |
 | `config/cache.php` | `CacheProperties` | `jaravel.cache.*` 配置，含 `stores` 数组 |
 
 ### 架构分层
@@ -73,18 +76,17 @@ TTL 单位统一为**秒**（对齐 Laravel），`ttl <= 0` 表示永不过期�
 | 依赖 | 用途 |
 | --- | --- |
 | `io.github.lijialong1313:core` | `Facade` 基础设施（`Cache` 门面通过 `Facade.resolve()` 解析 `CacheManager`） |
-| `org.springframework.boot:spring-boot-autoconfigure` | 自动装配 |
-| `com.fasterxml.jackson.core:jackson-databind` | `FileCacheDriver` / `DatabaseCacheDriver` 的 JSON 序列化 |
-| `org.springframework:spring-jdbc`（optional） | `DatabaseCacheDriver` 的数据库操作（`JdbcTemplate`）；仅使用 array/file 驱动时无需引入 |
+| `io.github.lijialong1313:utils` | `ArrayCacheDriver` 的 `SimpleMemoryCache` 基础 |
+| `com.fasterxml.jackson.core:jackson-databind` | `FileCacheDriver` 的 JSON 序列化 |
 | `org.slf4j:slf4j-api` | 日志门面 |
 
-> 运行环境要求：JDK 17+，Spring Boot 3.2.12（Spring 6.x）。
+> 运行环境要求：JDK 17+。本模块**不依赖 Spring**——Spring 自动装配在 `springboot` 模块（引入 `springboot` 或 `starter` 即生效）。
 >
-> **使用 database 驱动**时，应用需自行引入 `spring-jdbc`（如 `spring-boot-starter-jdbc`）并准备一个数据库连接。
+> **使用 database 驱动**时，应用需引入 `cache-database` 模块（传递依赖 `database` 模块，连接走 `@RegisterConnection` 注册表或 Spring 容器 DataSource 回退）。
 >
 > `DatabaseCacheDriverFactory` 的装配条件是**配置里确实声明了 `driver: database` 的 store**，
 > 而**不是**"容器中存在 `DataSource` bean"。只用 array/file 驱动时，
-> 即便没有任何数据源也不会影响启动（详见第 12 节）。
+> 即便没有任何数据源也不会影响启动（详见第 12 节与 [cache-database/README.md](../cache-database/README.md)）。
 
 ---
 
@@ -103,13 +105,14 @@ com.weacsoft.jaravel.vendor.cache
 │   ├── ArrayCacheDriverFactory  // array 驱动工厂
 │   ├── FileCacheDriver          // 文件缓存驱动（Jackson JSON 序列化）
 │   ├── FileCacheDriverFactory   // file 驱动工厂
-│   ├── DatabaseCacheDriver      // 数据库缓存驱动（JdbcTemplate，不自动建表）
-│   └── DatabaseCacheDriverFactory // database 驱动工厂（惰性解析数据源）
-├── autoconfigure/
-│   ├── CacheDataSourceResolver  // 数据源解析：先 jaravel 连接注册表，后 Spring 容器
-│   └── OnDatabaseCacheStoreCondition // 「声明了 driver: database 才装配」判定
-├── CacheProperties              // 配置属性（jaravel.cache.*，含 stores 配置）
-└── CacheAutoConfiguration       // 自动装配（注册驱动工厂 + 手动装配 CacheManager）
+├── CacheConfig                  // 纯 Java 配置对象（stores/prefix/顶层快捷配置，无框架依赖）
+└── autoconfigure/
+    └── CachePublishableConfig   // vendor:publish 发布配置声明（纯 Java，core.publish 契约）
+
+> **database 驱动**：独立模块 `cache-database`（`vendor.cache.database.DatabaseCacheDriver` +
+> `DatabaseCacheDriverFactory`，原生 JDBC 走 `database` 模块连接，另含 `cache:table` 命令类）。
+> **Spring 装配类**：`springboot` 模块 `vendor.springboot.cache` 包（`CacheAutoConfiguration` /
+> `CacheProperties` / `CacheStoreRegistrar` / `OnDatabaseCacheStoreCondition` / `CacheArtisanAutoConfiguration`）。
 ```
 
 ---
@@ -482,11 +485,11 @@ driver2.removeAll();         // 清空所有 .cache 文件
 
 ---
 
-## 11. DatabaseCacheDriver —— 数据库缓存驱动
+## 11. DatabaseCacheDriver —— 数据库缓存驱动（cache-database 模块）
 
-`com.weacsoft.jaravel.vendor.cache.DatabaseCacheDriver`
+`com.weacsoft.jaravel.vendor.cache.database.DatabaseCacheDriver` — 完整文档见 [cache-database/README.md](../cache-database/README.md)
 
-对齐 Laravel `"database"` 缓存驱动。基于 Spring `JdbcTemplate` 将缓存条目持久化到 `jaravel_cache` 表，缓存值以 JSON 字符串存储。**不会自动建表**：需通过 `artisan cache:table` 命令或手动调用 `createTable()` 方法创建表。`createTable()` 自动适配 MySQL / PostgreSQL / SQLite / H2 / SQL Server 方言。适合需要跨进程共享、又不想引入 Redis 的场景。
+对齐 Laravel `"database"` 缓存驱动。以**原生 JDBC** 将缓存条目持久化到 `jaravel_cache` 表（数据源走 `database` 模块的 `ConnectionManager` 连接注册表，或业务方直接传入任意 `DataSource`，**不依赖 spring-jdbc**），缓存值以 JSON 字符串存储。**不会自动建表**：需通过 `artisan cache:table` 命令或手动调用 `createTable()` 方法创建表。`createTable()` 自动适配 MySQL / PostgreSQL / SQLite / H2 / SQL Server 方言。适合需要跨进程共享、又不想引入 Redis 的场景。
 
 ### 构造器
 
@@ -569,11 +572,11 @@ driver.removeAll();        // 清空整张表
 
 ---
 
-## 12. CacheAutoConfiguration —— 自动装配
+## 12. CacheAutoConfiguration —— 自动装配（springboot 模块）
 
-`com.weacsoft.jaravel.vendor.cache.CacheAutoConfiguration`
+`com.weacsoft.jaravel.vendor.springboot.cache.CacheAutoConfiguration`
 
-Spring Boot 自动装配类，对齐 Laravel 缓存服务提供者。采用**工厂模式 + 手动装配**：注册驱动工厂（而非直接创建驱动/Store Bean），由 `CacheManager` 根据 `stores` 配置按需创建 Store。
+Spring Boot 自动装配类（位于 `springboot` 模块，cache 核心模块保持零 Spring 依赖），对齐 Laravel 缓存服务提供者。采用**工厂模式 + 手动装配**：注册驱动工厂（而非直接创建驱动/Store Bean），由 `CacheManager` 根据 `stores` 配置按需创建 Store。
 
 ### 注册的 Bean
 
@@ -581,7 +584,7 @@ Spring Boot 自动装配类，对齐 Laravel 缓存服务提供者。采用**工
 | --- | --- | --- |
 | `arrayCacheDriverFactory` | `ArrayCacheDriverFactory` | 内存缓存驱动工厂（始终注册） |
 | `fileCacheDriverFactory` | `FileCacheDriverFactory` | 文件缓存驱动工厂（始终注册） |
-| `databaseCacheDriverFactory` | `DatabaseCacheDriverFactory` | 数据库缓存驱动工厂；仅当 classpath 存在 `JdbcTemplate` **且配置里声明了 `driver: database` 的 store** 时装配 |
+| `databaseCacheDriverFactory` | `DatabaseCacheDriverFactory`（cache-database 模块） | 数据库缓存驱动工厂；仅当 classpath 存在 `cache-database` 模块 **且配置里声明了 `driver: database` 的 store** 时装配 |
 | `cacheManager` | `CacheManager` | 缓存管理器，收集所有驱动工厂并根据 `stores` 配置按需创建 Store |
 
 ### 装配逻辑
@@ -607,7 +610,7 @@ public CacheManager cacheManager(CacheProperties properties,
 
 ```java
 @Configuration(proxyBeanMethods = false)
-@ConditionalOnClass({DataSource.class, JdbcTemplate.class})     // 避免 NoClassDefFoundError
+@ConditionalOnClass(DatabaseCacheDriverFactory.class)           // 未引入 cache-database 模块时跳过
 @Conditional(OnDatabaseCacheStoreCondition.class)               // 用上了才装配
 static class DatabaseCacheConfiguration { ... }
 ```
@@ -632,7 +635,7 @@ jaravel:
 一是把缓存模块和 Spring 的 Bean 图强绑定，时序脆弱；
 二是感知不到 jaravel 自己用 `@RegisterConnection` 注册的连接。
 
-现在数据源在**真正创建驱动时**才由 `CacheDataSourceResolver` 惰性解析，顺序为：
+现在数据源在**真正创建驱动时**才由 `springboot` 模块装配的惰性解析器（`DatabaseCacheConfiguration` 注入 Supplier）解析，顺序为：
 
 1. **jaravel `ConnectionManager` 注册表**（`@RegisterConnection` 声明的连接）；
 2. **Spring 容器**中的 `DataSource` Bean。
@@ -710,7 +713,7 @@ jaravel:
 ```
 
 ```java
-// 引入 spring-boot-starter-jdbc 并配置数据源后，database store 按需创建
+// 引入 cache-database 模块（传递依赖 database 模块）并注册连接后，database store 按需创建
 Cache.put("user:1", user, 3600);                 // 写入默认 store（database）
 Object value = Cache.store("database").get("user:1");
 ```
@@ -724,5 +727,7 @@ java -jar app.jar artisan cache:table
 ```
 
 该命令按需创建 `DatabaseCacheDriver` 实例并调用 `createTable()` 创建缓存表（`CREATE TABLE IF NOT EXISTS`），自动适配 MySQL / PostgreSQL / SQLite / H2 / SQL Server 方言。表名由 `jaravel.cache.database-table` 或 `stores.database.table` 配置决定，默认为 `jaravel_cache`。
+
+> 命令类位于 `cache-database` 模块（`vendor.cache.database.artisan.CacheTableCommand`），由 `springboot` 模块的 `CacheArtisanAutoConfiguration` 在引入 `artisan` 模块时按 `@RegisterCommand` 扫描注册；未声明 database 驱动时不装配。
 
 ---

@@ -29,6 +29,35 @@
             <artifactId>auth</artifactId>
             <optional>true</optional>
         </dependency>
+        <!-- 缓存自动装配：cache 核心（纯 Java，零 Spring 依赖） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>cache</artifactId>
+        </dependency>
+        <!-- 缓存 database 驱动装配（optional：未引入 cache-database 时条件装配自动跳过） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>cache-database</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- database 模块连接注册表（optional：DataSource 回退解析与别名连接用） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>database</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- Artisan CLI 集成（optional：注册 cache:table 命令） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>artisan</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- @ConfigurationProperties 元数据生成 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
+        </dependency>
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-webmvc</artifactId>

@@ -1,12 +1,14 @@
-package com.weacsoft.jaravel.vendor.cache.autoconfigure;
-
-import org.springframework.boot.context.properties.ConfigurationProperties;
+package com.weacsoft.jaravel.vendor.cache;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * 缓存配置属性，前缀 {@code jaravel.cache}，对齐 Laravel {@code config/cache.php}。
+ * 缓存全局配置（<b>纯 Java POJO，零框架依赖</b>），对齐 Laravel {@code config/cache.php}。
+ * <p>
+ * Spring 环境下的 {@code @ConfigurationProperties} 绑定类位于 {@code springboot} 模块
+ * （{@code com.weacsoft.jaravel.vendor.springboot.cache.CacheProperties}），
+ * 自动装配时映射到本类型后交给 {@link CacheManager}：
  * <pre>
  * jaravel:
  *   cache:
@@ -28,24 +30,20 @@ import java.util.Map;
  * <p>
  * <b>stores 配置</b>：只有配置在 stores 中的 store 才会被创建。
  * 若 stores 为空，则只创建 default-store 对应的默认 store（driver 名与 store 名相同）。
- * <p>
- * <b>向后兼容</b>：{@code file-dir} 和 {@code database-table} 仍可直接在顶层配置，
- * 也可在对应 store 的配置中通过 {@code dir} / {@code table} 指定。
  */
-@ConfigurationProperties(prefix = "jaravel.cache")
-public class CacheProperties {
+public class CacheConfig {
 
     /** 默认 store 名称 */
     private String defaultStore = "array";
 
     /** 缓存键前缀 */
-    private String prefix = "jaravel";
+    private String prefix = "";
 
     /** file 驱动目录，空串表示使用系统临时目录下的 jaravel-cache 子目录（顶层快捷配置） */
     private String fileDir = "";
 
     /** database 驱动表名，默认 jaravel_cache（顶层快捷配置） */
-    private String databaseTable = "jaravel_cache";
+    private String databaseTable = "";
 
     /** store 配置映射，key 为 store 名称，value 为该 store 的驱动配置 */
     private Map<String, StoreConfig> stores = new LinkedHashMap<>();
@@ -94,7 +92,7 @@ public class CacheProperties {
      * 单个 store 的配置，对齐 Laravel {@code config/cache.php} 的 stores 数组项。
      * <p>
      * 每个配置项含 {@code driver}（驱动名）和驱动特定的参数（如 {@code dir}、{@code table}、
-     * {@code connection} 等），由 {@link com.weacsoft.jaravel.vendor.cache.CacheDriverFactory} 解释。
+     * {@code connection} 等），由 {@link CacheDriverFactory} 解释。
      */
     public static class StoreConfig {
 

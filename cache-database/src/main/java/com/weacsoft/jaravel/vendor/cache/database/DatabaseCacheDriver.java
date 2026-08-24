@@ -1,13 +1,17 @@
-package com.weacsoft.jaravel.vendor.cache.driver;
+package com.weacsoft.jaravel.vendor.cache.database;
 
 import com.weacsoft.jaravel.vendor.cache.CacheDriver;
 import com.weacsoft.jaravel.vendor.json.Json;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -16,10 +20,12 @@ import java.util.concurrent.Executors;
 /**
  * 基于关系型数据库的缓存驱动，对齐 Laravel {@code "database"} 缓存驱动。
  * <p>
- * 使用 Spring {@link JdbcTemplate} 将缓存条目持久化到 {@code jaravel_cache} 表
- * （表名可通过 {@code CacheProperties#getDatabaseTable()} 配置），缓存值以 JSON 字符串存储。
- * <b>不会自动建表</b>：需通过 {@code artisan cache:table} 命令或手动调用 {@link #createTable()} 创建表，
- * 表结构如下：
+ * 连接<b>走 jaravel database 模块</b>：数据源来自 {@code jaravel_cache} 表所在连接
+ * （{@code ConnectionManager} 注册表或业务方传入的任意 {@link DataSource}），
+ * SQL 操作用原生 JDBC 执行——<b>不依赖 spring-jdbc</b>。
+ * <p>
+ * 缓存值以 JSON 字符串存储。<b>不会自动建表</b>：需通过 {@code artisan cache:table}
+ * 命令或手动调用 {@link #createTable()} 创建表，表结构如下：
  * <pre>
  * CREATE TABLE jaravel_cache (
  *   cache_key   VARCHAR(255) NOT NULL PRIMARY KEY,   -- 缓存键
@@ -33,7 +39,7 @@ import java.util.concurrent.Executors;
  * {@code ttlSeconds <= 0} 时 {@code expires_at = 0}（永不过期）。
  * <p>
  * 读取 / 存在性判断时会检查过期：命中已过期记录时返回未命中，并通过后台守护线程异步删除该过期记录，
- * 避免阻塞读路径。{@link JdbcTemplate} 本身线程安全，本驱动可作为单例在多线程环境共享。
+ * 避免阻塞读路径。{@link DataSource} 本身线程安全，本驱动可作为单例在多线程环境共享。
  * <p>
  * 注意：由于 {@code cache_value} 以 JSON 存储，{@code Object} 反序列化时复杂对象会还原为
  * {@code LinkedHashMap} / {@code ArrayList} 等基础类型，这是 JSON 缓存的固有特性。
@@ -45,14 +51,11 @@ public class DatabaseCacheDriver implements CacheDriver {
     /** 默认缓存表名 */
     private static final String DEFAULT_TABLE = "jaravel_cache";
 
-    /** JdbcTemplate 用于数据库操作 */
-    private final JdbcTemplate jdbcTemplate;
+    /** 数据源（来自 database 模块连接注册表或业务方显式传入） */
+    private final DataSource dataSource;
 
     /** 缓存表名 */
     private final String table;
-
-    /** 数据源，用于惰性识别数据库方言 */
-    private final DataSource dataSource;
 
     /**
      * 数据库产品名（小写），用于方言适配。
@@ -75,7 +78,7 @@ public class DatabaseCacheDriver implements CacheDriver {
     /**
      * 构造数据库缓存驱动，使用默认表名 {@code jaravel_cache}。
      *
-     * @param dataSource 数据源
+     * @param dataSource 数据源（database 模块连接或任意 JDBC 数据源）
      */
     public DatabaseCacheDriver(DataSource dataSource) {
         this(dataSource, DEFAULT_TABLE);
@@ -84,13 +87,15 @@ public class DatabaseCacheDriver implements CacheDriver {
     /**
      * 构造数据库缓存驱动。
      *
-     * @param dataSource 数据源
+     * @param dataSource 数据源（database 模块连接或任意 JDBC 数据源）
      * @param table      缓存表名，{@code null} 或空串使用默认 {@code jaravel_cache}
      */
     public DatabaseCacheDriver(DataSource dataSource, String table) {
-        this.jdbcTemplate = new JdbcTemplate(dataSource);
-        this.table = (table == null || table.isEmpty()) ? DEFAULT_TABLE : table;
+        if (dataSource == null) {
+            throw new IllegalArgumentException("DataSource 不能为 null（请通过 database 模块注册连接后使用）");
+        }
         this.dataSource = dataSource;
+        this.table = (table == null || table.isEmpty()) ? DEFAULT_TABLE : table;
         // 方言不在构造期探测：此刻连接可能尚未注册完成，探测会失败并错误回退到 MySQL
         this.expireCleaner = Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "jaravel-cache-db-expire-cleaner");
@@ -112,7 +117,7 @@ public class DatabaseCacheDriver implements CacheDriver {
             return false;
         }
         try {
-            jdbcTemplate.update(upsertSql(), key, json, expiresAt);
+            executeUpdate(upsertSql(), key, json, expiresAt);
             return true;
         } catch (Exception e) {
             logger.warn("[cache-db] 写入缓存失败: key={}, err={}", key, e.getMessage());
@@ -122,11 +127,11 @@ public class DatabaseCacheDriver implements CacheDriver {
 
     @Override
     public Object get(String key) {
-        List<Row> rows = jdbcTemplate.query(
+        List<Row> rows = queryRows(
                 "SELECT " + quote("cache_value") + ", " + quote("expires_at")
                         + " FROM " + quote(table)
                         + " WHERE " + quote("cache_key") + " = ?",
-                (rs, rowNum) -> new Row(rs.getString("cache_value"), rs.getLong("expires_at")),
+                rs -> new Row(rs.getString("cache_value"), rs.getLong("expires_at")),
                 key);
         if (rows.isEmpty()) {
             return null;
@@ -142,11 +147,11 @@ public class DatabaseCacheDriver implements CacheDriver {
 
     @Override
     public boolean exists(String key) {
-        List<Long> expires = jdbcTemplate.query(
+        List<Long> expires = queryRows(
                 "SELECT " + quote("expires_at")
                         + " FROM " + quote(table)
                         + " WHERE " + quote("cache_key") + " = ?",
-                (rs, rowNum) -> rs.getLong("expires_at"),
+                rs -> rs.getLong("expires_at"),
                 key);
         if (expires.isEmpty()) {
             return false;
@@ -162,14 +167,13 @@ public class DatabaseCacheDriver implements CacheDriver {
 
     @Override
     public boolean remove(String key) {
-        int affected = jdbcTemplate.update(
-                "DELETE FROM " + quote(table) + " WHERE " + quote("cache_key") + " = ?", key);
-        return affected > 0;
+        return executeUpdate(
+                "DELETE FROM " + quote(table) + " WHERE " + quote("cache_key") + " = ?", key) > 0;
     }
 
     @Override
     public void removeAll() {
-        jdbcTemplate.update("DELETE FROM " + quote(table));
+        executeUpdate("DELETE FROM " + quote(table));
     }
 
     @Override
@@ -177,18 +181,86 @@ public class DatabaseCacheDriver implements CacheDriver {
         long now = System.currentTimeMillis();
         // 顺带清理已过期记录，仅返回未过期键
         try {
-            jdbcTemplate.update(
+            executeUpdate(
                     "DELETE FROM " + quote(table)
                             + " WHERE " + quote("expires_at") + " > 0 AND " + quote("expires_at") + " <= ?",
                     now);
         } catch (Exception e) {
             logger.debug("[cache-db] 清理过期记录失败（忽略）: {}", e.getMessage());
         }
-        return jdbcTemplate.queryForList(
+        return queryRows(
                 "SELECT " + quote("cache_key")
                         + " FROM " + quote(table)
                         + " WHERE " + quote("expires_at") + " = 0 OR " + quote("expires_at") + " > ?",
-                String.class, now);
+                rs -> rs.getString("cache_key"),
+                now);
+    }
+
+    // ==================== 原生 JDBC 工具方法 ====================
+
+    /**
+     * 执行更新语句（INSERT/UPDATE/DELETE）。
+     *
+     * @return 受影响行数
+     * @throws IllegalStateException 数据库错误（含表不存在——请先生成/执行 cache 迁移）
+     */
+    private int executeUpdate(String sql, Object... params) {
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            bind(ps, params);
+            return ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new IllegalStateException("数据库操作失败: " + sql, e);
+        }
+    }
+
+    /**
+     * 执行建表等 DDL 语句。
+     *
+     * @throws IllegalStateException 数据库错误
+     */
+    private void executeSql(String sql) {
+        try (Connection conn = dataSource.getConnection();
+             Statement st = conn.createStatement()) {
+            st.execute(sql);
+        } catch (SQLException e) {
+            throw new IllegalStateException("数据库操作失败: " + sql, e);
+        }
+    }
+
+    /**
+     * 执行查询并逐行映射。
+     *
+     * @throws IllegalStateException 数据库错误
+     */
+    private <T> List<T> queryRows(String sql, RowMapper<T> mapper, Object... params) {
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            bind(ps, params);
+            List<T> rows = new ArrayList<>();
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    rows.add(mapper.map(rs));
+                }
+            }
+            return rows;
+        } catch (SQLException e) {
+            throw new IllegalStateException("数据库操作失败: " + sql, e);
+        }
+    }
+
+    /**
+     * 行映射函数：允许抛出受检的 {@link SQLException}。
+     */
+    @FunctionalInterface
+    private interface RowMapper<T> {
+        T map(ResultSet rs) throws SQLException;
+    }
+
+    private static void bind(PreparedStatement ps, Object... params) throws SQLException {
+        for (int i = 0; i < params.length; i++) {
+            ps.setObject(i + 1, params[i]);
+        }
     }
 
     // ==================== 内部工具方法 ====================
@@ -215,7 +287,7 @@ public class DatabaseCacheDriver implements CacheDriver {
     private void deleteAsync(String key) {
         expireCleaner.submit(() -> {
             try {
-                jdbcTemplate.update(
+                executeUpdate(
                         "DELETE FROM " + quote(table) + " WHERE " + quote("cache_key") + " = ?", key);
             } catch (Exception e) {
                 logger.debug("[cache-db] 异步删除过期记录失败: key={}, err={}", key, e.getMessage());
@@ -313,9 +385,9 @@ public class DatabaseCacheDriver implements CacheDriver {
     public boolean createTable() {
         try {
             if (isSqlServer()) {
-                Integer cnt = jdbcTemplate.queryForObject(
-                        "SELECT COUNT(*) FROM sys.tables WHERE name = ?", Integer.class, table);
-                if (cnt != null && cnt > 0) {
+                List<Integer> cnt = queryRows(
+                        "SELECT COUNT(*) FROM sys.tables WHERE name = ?", rs -> rs.getInt(1), table);
+                if (!cnt.isEmpty() && cnt.get(0) > 0) {
                     logger.info("[cache-db] 缓存表已存在: {}", table);
                     return true;
                 }
@@ -327,7 +399,7 @@ public class DatabaseCacheDriver implements CacheDriver {
                     + quote("expires_at") + " BIGINT NOT NULL DEFAULT 0"
                     + (isMysql() ? ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4" : ")");
             logger.info("[cache-db] 创建缓存表: {}", sql);
-            jdbcTemplate.execute(sql);
+            executeSql(sql);
             return true;
         } catch (Exception e) {
             // 并发建表或表已存在时可能抛异常，忽略

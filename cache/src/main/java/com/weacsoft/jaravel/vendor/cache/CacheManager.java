@@ -1,6 +1,5 @@
 package com.weacsoft.jaravel.vendor.cache;
 
-import com.weacsoft.jaravel.vendor.cache.autoconfigure.CacheProperties;
 import com.weacsoft.jaravel.vendor.cache.driver.ArrayCacheDriver;
 import com.weacsoft.jaravel.vendor.cache.store.DefaultCacheStore;
 import org.slf4j.Logger;
@@ -61,7 +60,7 @@ public class CacheManager {
     private final List<CacheDriverFactory> driverFactories = new CopyOnWriteArrayList<>();
 
     /** 缓存全局配置（供延迟创建时补充顶层快捷配置如 file-dir、database-table） */
-    private CacheProperties properties;
+    private CacheConfig properties;
 
     /** 默认 store 名称 */
     private String defaultStore = "array";
@@ -89,7 +88,7 @@ public class CacheManager {
     /**
      * 从配置初始化 store 定义（延迟创建，不立即实例化）。
      * <p>
-     * 根据 {@code CacheProperties.stores} 配置注册 store 定义：
+     * 根据 {@code CacheConfig.stores} 配置注册 store 定义：
      * <ol>
      *   <li>若 stores 为空，只注册 default-store 定义（driver 名 = store 名）</li>
      *   <li>若 stores 非空，为每个配置项注册对应的 store 定义</li>
@@ -97,14 +96,14 @@ public class CacheManager {
      * </ol>
      * 实际的 {@link CacheStore} 实例在首次 {@link #store(String)} 调用时才创建。
      *
-     * @param properties 缓存配置
+     * @param properties 缓存配置（纯 Java POJO，无框架依赖）
      */
-    public void initFromConfig(CacheProperties properties) {
+    public void initFromConfig(CacheConfig properties) {
         this.properties = properties;
         this.defaultStore = properties.getDefaultStore();
         this.prefix = properties.getPrefix() == null ? "" : properties.getPrefix();
 
-        Map<String, CacheProperties.StoreConfig> storesConfig = properties.getStores();
+        Map<String, CacheConfig.StoreConfig> storesConfig = properties.getStores();
 
         if (storesConfig == null || storesConfig.isEmpty()) {
             // stores 未配置：只注册 default-store 定义（driver 名与 store 名相同）
@@ -114,9 +113,9 @@ public class CacheManager {
         }
 
         // 按 stores 配置注册定义
-        for (Map.Entry<String, CacheProperties.StoreConfig> entry : storesConfig.entrySet()) {
+        for (Map.Entry<String, CacheConfig.StoreConfig> entry : storesConfig.entrySet()) {
             String storeName = entry.getKey();
-            CacheProperties.StoreConfig cfg = entry.getValue();
+            CacheConfig.StoreConfig cfg = entry.getValue();
             String driverName = cfg.getDriver() != null ? cfg.getDriver() : storeName;
             storeConfigs.put(storeName, new StoreDefinition(driverName, cfg.toConfigMap()));
         }

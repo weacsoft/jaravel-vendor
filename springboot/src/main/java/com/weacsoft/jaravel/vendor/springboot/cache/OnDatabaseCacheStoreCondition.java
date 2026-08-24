@@ -1,4 +1,4 @@
-package com.weacsoft.jaravel.vendor.cache.autoconfigure;
+package com.weacsoft.jaravel.vendor.springboot.cache;
 
 import com.weacsoft.jaravel.vendor.core.condition.OnDriverInUseCondition;
 
@@ -16,7 +16,7 @@ import com.weacsoft.jaravel.vendor.core.condition.OnDriverInUseCondition;
  *         table: jaravel_cache
  * </pre>
  *
- * 未声明 database 驱动时，{@code DatabaseCacheDriverFactory} 完全不注册，
+ * 未声明 database 驱动时，数据库缓存驱动工厂（cache-database 模块）完全不注册，
  * 应用无需任何数据源即可正常启动。
  *
  * @see OnDriverInUseCondition

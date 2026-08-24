@@ -1,8 +1,9 @@
-package com.weacsoft.jaravel.vendor.cache.autoconfigure;
+package com.weacsoft.jaravel.vendor.springboot.cache;
 
 import com.weacsoft.jaravel.vendor.artisan.ArtisanCommand;
 import com.weacsoft.jaravel.vendor.artisan.RegisterCommand;
-import com.weacsoft.jaravel.vendor.cache.driver.DatabaseCacheDriver;
+import com.weacsoft.jaravel.vendor.cache.database.artisan.CacheTableCommand;
+import com.weacsoft.jaravel.vendor.cache.database.DatabaseCacheDriver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -13,7 +14,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
  * 缓存模块与 Artisan CLI 的集成自动装配。
  * <p>
  * 当 classpath 中同时存在 {@link ArtisanCommand}（artisan 模块）和
- * {@link DatabaseCacheDriver}（cache 模块的 database 驱动）时，
+ * {@link DatabaseCacheDriver}（cache-database 模块的 database 驱动）时，
  * 通过 {@link RegisterCommand} 注解注册 {@code cache:table} 命令。
  * 命令实例<b>不作为 Spring Bean</b>，由 CommandRegistrar 扫描后注册到 ArtisanApplication。
  * <p>
@@ -36,8 +37,8 @@ public class CacheArtisanAutoConfiguration {
      * @return 缓存建表命令
      */
     @RegisterCommand("生成缓存表迁移文件")
-    public com.weacsoft.jaravel.vendor.cache.artisan.CacheTableCommand cacheTableCommand(CacheProperties properties) {
+    public CacheTableCommand cacheTableCommand(CacheProperties properties) {
         log.info("[cache-artisan] 注册命令: cache:table");
-        return new com.weacsoft.jaravel.vendor.cache.artisan.CacheTableCommand(properties.getDatabaseTable());
+        return new CacheTableCommand(properties.getDatabaseTable());
     }
 }

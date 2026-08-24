@@ -16,6 +16,7 @@
   - Token 双模式（`legacy` GET `cgi-bin/token` / `stable` POST `cgi-bin/stable_token`）+ core+cache 模块缓存（可共享 redis store）。
 - **wechat-sdk · 洋葱内核（Onion Kernel）**：`kernel.WechatKernel` + `WechatMiddleware` + `WechatRequest`（静态组装/提取一体）+ `WechatResponse`（静态组装/返回一体，Kind 判别 + 方向互换 + 被动回复能力守卫）；内置 `VerifySignatureMiddleware`（验签）→ `DecryptParseMiddleware`（解密/解析）两层，业务层可任意追加、短路；`WeChatServer` 变为其薄壳（历史行为 1:1 保留）。
 - **wechat-sdk · 网页授权（公众号 OAuth）**：`oauth.WeChatOAuth`（授权 URL 组装 + code 换 openid/用户 + EasyWeChat 兼容会话键 `easywechat.oauth_user.{account}`）；`oauth.WeChatOAuthMiddleware` 自动重定向（已授权放行 / 回调换码存会话回跳 / state 防 CSRF / `enforce-https`），路由别名 `wechat.oauth`（冒号参数 `account[,scope]`）。
+- **cache-database 模块（新）**：数据库缓存驱动独立模块（对齐 `queue-database` 拆分惯例）——`DatabaseCacheDriver`（原生 JDBC，替代 spring-jdbc `JdbcTemplate`，方言适配 MySQL/PostgreSQL/SQLite/H2/SQL Server）、`DatabaseCacheDriverFactory`（数据源走 `database` 模块 `ConnectionManager` 注册表 + 惰性 `Supplier<DataSource>` 可注入 Spring 回退）、`CacheTableCommand`（cache:table 命令）。**零 Spring 依赖**，纯 JVM 可直接使用。
 - **wechat-sdk · `vendor:publish --tag=wechat-sdk`**：静态注册 `WechatSdkConfig` 声明式配置模板（`@RegisterWechatOfficialAccount` / `@RegisterWechatMiniApp` + OAuth 配置块），发布不再受运行期条件（OkHttp/`enabled` 开关）牵连。
 - **database · Oracle 方言**（`jaravel-oracle`）：schema 限定表名 SQL 生成修复；Oracle 别名去 `AS` 关键字。
 - **wire · v2.0 组件系统重构**：`WireController` 声明式契约（fill/mount/render/wireView）、`wire:pagination` / `wire:nav` / `wire:key` / `wire:lazy` 组件级局部刷新、`@WireQuery` 注解与带参 URL 还原（翻页→修改→取消不错位）、URL 状态恢复机制、`Wire.call()` 命名参数、`wire.xsd` 命名空间校验、`refresh()` 生命周期、wire-dialog-close、透明导航事件总线（beforeRequest/afterRequest/beforeUpdate/afterUpdate）、栈式嵌套 section 解析（夜间模式丢失根因修复）。
@@ -33,6 +34,7 @@
 
 ### Changed（变更）
 
+- **cache 模块纯化（去 Spring 化）**：cache 核心模块移除 `spring-boot-autoconfigure` / `spring-jdbc` / `spring-boot-configuration-processor` 全部直接依赖与 `autoconfigure` 装配类——Spring 装配（`CacheAutoConfiguration` / `CacheProperties` / `CacheStoreRegistrar` / `OnDatabaseCacheStoreCondition` / `CacheArtisanAutoConfiguration`）统一迁入 **`springboot` 模块**（`vendor.springboot.cache` 包）；database 驱动迁入 **`cache-database` 模块**（走 `database` 模块连接）。`CacheManager.initFromConfig` 改收纯 Java `CacheConfig`（Spring `CacheProperties` 经 `toCacheConfig()` 映射）。`vendor:publish` 注册（`CachePublishableConfig`）、`@RegisterCacheStore` 契约、`artisan cache:table` 行为不变。
 - 中间件不再注册为 Spring Bean：classpath 扫描 + 继承式配置，支持 Class 对象/类名/字符串别名三种引用；自动扫描跳过已手动注册的实例。
 - `csrf_field`/`@csrf`/`csrf_token`/`@csor`… 改为框架开箱即用内置注册（注册后自检，失败可见而非静默空值）；`VerifyCsrfToken` 未启用时输出空串。
 - `asset()` 与 `url()` 语义一致（移除 `/assets` 前缀）；`@route` 指令编译目标修正为 `route`。

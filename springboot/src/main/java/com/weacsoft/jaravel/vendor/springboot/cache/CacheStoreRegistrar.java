@@ -1,4 +1,4 @@
-package com.weacsoft.jaravel.vendor.cache.autoconfigure;
+package com.weacsoft.jaravel.vendor.springboot.cache;
 
 import com.weacsoft.jaravel.vendor.cache.CacheManager;
 import com.weacsoft.jaravel.vendor.cache.CacheStore;
