@@ -1,6 +1,6 @@
 package com.weacsoft.jaravel.vendor.springboot.auth;
 
-import com.weacsoft.jaravel.vendor.core.condition.OnDriverInUseCondition;
+import com.weacsoft.jaravel.vendor.springboot.condition.OnDriverInUseCondition;
 
 /**
  * 仅当<b>显式（或缺省）选用</b> Session 作为守卫驱动时才装配 {@code SessionGuardDriver}。

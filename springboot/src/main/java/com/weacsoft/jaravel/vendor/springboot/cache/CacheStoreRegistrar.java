@@ -4,7 +4,6 @@ import com.weacsoft.jaravel.vendor.cache.CacheManager;
 import com.weacsoft.jaravel.vendor.cache.CacheStore;
 import com.weacsoft.jaravel.vendor.cache.RegisterCacheStore;
 import com.weacsoft.jaravel.vendor.core.registrar.AnnotationDrivenRegistrar;
-import org.springframework.context.ApplicationContext;
 
 import java.lang.reflect.Method;
 
@@ -26,8 +25,8 @@ public class CacheStoreRegistrar extends AnnotationDrivenRegistrar<RegisterCache
 
     private final CacheManager cacheManager;
 
-    public CacheStoreRegistrar(ApplicationContext context, CacheManager cacheManager) {
-        super(context, RegisterCacheStore.class);
+    public CacheStoreRegistrar(CacheManager cacheManager) {
+        super(RegisterCacheStore.class);
         this.cacheManager = cacheManager;
     }
 

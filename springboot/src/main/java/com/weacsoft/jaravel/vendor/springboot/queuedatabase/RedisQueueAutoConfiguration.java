@@ -2,7 +2,6 @@ package com.weacsoft.jaravel.vendor.springboot.queuedatabase;
 
 import com.weacsoft.jaravel.vendor.core.queue.QueueDriver;
 import com.weacsoft.jaravel.vendor.core.queue.QueueProperties;
-import com.weacsoft.jaravel.vendor.queue.database.OnRedisQueueDriverCondition;
 import com.weacsoft.jaravel.vendor.queue.database.QueueDatabaseProperties;
 import com.weacsoft.jaravel.vendor.queue.database.RedisQueueDriver;
 

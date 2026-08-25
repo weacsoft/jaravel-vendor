@@ -1,5 +1,7 @@
 package com.weacsoft.jaravel.vendor.database;
 
+import com.weacsoft.jaravel.vendor.core.lookup.GlobalLookup;
+
 import com.weacsoft.jaravel.vendor.core.SpringContext;
 import gaarason.database.contract.connection.GaarasonDataSource;
 import org.junit.jupiter.api.AfterEach;
@@ -30,13 +32,13 @@ class JaravelDataSourceTest {
     @BeforeEach
     void setUp() {
         ConnectionManager.clear();
-        new SpringContext().setApplicationContext(null);
+        GlobalLookup.uninstall();
     }
 
     @AfterEach
     void tearDown() {
         ConnectionManager.clear();
-        new SpringContext().setApplicationContext(null);
+        GlobalLookup.uninstall();
     }
 
     @Test

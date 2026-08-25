@@ -4,7 +4,6 @@ import com.weacsoft.jaravel.vendor.core.registrar.AnnotationDrivenRegistrar;
 import com.weacsoft.jaravel.vendor.core.registrar.RegistrarException;
 import com.weacsoft.jaravel.vendor.jblade.BladeDirectives;
 import com.weacsoft.jaravel.vendor.jblade.RegisterDirective;
-import org.springframework.context.ApplicationContext;
 
 import java.lang.reflect.Method;
 
@@ -22,8 +21,8 @@ import java.lang.reflect.Method;
  */
 public class BladeDirectiveRegistrar extends AnnotationDrivenRegistrar<RegisterDirective> {
 
-    public BladeDirectiveRegistrar(ApplicationContext context) {
-        super(context, RegisterDirective.class);
+    public BladeDirectiveRegistrar() {
+        super(RegisterDirective.class);
     }
 
     /**

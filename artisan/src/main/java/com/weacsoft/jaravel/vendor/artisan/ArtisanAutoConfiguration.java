@@ -157,13 +157,24 @@ public class ArtisanAutoConfiguration {
     // ==================== @RegisterCommand 命令注册器 ====================
 
     /**
-     * 注册 {@link CommandRegistrar}，在所有单例 Bean 初始化完成后扫描
-     * {@link RegisterCommand} 注解方法，将命令实例注册到 {@link ArtisanApplication}。
+     * 注册 {@link CommandRegistrar}，扫描 {@link RegisterCommand} 注解方法，
+     * 将命令实例注册到 {@link ArtisanApplication}。
      * <p>
      * 命令实例不进入 Spring 容器，对齐 @RegisterGuard / @RegisterDisk 等模式。
+     * P3：{@link CommandRegistrar} 为 core 纯扫描器（零 Spring），
+     * 扫描时机由下方 SmartInitializingSingleton 触发（保持原「所有单例就绪后扫描」时序）。
      */
     @Bean
-    public CommandRegistrar commandRegistrar(ArtisanApplication artisanApplication, ApplicationContext applicationContext) {
-        return new CommandRegistrar(applicationContext, artisanApplication);
+    public CommandRegistrar commandRegistrar(ArtisanApplication artisanApplication) {
+        return new CommandRegistrar(artisanApplication);
+    }
+
+    /**
+     * 命令注册器扫描触发：所有单例初始化完成后执行 {@code @RegisterCommand} 扫描。
+     */
+    @Bean
+    public org.springframework.beans.factory.SmartInitializingSingleton commandRegistrarScanner(
+            CommandRegistrar registrar) {
+        return registrar::scan;
     }
 }

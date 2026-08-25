@@ -1,50 +1,57 @@
 package com.weacsoft.jaravel.vendor.core.registrar;
 
+import com.weacsoft.jaravel.vendor.core.lookup.BeanLookup;
+import com.weacsoft.jaravel.vendor.core.lookup.GlobalBeanProvider;
+import com.weacsoft.jaravel.vendor.core.lookup.GlobalLookup;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.aop.support.AopUtils;
-import org.springframework.beans.factory.SmartInitializingSingleton;
-import org.springframework.context.ApplicationContext;
-import org.springframework.core.annotation.AnnotatedElementUtils;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 注解驱动注册器基类：统一 auth / cache / storage / session / view / queue 等模块
- * 「扫描注解方法 → 调用 → 注册产物」的通用流程。
+ * 「扫描注解方法 → 调用 → 注册产物」的通用流程（零 Spring 依赖）。
  * <p>
- * 实现 {@link SmartInitializingSingleton}，在所有单例 Bean 初始化完成后执行扫描，
- * 此时容器已就绪，可安全地将其他 Bean 作为注解方法的参数注入。
+ * <h3>扫描时机</h3>
+ * P3 起扫描与「容器何时就绪」解耦：宿主显式调用 {@link #scan()} 触发
+ * （Spring 宿主在各模块自动装配中以 {@code SmartInitializingSingleton}
+ * 包装 {@code registrar::scan}，保持「所有单例初始化完成后扫描」的原有时序）。
+ * {@code scan()} 幂等：重复调用直接返回，保证唯一性注册器不被二次登记。
  *
- * <h3>为什么产物不进 Spring 容器</h3>
- * {@code @Bean("admin")} 的 bean name 在容器内全局唯一，多个模块若都想注册名为
- * {@code admin} 的组件会触发 {@code BeanDefinitionOverrideException}。
- * 本机制把「组件名称」与「bean name」解耦：注解方法本身写在 Spring 配置类上，
- * 但其<b>返回的产物</b>只存入各模块自己的 Manager，不注册为 Spring Bean。
+ * <h3>Bean 解析</h3>
+ * 扫描时读取 {@link GlobalLookup} 安装的 {@link GlobalBeanProvider}：
+ * Spring 宿主安装 {@code ContextBeanProvider}（保留 CGLIB 代理解包与合并注解解析），
+ * 非 Spring 宿主安装 Map 版实现即可。
  *
- * <h3>子类职责</h3>
- * 子类只需实现 {@link #register(Object, Method, Annotation)}，把调用结果登记到
- * 各自的 Manager；扫描、参数注入、异常包装等由本类统一处理。
+ * <h3>为什么产物不进宿主容器</h3>
+ * 注解方法本身写在宿主配置类上，但其<b>返回的产物</b>只存入各模块自己的 Manager，
+ * 不注册为宿主 Bean，把「组件名称」与「bean name」解耦，避免同名 Bean 冲突。
  *
  * @param <A> 注解类型，如 {@code @RegisterCacheStore}
  */
-public abstract class AnnotationDrivenRegistrar<A extends Annotation>
-        implements SmartInitializingSingleton {
+public abstract class AnnotationDrivenRegistrar<A extends Annotation> {
 
     protected final Logger log = LoggerFactory.getLogger(getClass());
 
-    protected final ApplicationContext context;
-
     private final Class<A> annotationType;
 
-    protected AnnotationDrivenRegistrar(ApplicationContext context, Class<A> annotationType) {
-        this.context = context;
+    /** 扫描幂等标记：保证唯一性注册器不被二次登记。 */
+    private final AtomicBoolean scanned = new AtomicBoolean(false);
+
+    protected AnnotationDrivenRegistrar(Class<A> annotationType) {
         this.annotationType = annotationType;
     }
 
-    @Override
-    public void afterSingletonsInstantiated() {
+    /**
+     * 执行一次扫描（宿主在 Bean 就绪后调用；幂等，重复调用直接返回）。
+     */
+    public final void scan() {
+        if (!scanned.compareAndSet(false, true)) {
+            log.debug("@{} 注册器已扫描过，跳过重复扫描", annotationType.getSimpleName());
+            return;
+        }
         beforeScan();
         scanAnnotatedMethods();
         afterScan();
@@ -63,19 +70,20 @@ public abstract class AnnotationDrivenRegistrar<A extends Annotation>
     }
 
     /**
-     * 遍历容器中所有 Bean，查找标注了目标注解的方法。
+     * 遍历容器内所有 Bean，查找标注了目标注解的方法。
      */
     private void scanAnnotatedMethods() {
-        for (String beanName : context.getBeanDefinitionNames()) {
-            Object bean = resolveBeanQuietly(beanName);
+        BeanLookup lookup = lookup();
+        for (String beanName : lookup.beanNames()) {
+            Object bean = lookup.beanQuiet(beanName);
             if (bean == null) {
                 continue;
             }
-            Class<?> targetClass = AopUtils.getTargetClass(bean);
-            // 使用 getMethods() 而非 getDeclaredMethods()：@Configuration 类会被 CGLIB 代理，
-            // 且注解方法可能继承自父类，两种情况下 getDeclaredMethods() 都会漏扫。
+            Class<?> targetClass = lookup.targetClass(bean);
+            // getMethods() 而非 getDeclaredMethods()：注解方法可能继承自父类，
+            // 且 CGLIB 代理子类同样暴露父类方法，两种情况下 getDeclaredMethods() 都会漏扫。
             for (Method method : targetClass.getMethods()) {
-                A annotation = AnnotatedElementUtils.findMergedAnnotation(method, annotationType);
+                A annotation = lookup.findAnnotation(method, annotationType);
                 if (annotation != null) {
                     invokeAndRegister(bean, method, annotation);
                 }
@@ -84,15 +92,21 @@ public abstract class AnnotationDrivenRegistrar<A extends Annotation>
     }
 
     /**
-     * 安全获取 Bean，忽略懒加载失败/作用域不匹配等异常，避免影响启动。
+     * 取当前安装的 Bean 提供者（子类需要按类型枚举 Bean 时使用，
+     * 如 storage / queue 驱动的兜底解析）。
+     *
+     * @return 已安装的 GlobalBeanProvider
+     * @throws RegistrarException 未安装时
      */
-    private Object resolveBeanQuietly(String beanName) {
-        try {
-            return context.getBean(beanName);
-        } catch (Exception e) {
-            log.trace("跳过无法解析的 Bean: {}", beanName);
-            return null;
+    protected BeanLookup lookup() {
+        GlobalBeanProvider provider = GlobalLookup.getIfInstalled();
+        if (provider == null) {
+            throw new RegistrarException("@" + annotationType.getSimpleName()
+                    + " 注册器扫描失败：GlobalBeanProvider 未安装。"
+                    + "Spring 宿主请确认 jaravel 核心自动装配已生效；"
+                    + "非 Spring 宿主请先调用 GlobalLookup.install(...)。");
         }
+        return provider;
     }
 
     /**
@@ -116,13 +130,14 @@ public abstract class AnnotationDrivenRegistrar<A extends Annotation>
     }
 
     /**
-     * 按类型从容器解析方法参数，行为与 {@code @Bean} 方法参数注入一致。
+     * 按类型从容器解析方法参数，行为与宿主 {@code @Bean} 方法参数注入一致。
      */
     private Object[] resolveArguments(Method method) {
+        BeanLookup lookup = lookup();
         Class<?>[] types = method.getParameterTypes();
         Object[] args = new Object[types.length];
         for (int i = 0; i < types.length; i++) {
-            args[i] = context.getBean(types[i]);
+            args[i] = lookup.bean(types[i]);
         }
         return args;
     }
@@ -146,6 +161,8 @@ public abstract class AnnotationDrivenRegistrar<A extends Annotation>
     /**
      * 校验返回值类型，不匹配时抛出带有清晰上下文的异常。
      *
+     * @param expected 期望类型
+     * @param <T>      期望类型变量
      * @return 强转后的结果
      */
     protected <T> T requireType(Object result, Class<T> expected, Method method) {

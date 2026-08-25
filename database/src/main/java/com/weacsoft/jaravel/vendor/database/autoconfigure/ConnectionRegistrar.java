@@ -5,7 +5,6 @@ import com.weacsoft.jaravel.vendor.database.ConnectionManager;
 import com.weacsoft.jaravel.vendor.database.RegisterConnection;
 import gaarason.database.bootstrap.ContainerBootstrap;
 import gaarason.database.contract.connection.GaarasonDataSource;
-import org.springframework.context.ApplicationContext;
 
 import java.lang.reflect.Method;
 
@@ -31,8 +30,8 @@ import java.lang.reflect.Method;
  */
 public class ConnectionRegistrar extends AnnotationDrivenRegistrar<RegisterConnection> {
 
-    public ConnectionRegistrar(ApplicationContext context) {
-        super(context, RegisterConnection.class);
+    public ConnectionRegistrar() {
+        super(RegisterConnection.class);
     }
 
     /**
@@ -40,7 +39,7 @@ public class ConnectionRegistrar extends AnnotationDrivenRegistrar<RegisterConne
      */
     @Override
     protected void beforeScan() {
-        ContainerBootstrap bootstrap = context.getBeanProvider(ContainerBootstrap.class).getIfAvailable();
+        ContainerBootstrap bootstrap = lookup().beanOrNull(ContainerBootstrap.class);
         if (bootstrap != null) {
             ConnectionManager.setContainer(bootstrap);
             log.info("[database] 绑定全局 ContainerBootstrap: {}", bootstrap);

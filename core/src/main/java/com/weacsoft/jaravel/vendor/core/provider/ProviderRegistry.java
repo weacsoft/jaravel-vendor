@@ -2,33 +2,39 @@ package com.weacsoft.jaravel.vendor.core.provider;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.SmartInitializingSingleton;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
 
 import java.util.List;
 
 /**
- * 服务提供者注册器。
+ * 服务提供者注册器（零 Spring 依赖）。
  * <p>
- * 收集容器中所有 {@link ServiceProvider}，在所有单例 Bean 初始化完成后，
+ * 收集所有 {@link ServiceProvider}，执行两阶段引导：
  * 先统一执行 {@code register()}，再统一执行 {@code boot()}，
  * 模仿 Laravel 的两阶段引导。
+ * <p>
+ * <h3>P3 解耦说明</h3>
+ * 引导时机由宿主控制：Spring 宿主在 Bean 就绪后（{@code SmartInitializingSingleton} 包装）
+ * 调用 {@link #boot()}；非 Spring 宿自主动调用。
+ *
  */
-@Component
-public class ProviderRegistry implements SmartInitializingSingleton {
+public class ProviderRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(ProviderRegistry.class);
 
     private final List<ServiceProvider> providers;
 
-    @Autowired
     public ProviderRegistry(List<ServiceProvider> providers) {
+        if (providers == null) {
+            throw new IllegalArgumentException("providers 不能为 null（可为空列表）");
+        }
         this.providers = providers;
     }
 
-    @Override
-    public void afterSingletonsInstantiated() {
+    /**
+     * 执行两阶段引导（宿主在单例就绪后调用）。
+     * 单个 provider 的 register/boot 失败不阻断其余 provider。
+     */
+    public void boot() {
         // register 阶段
         for (ServiceProvider p : providers) {
             try {

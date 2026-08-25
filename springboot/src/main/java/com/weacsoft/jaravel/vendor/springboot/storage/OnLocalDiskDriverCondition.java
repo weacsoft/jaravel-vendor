@@ -1,6 +1,6 @@
 package com.weacsoft.jaravel.vendor.springboot.storage;
 
-import com.weacsoft.jaravel.vendor.core.condition.OnDriverInUseCondition;
+import com.weacsoft.jaravel.vendor.springboot.condition.OnDriverInUseCondition;
 
 /**
  * 仅当<b>显式（或缺省）选用</b> local 磁盘驱动时才装配 {@code LocalFilesystemDriver}。

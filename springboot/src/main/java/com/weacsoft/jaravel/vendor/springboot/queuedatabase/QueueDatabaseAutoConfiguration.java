@@ -4,12 +4,10 @@ import com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry;
 import com.weacsoft.jaravel.vendor.core.queue.QueueDriver;
 import com.weacsoft.jaravel.vendor.core.queue.RegisterQueueDriver;
 import com.weacsoft.jaravel.vendor.core.queue.QueueDriverHolder;
-import com.weacsoft.jaravel.vendor.core.queue.QueueDriverRegistrar;
 import com.weacsoft.jaravel.vendor.core.queue.QueueProperties;
 import com.weacsoft.jaravel.vendor.queue.database.DatabaseQueueDispatcher;
 import com.weacsoft.jaravel.vendor.queue.database.DatabaseQueueDriver;
 import com.weacsoft.jaravel.vendor.queue.database.DatabaseQueueWorker;
-import com.weacsoft.jaravel.vendor.queue.database.OnDatabaseQueueDriverCondition;
 import com.weacsoft.jaravel.vendor.queue.database.QueueDatabaseProperties;
 import com.weacsoft.jaravel.vendor.queue.database.QueueDatabasePublishableConfig;
 
@@ -18,6 +16,7 @@ import com.weacsoft.jaravel.vendor.event.QueueDispatcher;
 import com.weacsoft.jaravel.vendor.redis.RedisManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -76,10 +75,25 @@ import javax.sql.DataSource;
  */
 @AutoConfiguration
 @ConditionalOnClass(QueueDriver.class)
-@EnableConfigurationProperties(QueueProperties.class)
 public class QueueDatabaseAutoConfiguration {
 
     private static final Logger logger = LoggerFactory.getLogger(QueueDatabaseAutoConfiguration.class);
+
+    /**
+     * 队列全局配置 Bean，绑定 {@code jaravel.queue.*} 配置。
+     * <p>
+     * P3 起 {@link QueueProperties} 为纯 POJO（保留在 core，FQCN 稳定，
+     * publish 模板代码引用不受影响），经此 {@code @Bean @ConfigurationProperties} 完成绑定，
+     * 字段与默认值与 P3 前 {@code @EnableConfigurationProperties} 方式完全一致。
+     *
+     * @return 队列全局配置
+     */
+    @Bean
+    @ConfigurationProperties(prefix = "jaravel.queue")
+    @ConditionalOnMissingBean
+    public QueueProperties queueProperties() {
+        return new QueueProperties();
+    }
 
     /**
      * 数据库队列配置 Bean，绑定 {@code jaravel.queue.database.*} 配置。
@@ -133,9 +147,17 @@ public class QueueDatabaseAutoConfiguration {
      */
     @Bean
     @ConditionalOnMissingBean
-    public QueueDriverRegistrar queueDriverRegistrar(ApplicationContext context,
-                                                     QueueDriverHolder holder) {
-        return new QueueDriverRegistrar(context, holder);
+    public QueueDriverRegistrar queueDriverRegistrar(QueueDriverHolder holder) {
+        return new QueueDriverRegistrar(holder);
+    }
+
+    /**
+     * 队列驱动注册器扫描触发：所有单例初始化完成后执行 {@code @RegisterQueueDriver}
+     * 扫描（P3 起扫描与 Spring 生命周期解耦，由宿主按原有时序显式触发，语义不变）。
+     */
+    @Bean
+    public SmartInitializingSingleton queueDriverRegistrarScanner(QueueDriverRegistrar registrar) {
+        return registrar::scan;
     }
 
     /**

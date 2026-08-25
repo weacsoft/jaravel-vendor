@@ -12,20 +12,12 @@
 
     <artifactId>core</artifactId>
     <name>core</name>
-    <description>核心：Facades 门面 / Config 配置仓库 / ServiceProvider / Validation 校验 / Str·Arr 工具</description>
+    <description>核心：Facades 门面 / Config 配置仓库 / ServiceProvider / Validation 校验 / Str·Arr 工具（P3 起零 Spring 依赖）</description>
 
     <dependencies>
         <dependency>
             <groupId>io.github.lijialong1313</groupId>
             <artifactId>json</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework</groupId>
-            <artifactId>spring-context</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-autoconfigure</artifactId>
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
@@ -47,5 +39,40 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
-</project>
 
+    <build>
+        <plugins>
+            <!--
+                P3（Spring 解耦）：core 模块零 Spring 依赖。
+                遗留文件 core/autoconfigure/CoreAutoConfiguration.java 因文件系统权限限制
+                （ACL 仅 BUILTIN\\Users 只读，无法删除/改写）暂留于源码树，
+                故在此将其排除出编译（内容已由 springboot 模块的
+                com.weacsoft.jaravel.vendor.springboot.core.CoreSpringConfiguration 完全接管）；
+                待用户以更高权限删除该文件及下方 core 的 imports 资源文件后可移除本配置。
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>**/autoconfigure/CoreAutoConfiguration.java</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+            <!--
+                P3：core 的 AutoConfiguration.imports 资源文件同为 ACL 锁定遗留，
+                其唯一条目指向上述不再编译的类。打包时排除该资源文件，
+                避免下游 Spring Boot 应用加载不存在的自动配置类。
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

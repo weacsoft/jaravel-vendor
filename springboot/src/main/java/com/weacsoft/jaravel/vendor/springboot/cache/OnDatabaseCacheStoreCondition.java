@@ -1,6 +1,6 @@
 package com.weacsoft.jaravel.vendor.springboot.cache;
 
-import com.weacsoft.jaravel.vendor.core.condition.OnDriverInUseCondition;
+import com.weacsoft.jaravel.vendor.springboot.condition.OnDriverInUseCondition;
 
 /**
  * 仅当确实声明了 {@code driver: database} 的缓存 store 时才装配数据库缓存驱动。

@@ -24,8 +24,8 @@ public class SessionStoreRegistrar extends SingletonRegistrar<RegisterSessionSto
 
     private final SessionStoreHolder holder;
 
-    public SessionStoreRegistrar(ApplicationContext context, SessionStoreHolder holder) {
-        super(context, RegisterSessionStore.class, SessionStore.class);
+    public SessionStoreRegistrar(SessionStoreHolder holder) {
+        super(RegisterSessionStore.class, SessionStore.class);
         this.holder = holder;
     }
 
@@ -64,7 +64,7 @@ public class SessionStoreRegistrar extends SingletonRegistrar<RegisterSessionSto
      * 查找容器中的 {@link SessionStore} Bean，排除 holder 自身以避免自引用。
      */
     private SessionStore resolveFromBeans() {
-        Map<String, SessionStore> beans = context.getBeansOfType(SessionStore.class);
+        Map<String, SessionStore> beans = lookup().beansOfType(SessionStore.class);
         for (SessionStore candidate : beans.values()) {
             if (candidate != holder && !(candidate instanceof SessionStoreHolder)) {
                 return candidate;

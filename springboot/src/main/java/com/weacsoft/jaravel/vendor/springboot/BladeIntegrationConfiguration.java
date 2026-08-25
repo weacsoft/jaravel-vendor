@@ -7,10 +7,10 @@ import com.weacsoft.jaravel.vendor.jblade.BladeFunctions;
 import com.weacsoft.jaravel.vendor.route.RouteHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 
 /**
@@ -39,11 +39,22 @@ public class BladeIntegrationConfiguration {
      * 注解方法并把自定义指令注册到 {@code BladeDirectives}。
      * <p>
      * 未声明任何 {@code @RegisterDirective} 时不注册任何指令，不影响启动。
+     * <p>
+     * P3 起 {@link BladeDirectiveRegistrar} 为 core 纯扫描器（零 Spring）：
+     * 扫描时机由下方 {@code SmartInitializingSingleton} 触发（保持原「所有单例就绪后扫描」时序）。
      */
     @Bean
     @ConditionalOnMissingBean
-    public BladeDirectiveRegistrar bladeDirectiveRegistrar(ApplicationContext applicationContext) {
-        return new BladeDirectiveRegistrar(applicationContext);
+    public BladeDirectiveRegistrar bladeDirectiveRegistrar() {
+        return new BladeDirectiveRegistrar();
+    }
+
+    /**
+     * 指令注册器扫描触发：所有单例初始化完成后执行 {@code @RegisterDirective} 扫描。
+     */
+    @Bean
+    public SmartInitializingSingleton bladeDirectiveRegistrarScanner(BladeDirectiveRegistrar registrar) {
+        return registrar::scan;
     }
 
     /**

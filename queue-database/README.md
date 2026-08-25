@@ -265,6 +265,14 @@ public void dispatchAsync(String queueName, Object listener, Object event) {
 
 ## 自动装配
 
+> **P3 说明**：本模块保留 driver 层（spring-jdbc / spring-context，D3 豁免不变），
+> 但原属于本模块的两个装配条件类 `OnDatabaseQueueDriverCondition` / `OnRedisQueueDriverCondition`
+> **已迁入 `jaravel-springboot` 的 `springboot.queuedatabase` 包**（避免 springboot → queue-database
+> 反向形成循环依赖；条件逻辑原样保留）。
+> 原位于 core 的 `QueueDriverRegistrar`（`@RegisterQueueDriver` 扫描器）亦迁入该包，现为**纯类**，
+> 由 `jaravel-springboot` 的 `QueueDatabaseAutoConfiguration` 的 `SmartInitializingSingleton` 触发扫描
+> （行为与 P3 前一致）。
+
 通过 `@AutoConfiguration` 注册，自动配置类在 `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` 中声明：
 
 - `RedisQueueAutoConfiguration`（先处理）：受 `@Conditional(OnRedisQueueDriverCondition.class)` 约束，仅当

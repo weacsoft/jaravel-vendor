@@ -1,4 +1,4 @@
-package com.weacsoft.jaravel.vendor.core.condition;
+package com.weacsoft.jaravel.vendor.springboot.condition;
 
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.support.BeanDefinitionRegistry;
@@ -36,9 +36,11 @@ import java.util.Set;
  * </ul>
  * 任意一处的值等于 {@code driverName}（忽略大小写）即判定为「被用上」。
  *
- * <h3>实现说明</h3>
- * 只依赖 {@code spring-context} 的 {@link Condition} 接口，不引入
- * {@code spring-boot-autoconfigure}，以保持 core 模块的依赖足迹不变。
+ * <h3>P3 解耦说明</h3>
+ * P3 前位于 core 模块（{@code core.condition}）；本类是纯 Spring {@link Condition}，
+ * 为让 core 零 Spring 依赖，整体迁入 springboot。所有子类均在 springboot 或
+ * 以 springboot 为唯一定制层的模块中（queue-database 的两个 condition 随之迁入
+ * {@code vendor.springboot.queuedatabase}）。语义与判定逻辑逐字保持不变。
  */
 public abstract class OnDriverInUseCondition implements Condition {
 

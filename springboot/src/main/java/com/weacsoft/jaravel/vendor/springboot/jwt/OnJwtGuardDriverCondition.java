@@ -1,6 +1,6 @@
 package com.weacsoft.jaravel.vendor.springboot.jwt;
 
-import com.weacsoft.jaravel.vendor.core.condition.OnDriverInUseCondition;
+import com.weacsoft.jaravel.vendor.springboot.condition.OnDriverInUseCondition;
 
 /**
  * 仅当<b>显式选用</b> JWT 作为守卫驱动时才装配 {@code JwtGuardDriver}。

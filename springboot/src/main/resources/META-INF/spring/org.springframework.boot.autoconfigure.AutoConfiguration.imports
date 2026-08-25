@@ -1,6 +1,7 @@
+com.weacsoft.jaravel.vendor.springboot.core.CoreSpringConfiguration
 com.weacsoft.jaravel.vendor.springboot.JsonCodecAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.SpringBootRouteAutoConfiguration
-com.weacsoft.jaravel.vendor.springboot.BlaeIntegrationConfiguration
+com.weacsoft.jaravel.vendor.springboot.BladeIntegrationConfiguration
 com.weacsoft.jaravel.vendor.springboot.ResponseAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.cache.CacheAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.cache.CacheArtisanAutoConfiguration

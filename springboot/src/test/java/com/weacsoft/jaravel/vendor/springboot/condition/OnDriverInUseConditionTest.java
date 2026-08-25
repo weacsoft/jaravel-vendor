@@ -1,4 +1,4 @@
-package com.weacsoft.jaravel.vendor.core.condition;
+package com.weacsoft.jaravel.vendor.springboot.condition;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -183,7 +183,7 @@ class OnDriverInUseConditionTest {
     static class DeclarativeCondition extends OnDriverInUseCondition {
         DeclarativeCondition() {
             super("jwt", "jaravel.auth.guards.", ".driver");
-            matchIfDeclaredBy("com.weacsoft.jaravel.vendor.core.condition"
+            matchIfDeclaredBy("com.weacsoft.jaravel.vendor.springboot.condition"
                     + ".OnDriverInUseConditionTest$DeclarativeGuard");
         }
     }

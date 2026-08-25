@@ -7,7 +7,6 @@ import com.weacsoft.jaravel.vendor.storage.StorageManager;
 import com.weacsoft.jaravel.vendor.storage.contract.DiskDefinition;
 import com.weacsoft.jaravel.vendor.storage.contract.Filesystem;
 import com.weacsoft.jaravel.vendor.storage.contract.FilesystemDriver;
-import org.springframework.context.ApplicationContext;
 
 import java.lang.reflect.Method;
 import java.util.Map;
@@ -40,8 +39,8 @@ public class StorageRegistrar extends AnnotationDrivenRegistrar<RegisterDisk> {
     private final StorageManager manager;
     private final StorageProperties properties;
 
-    public StorageRegistrar(ApplicationContext context, StorageManager manager, StorageProperties properties) {
-        super(context, RegisterDisk.class);
+    public StorageRegistrar(StorageManager manager, StorageProperties properties) {
+        super(RegisterDisk.class);
         this.manager = manager;
         this.properties = properties;
     }
@@ -72,7 +71,7 @@ public class StorageRegistrar extends AnnotationDrivenRegistrar<RegisterDisk> {
      * 收集容器中所有 {@link FilesystemDriver} Bean 并注册。
      */
     private void registerDrivers() {
-        Map<String, FilesystemDriver> beans = context.getBeansOfType(FilesystemDriver.class);
+        Map<String, FilesystemDriver> beans = lookup().beansOfType(FilesystemDriver.class);
         for (Map.Entry<String, FilesystemDriver> entry : beans.entrySet()) {
             manager.registerDriver(entry.getValue());
             log.debug("注册 filesystem driver: {}", entry.getKey());

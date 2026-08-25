@@ -4,7 +4,6 @@ import com.weacsoft.jaravel.vendor.core.registrar.AnnotationDrivenRegistrar;
 import com.weacsoft.jaravel.vendor.core.registrar.RegistrarException;
 import com.weacsoft.jaravel.vendor.wechat.RegisterWechatMiniApp;
 import com.weacsoft.jaravel.vendor.wechat.WechatProperties;
-import org.springframework.context.ApplicationContext;
 
 import java.lang.reflect.Method;
 
@@ -21,8 +20,8 @@ public class WechatMiniAppRegistrar extends AnnotationDrivenRegistrar<RegisterWe
 
     private final WechatProperties properties;
 
-    public WechatMiniAppRegistrar(ApplicationContext context, WechatProperties properties) {
-        super(context, RegisterWechatMiniApp.class);
+    public WechatMiniAppRegistrar(WechatProperties properties) {
+        super(RegisterWechatMiniApp.class);
         this.properties = properties;
     }
 

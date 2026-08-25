@@ -4,7 +4,6 @@ import com.weacsoft.jaravel.vendor.core.registrar.AnnotationDrivenRegistrar;
 import com.weacsoft.jaravel.vendor.schedule.RegisterSchedule;
 import com.weacsoft.jaravel.vendor.schedule.Schedule;
 import com.weacsoft.jaravel.vendor.schedule.ScheduledTask;
-import org.springframework.context.ApplicationContext;
 
 import java.lang.reflect.Method;
 
@@ -38,8 +37,8 @@ public class ScheduleRegistrar extends AnnotationDrivenRegistrar<RegisterSchedul
 
     private final Schedule schedule;
 
-    public ScheduleRegistrar(ApplicationContext context, Schedule schedule) {
-        super(context, RegisterSchedule.class);
+    public ScheduleRegistrar(Schedule schedule) {
+        super(RegisterSchedule.class);
         this.schedule = schedule;
     }
 

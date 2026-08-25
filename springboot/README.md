@@ -91,7 +91,16 @@ com.weacsoft.jaravel.vendor.springboot
 ├── SpringBootResponseMVCResolver       // Response 响应体处理器（@ControllerAdvice）
 ├── ResponseReturnValueHandler          // Response 返回值处理器
 ├── JsonCodecAutoConfiguration          // JsonCodec 自动装配（按 classpath 选择 Jackson2/3 实现，注入 JsonCodecHolder）
-├── BladeDirectiveRegistrar             // 扫描 @RegisterDirective 注解方法，注册 Blade 自定义指令（jblade 的 Spring 上下文侧）
+├── BladeDirectiveRegistrar             // P3 起纯扫描器（core.lookup 驱动）；BladeIntegrationConfiguration 的 SmartInitializingSingleton 触发扫描
+├── core
+│   ├── CoreSpringConfiguration         // P3 解耦适配层：安装 GlobalBeanProvider（ContextBeanProvider），保留 core 静态门面能力
+│   └── ContextBeanProvider             // ApplicationContext → core.lookup.BeanLookup 适配器（含 destroySingleton+registerSingleton 更新语义）
+├── condition
+│   └── OnDriverInUseCondition          // P3 自 core 迁入：驱动按需装配条件基类（spring-context Condition）
+├── queuedatabase
+│   ├── QueueDriverRegistrar            // P3 自 core.queue 迁入：@RegisterQueueDriver 扫描器（纯类）
+│   ├── OnDatabaseQueueDriverCondition  // P3 自 queue-database 迁入：「driver=database」判定
+│   └── OnRedisQueueDriverCondition     // P3 自 queue-database 迁入：「driver=redis」判定
 ├── RouteAuthHandler                    // 路由认证处理器接口（解耦 springboot 对 auth 的 optional 依赖）
 ├── AuthRouteAuthHandler                // auth 存在时的实现：请求前后设置/清理 AuthContext（@ConditionalOnClass）
 ├── DefaultRouteAuthHandler             // auth 模块不存在时的 no-op 兜底实现
@@ -101,15 +110,15 @@ com.weacsoft.jaravel.vendor.springboot
     └── MiddlewareAlias                // 中间件别名注解（纯注解，不组合 @Component）
 ```
 
-自动装配注册文件（`META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`）：
+自动装配注册文件（`META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`，P3 起 37 项，**P3 新增 1 项**：
+首行 `core.CoreSpringConfiguration`，负责安装 core 所需的 `GlobalBeanProvider`（见下文「P3 解耦适配层」））：
 
 ```
+com.weacsoft.jaravel.vendor.springboot.core.CoreSpringConfiguration
 com.weacsoft.jaravel.vendor.springboot.JsonCodecAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.SpringBootRouteAutoConfiguration
-com.weacsoft.jaravel.vendor.springboot.BlaeConfiguration
+com.weacsoft.jaravel.vendor.springboot.BladeIntegrationConfiguration
 com.weacsoft.jaravel.vendor.springboot.ResponseAutoConfiguration
-com.weacsoft.jaravel.vendor.springboot.jblade.ViewAutoConfiguration
-com.weacsoft.jaravel.vendor.springboot.jblade.JbladeArtisanAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.cache.CacheAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.cache.CacheArtisanAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.storage.StorageAutoConfiguration
@@ -133,6 +142,8 @@ com.weacsoft.jaravel.vendor.springboot.aetherupload.AetherUploadAutoConfiguratio
 com.weacsoft.jaravel.vendor.springboot.aetherupload.AetherUploadPublishAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.schedule.ScheduleAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.schedule.SchedulePublishAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.jblade.ViewAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.jblade.JbladeArtisanAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.queuedatabase.QueueDatabaseAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.queuedatabase.RedisQueueAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.queuedatabase.QueueArtisanAutoConfiguration
@@ -141,6 +152,36 @@ com.weacsoft.jaravel.vendor.springboot.captcha.CaptchaAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.wechat.WechatAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.wechat.WechatPublishAutoConfiguration
 ```
+
+### P3 解耦适配层（core 零 Spring 后的 Spring 宿主支持）
+
+`CoreSpringConfiguration`（`com.weacsoft.jaravel.vendor.springboot.core`）是 P3 新增的唯一入口：
+
+| Bean | 条件 | 职责 |
+| --- | --- | --- |
+| `globalBeanProvider` | `@ConditionalOnMissingBean(GlobalBeanProvider)` | 创建 `ContextBeanProvider`（基于 `ApplicationContext`）并 `GlobalLookup.install(provider)`——恢复 core 静态门面（`SpringContext` / `Facade` / `App` / `Config`）与全部注解扫描器（`@RegisterCommand` / `@RegisterSessionStore` / `@RegisterConnection` / `@RegisterDisk` / `@RegisterCacheStore` / `@RegisterSchedule` / `@RegisterQueueDriver` …）的宿主侧能力；业务方可自定义 `GlobalBeanProvider` Bean 覆盖 |
+| `appKey` | `@ConditionalOnMissingBean(AppKey)` | 迁移自 core 原自动装配的 `DefaultAppKey`（`${jaravel.key:}` 注入），语义不变 |
+
+配套装配方式（P3 起各注册器的统一模式）：
+
+- **注册器 Bean 化（纯类）**：`BladeDirectiveRegistrar` / `CacheStoreRegistrar` / `StorageRegistrar` /
+  `ScheduleRegistrar` / `LockProviderRegistrar` / `CommandRegistrar`（artisan）/ `SessionStoreRegistrar`（http）/
+  `ConnectionRegistrar`（database）/ `QueueDriverRegistrar` 等，构造器不再接收 `ApplicationContext`；
+- **扫描时机保持原样**：各自动配置类新增一个 `SmartInitializingSingleton` Bean（如
+  `cacheStoreRegistrarScanner`），在所有单例初始化完成后调用 `registrar.scan()`，
+  与 P3 前 `afterSingletonsInstantiated()` 的时序完全一致；
+- **queue 配置**：`QueueDatabaseAutoConfiguration` 现直接提供
+  `@ConfigurationProperties(prefix = "jaravel.queue") QueueProperties` Bean（P3 前由 `@EnableConfigurationProperties` 完成），
+  并自建 `QueueDriverRegistrar`（纯类，`@RegisterQueueDriver` 扫描）；
+- **条件基类**：`OnDriverInUseCondition` 自 core 迁入本模块 `condition` 包（Spring 条件设施，329 行逻辑原样保留），
+  各 `On*DriverCondition` 子类更新基类引用；queue 相关的 `OnDatabaseQueueDriverCondition` /
+  `OnRedisQueueDriverCondition` 自 queue-database 迁入本模块 `queuedatabase` 包（避免反向依赖）；
+- **测试同步**：`OnDriverInUseConditionTest` 同步迁入本模块条件包（断言逐行保留，仅基类引用随包前缀更新）。
+
+> 行为对照（P3 前 → P3 后）：`SpringContext.bean/beanOrNull/registerSingleton`、
+> `Application` 三种注册方式、各 `@Register*` 注解扫描、`Config` 三层优先级、
+> 服务提供者两阶段引导——全部不变；变化仅在“宿主如何安装”：Spring 宿主由本模块自动完成，
+> 非 Spring 宿主可手动安装 `GlobalBeanProvider`（见 core 模块 README §6）。
 
 ---
 
@@ -646,7 +687,7 @@ public class MyApp { ... }
 | `CacheAutoConfiguration` | 注册 array/file 驱动工厂、装配 `CacheManager`（收集所有 `CacheDriverFactory` + 按 stores 配置创建）、`vendor:publish` 注册（`CachePublishableConfig`） |
 | `CacheAutoConfiguration.DatabaseCacheConfiguration` | database 驱动工厂条件装配：`@ConditionalOnClass(DatabaseCacheDriverFactory.class)` + `OnDatabaseCacheStoreCondition`（声明了 `driver: database` 才装配）；数据源解析顺序「`ConnectionManager` 注册表 → Spring 容器 `DataSource` Bean」 |
 | `CacheStoreRegistrar` | 扫描 `@RegisterCacheStore` 注解方法，反射调用后注册 store（继承 core `AnnotationDrivenRegistrar`） |
-| `OnDatabaseCacheStoreCondition` | 「声明了 `driver: database` 才装配」判定（继承 core `OnDriverInUseCondition`） |
+| `OnDatabaseCacheStoreCondition` | 「声明了 `driver: database` 才装配」判定（继承本模块 `condition.OnDriverInUseCondition`，P3 自 core 迁入） |
 | `CacheArtisanAutoConfiguration` | artisan + cache-database 在 classpath 时注册 `cache:table` 命令 |
 
 ```java
@@ -676,8 +717,8 @@ public CacheManager cacheManager(CacheProperties properties, List<CacheDriverFac
 | `StorageAutoConfiguration` | `@AutoConfiguration` 主装配：注册 `StorageManager`、`LocalFilesystemDriver`、`StorageRegistrar`（`@RegisterDisk` 注解扫描） |
 | `StorageAutoConfiguration.DatabaseStorageConfiguration` | database 驱动条件装配：`@ConditionalOnClass(DatabaseFilesystemDriver.class)` + `@Conditional(OnDatabaseDiskDriverCondition)`；数据源解析顺序「`ConnectionManager` 注册表 → Spring 容器 `DataSource` Bean」 |
 | `StorageRegistrar` | 扫描 `@RegisterDisk` 注解方法，反射调用后注册磁盘（继承 core `AnnotationDrivenRegistrar`） |
-| `OnLocalDiskDriverCondition` | local 磁盘「显式选用或缺省」判定（继承 core `OnDriverInUseCondition`，`matchIfAbsent`） |
-| `OnDatabaseDiskDriverCondition` | 「声明了 `driver: database` 才装配」判定（继承 core `OnDriverInUseCondition`） |
+| `OnLocalDiskDriverCondition` | local 磁盘「显式选用或缺省」判定（继承本模块 `condition.OnDriverInUseCondition`（P3 自 core 迁入），`matchIfAbsent`） |
+| `OnDatabaseDiskDriverCondition` | 「声明了 `driver: database` 才装配」判定（继承本模块 `condition.OnDriverInUseCondition`（P3 自 core 迁入）） |
 | `StorageArtisanAutoConfiguration` | artisan + storage-database 在 classpath 时注册 `storage:table` 命令 |
 | `StoragePublishAutoConfiguration` | 注册 `storage` 发布 tag（发布 `StorageConfig.java`） |
 
@@ -723,11 +764,11 @@ Redis 连接、Redis 缓存与 Redis Session 的 Spring 装配统一收口在本
 | `RedisPublishAutoConfiguration` | 注册 `redis` 发布 tag（静态，不受 `jaravel.redis.connections` 条件牵连） |
 | `RedisCacheProperties` | `@ConfigurationProperties(prefix="jaravel.cache.redis")` 绑定（connection/auto-register 覆盖开关） |
 | `RedisCacheAutoConfiguration` | `@Conditional(OnRedisCacheStoreCondition)` + `@ConditionalOnBean(RedisManager)` + `@ConditionalOnClass`：声明了 `driver: redis` 的缓存 store 才注册 `RedisCacheDriverFactory` |
-| `OnRedisCacheStoreCondition` | 「声明了 `driver: redis` 才装配」判定（继承 core `OnDriverInUseCondition`，`jaravel.cache.redis.auto-register` 为最高优先级覆盖开关） |
+| `OnRedisCacheStoreCondition` | 「声明了 `driver: redis` 才装配」判定（继承本模块 `condition.OnDriverInUseCondition`（P3 自 core 迁入），`jaravel.cache.redis.auto-register` 为最高优先级覆盖开关） |
 | `RedisCachePublishAutoConfiguration` | 注册 `redis-cache` 发布 tag（静态，与运行条件解耦） |
 | `SessionRedisProperties` | `@ConfigurationProperties(prefix="jaravel.session.redis")` 绑定（connection/prefix/lifetime/cookie/auto-register 覆盖开关） |
 | `SessionRedisAutoConfiguration` | `@Conditional(OnRedisSessionDriverCondition)` + `@ConditionalOnBean(RedisManager)` + `@ConditionalOnWebApplication(SERVLET)`：显式 `driver: redis` 时 `@RegisterSessionStore` 注册 `RedisSessionStore`（多机 Session 同步） |
-| `OnRedisSessionDriverCondition` | 「session driver=redis」判定（继承 core `OnDriverInUseCondition`，`jaravel.session.redis.auto-register` 覆盖开关） |
+| `OnRedisSessionDriverCondition` | 「session driver=redis」判定（继承本模块 `condition.OnDriverInUseCondition`（P3 自 core 迁入），`jaravel.session.redis.auto-register` 覆盖开关） |
 | `SessionRedisPublishAutoConfiguration` | 注册 `session-redis` 发布 tag（静态，与运行条件解耦） |
 
 装配顺序：`RedisCacheAutoConfiguration` `@AutoConfigureAfter(RedisAutoConfiguration)`（类引用，两者同在本包）。

@@ -83,19 +83,28 @@ public class StorageAutoConfiguration {
     }
 
     /**
-     * 磁盘注册器：收集驱动、按配置注册磁盘、扫描 {@code @RegisterDisk} 注解。
+     * 磁盘注册器：收集驱动、按配置注册磁盘、扫描 {@code @RegisterDisk} 注解
+     * （P3：core 纯扫描器；扫描由下方 SmartInitializingSingleton 触发，
+     * 保持原「所有单例就绪后扫描」时序）。
      *
-     * @param context    应用上下文
      * @param manager    存储管理器
      * @param properties 配置属性
      * @return 注册器实例
      */
     @Bean
     @ConditionalOnMissingBean
-    public StorageRegistrar storageRegistrar(ApplicationContext context,
-                                             StorageManager manager,
+    public StorageRegistrar storageRegistrar(StorageManager manager,
                                              StorageProperties properties) {
-        return new StorageRegistrar(context, manager, properties);
+        return new StorageRegistrar(manager, properties);
+    }
+
+    /**
+     * 磁盘注册器扫描触发。
+     */
+    @Bean
+    public org.springframework.beans.factory.SmartInitializingSingleton storageRegistrarScanner(
+            StorageRegistrar registrar) {
+        return registrar::scan;
     }
 
     /**

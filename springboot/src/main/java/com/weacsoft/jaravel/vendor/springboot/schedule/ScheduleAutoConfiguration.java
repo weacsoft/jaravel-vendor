@@ -8,8 +8,8 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
@@ -48,10 +48,22 @@ public class ScheduleAutoConfiguration {
         return new Schedule();
     }
 
+    /**
+     * 定时任务注册器（P3：core 纯扫描器；扫描由下方 SmartInitializingSingleton 触发，
+     * 保持原「所有单例就绪后扫描」时序）。
+     */
     @Bean
     @ConditionalOnMissingBean
-    public ScheduleRegistrar scheduleRegistrar(ApplicationContext context, Schedule schedule) {
-        return new ScheduleRegistrar(context, schedule);
+    public ScheduleRegistrar scheduleRegistrar(Schedule schedule) {
+        return new ScheduleRegistrar(schedule);
+    }
+
+    /**
+     * 定时任务注册器扫描触发。
+     */
+    @Bean
+    public SmartInitializingSingleton scheduleRegistrarScanner(ScheduleRegistrar registrar) {
+        return registrar::scan;
     }
 
     @Bean
@@ -60,11 +72,21 @@ public class ScheduleAutoConfiguration {
         return new LockProviderManager();
     }
 
+    /**
+     * 锁提供者注册器（P3：core 纯扫描器，@RegisterLockProvider 由 scan() 触发）。
+     */
     @Bean
     @ConditionalOnMissingBean
-    public LockProviderRegistrar lockProviderRegistrar(ApplicationContext context,
-                                                        LockProviderManager lockProviderManager) {
-        return new LockProviderRegistrar(context, lockProviderManager);
+    public LockProviderRegistrar lockProviderRegistrar(LockProviderManager lockProviderManager) {
+        return new LockProviderRegistrar(lockProviderManager);
+    }
+
+    /**
+     * 锁提供者注册器扫描触发。
+     */
+    @Bean
+    public SmartInitializingSingleton lockProviderRegistrarScanner(LockProviderRegistrar registrar) {
+        return registrar::scan;
     }
 
     @Bean

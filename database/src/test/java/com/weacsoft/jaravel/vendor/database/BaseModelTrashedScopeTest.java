@@ -1,5 +1,7 @@
 package com.weacsoft.jaravel.vendor.database;
 
+import com.weacsoft.jaravel.vendor.core.lookup.GlobalLookup;
+
 import com.weacsoft.jaravel.vendor.core.SpringContext;
 import gaarason.database.annotation.Column;
 import gaarason.database.annotation.Primary;
@@ -65,12 +67,12 @@ class BaseModelTrashedScopeTest {
         GenericApplicationContext ctx = new GenericApplicationContext();
         ctx.getBeanFactory().registerSingleton("trashUser", spyModel);
         ctx.refresh();
-        new SpringContext().setApplicationContext(ctx);
+        GlobalLookup.install(new CtxProvider(ctx));
     }
 
     @AfterEach
     void tearDown() {
-        new SpringContext().setApplicationContext(null);
+        GlobalLookup.uninstall();
     }
 
     /**

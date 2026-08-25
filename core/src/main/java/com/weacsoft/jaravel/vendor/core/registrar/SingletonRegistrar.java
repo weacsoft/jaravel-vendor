@@ -1,13 +1,11 @@
 package com.weacsoft.jaravel.vendor.core.registrar;
 
-import org.springframework.context.ApplicationContext;
-
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 
 /**
  * 单实例注解注册器基类：用于「全局只允许注册一个」的组件，
- * 如 SessionStore、Blade 模板编译器、队列连接等。
+ * 如 SessionStore、Blade 模板编译器、队列连接等（零 Spring 依赖）。
  * <p>
  * 与 {@link AnnotationDrivenRegistrar} 的差异在于<b>唯一性约束</b>：
  * 若容器中存在多个同类注解方法，默认直接抛出 {@link RegistrarException}，
@@ -35,9 +33,9 @@ public abstract class SingletonRegistrar<A extends Annotation, T>
 
     private final Class<T> componentType;
 
-    protected SingletonRegistrar(ApplicationContext context, Class<A> annotationType,
+    protected SingletonRegistrar(Class<A> annotationType,
                                  Class<T> componentType) {
-        super(context, annotationType);
+        super(annotationType);
         this.componentType = componentType;
     }
 

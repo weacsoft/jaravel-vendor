@@ -43,13 +43,24 @@ public class DatabaseAutoConfiguration {
      * {@link com.weacsoft.jaravel.vendor.database.ConnectionManager ConnectionManager}，
      * 并绑定全局唯一的 {@code ContainerBootstrap}。
      *
-     * @param applicationContext Spring 上下文
+     * P3：{@link ConnectionRegistrar} 为 core 纯扫描器（零 Spring），扫描时机由下方
+     * SmartInitializingSingleton 触发（保持原「所有单例就绪后扫描」时序）。
+     *
      * @return 连接注册器
      */
     @Bean
     @ConditionalOnMissingBean
-    public ConnectionRegistrar connectionRegistrar(ApplicationContext applicationContext) {
-        return new ConnectionRegistrar(applicationContext);
+    public ConnectionRegistrar connectionRegistrar() {
+        return new ConnectionRegistrar();
+    }
+
+    /**
+     * 连接注册器扫描触发：所有单例初始化完成后执行 {@code @RegisterConnection} 扫描。
+     */
+    @Bean
+    public org.springframework.beans.factory.SmartInitializingSingleton connectionRegistrarScanner(
+            ConnectionRegistrar registrar) {
+        return registrar::scan;
     }
 
     /**

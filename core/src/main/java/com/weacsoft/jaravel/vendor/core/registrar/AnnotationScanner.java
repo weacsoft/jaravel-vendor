@@ -1,35 +1,49 @@
 package com.weacsoft.jaravel.vendor.core.registrar;
 
+import com.weacsoft.jaravel.vendor.core.lookup.BeanLookup;
+import com.weacsoft.jaravel.vendor.core.lookup.GlobalBeanProvider;
+import com.weacsoft.jaravel.vendor.core.lookup.GlobalLookup;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.aop.support.AopUtils;
-import org.springframework.context.ApplicationContext;
-import org.springframework.core.annotation.AnnotatedElementUtils;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.util.function.BiConsumer;
 
 /**
- * 注解方法扫描工具：遍历 Spring 容器中的 Bean，找出标注了指定注解的方法，
- * 反射调用（参数按类型自动注入）后把结果交给回调处理。
+ * 注解方法扫描工具：遍历宿主容器中的 Bean，找出标注了指定注解的方法，
+ * 反射调用（参数按类型自动注入）后把结果交给回调处理（零 Spring 依赖）。
  * <p>
  * 供需要扫描<b>多种注解</b>或需要<b>控制扫描顺序</b>的注册器使用
  * （如 auth 需先扫 {@code @RegisterProvider} 再扫 {@code @RegisterGuard}）。
  * 只扫描单一注解的场景请直接继承 {@link AnnotationDrivenRegistrar}。
+ * <p>
+ * <h3>Bean 解析</h3>
+ * 构造时接受 {@link BeanLookup}（宿主注入；Spring 宿主传 {@code ContextBeanProvider}，
+ * 保留 CGLIB 代理解包与合并注解解析）。
  *
  * <h3>设计说明</h3>
- * 扫描到的产物<b>不会注册为 Spring Bean</b>，仅回传给调用方存入各模块自己的 Manager，
- * 因此组件名称与 bean name 解耦，不会触发 {@code BeanDefinitionOverrideException}。
+ * 扫描到的产物<b>不注册为宿主 Bean</b>，仅回传给调用方存入各模块自己的 Manager，
+ * 因此组件名称与 bean name 解耦，避免同名 Bean 冲突。
  */
 public class AnnotationScanner {
 
     private static final Logger log = LoggerFactory.getLogger(AnnotationScanner.class);
 
-    private final ApplicationContext context;
+    private final BeanLookup lookup;
 
-    public AnnotationScanner(ApplicationContext context) {
-        this.context = context;
+    public AnnotationScanner(BeanLookup lookup) {
+        if (lookup == null) {
+            throw new IllegalArgumentException("AnnotationScanner 需要非空 BeanLookup（宿主未安装可用 GlobalLookup.require()）");
+        }
+        this.lookup = lookup;
+    }
+
+    /**
+     * 构造器：从 {@link GlobalLookup} 全局安装点取当前提供者（未安装时抛异常）。
+     */
+    public AnnotationScanner() {
+        this(GlobalLookup.require());
     }
 
     /**
@@ -51,14 +65,14 @@ public class AnnotationScanner {
      * @param <A>            注解类型
      */
     public <A extends Annotation> void scan(Class<A> annotationType, ScanCallback<A> callback) {
-        for (String beanName : context.getBeanDefinitionNames()) {
-            Object bean = resolveBeanQuietly(beanName);
+        for (String beanName : lookup.beanNames()) {
+            Object bean = lookup.beanQuiet(beanName);
             if (bean == null) {
                 continue;
             }
-            Class<?> targetClass = AopUtils.getTargetClass(bean);
+            Class<?> targetClass = lookup.targetClass(bean);
             for (Method method : targetClass.getMethods()) {
-                A annotation = AnnotatedElementUtils.findMergedAnnotation(method, annotationType);
+                A annotation = lookup.findAnnotation(method, annotationType);
                 if (annotation == null) {
                     continue;
                 }
@@ -75,18 +89,6 @@ public class AnnotationScanner {
     }
 
     /**
-     * 安全获取 Bean，忽略懒加载失败/作用域不匹配等异常，避免影响启动。
-     */
-    private Object resolveBeanQuietly(String beanName) {
-        try {
-            return context.getBean(beanName);
-        } catch (Exception e) {
-            log.trace("跳过无法解析的 Bean: {}", beanName);
-            return null;
-        }
-    }
-
-    /**
      * 反射调用注解方法，参数从容器按类型注入。
      */
     private Object invoke(Object bean, Method method, Class<? extends Annotation> annotationType) {
@@ -95,7 +97,7 @@ public class AnnotationScanner {
             Class<?>[] types = method.getParameterTypes();
             Object[] args = new Object[types.length];
             for (int i = 0; i < types.length; i++) {
-                args[i] = context.getBean(types[i]);
+                args[i] = lookup.bean(types[i]);
             }
             return method.invoke(bean, args);
         } catch (Exception e) {

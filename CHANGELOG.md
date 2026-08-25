@@ -7,6 +7,8 @@
 
 ### Added（新增）
 
+- **core · `core.lookup` Bean 提供者 SPI（P3 · Spring 解耦终章）**：`BeanLookup` / `GlobalBeanProvider` / `GlobalLookup` 三个纯 Java 接口/类——Spring 宿主由 `jaravel-springboot` 的 `CoreSpringConfiguration` 自动安装 `ContextBeanProvider`（`ApplicationContext` 适配器），非 Spring 宿主一行 `GlobalLookup.install(...)` 即可让 `SpringContext` / `Facade` / `App` / `Config` / 各 `@Register*` 注解扫描全链路开箱可用（发布模板 stable FQCN 不变）。
+- **springboot · `CoreSpringConfiguration` + `ContextBeanProvider`**：P3 解耦适配层（imports 首行注册）；业务方可用自定义 `GlobalBeanProvider` Bean 覆盖（`@ConditionalOnMissingBean`）。
 - **wechat-sdk · 类型化消息模型（Typed Message Model）**：旧 Map 裸接口全量移除。
   - `OfficialAccountService` 64 个类型化 API；`MiniProgramService` 全量重写。
   - `message.Message` 消息基类 + 11 类客服消息 / 被动回复消息（双序列化 `toJsonBody()` / `toXmlArray()`，构造即校验）。
@@ -36,6 +38,13 @@
 
 ### Changed（变更）
 
+- **core 模块纯化（P3 · Spring 解耦终章）**：core 移除 `spring-context` 依赖，成为**零 Spring** 的纯 Java 核心（至此 vendor 基础依赖中仅 springboot/starter/保留 driver 层的模块持有 Spring）：
+  - **新增 `core.lookup` SPI**：`BeanLookup`（bean/contains/beanNames + `beanQuiet`/`beanOrNull`/`targetClass`/`findAnnotation`/`beansOfType` 默认桥）；`GlobalBeanProvider extends BeanLookup`（+ `registerSingleton`）；`GlobalLookup`（`install`/`uninstall`/`getIfInstalled`/`require()`——未安装时给出含 `install` 指引的明确异常）。
+  - **`SpringContext` 保留 FQCN（对外 stable API，publish 模板代码引用它）**，改为纯 Java 静态门面：全部操作委托已安装 `GlobalBeanProvider`；`bean/beanOrNull/contains/registerSingleton` 行为与 P3 前一致，**移除直接暴露容器的 `get()` API**。
+  - **纯化清单**：`AnnotationDrivenRegistrar`/`AnnotationScanner`/`SingletonRegistrar`/`LockProviderRegistrar`（构造器不再接收 `ApplicationContext`）；`ProviderRegistry.boot()`/`ConfigRepository`（外部配置层改 `Function<String,Object>` 注入，Spring 宿主传 `environment::getProperty`）/`ConfigDefinitionRegistrar`（`setDefinitions` + `boot()`）/`QueueProperties`（去 `@ConfigurationProperties`，纯 POJO 留原位，FQCN 不变——queue-database 发布模板安全）；各 `@Bean` 扫描时机由 springboot/starter/artisan/http/database 装配类的 `SmartInitializingSingleton` 显式触发（保持原「所有单例就绪后扫描」时序）。
+  - **Spring 宿主入口**：springboot 新增 `core.CoreSpringConfiguration`（imports 首行注册）——安装 `ContextBeanProvider`（`ApplicationContext` 适配器，含 `destroySingleton`+`registerSingleton` 更新语义；`AopUtils`/`AnnotatedElementUtils` 桥接）+ 平移原 core 自动装配的 `AppKey` Bean（`@ConditionalOnMissingBean`，业务可覆盖）。
+  - **装配条件基类迁移**：`OnDriverInUseCondition`（329 行，`Condition` 实现）自 core 迁 **`springboot`** `vendor.springboot.condition`，7 个子类（auth×1/jwt×1/cache×1/rediscache×1/sessionredis×1/storage×2）更新基类引用；queue 侧 `OnDatabaseQueueDriverCondition`/`OnRedisQueueDriverCondition` 自 queue-database 迁 **`springboot.queuedatabase`**（避免循环依赖）；`QueueDriverRegistrar`（`@RegisterQueueDriver` 扫描器）自 core.queue 迁 **`springboot.queuedatabase`** 纯类化。
+  - **测试同步**：core `SpringContextTest`/`ConfigRepositoryTest`/`SingletonRegistrarTest` 改为安装 Map 版 provider 的纯 JVM 语义（断言语义保留）；`OnDriverInUseConditionTest` 迁入 springboot 条件包（断言逐行保留）；**新增 `NonSpringAvailabilitySmokeTest`**（零 Spring import 全链路冒烟：Facade/App/Application 三种注册 + `registerSingleton` 更新语义 + 未安装降级不抛 Spring 类加载异常，§5.4 门禁）；database 4 个测试改经 `GlobalLookup.install/unistall` + 测试态 `CtxProvider` 适配。
 - **event 模块纯化（去 Spring 化）**：event 核心模块移除 `spring-boot-autoconfigure` / `spring-boot-configuration-processor` 依赖；`EventAutoConfiguration`（含 `queue` 发布 tag 的静态注册块）/ `EventProperties` / `EventListenerRegistrar` / `EventServiceProvider` 迁 **`springboot`**（`vendor.springboot.event`）；`QueueManager` 改收纯 Java `EventConfig`（新增于 event 模块，队列/重试字段与默认值与原 `EventProperties` 一一对应，`EventProperties.toEventConfig()` 映射）。保留于原模块的纯类（`Event`/`Listener`/`Dispatcher`/`EventDispatcher`/`QueueManager`/`QueueDispatcher`/`EventFacade`/`@ListensTo`/`ShouldQueue`/`QueuePublishableConfig`）行为不变。
 - **jwt 模块纯化（去 Spring 化）**：jwt 核心模块移除 `spring-boot-autoconfigure` / `spring-boot-configuration-processor` / `spring-web` / `jakarta.servlet-api` 依赖；`JwtAutoConfiguration` / `JwtProperties` / `OnJwtGuardDriverCondition` 迁 **`springboot`**（`vendor.springboot.jwt`），`JwtTokenResponseFilter`（继承 spring-web `OncePerRequestFilter`）同迁。保留于原模块的纯 Java 类（`JwtConfig`/`JwtService`/`JwtGuard`/`JwtGuardDriver`）行为不变；密钥兜底（`jaravel.key`）、黑名单、宽限期语义不变。
 - **migration 模块纯化（去 Spring 化）**：migration 核心模块移除 `spring-boot-autoconfigure` / `spring-boot-configuration-processor` 依赖；`MigrationAutoConfiguration` / `MigrationArtisanAutoConfiguration` / `MigrationPublishAutoConfiguration` 与 `MigrationRunner`（实现 `CommandLineRunner`）迁 **`springboot`**（`vendor.springboot.migration`）；`ConnectionAliasResolver`（装配辅助，反射软依赖 database 注册表）随之迁出。migration 模块的 `MigrationProperties` 本就是纯 POJO（`MigrationCLI`/`MigrationExecutor` 直接消费），保留原位；`MigrationPublishableConfig`（纯，含发布模板）同样保留。
@@ -68,6 +77,7 @@
 - **springboot · 自动装配注册补齐**：`org.springframework.boot.autoconfigure.AutoConfiguration.imports` 补齐 cache 两条（`CacheAutoConfiguration` / `CacheArtisanAutoConfiguration`）与 storage 三条（`StorageAutoConfiguration` / `StoragePublishAutoConfiguration` / `StorageArtisanAutoConfiguration`）。
 - **aether-upload · 装配顺序字符串**：`@AutoConfiguration(afterName=...)` 中 storage 自动装配类 FQCN 更新为 `springboot` 侧新坐标（`vendor.springboot.storage.StorageAutoConfiguration`）。
 - **model-cache · 装配顺序字符串**：`@AutoConfigureAfter(name=...)` 中 cache 自动装配类 FQCN 更新为 `springboot` 侧新坐标（`vendor.springboot.cache.CacheAutoConfiguration`）。
+- **springboot · Blade 自动装配类名拼写（P2 遗留缺陷，P3 修复）**：`AutoConfiguration.imports` 中的 `...springboot.BlaeIntegrationConfiguration` 缺 `d`，导致 `BladeIntegrationConfiguration` 从未被 Spring Boot 自动装配（jblade 模板指令注册实际未生效但无报错）。P3 重写 imports 时修正为 `...springboot.BladeIntegrationConfiguration`。
 
 - wire：局部更新内容重复追加（翻页/改名多出一份列表）、对话框关闭致遮罩滞留（白屏）与 DOM 泄漏、init() 属性选择器失效致组件批量不加载、行级参数与 input value 同步、`hideLoading` 先清除触发按钮再隐藏、注释锚点非法位置失效、fat-jar 下 wire.js 双加载/重复 toast。
 - jblade：并发渲染模板 `ConcurrentModificationException`（点击后页面直接蹦）、组件插槽双重 HTML 转义、布局名继承链被清空导致 PJAX 退化为整页刷新、序列化模板渲染。
@@ -87,3 +97,4 @@
 ### Tests（测试）
 
 - 全模块单测保持全绿；wechat-sdk 由历史 19 个锁定用例扩展到 **198 个**（类型化消息模型 134 + 洋葱内核/网页授权 42 + 发布模板回归 3），无一联网（mock OkHttp/Servlet）。
+- **P3 · 非 Spring 可用性冒烟（§5.4 新增门禁）**：core 新增 `NonSpringAvailabilitySmokeTest`——不 import 任何 Spring 类型，手动安装 Map 版 `GlobalBeanProvider` 后验证 `Facade`/`App.app()`/`Application` 三种注册（bind/single/default）/`publishToSpring` 全链路可用；移除提供者后 `beanOrNull` 空安全降级、强依赖路径给出含 `GlobalLookup.install` 指引的异常（不再抛 Spring 类加载异常）。

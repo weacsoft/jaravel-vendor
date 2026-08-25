@@ -217,30 +217,48 @@ public class WechatAutoConfiguration {
     /**
      * 公众号命名配置声明注册器：扫描 {@code @RegisterWechatOfficialAccount} 方法，
      * 将返回的 {@link WechatProperties.OfficialAccountConfig} 回填到共享配置（声明 &gt; yml）。
+     * <p>
+     * P3：core 纯扫描器；扫描由下方 SmartInitializingSingleton 触发（保持原时序）。
      *
-     * @param context    Spring 上下文
      * @param properties 微信配置属性（回填目标）
      * @return 注册器实例
      */
     @Bean
     @ConditionalOnMissingBean
-    public WechatOfficialAccountRegistrar wechatOfficialAccountRegistrar(ApplicationContext context,
-                                                                          WechatProperties properties) {
-        return new WechatOfficialAccountRegistrar(context, properties);
+    public WechatOfficialAccountRegistrar wechatOfficialAccountRegistrar(WechatProperties properties) {
+        return new WechatOfficialAccountRegistrar(properties);
+    }
+
+    /**
+     * 公众号注册器扫描触发。
+     */
+    @Bean
+    public org.springframework.beans.factory.SmartInitializingSingleton
+    wechatOfficialAccountRegistrarScanner(WechatOfficialAccountRegistrar registrar) {
+        return registrar::scan;
     }
 
     /**
      * 小程序命名配置声明注册器：扫描 {@code @RegisterWechatMiniApp} 方法，
      * 将返回的 {@link WechatProperties.MiniAppConfig} 回填到共享配置（声明 &gt; yml）。
+     * <p>
+     * P3：core 纯扫描器；扫描由下方 SmartInitializingSingleton 触发（保持原时序）。
      *
-     * @param context    Spring 上下文
      * @param properties 微信配置属性（回填目标）
      * @return 注册器实例
      */
     @Bean
     @ConditionalOnMissingBean
-    public WechatMiniAppRegistrar wechatMiniAppRegistrar(ApplicationContext context,
-                                                          WechatProperties properties) {
-        return new WechatMiniAppRegistrar(context, properties);
+    public WechatMiniAppRegistrar wechatMiniAppRegistrar(WechatProperties properties) {
+        return new WechatMiniAppRegistrar(properties);
+    }
+
+    /**
+     * 小程序注册器扫描触发。
+     */
+    @Bean
+    public org.springframework.beans.factory.SmartInitializingSingleton
+    wechatMiniAppRegistrarScanner(WechatMiniAppRegistrar registrar) {
+        return registrar::scan;
     }
 }

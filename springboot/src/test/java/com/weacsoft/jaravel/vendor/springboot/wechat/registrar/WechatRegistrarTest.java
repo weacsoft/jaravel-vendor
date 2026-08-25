@@ -5,7 +5,6 @@ import com.weacsoft.jaravel.vendor.wechat.RegisterWechatMiniApp;
 import com.weacsoft.jaravel.vendor.wechat.RegisterWechatOfficialAccount;
 import com.weacsoft.jaravel.vendor.wechat.WechatProperties;
 import org.junit.jupiter.api.Test;
-import org.springframework.context.ApplicationContext;
 
 import java.lang.reflect.Method;
 
@@ -63,7 +62,7 @@ class WechatRegistrarTest {
     void testOfficialAccountRegistrationIntoSharedProperties() {
         WechatProperties props = new WechatProperties();
         WechatOfficialAccountRegistrar registrar =
-                new WechatOfficialAccountRegistrar(mock(ApplicationContext.class), props);
+                new WechatOfficialAccountRegistrar(props);
 
         registrar.register(oaConfig("wx_declared", "declared_secret"),
                 method("sampleOfficialAccount"), oaAnn("default"));
@@ -78,7 +77,7 @@ class WechatRegistrarTest {
     void testAliasExpansion() {
         WechatProperties props = new WechatProperties();
         WechatOfficialAccountRegistrar registrar =
-                new WechatOfficialAccountRegistrar(mock(ApplicationContext.class), props);
+                new WechatOfficialAccountRegistrar(props);
 
         WechatProperties.OfficialAccountConfig cfg = oaConfig("wx_multi", "multi_secret");
         cfg.getOauth().setScopes("snsapi_userinfo");
@@ -95,7 +94,7 @@ class WechatRegistrarTest {
     void testEmptyNameFallsBackToDefault() {
         WechatProperties props = new WechatProperties();
         WechatOfficialAccountRegistrar registrar =
-                new WechatOfficialAccountRegistrar(mock(ApplicationContext.class), props);
+                new WechatOfficialAccountRegistrar(props);
 
         registrar.register(oaConfig("wx_empty", "s"), method("sampleOfficialAccount"), oaAnn(""));
 
@@ -106,7 +105,7 @@ class WechatRegistrarTest {
     void testMissingSecretRejected() {
         WechatProperties props = new WechatProperties();
         WechatOfficialAccountRegistrar registrar =
-                new WechatOfficialAccountRegistrar(mock(ApplicationContext.class), props);
+                new WechatOfficialAccountRegistrar(props);
 
         WechatProperties.OfficialAccountConfig cfg = oaConfig("wx_only_appid", null);
         assertThrows(RegistrarException.class,
@@ -118,7 +117,7 @@ class WechatRegistrarTest {
     void testWrongReturnTypeRejected() {
         WechatProperties props = new WechatProperties();
         WechatOfficialAccountRegistrar registrar =
-                new WechatOfficialAccountRegistrar(mock(ApplicationContext.class), props);
+                new WechatOfficialAccountRegistrar(props);
         assertThrows(RegistrarException.class,
                 () -> registrar.register("not-a-config-object", method("sampleOfficialAccount"), oaAnn("default")),
                 "返回类型不匹配必须被注册器拒绝");
@@ -128,7 +127,7 @@ class WechatRegistrarTest {
     void testMiniAppRegistration() {
         WechatProperties props = new WechatProperties();
         WechatMiniAppRegistrar registrar =
-                new WechatMiniAppRegistrar(mock(ApplicationContext.class), props);
+                new WechatMiniAppRegistrar(props);
 
         WechatProperties.MiniAppConfig cfg = new WechatProperties.MiniAppConfig();
         cfg.setAppId("wxa_declarative");
@@ -147,7 +146,7 @@ class WechatRegistrarTest {
     void testMiniAppAliasAndMissingCredentials() {
         WechatProperties props = new WechatProperties();
         WechatMiniAppRegistrar registrar =
-                new WechatMiniAppRegistrar(mock(ApplicationContext.class), props);
+                new WechatMiniAppRegistrar(props);
 
         WechatProperties.MiniAppConfig ok = new WechatProperties.MiniAppConfig();
         ok.setAppId("wxa_alias");

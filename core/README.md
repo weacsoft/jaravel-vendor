@@ -11,13 +11,13 @@
 - [3. 类总览](#3-类总览)
 - [4. Application / App —— 应用容器（替代 Facade）](#4-application--app--应用容器替代-facade)
 - [5. Facade —— 门面基类（传统方式）](#5-facade--门面基类传统方式)
-- [6. SpringContext —— Spring 上下文持有器](#6-springcontext--spring-上下文持有器)
+- [6. SpringContext —— 全局 Bean 访问门面（P3 起零 Spring）](#6-springcontext--全局-bean-访问门面)
 - [7. 配置体系（Config / ConfigRepository / ConfigDefinition / ConfigDefinitionRegistrar）](#7-配置体系config--configrepository--configdefinition--configdefinitionregistrar)
 - [8. 服务提供者（ServiceProvider / ProviderRegistry）](#8-服务提供者serviceprovider--providerregistry)
 - [9. 工具类（Str / Arr）](#9-工具类str--arr)
 - [10. 校验体系（FormRequest / Validator / Rule / Rules）](#10-校验体系formrequest--validator--rule--rules)
 - [11. 异常类（ValidationException / UnauthorizedException）](#11-异常类validationexception--unauthorizedexception)
-- [12. OnDriverInUseCondition —— 驱动按需装配条件](#12-ondriverinusecondition--驱动按需装配条件)
+- [12. OnDriverInUseCondition —— 驱动按需装配条件（P3 起位于 jaravel-springboot）](#12-ondriverinusecondition--驱动按需装配条件)
 - [13. 视图与分页标准层（view / pagination）](#13-视图与分页标准层view--pagination)
 
 ---
@@ -29,14 +29,16 @@
 | Laravel 特性 | core 对应实现 | 说明 |
 | --- | --- | --- |
 | `app()` 应用容器 | `Application` + `App` | 继承式服务定位器，替代 Facade 静态代理 |
-| Facade 门面 | `Facade` + `SpringContext` | 静态代理（传统方式，推荐改用 `App.app()`） |
+| Facade 门面 | `Facade` + `SpringContext` + `core.lookup` SPI | 静态代理（传统方式，推荐改用 `App.app()`）；P3 起与宿主容器解耦 |
 | `config()` 配置仓库 | `Config` / `ConfigRepository` | 三层配置来源，支持点号取值 |
 | `config/*.php` 代码级配置 | `ConfigDefinition` / `ConfigDefinitionRegistrar` | 以 Java 接口形式定义配置数组 |
 | Service Provider | `ServiceProvider` / `ProviderRegistry` | 两阶段引导（register → boot） |
 | `Str::` / `Arr::` | `Str` / `Arr` | 字符串与数组/集合工具 |
 | Form Request / Validation | `FormRequest` / `Validator` / `Rule` / `Rules` | Laravel 风格校验器与规则集 |
 
-本模块不依赖 Servlet、Web 等运行时环境，可在任意 Spring 应用中使用。
+本模块不依赖 Servlet、Web 等运行时环境。**P3 起本模块零 Spring 依赖**：
+Spring 装配全部位于 `jaravel-springboot` / `jaravel-starter`；非 Spring 宿主经
+`core.lookup` SPI（`GlobalLookup.install(provider)`）安装一个 Bean 提供者后即可使用全部能力。
 
 ---
 
@@ -56,12 +58,21 @@
 
 | 依赖 | 用途 |
 | --- | --- |
-| `org.springframework:spring-context` | `ApplicationContext` 注入、Bean 解析 |
 | `com.fasterxml.jackson.core:jackson-databind` | JSON 序列化支持 |
 | `jakarta.annotation:jakarta.annotation-api` | Jakarta 注解基础 |
 | `org.slf4j:slf4j-api` | 日志门面 |
 
-> 运行环境要求：JDK 17+，Spring Boot 3.2.12（Spring 6.x）。
+> **P3 遗留（OS 级权限锁定）**：`core/src/main/java/.../core/autoconfigure/CoreAutoConfiguration.java`
+> 与其引用的 `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`
+> 资源文件因文件 ACL（仅 BUILTIN\Users 只读，当前用户无写/删权限）无法直接删除，
+> 暂以 `core/pom.xml` 的 maven-compiler / maven-jar `<excludes>` 排除出编译与打包
+> （语义已由 springboot `CoreSpringConfiguration` 完全接管，排除无行为影响）。
+> 用户以更高权限删除这两个文件后，即可移除 pom 中对应排除配置。
+>
+> **P3（Spring 解耦）**：`org.springframework:spring-context` 依赖已整体移除
+> （此前用于 `ApplicationContext` 注入与 Bean 解析，现由 `core.lookup` SPI 抽象）。
+> 运行环境要求：JDK 17+。Spring Boot 3.2.12 应用请同时引入
+> `jaravel-springboot`（或 `jaravel-starter`）获得原有 Spring 装配能力。
 
 ---
 
@@ -72,14 +83,16 @@ com.weacsoft.jaravel.vendor.core
 ├── Application                   // 应用容器基类（服务定位器，替代 Facade）
 ├── App                           // 静态入口：App.app() 获取 Application 实例
 ├── Facade                        // 门面基类（传统静态代理，推荐改用 App.app()）
-├── SpringContext                 // ApplicationContext 持有器
+├── SpringContext                 // 全局 Bean 访问门面（纯 Java，委托已安装的 GlobalBeanProvider）
+├── lookup
+│   ├── BeanLookup                 // Bean 查询 SPI（P3 新增）
+│   ├── GlobalBeanProvider         // 宿主 Bean 提供者 SPI（BeanLookup + registerSingleton）
+│   └── GlobalLookup               // SPI 安装点（install / uninstall / getIfInstalled）
 ├── config
 │   ├── Config                     // Config 门面（静态 API）
-│   ├── ConfigRepository           // 配置仓库（三层来源）
+│   ├── ConfigRepository           // 配置仓库（三层来源，外部配置层经函数注入）
 │   ├── ConfigDefinition           // 代码级配置定义接口
-│   └── ConfigDefinitionRegistrar  // 代码级配置自动注册器
-├── condition
-│   └── OnDriverInUseCondition     // 驱动按需装配条件基类（安装 != 启用）
+│   └── ConfigDefinitionRegistrar  // 代码级配置注册器（纯类，由宿主触发 boot）
 ├── provider
 │   ├── ServiceProvider            // 服务提供者基类
 │   └── ProviderRegistry           // 服务提供者注册器（两阶段引导）
@@ -112,8 +125,8 @@ com.weacsoft.jaravel.vendor.core
 
 | 方法签名 | 说明 |
 | --- | --- |
-| `<T> T make(Class<T> type)` | 从 Spring 容器按类型解析 Bean（等价于 `SpringContext.bean(type)`） |
-| `<T> T make(String name, Class<T> type)` | 从 Spring 容器按名称 + 类型解析 Bean |
+| `<T> T make(Class<T> type)` | 从宿主容器按类型解析 Bean（等价于 `SpringContext.bean(type)`；Spring 宿主 = Spring 容器） |
+| `<T> T make(String name, Class<T> type)` | 从宿主容器按名称 + 类型解析 Bean |
 | `<T> T make(String name)` | 按名称解析自定义注册的服务，未注册返回 `null` |
 | `void singleton(String name, Supplier<Object> factory)` | 注册单例工厂，首次 `make(name)` 时创建并缓存（对齐 `App::singleton`） |
 | `void bind(String name, Supplier<Object> factory)` | 注册工厂，每次 `make(name)` 创建新实例（对齐 `App::bind`） |
@@ -152,7 +165,7 @@ int count = AppConfig.app().publishAllToSpring();
 
 | 方法签名 | 说明 |
 | --- | --- |
-| `static Application app()` | 获取 Spring 容器中唯一的 `Application` Bean |
+| `static Application app()` | 获取宿主容器中唯一的 `Application` Bean |
 
 ### 使用示例
 
@@ -239,8 +252,8 @@ public class MyAppConfig extends AppConfig {
 
 | 方法签名 | 说明 |
 | --- | --- |
-| `static <T> T resolve(Class<T> beanClass)` | 从 Spring 容器按类型解析 Bean |
-| `static <T> T resolve(String name, Class<T> beanClass)` | 从 Spring 容器按名称解析 Bean |
+| `static <T> T resolve(Class<T> beanClass)` | 从宿主容器按类型解析 Bean |
+| `static <T> T resolve(String name, Class<T> beanClass)` | 从宿主容器按名称解析 Bean |
 
 ### 使用示例
 
@@ -273,22 +286,35 @@ if (Auth.check()) {
 
 ---
 
-## 6. SpringContext —— Spring 上下文持有器
+## 6. SpringContext —— 全局 Bean 访问门面
 
 `com.weacsoft.jaravel.vendor.core.SpringContext`
 
-标注 `@Component`，实现 `ApplicationContextAware`，在容器启动时由 Spring 注入 `ApplicationContext` 并保存到静态字段，供 `Facade` 及其它需要静态访问容器的场景使用。
+**P3 起为纯 Java 静态门面（零 Spring 依赖）**：所有操作统一委托给
+`core.lookup` SPI 安装的 `GlobalBeanProvider`。
+Spring 宿主由 `jaravel-springboot` 的 `CoreSpringConfiguration` 自动安装基于
+`ApplicationContext` 的适配器（含「注册前先销毁同名单例」的更新语义，行为与 P3 前一致）；
+非 Spring 宿主手动安装一个 Map 版提供者即可：
+
+```java
+GlobalLookup.install(new MyMapBasedProvider()); // 安装 Bean 提供者
+```
+
+> `SpringContext` 类名/包名保持已发布的 stable FQCN（多个 publish 模板代码引用它），
+> 但 `get()`（直接返回 `ApplicationContext`）已随 Spring 解耦移除——静态 Bean 访问
+> 一律走 `bean(...)` / `beanOrNull(...)`。
 
 ### 方法文档
 
 | 方法签名 | 说明 |
 | --- | --- |
-| `static ApplicationContext get()` | 获取当前 `ApplicationContext`，未初始化时抛 `IllegalStateException` |
-| `static <T> T bean(Class<T> type)` | 按类型获取 Bean |
+| `static <T> T bean(Class<T> type)` | 按类型获取 Bean，宿主未安装时抛 `IllegalStateException`（含安装指引） |
 | `static <T> T bean(String name, Class<T> type)` | 按名称 + 类型获取 Bean |
 | `static <T> T bean(String name)` | 按名称获取 Bean（无类型检查） |
-| `static boolean contains(String name)` | 判断容器中是否存在指定名称的 Bean |
-| `static void registerSingleton(String name, Object bean)` | 运行时注册/替换单例 Bean。如已存在同名 Bean，先销毁旧实例再注册新实例 |
+| `static boolean contains(String name)` | 判断宿主中是否存在指定名称的 Bean |
+| `static <T> T beanOrNull(Class<T> type)` | 空安全：不存在（或宿主未安装）返回 `null` |
+| `static <T> T beanOrNull(String name, Class<T> type)` | 空安全：不存在（或类型不符）返回 `null` |
+| `static void registerSingleton(String name, Object bean)` | 运行时注册/替换单例 Bean（如已存在同名条目，由宿主实现「先销毁后注册」的更新语义） |
 
 ### 使用示例
 
@@ -311,7 +337,10 @@ SpringContext.registerSingleton("myService", new MyService());
 SpringContext.registerSingleton("authManager", newCustomAuthManager());
 ```
 
-> 注意：`SpringContext` 必须在 ApplicationContext 初始化后才能使用。在单元测试等未启动 Spring 的场景下调用 `get()` 会抛出 `IllegalStateException`。
+> 注意：`SpringContext` 必须在 `GlobalBeanProvider` 安装后才能使用
+> （Spring 宿主由 jaravel-springboot 自动完成）。未安装时强依赖路径抛出
+> `IllegalStateException`（消息含 `GlobalLookup.install` 指引），空安全路径
+> （`beanOrNull`）返回 `null` 供调用方降级。
 
 ---
 
@@ -351,11 +380,11 @@ if (Config.has("app.timezone")) { /* ... */ }
 
 1. **运行时覆盖**（`set` 内存写入）—— 最高
 2. **代码级配置**（`ConfigDefinition`，对齐 Laravel 的 `config/*.php`）
-3. **Spring `Environment`**（`application.yml` 等外部配置）—— 最低
+3. **外部配置源**（最低；Spring 宿主为 `application.yml` 等 `Environment` 属性，P3 起经 `Function<String,Object>` 函数注入）
 
 | 方法签名 | 说明 |
 | --- | --- |
-| `ConfigRepository(Environment environment)` | 构造器，传入 Spring `Environment` |
+| `ConfigRepository(Function<String,Object> external)` | 构造器，外部配置源（可为 `null`；Spring 宿主传 `environment::getProperty`） |
 | `void registerConfigDefinition(ConfigDefinition definition)` | 注册代码级配置定义，按命名空间合并 |
 | `<T> T get(String key, T defaultValue)` | 读取配置（按上述三层优先级查找） |
 | `<T> T get(String key)` | 读取配置，不存在返回 `null` |
@@ -371,7 +400,7 @@ if (Config.has("app.timezone")) { /* ... */ }
 ```
 1. 运行时覆盖 overrides 中是否包含 key？ -> 命中返回
 2. 代码级配置 codeConfig 中是否包含 key？ -> 命中返回
-3. Spring Environment 中是否有该 property？ -> 命中返回（转为字符串）
+3. 外部配置源函数中是否有该 key？ -> 命中返回（转为字符串）
 4. 返回 defaultValue
 ```
 
@@ -427,14 +456,21 @@ public class Database implements ConfigDefinition {
 // Config.get("database.connections.sqlite.driver") -> "sqlite"
 ```
 
-### 6.4 ConfigDefinitionRegistrar —— 代码级配置自动注册器
+### 6.4 ConfigDefinitionRegistrar —— 代码级配置注册器（P3 起纯类）
 
 `com.weacsoft.jaravel.vendor.core.config.ConfigDefinitionRegistrar`
 
-标注 `@Component`，实现 `SmartInitializingSingleton`。在所有单例 Bean 初始化完成后，自动发现容器中所有 `ConfigDefinition` Bean，逐个注册到 `ConfigRepository`，对齐 Laravel 在引导阶段加载 `config/*.php` 的行为。
+**P3 起为纯类（零 Spring）**：构造器接收 `ConfigRepository`；宿主把已收集的
+`ConfigDefinition` 列表通过 `setDefinitions(List)` 注入（Spring 宿主由
+`jaravel-starter` 的 `JaravelAutoConfiguration` 收集，并在「所有单例初始化完成」
+时机显式调用 `boot()`——与 P3 前的 `SmartInitializingSingleton` 时序一致），
+逐个注册到 `ConfigRepository`，对齐 Laravel 在引导阶段加载 `config/*.php` 的行为。
 
-- 通过 `@Autowired(required = false)` 注入 `List<ConfigDefinition>`，用户未定义任何代码级配置时安全跳过。
-- 单个定义注册失败时记录错误日志，不影响其它定义。
+| 方法签名 | 说明 |
+| --- | --- |
+| `ConfigDefinitionRegistrar(ConfigRepository repository)` | 构造器，必填 |
+| `void setDefinitions(List<ConfigDefinition> definitions)` | 宿主注入已收集的代码级配置定义 |
+| `void boot()` | 执行注册（单个失败记录日志并跳过，不影响其它定义） |
 
 ---
 
@@ -466,16 +502,20 @@ public class AppServiceProvider extends ServiceProvider {
 }
 ```
 
-### 7.2 ProviderRegistry —— 服务提供者注册器
+### 7.2 ProviderRegistry —— 服务提供者注册器（P3 起纯类）
 
 `com.weacsoft.jaravel.vendor.core.provider.ProviderRegistry`
 
-标注 `@Component`，实现 `SmartInitializingSingleton`。收集容器中所有 `ServiceProvider`，在所有单例 Bean 初始化完成后，先统一执行 `register()`，再统一执行 `boot()`，模仿 Laravel 的两阶段引导。
+**P3 起为纯类（零 Spring）**：构造器接收 `ServiceProvider` 列表
+（Spring 宿主由 `jaravel-starter` 的 `JaravelAutoConfiguration` 收集），
+宿主在「所有单例初始化完成」时机显式调用 `boot()`
+（与 P3 前的 `SmartInitializingSingleton` 时序一致），
+先统一执行 `register()`，再统一执行 `boot()`，模仿 Laravel 的两阶段引导。
 
 | 方法签名 | 说明 |
 | --- | --- |
-| `ProviderRegistry(List<ServiceProvider> providers)` | 构造器，注入所有 `ServiceProvider` |
-| `void afterSingletonsInstantiated()` | 单例就绪后回调：先全部 `register()`，再全部 `boot()` |
+| `ProviderRegistry(List<ServiceProvider> providers)` | 构造器，必填（null 抛 `IllegalArgumentException`） |
+| `void boot()` | 两阶段引导：先全部 `register()`，再全部 `boot()` |
 
 引导流程：
 
@@ -761,9 +801,15 @@ try {
 
 ---
 
-## 12. OnDriverInUseCondition —— 驱动按需装配条件
+## 12. OnDriverInUseCondition —— 驱动按需装配条件（P3 起位于 jaravel-springboot）
 
-`com.weacsoft.jaravel.vendor.core.condition.OnDriverInUseCondition`
+`com.weacsoft.jaravel.vendor.springboot.condition.OnDriverInUseCondition`
+
+> **P3 迁移说明**：该类实现 `spring-context` 的 `Condition` 接口，属 Spring 条件装配设施，
+> 随 Spring 解耦**整体移至 `jaravel-springboot` 模块**（原 FQCN
+> `...vendor.core.condition.OnDriverInUseCondition` 为内部类，无对外兼容影响）。
+> 各驱动子类（`OnRedisSessionDriverCondition` / `OnJwtGuardDriverCondition` /
+> `OnDatabaseCacheStoreCondition` 等）仍位于各自 springboot 子包，基类引用已更新。
 
 整个 vendor 模块组的**统一装配原则**：**安装 ≠ 启用**。
 
@@ -810,8 +856,8 @@ database 缓存、redis/database 队列……），只有在用户**显式选用
 | `protected OnDriverInUseCondition enableKey(String key)` | 设置覆盖开关键，优先级最高，返回 `this` 便于链式调用 |
 | `protected OnDriverInUseCondition matchIfAbsent()` | 标记为兜底默认驱动：用户完全未显式配置本模块任何驱动键时即命中（如 `session` 守卫、`local` 磁盘）；非默认驱动（如 `jwt` / `database` / `redis`）**不调用**，严格按需 |
 
-> 本类只实现 `spring-context` 的 `Condition` 接口，**不引入 `spring-boot-autoconfigure`**，
-> 以保持 core 模块的依赖足迹不变。
+> 本类只实现 `spring-context` 的 `Condition` 接口，**不引入 `spring-boot-autoconfigure`**
+>（P3 起位于 jaravel-springboot，core 模块保持零 Spring 依赖）。
 
 ### 使用示例
 

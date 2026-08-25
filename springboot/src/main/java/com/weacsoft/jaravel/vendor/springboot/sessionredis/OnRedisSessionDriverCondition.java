@@ -1,6 +1,6 @@
 package com.weacsoft.jaravel.vendor.springboot.sessionredis;
 
-import com.weacsoft.jaravel.vendor.core.condition.OnDriverInUseCondition;
+import com.weacsoft.jaravel.vendor.springboot.condition.OnDriverInUseCondition;
 
 /**
  * 仅当<b>显式选用</b> Redis 作为 Session 驱动时才装配本模块。

@@ -1,6 +1,6 @@
 package com.weacsoft.jaravel.vendor.springboot.rediscache;
 
-import com.weacsoft.jaravel.vendor.core.condition.OnDriverInUseCondition;
+import com.weacsoft.jaravel.vendor.springboot.condition.OnDriverInUseCondition;
 
 /**
  * 仅当确实声明了 {@code driver: redis} 的缓存 store 时才装配 Redis 缓存驱动。

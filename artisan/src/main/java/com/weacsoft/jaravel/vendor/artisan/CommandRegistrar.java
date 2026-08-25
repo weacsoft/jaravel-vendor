@@ -1,7 +1,6 @@
 package com.weacsoft.jaravel.vendor.artisan;
 
 import com.weacsoft.jaravel.vendor.core.registrar.AnnotationDrivenRegistrar;
-import org.springframework.context.ApplicationContext;
 
 import java.lang.reflect.Method;
 
@@ -18,8 +17,8 @@ public class CommandRegistrar extends AnnotationDrivenRegistrar<RegisterCommand>
 
     private final ArtisanApplication artisanApplication;
 
-    public CommandRegistrar(ApplicationContext context, ArtisanApplication artisanApplication) {
-        super(context, RegisterCommand.class);
+    public CommandRegistrar(ArtisanApplication artisanApplication) {
+        super(RegisterCommand.class);
         this.artisanApplication = artisanApplication;
     }
 

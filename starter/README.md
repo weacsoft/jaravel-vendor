@@ -24,7 +24,7 @@
 
 引入 `jaravel-starter` 后，框架自动完成以下工作：
 
-1. **注册核心基础设施**：`ConfigRepository`（配置仓库）、`SpringContext`（上下文持有器）、`ConfigDefinitionRegistrar`（代码级配置注册器）、`ProviderRegistry`（服务提供者注册器）。
+1. **注册核心基础设施**：`ConfigRepository`（配置仓库，外部配置层经 `Environment::getProperty` 函数注入）、`ConfigDefinitionRegistrar`（代码级配置注册器）、`ProviderRegistry`（服务提供者注册器）——P3 起均为 core 纯类，由本装配在「单例就绪后」时机触发引导；core 静态门面的宿主支持由 jaravel-springboot 的 `CoreSpringConfiguration` 提供。
 2. **聚合基础必选模块自动装配**：通过传递依赖引入 `core`、`http`、`springboot`、`auth`、`database`、`migration`、`cache`、`storage`、`event`、`artisan`、`schedule` 共 11 个基础模块，各模块的 `@AutoConfiguration` 类由 Spring Boot 自动加载。
 3. **启用 Laravel 风格基础开发**：中间件管道、路由系统、Form Request 校验、门面（Facade）、配置仓库、Eloquent ORM、数据库迁移、缓存、事件分发全部就绪（Blade 模板渲染由可选的 `jblade` 模板引擎模块提供，按需引入）。
 
@@ -106,25 +106,25 @@ com.weacsoft.jaravel.vendor.springboot.JaravelAutoConfiguration
 
 `com.weacsoft.jaravel.vendor.springboot.JaravelAutoConfiguration`
 
-Jaravel 核心自动装配类，注册配置仓库与上下文持有器，聚合各模块的自动装配。标注 `@AutoConfiguration` 与 `@ConditionalOnClass(ConfigRepository.class)`，确保仅在 core 模块存在时生效。
+Jaravel 核心自动装配类，注册配置仓库与引导组件，聚合各模块的自动装配。标注 `@AutoConfiguration` 与 `@ConditionalOnClass(ConfigRepository.class)`，确保仅在 core 模块存在时生效。
+
+> **P3 说明**：core 模块已零 Spring 依赖（`@Component` 注解不再可能存在），
+> 本类成为这些组件在 Spring 宿主中**唯一**的注册点（不再有两重注册问题）；
+> 原 `springContext()` Bean 已移除——core 静态门面的宿主能力改由
+> jaravel-springboot 的 `CoreSpringConfiguration` 安装 `GlobalBeanProvider` 提供，
+> 行为与 P3 前完全一致（见 springboot 模块 README「P3 解耦适配层」）。
 
 ### 注册的 Bean
 
 | Bean 方法 | 类型 | 条件 | 说明 |
 | --- | --- | --- | --- |
-| `configRepository(Environment)` | `ConfigRepository` | `@ConditionalOnMissingBean` | 配置仓库，注入 Spring `Environment` 作为底层配置来源 |
-| `configDefinitionRegistrar()` | `ConfigDefinitionRegistrar` | `@ConditionalOnMissingBean` | 代码级配置注册器，收集所有 `ConfigDefinition` Bean |
-| `springContext()` | `SpringContext` | `@ConditionalOnMissingBean` | ApplicationContext 持有器，使门面能解析 Bean |
-| `providerRegistry(List<ServiceProvider>)` | `ProviderRegistry` | `@ConditionalOnMissingBean` | 服务提供者注册器，执行两阶段引导 |
+| `configRepository(Environment)` | `ConfigRepository` | `@ConditionalOnMissingBean` | 配置仓库，外部配置层经 `environment::getProperty` 函数注入（P3 起 core 纯类） |
+| `configDefinitionRegistrar(ConfigRepository, ObjectProvider<List<ConfigDefinition>>)` | `ConfigDefinitionRegistrar` | `@ConditionalOnMissingBean` | 代码级配置注册器（纯类），收集所有 `ConfigDefinition` Bean |
+| `configDefinitionBoot(...)` | `SmartInitializingSingleton` | — | 单例就绪后触发 `registrar.boot()`（保持 P3 前时序） |
+| `providerRegistry(ObjectProvider<List<ServiceProvider>>)` | `ProviderRegistry` | `@ConditionalOnMissingBean` | 服务提供者注册器（纯类） |
+| `providerRegistryBoot(...)` | `SmartInitializingSingleton` | — | 单例就绪后触发 `registry.boot()`（保持 P3 前时序） |
 
 ### 设计说明
-
-#### 双重注册策略
-
-`SpringContext`、`ConfigDefinitionRegistrar`、`ProviderRegistry` 在 core 模块中已标注 `@Component`，本类又通过 `@Bean` 显式声明。这是有意为之的**双重注册策略**：
-
-- 当用户应用的组件扫描能覆盖 `com.weacsoft.jaravel.vendor.core` 包时，`@Component` 生效，`@ConditionalOnMissingBean` 阻止重复创建。
-- 当用户应用未扫描到 core 包时，`@AutoConfiguration` 的 `@Bean` 兜底生效，确保核心组件始终可用。
 
 #### 配置来源优先级
 
@@ -244,10 +244,10 @@ router.post("/users", request -> {
 
 | 组件 | 作用 |
 | --- | --- |
-| `ConfigRepository` | 三层配置仓库（运行时覆盖 > 代码级 > Environment） |
-| `ConfigDefinitionRegistrar` | 自动发现并注册 `ConfigDefinition` Bean |
-| `SpringContext` | ApplicationContext 持有器，支撑门面机制 |
-| `ProviderRegistry` | 服务提供者两阶段引导（register → boot） |
+| `ConfigRepository` | 三层配置仓库（运行时覆盖 > 代码级 > 外部配置源，P3 起纯类 + 函数注入） |
+| `ConfigDefinitionRegistrar` | 收集并注册 `ConfigDefinition` Bean（P3 起纯类，`SmartInitializingSingleton` 触发 `boot()`） |
+| `ProviderRegistry` | 服务提供者两阶段引导（register → boot；P3 起纯类，触发同上） |
+| *（门面宿主能力）* | core `SpringContext`/`Facade`/`App` 的宿主支持由 jaravel-springboot `CoreSpringConfiguration` 安装 `GlobalBeanProvider` 提供 |
 
 ### HTTP 层（由 springboot 模块自动装配）
 

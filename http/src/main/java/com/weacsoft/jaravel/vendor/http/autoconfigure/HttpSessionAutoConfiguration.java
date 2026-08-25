@@ -27,8 +27,21 @@ public class HttpSessionAutoConfiguration {
         return new SessionStoreHolder();
     }
 
+    /**
+     * P3：{@link SessionStoreRegistrar} 为 core 纯扫描器（零 Spring），
+     * 扫描时机由下方 SmartInitializingSingleton 触发（保持原「所有单例就绪后扫描」时序）。
+     */
     @Bean
-    public SessionStoreRegistrar sessionStoreRegistrar(ApplicationContext context, SessionStoreHolder holder) {
-        return new SessionStoreRegistrar(context, holder);
+    public SessionStoreRegistrar sessionStoreRegistrar(SessionStoreHolder holder) {
+        return new SessionStoreRegistrar(holder);
+    }
+
+    /**
+     * Session 存储注册器扫描触发。
+     */
+    @Bean
+    public org.springframework.beans.factory.SmartInitializingSingleton sessionStoreRegistrarScanner(
+            SessionStoreRegistrar registrar) {
+        return registrar::scan;
     }
 }

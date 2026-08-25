@@ -1,5 +1,7 @@
 package com.weacsoft.jaravel.vendor.database;
 
+import com.weacsoft.jaravel.vendor.core.lookup.GlobalLookup;
+
 import com.weacsoft.jaravel.vendor.core.SpringContext;
 import gaarason.database.annotation.Column;
 import gaarason.database.annotation.Primary;
@@ -41,14 +43,14 @@ class BaseModelDataSourceResolutionTest {
     void setUp() {
         // 连接注册表是静态的，必须先复位，否则其它测试残留的连接会抢在 Spring 回退之前被解析
         ConnectionManager.clear();
-        new SpringContext().setApplicationContext(null);
+        GlobalLookup.uninstall();
     }
 
     @AfterEach
     void tearDown() {
         // 复位静态上下文与连接注册表，避免影响其它测试
         ConnectionManager.clear();
-        new SpringContext().setApplicationContext(null);
+        GlobalLookup.uninstall();
     }
 
     private void useContext(Object... nameBeanPairs) {
@@ -57,7 +59,7 @@ class BaseModelDataSourceResolutionTest {
             ctx.getBeanFactory().registerSingleton((String) nameBeanPairs[i], nameBeanPairs[i + 1]);
         }
         ctx.refresh();
-        new SpringContext().setApplicationContext(ctx);
+        GlobalLookup.install(new CtxProvider(ctx));
     }
 
     @Test
