@@ -1,5 +1,6 @@
 package com.weacsoft.jaravel.vendor.queue.database;
 
+import com.weacsoft.jaravel.vendor.core.lookup.BeanLookup;
 import com.weacsoft.jaravel.vendor.core.queue.QueueDriver;
 
 
@@ -9,9 +10,9 @@ import com.weacsoft.jaravel.vendor.event.QueueDispatcher;
 import com.weacsoft.jaravel.vendor.json.Json;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.ApplicationContext;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -27,10 +28,15 @@ import java.util.Map;
  * 任务负载（payload）为 JSON，由 {@link DatabaseQueueWorker} 反序列化执行：
  * <ul>
  *   <li>{@code listenerClass}：监听器全限定类名</li>
- *   <li>{@code listenerBeanName}：监听器 Spring bean 名（可选，优先用于获取 bean）</li>
+ *   <li>{@code listenerBeanName}：监听器宿主 bean 名（可选，优先用于获取 bean）</li>
  *   <li>{@code eventClass}：事件全限定类名（用于反序列化）</li>
  *   <li>{@code eventData}：事件数据（序列化为 JSON 对象）</li>
  * </ul>
+ *
+ * <h3>D3（Spring 解耦终收）</h3>
+ * 监听器 bean 名解析改经 {@link BeanLookup} SPI（core 纯接口，
+ * Spring 宿主由 {@code ContextBeanProvider} 适配 {@code ApplicationContext}），
+ * 本类不再直接依赖 Spring。
  */
 public class DatabaseQueueDispatcher implements QueueDispatcher {
 
@@ -39,18 +45,18 @@ public class DatabaseQueueDispatcher implements QueueDispatcher {
     /** 队列驱动（数据库 / Redis） */
     private final QueueDriver driver;
 
-    /** Spring 应用上下文，用于解析监听器 bean 名 */
-    private final ApplicationContext applicationContext;
+    /** Bean 查找 SPI，用于解析监听器 bean 名 */
+    private final BeanLookup beanLookup;
 
     /**
      * 构造持久化队列分发器。
      *
-     * @param driver             队列驱动
-     * @param applicationContext Spring 上下文（用于解析监听器 bean 名）
+     * @param driver     队列驱动
+     * @param beanLookup Bean 查找 SPI（Spring 宿主传 {@code ContextBeanProvider}，非 Spring 宿主传 Map 版适配器或 {@code null}）
      */
-    public DatabaseQueueDispatcher(QueueDriver driver, ApplicationContext applicationContext) {
+    public DatabaseQueueDispatcher(QueueDriver driver, BeanLookup beanLookup) {
         this.driver = driver;
-        this.applicationContext = applicationContext;
+        this.beanLookup = beanLookup;
     }
 
     @Override
@@ -59,10 +65,12 @@ public class DatabaseQueueDispatcher implements QueueDispatcher {
             Map<String, Object> payload = new LinkedHashMap<>(4);
             payload.put("listenerClass", listener.getClass().getName());
 
-            // 解析 Spring bean 名，便于 worker 通过 bean 名获取监听器
-            String[] beanNames = applicationContext.getBeanNamesForType(listener.getClass());
-            if (beanNames.length > 0) {
-                payload.put("listenerBeanName", beanNames[0]);
+            // 解析宿主 bean 名，便于 worker 通过 bean 名获取监听器（SPI 不可用则跳过，worker 按类名回退）
+            if (beanLookup != null) {
+                Map<String, ?> byType = beanLookup.beansOfType(listener.getClass());
+                if (!byType.isEmpty()) {
+                    payload.put("listenerBeanName", byType.keySet().iterator().next());
+                }
             }
 
             payload.put("eventClass", event.getClass().getName());

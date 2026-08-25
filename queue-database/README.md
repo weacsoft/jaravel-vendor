@@ -4,13 +4,18 @@
 
 ## 依赖
 
-- `core` — 基础设施
+- `core` — 基础设施（含 `core.lookup` BeanLookup SPI，D3 起监听器 bean 解析经此）
 - `event` — 队列驱动由 `EventDispatcher` 在监听器实现 `ShouldQueue` 时调用
-- `spring-boot-autoconfigure` — 自动装配
-- `spring-jdbc` — `JdbcTemplate` 数据库操作
 - `jackson-databind` — 任务负载 JSON 序列化
 - `slf4j-api` — 日志
 - `redis`（**optional**）— Redis 驱动按需依赖，未引入时 `RedisQueueDriver` 根本不装配（严格按需，不回退到 database）
+
+> **D3（Spring 解耦终收）**：本模块主源码已**零 Spring import**（pom 的
+> `spring-jdbc` / `spring-context` 编译依赖已移除，仅测试态保留 `spring-jdbc`）：
+> `DatabaseQueueDriver` 的 SQL 改为原生 JDBC（复刻 `cache-database` 驱动模板），
+> `DatabaseQueueDispatcher` / `DatabaseQueueWorker` 的监听器 bean 解析改经
+> `core.lookup.BeanLookup` SPI；Spring 宿主接线见 `jaravel-springboot` 的
+> `springboot.queuedatabase` 包（`ContextBeanProvider` 适配 `ApplicationContext`）。
 
 ## 驱动选择
 
@@ -265,8 +270,8 @@ public void dispatchAsync(String queueName, Object listener, Object event) {
 
 ## 自动装配
 
-> **P3 说明**：本模块保留 driver 层（spring-jdbc / spring-context，D3 豁免不变），
-> 但原属于本模块的两个装配条件类 `OnDatabaseQueueDriverCondition` / `OnRedisQueueDriverCondition`
+> **P3/D3 说明**：D3 起本模块连 driver 层也已去 Spring（见上方「依赖」节 D3 注记）；
+> 原属于本模块的两个装配条件类 `OnDatabaseQueueDriverCondition` / `OnRedisQueueDriverCondition`
 > **已迁入 `jaravel-springboot` 的 `springboot.queuedatabase` 包**（避免 springboot → queue-database
 > 反向形成循环依赖；条件逻辑原样保留）。
 > 原位于 core 的 `QueueDriverRegistrar`（`@RegisterQueueDriver` 扫描器）亦迁入该包，现为**纯类**，

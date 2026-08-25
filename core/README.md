@@ -62,13 +62,7 @@ Spring 装配全部位于 `jaravel-springboot` / `jaravel-starter`；非 Spring 
 | `jakarta.annotation:jakarta.annotation-api` | Jakarta 注解基础 |
 | `org.slf4j:slf4j-api` | 日志门面 |
 
-> **P3 遗留（OS 级权限锁定）**：`core/src/main/java/.../core/autoconfigure/CoreAutoConfiguration.java`
-> 与其引用的 `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`
-> 资源文件因文件 ACL（仅 BUILTIN\Users 只读，当前用户无写/删权限）无法直接删除，
-> 暂以 `core/pom.xml` 的 maven-compiler / maven-jar `<excludes>` 排除出编译与打包
-> （语义已由 springboot `CoreSpringConfiguration` 完全接管，排除无行为影响）。
-> 用户以更高权限删除这两个文件后，即可移除 pom 中对应排除配置。
->
+
 > **P3（Spring 解耦）**：`org.springframework:spring-context` 依赖已整体移除
 > （此前用于 `ApplicationContext` 注入与 Bean 解析，现由 `core.lookup` SPI 抽象）。
 > 运行环境要求：JDK 17+。Spring Boot 3.2.12 应用请同时引入

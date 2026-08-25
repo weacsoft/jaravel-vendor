@@ -1,5 +1,6 @@
 package com.weacsoft.jaravel.vendor.queue.database;
 
+import com.weacsoft.jaravel.vendor.core.lookup.BeanLookup;
 import com.weacsoft.jaravel.vendor.core.queue.QueueDriver;
 import com.weacsoft.jaravel.vendor.core.queue.QueuedJob;
 
@@ -8,7 +9,6 @@ import com.weacsoft.jaravel.vendor.json.Json;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.ApplicationContext;
 
 import java.util.List;
 import java.util.Map;
@@ -25,11 +25,11 @@ import java.util.concurrent.TimeUnit;
  * <h3>任务执行</h3>
  * 任务负载（payload）为 JSON 格式，包含：
  * <ul>
- *   <li>{@code listenerClass}：监听器类名（Spring bean 名或全限定类名）</li>
+ *   <li>{@code listenerClass}：监听器类名（宿主 bean 名或全限定类名）</li>
  *   <li>{@code eventData}：事件数据（JSON 对象）</li>
  *   <li>{@code eventClass}：事件类名（用于反序列化）</li>
  * </ul>
- * 工作线程通过 Spring {@link ApplicationContext} 获取监听器 bean，
+ * 工作线程通过 {@link BeanLookup} SPI 获取监听器 bean，
  * 将事件数据反序列化后调用监听器的 {@code handle} 方法。
  *
  * <h3>多实例消费</h3>
@@ -39,6 +39,11 @@ import java.util.concurrent.TimeUnit;
  * <h3>重试机制</h3>
  * 任务执行失败时，若尝试次数未超过最大重试次数，则释放任务并设置重试延迟；
  * 超过最大重试次数则删除任务（或移入失败任务表）。
+ *
+ * <h3>D3（Spring 解耦终收）</h3>
+ * 监听器 bean 获取改经 {@link BeanLookup} SPI（core 纯接口，
+ * Spring 宿主由 {@code ContextBeanProvider} 适配 {@code ApplicationContext}），
+ * 本类不再直接依赖 Spring。
  */
 public class DatabaseQueueWorker {
 
@@ -47,8 +52,8 @@ public class DatabaseQueueWorker {
     /** 队列驱动 */
     private final QueueDriver driver;
 
-    /** Spring 应用上下文，用于获取监听器 bean */
-    private final ApplicationContext applicationContext;
+    /** Bean 查找 SPI，用于获取监听器 bean */
+    private final BeanLookup beanLookup;
 
     /** 要消费的队列名列表 */
     private final List<String> queues;
@@ -75,18 +80,18 @@ public class DatabaseQueueWorker {
      * 构造数据库队列工作线程。
      *
      * @param driver           队列驱动
-     * @param applicationContext Spring 上下文
+     * @param beanLookup       Bean 查找 SPI（Spring 宿主传 {@code ContextBeanProvider}，非 Spring 宿主传 Map 版适配器或 {@code null}）
      * @param queues           要消费的队列名列表
      * @param maxAttempts      最大重试次数
      * @param retryDelayMs     重试延迟毫秒
      * @param pollIntervalMs   轮询间隔毫秒
      * @param workerThreads    每队列工作线程数
      */
-    public DatabaseQueueWorker(QueueDriver driver, ApplicationContext applicationContext,
+    public DatabaseQueueWorker(QueueDriver driver, BeanLookup beanLookup,
                                List<String> queues, int maxAttempts, long retryDelayMs,
                                long pollIntervalMs, int workerThreads) {
         this.driver = driver;
-        this.applicationContext = applicationContext;
+        this.beanLookup = beanLookup;
         this.queues = queues;
         this.maxAttempts = maxAttempts;
         this.retryDelayMs = retryDelayMs;
@@ -158,16 +163,18 @@ public class DatabaseQueueWorker {
             String listenerBeanName = (String) payload.get("listenerBeanName");
             String listenerClassName = (String) payload.get("listenerClass");
 
-            // 获取监听器 bean
+            // 获取监听器 bean（经 BeanLookup SPI；bean 名优先，类名回退）
             Object listener = null;
-            if (listenerBeanName != null && applicationContext.containsBean(listenerBeanName)) {
-                listener = applicationContext.getBean(listenerBeanName);
-            } else if (listenerClassName != null) {
-                try {
-                    Class<?> clazz = Class.forName(listenerClassName);
-                    listener = applicationContext.getBean(clazz);
-                } catch (ClassNotFoundException e) {
-                    logger.error("[queue-worker] 监听器类不存在: {}", listenerClassName);
+            if (beanLookup != null) {
+                if (listenerBeanName != null && beanLookup.contains(listenerBeanName)) {
+                    listener = beanLookup.bean(listenerBeanName);
+                } else if (listenerClassName != null) {
+                    try {
+                        Class<?> clazz = Class.forName(listenerClassName);
+                        listener = beanLookup.bean(clazz);
+                    } catch (ClassNotFoundException e) {
+                        logger.error("[queue-worker] 监听器类不存在: {}", listenerClassName);
+                    }
                 }
             }
 

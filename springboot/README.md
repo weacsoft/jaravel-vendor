@@ -71,7 +71,7 @@
 | `io.github.lijialong1313:aether-upload` | optional | 大文件上传装配（`AetherUploadAutoConfiguration` / `AetherUploadManager`，aether-upload 模块零 Spring） |
 | `io.github.lijialong1313:schedule` | optional | 定时任务装配（`ScheduleAutoConfiguration` / `ScheduleRunner`，schedule 模块零 Spring） |
 | `io.github.lijialong1313:wire` | optional | Wire 响应式 UI 装配（`WireAutoConfiguration`，wire 模块零 Spring） |
-| `io.github.lijialong1313:queue-database` | optional | 队列驱动装配（`QueueDatabaseAutoConfiguration` 等，driver 层保留 spring-jdbc/spring-context，D3 豁免） |
+| `io.github.lijialong1313:queue-database` | optional | 队列驱动装配（`QueueDatabaseAutoConfiguration` 等；D3 起 queue-database 亦零 Spring——worker/dispatcher 监听器解析经 `core.lookup.BeanLookup`，Spring 侧由本模块 `ContextBeanProvider` 适配） |
 | `io.github.lijialong1313:wechat-sdk` | optional | 微信 SDK 装配（`WechatAutoConfiguration` / `WechatPublishAutoConfiguration` 等，模块零 Spring，SDK 纯 + publish 模板） |
 | `org.springframework:spring-webmvc` | compile | `RouterFunction`、`HandlerMethodArgumentResolver` 等 |
 | `org.springframework.boot:spring-boot-autoconfigure` | compile | `@AutoConfiguration` 自动装配支持 |

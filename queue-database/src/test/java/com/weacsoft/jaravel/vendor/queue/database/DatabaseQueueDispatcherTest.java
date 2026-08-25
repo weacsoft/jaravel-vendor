@@ -4,10 +4,10 @@ import com.weacsoft.jaravel.vendor.core.queue.QueueDriver;
 import com.weacsoft.jaravel.vendor.core.queue.QueuedJob;
 
 
+import com.weacsoft.jaravel.vendor.core.lookup.BeanLookup;
 import com.weacsoft.jaravel.vendor.event.Event;
 import com.weacsoft.jaravel.vendor.event.Listener;
 import org.junit.jupiter.api.Test;
-import org.springframework.context.support.GenericApplicationContext;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,8 +19,38 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * {@link DatabaseQueueDispatcher} 任务分发单元测试（使用伪造驱动，不依赖真实数据库）。
+ * <p>
+ * D3 起监听器 bean 解析经 {@link BeanLookup} SPI（零 Spring），测试用空 Map 版适配器。
  */
 class DatabaseQueueDispatcherTest {
+
+    /** 空容器版 {@link BeanLookup} 适配器（本测试断言不要求 bean 名存在） */
+    private static final class EmptyLookup implements BeanLookup {
+        @Override
+        public Object bean(Class<?> type) {
+            throw new IllegalStateException("测试空容器无此 Bean: " + type);
+        }
+
+        @Override
+        public Object bean(String name) {
+            throw new IllegalStateException("测试空容器无此 Bean: " + name);
+        }
+
+        @Override
+        public Object bean(String name, Class<?> type) {
+            throw new IllegalStateException("测试空容器无此 Bean: " + name);
+        }
+
+        @Override
+        public boolean contains(String name) {
+            return false;
+        }
+
+        @Override
+        public List<String> beanNames() {
+            return List.of();
+        }
+    }
 
     /** 记录推送内容的伪造驱动 */
     static class FakeDriver implements QueueDriver {
@@ -97,13 +127,13 @@ class DatabaseQueueDispatcherTest {
     void isAvailableReflectsDriverPresence() {
         FakeDriver driver = new FakeDriver();
         DatabaseQueueDispatcher dispatcher = new DatabaseQueueDispatcher(
-                driver, freshCtx());
+                driver, new EmptyLookup());
 
         assertTrue(dispatcher.isAvailable());
         assertSame(driver, dispatcher.getDriver());
 
         DatabaseQueueDispatcher empty = new DatabaseQueueDispatcher(
-                null, freshCtx());
+                null, new EmptyLookup());
         assertFalse(empty.isAvailable());
     }
 
@@ -112,18 +142,11 @@ class DatabaseQueueDispatcherTest {
         assertTrue(expected == actual);
     }
 
-    /** 创建并刷新一个空上下文（getBeanNamesForType 需要 context 处于 active 状态） */
-    private static GenericApplicationContext freshCtx() {
-        GenericApplicationContext ctx = new GenericApplicationContext();
-        ctx.refresh();
-        return ctx;
-    }
-
     @Test
     void dispatchSerializesListenerAndEventAndPushes() {
         FakeDriver driver = new FakeDriver();
         DatabaseQueueDispatcher dispatcher = new DatabaseQueueDispatcher(
-                driver, freshCtx());
+                driver, new EmptyLookup());
 
         dispatcher.dispatch("users", new UserRegisteredListener(), new UserRegistered(42L), 0);
 
@@ -144,7 +167,7 @@ class DatabaseQueueDispatcherTest {
     void dispatchWithDelayIncludesDelayMs() {
         FakeDriver driver = new FakeDriver();
         DatabaseQueueDispatcher dispatcher = new DatabaseQueueDispatcher(
-                driver, freshCtx());
+                driver, new EmptyLookup());
 
         dispatcher.dispatch("users", new UserRegisteredListener(), new UserRegistered(1L), 1000);
 

@@ -1,6 +1,7 @@
 package com.weacsoft.jaravel.vendor.springboot.queuedatabase;
 
 import com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry;
+import com.weacsoft.jaravel.vendor.springboot.core.ContextBeanProvider;
 import com.weacsoft.jaravel.vendor.core.queue.QueueDriver;
 import com.weacsoft.jaravel.vendor.core.queue.RegisterQueueDriver;
 import com.weacsoft.jaravel.vendor.core.queue.QueueDriverHolder;
@@ -173,7 +174,7 @@ public class QueueDatabaseAutoConfiguration {
                                                    QueueDatabaseProperties properties) {
         DatabaseQueueWorker worker = new DatabaseQueueWorker(
                 driver,
-                applicationContext,
+                new ContextBeanProvider(applicationContext),
                 properties.getQueues(),
                 properties.getMaxAttempts(),
                 properties.getRetryDelayMs(),
@@ -198,7 +199,7 @@ public class QueueDatabaseAutoConfiguration {
     public DatabaseQueueDispatcher databaseQueueDispatcher(QueueDriver driver,
                                                            ApplicationContext applicationContext) {
         logger.info("[queue] 注册 DatabaseQueueDispatcher，桥接 event 模块到队列驱动");
-        return new DatabaseQueueDispatcher(driver, applicationContext);
+        return new DatabaseQueueDispatcher(driver, new ContextBeanProvider(applicationContext));
     }
 
     static {

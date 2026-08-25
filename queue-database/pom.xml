@@ -23,17 +23,11 @@
             <groupId>io.github.lijialong1313</groupId>
             <artifactId>event</artifactId>
         </dependency>
-        <!-- D3（去 Spring 化豁免）：驱动/工作线程层保留 spring-jdbc + spring-context
-             （DatabaseQueueDriver 的 JdbcTemplate；DatabaseQueueWorker/Dispatcher 经
-             ApplicationContext 解析监听器 bean）；自动装配类已迁 springboot 模块（vendor.springboot.queuedatabase） -->
-        <dependency>
-            <groupId>org.springframework</groupId>
-            <artifactId>spring-jdbc</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework</groupId>
-            <artifactId>spring-context</artifactId>
-        </dependency>
+        <!-- D3（Spring 解耦终收，经用户确认执行）：原 spring-jdbc + spring-context 编译依赖已移除——
+             · DatabaseQueueDriver 的 SQL 操作改为原生 JDBC（复刻 cache-database 驱动模板）
+             · DatabaseQueueDispatcher / DatabaseQueueWorker 改经 core.lookup.BeanLookup SPI 解析监听器 bean
+             · Spring 宿主接线（DatabaseQueueDriver 装配 / ContextBeanProvider 适配）位于 springboot 模块
+               vendor.springboot.queuedatabase，运行期 Spring 依赖由宿主提供 -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
@@ -61,7 +55,7 @@
             <optional>true</optional>
         </dependency>
 
-        <!-- 测试依赖 -->
+        <!-- 测试依赖（测试态允许 Spring 工具；main 代码零 Spring） -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
@@ -70,6 +64,11 @@
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-jdbc</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
