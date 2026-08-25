@@ -9,7 +9,7 @@ import java.util.Map;
  * <p>
  * 对齐 Laravel {@code config/filesystems.php} 的 disks 数组。
  * 标注在 {@code @Configuration} 类的方法上，方法返回本记录，
- * {@link com.weacsoft.jaravel.vendor.storage.autoconfigure.StorageRegistrar} 扫描注解并注册到
+ * {@code com.weacsoft.jaravel.vendor.springboot.storage.StorageRegistrar} 扫描注解并注册到
  * {@link com.weacsoft.jaravel.vendor.storage.StorageManager}。
  *
  * <h3>使用示例</h3>

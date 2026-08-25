@@ -1,4 +1,4 @@
-package com.weacsoft.jaravel.vendor.storage.autoconfigure;
+package com.weacsoft.jaravel.vendor.springboot.storage;
 
 import com.weacsoft.jaravel.vendor.core.registrar.AnnotationDrivenRegistrar;
 import com.weacsoft.jaravel.vendor.storage.RegisterDisk;
@@ -18,7 +18,7 @@ import java.util.Map;
  * {@link StorageManager}。
  * <p>
  * 设计与 auth 模块的 {@code AuthRegistrar} 完全一致：
- * 实现 {@link SmartInitializingSingleton}，在 {@code afterSingletonsInstantiated()}
+ * 实现 {@code SmartInitializingSingleton}，在 {@code afterSingletonsInstantiated()}
  * 阶段执行扫描，此时所有 Bean 已就绪，可安全地作为方法参数注入。
  *
  * <h3>注册顺序（后者覆盖前者）</h3>

@@ -1,5 +1,6 @@
 package com.weacsoft.jaravel.vendor.storage.database;
 
+import com.weacsoft.jaravel.vendor.storage.StorageException;
 import com.weacsoft.jaravel.vendor.storage.contract.Filesystem;
 import com.weacsoft.jaravel.vendor.storage.contract.Visibility;
 import org.junit.jupiter.api.Test;
@@ -9,18 +10,22 @@ import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * DatabaseFilesystem 测试：
+ * DatabaseFilesystem 测试（原生 JDBC 版）：
  * <ul>
  *   <li>内容列名可自定义（默认 content，这里测试自定义 my_data）</li>
  *   <li>列类型由 binary 开关决定：true -> BLOB(LONGBLOB)，false -> LONGTEXT(base64)</li>
  *   <li>写入并读取内容一致（含分片与中文）</li>
+ *   <li>工厂 support / create 配置解析 / 缺失数据源报错（走 database 模块连接，不依赖 spring-jdbc）</li>
  * </ul>
  */
 public class DatabaseFilesystemTest {
@@ -131,5 +136,69 @@ public class DatabaseFilesystemTest {
         Set<String> cols = columnsOf(ds, "storage_file_chunk");
         assertTrue(cols.contains("content"), "默认应包含 content 列，实际: " + cols);
         roundTrip(fs, "e/default.txt", "默认列名 content".getBytes(StandardCharsets.UTF_8));
+    }
+
+    // ==================== 工厂（DatabaseFilesystemDriver） ====================
+
+    @Test
+    public void testFactorySupportsDatabaseDriver() {
+        DatabaseFilesystemDriver driver = new DatabaseFilesystemDriver(() -> null);
+        assertTrue(driver.support("database"));
+        assertTrue(driver.support("Database"));
+        assertFalse(driver.support("local"));
+        assertFalse(driver.support("s3"));
+    }
+
+    @Test
+    public void testFactoryCreateParsesConfig() throws Exception {
+        DataSource ds = h2("storage_factory");
+        createTables(ds, "my_prefix_", "file_data", false);
+        DatabaseFilesystemDriver driver = new DatabaseFilesystemDriver(ds);
+
+        Filesystem fs = driver.create("factory_disk", Map.of(
+                "binary", false,
+                "content-column", "file_data",
+                "table-prefix", "my_prefix_",
+                "visibility", "public"));
+        assertTrue(fs instanceof DatabaseFilesystem);
+
+        // 通过写入/读取验证配置确实生效（自定义列名 + base64 文本）
+        fs.put("f/hello.txt", "factory config".getBytes(StandardCharsets.UTF_8));
+        assertEquals("factory config", fs.get("f/hello.txt"));
+        fs.delete("f/hello.txt");
+    }
+
+    @Test
+    public void testFactoryCreateDefaultTablePrefix() {
+        DatabaseFilesystemDriver driver = new DatabaseFilesystemDriver(() -> null);
+        assertThrows(StorageException.class,
+                () -> driver.create("x", Map.of()),
+                "无可用数据源时应抛出 StorageException 并提示数据库连接缺失");
+    }
+
+    @Test
+    public void testFactoryMissingDataSourceFailsWithActionableMessage() {
+        DatabaseFilesystemDriver driver = new DatabaseFilesystemDriver(() -> null);
+        StorageException ex = assertThrows(StorageException.class,
+                () -> driver.create("x", Map.of()));
+        assertTrue(ex.getMessage().contains("database"), "错误信息应提示 database 驱动连接缺失: " + ex.getMessage());
+        assertTrue(ex.getMessage().contains("local"), "错误信息应建议改用 local 驱动: " + ex.getMessage());
+    }
+
+    @Test
+    public void testFactoryMissingAliasFailsWithActionableMessage() {
+        DatabaseFilesystemDriver driver = new DatabaseFilesystemDriver(() -> null);
+        StorageException ex = assertThrows(StorageException.class,
+                () -> driver.create("x", Map.of("connection", "no_such_alias")));
+        assertTrue(ex.getMessage().contains("no_such_alias"), "错误信息应包含缺失的别名: " + ex.getMessage());
+    }
+
+    @Test
+    public void testFromConnectionManagerEntryPoint() {
+        // fromConnectionManager 只是纯入口：未注册连接时 create 应给出可操作提示（而不是 NPE）
+        DatabaseFilesystemDriver driver = DatabaseFilesystemDriver.fromConnectionManager();
+        assertThrows(StorageException.class,
+                () -> driver.create("x", Map.of()),
+                "未注册 @RegisterConnection 连接时应抛出可操作的 StorageException");
     }
 }

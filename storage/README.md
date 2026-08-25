@@ -1,7 +1,9 @@
 # Storage — 多磁盘文件存储模块
 
-对齐 Laravel `Storage` Facade 与 `config/filesystems.php`，提供统一的文件系统抽象。
-采用与 `auth` 模块一致的**方法注解式注册**（`@RegisterDisk`）+ **驱动工厂 SPI**（`FilesystemDriver`）设计。
+> Jaravel-Vendor 的文件存储核心模块（**零 Spring 依赖**），对齐 Laravel `Storage` Facade 与 `config/filesystems.php`，提供统一的文件系统抽象。
+> 驱动按职责拆分到可选模块：database 磁盘驱动见 **`storage-database`**（走 `database` 模块连接，原生 JDBC，不用 spring-jdbc）。
+> Spring 自动装配（`StorageAutoConfiguration` / `StorageProperties` / `StorageRegistrar` / 条件装配 / artisan 集成 / vendor:publish）统一位于 **`springboot`** 模块（`vendor.springboot.storage` 包）。
+> 采用与 `auth` 模块一致的**方法注解式注册**（`@RegisterDisk`）+ **驱动工厂 SPI**（`FilesystemDriver`）设计。
 
 ## 特性
 
@@ -21,7 +23,8 @@
 </dependency>
 ```
 
-自动配置通过 `AutoConfiguration.imports` 生效，无需任何注解。
+自动配置通过 **`springboot` 模块**的 `vendor.springboot.storage` 装配（`AutoConfiguration.imports` 注册）生效，
+引入 `springboot` 或 `starter` 即启用，无需任何注解。
 
 ## 配置式注册
 
@@ -45,19 +48,20 @@ jaravel:
         options:               # 传给驱动的自定义参数
           any-key: any-value
       files:
-        driver: database        # 把文件存进数据库
+        driver: database        # 把文件存进数据库（storage-database 模块）
         binary: true            # true=LONGBLOB 二进制；false=LONGTEXT base64 文本
         content-column: content # 存放文件内容的列名（默认 content，可自行指定）
         chunk-size: 1048576     # 单条分片字节上限，超过则切分多行；0/负=不切分
         table-prefix: storage_  # 数据表前缀，默认 storage_
-        datasource: gaaravelDataSource  # 可选，指定 DataSource bean 名；省略=主库
+        connection: primary     # 可选，@RegisterConnection 连接别名；省略=默认连接
         visibility: private
 ```
 
-### `driver: database`（数据库存储）
+### `driver: database`（数据库存储，`storage-database` 模块）
 
-把文件直接存进数据库的两张表：`<prefix>file`（元信息）与 `<prefix>file_chunk`（内容分片）。
-无需提前建表——磁盘首次使用时通过 `CREATE TABLE IF NOT EXISTS` 自动建表，也可执行迁移脚本显式管理。
+引入 `io.github.lijialong1313:storage-database` 后，把文件直接存进数据库的两张表：
+`<prefix>file`（元信息）与 `<prefix>file_chunk`（内容分片）。
+**不会自动建表**：先执行 `artisan storage:table` 生成建表迁移文件，再 `artisan migrate`（或手动建表）。
 
 **内容列名可定制**：文件内容统一落在一列，列名由 `content-column` 指定，默认 `content`。
 允许自行指定（如 `file_data`、`blob` 等）。
@@ -138,7 +142,8 @@ public class StorageConfig {
 
 ### 驱动按需装配（安装 ≠ 启用，用上了才注册）
 
-两个内置磁盘驱动均通过 core 的 `OnDriverInUseCondition` 判定，**不写配置不进内存**：
+两个磁盘驱动均由 **springboot 模块**（`vendor.springboot.storage` 包）的 `StorageAutoConfiguration`
+装配，且通过 core 的 `OnDriverInUseCondition` 判定，**不写配置不进内存**：
 
 - `LocalFilesystemDriver`：受 `@Conditional(OnLocalDiskDriverCondition.class)` 约束。当任一
   `jaravel.storage.disks.*.driver` 取值为 `local` / `public`，**或用户写了 disks 但没写 driver（兜底回退到 `local`）**，

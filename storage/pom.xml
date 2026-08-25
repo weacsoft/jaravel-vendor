@@ -12,7 +12,7 @@
 
     <artifactId>storage</artifactId>
     <name>storage</name>
-    <description>文件存储：多磁盘（disk）抽象、Filesystem 契约、local/public 内置驱动、@RegisterDisk 注解声明式注册、FilesystemDriver 驱动 SPI、Storage 门面，对齐 Laravel Storage</description>
+    <description>文件存储核心：多磁盘（disk）抽象、Filesystem 契约、local/public 内置驱动、@RegisterDisk 注解声明式注册、FilesystemDriver 驱动 SPI、Storage 门面，零 Spring 依赖（对齐 Laravel Storage）。数据库磁盘驱动见 storage-database 模块，Spring 自动装配见 springboot 模块</description>
 
     <dependencies>
         <dependency>
@@ -24,46 +24,8 @@
             <artifactId>http</artifactId>
         </dependency>
         <dependency>
-            <groupId>io.github.lijialong1313</groupId>
-            <artifactId>artisan</artifactId>
-            <version>${project.version}</version>
-            <optional>true</optional>
-        </dependency>
-        <dependency>
-            <groupId>io.github.lijialong1313</groupId>
-            <artifactId>migration</artifactId>
-            <version>${project.version}</version>
-            <optional>true</optional>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-autoconfigure</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-configuration-processor</artifactId>
-            <optional>true</optional>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework</groupId>
-            <artifactId>spring-web</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework</groupId>
-            <artifactId>spring-jdbc</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-        </dependency>
-        <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

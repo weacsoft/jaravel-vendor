@@ -24,7 +24,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * <ol>
  *   <li><b>注解声明式</b>（推荐）：在 Config 类中用
  *       {@link RegisterDisk @RegisterDisk} 声明 {@link DiskDefinition} 或 {@link Filesystem}。
- *       {@link com.weacsoft.jaravel.vendor.storage.autoconfigure.StorageRegistrar} 扫描注解并注册</li>
+ *       {@code com.weacsoft.jaravel.vendor.springboot.storage.StorageRegistrar} 扫描注解并注册</li>
  *   <li><b>配置式</b>：通过 {@code jaravel.storage.disks} 配置，由工厂驱动按配置自动创建</li>
  *   <li><b>手动调用</b>：直接调用 {@link #registerDisk}（向后兼容 / 测试友好）</li>
  * </ol>

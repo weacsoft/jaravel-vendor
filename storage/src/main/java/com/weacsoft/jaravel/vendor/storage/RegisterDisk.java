@@ -12,7 +12,7 @@ import java.lang.annotation.Target;
  * {@link com.weacsoft.jaravel.vendor.storage.contract.DiskDefinition}
  * （由驱动工厂创建磁盘）或直接返回
  * {@link com.weacsoft.jaravel.vendor.storage.contract.Filesystem}（完全自定义实例）。
- * {@link com.weacsoft.jaravel.vendor.storage.autoconfigure.StorageRegistrar StorageRegistrar}
+ * {@code com.weacsoft.jaravel.vendor.springboot.storage.StorageRegistrar}
  * 会在所有 Bean 初始化完成后扫描此注解，调用方法并按 {@link #value()} 指定的名称注册到
  * {@link StorageManager}。
  *

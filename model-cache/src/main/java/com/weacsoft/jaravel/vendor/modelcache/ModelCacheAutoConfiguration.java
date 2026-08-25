@@ -26,7 +26,7 @@ import org.springframework.context.annotation.Bean;
  */
 @AutoConfiguration
 @ConditionalOnClass({CacheManager.class, ModelCacheService.class})
-@AutoConfigureAfter(name = "com.weacsoft.jaravel.vendor.cache.autoconfigure.CacheAutoConfiguration")
+@AutoConfigureAfter(name = "com.weacsoft.jaravel.vendor.springboot.cache.CacheAutoConfiguration")
 @EnableConfigurationProperties(ModelCacheProperties.class)
 public class ModelCacheAutoConfiguration {
 

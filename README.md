@@ -38,14 +38,15 @@ Java 版 Laravel 框架核心库，在 Spring Boot 3.2.12 基础上近乎 100% �
 | captcha | `captcha` | 验证码生成器/存储/加密分子包（number/arithmetic/slider/rotate，轨迹验证，水印） | [README](captcha/README.md) |
 | wechat-sdk | `wechat-sdk` | 微信SDK（公众号/小程序API，对齐overtrue/laravel-wechat） | [README](wechat-sdk/README.md) |
 | **model-cache** | `model-cache` | 模型查询缓存（版本化失效，@CachableModel注解按需开启，可选） | [README](model-cache/README.md) |
-| starter | `starter` | 聚合Starter（引入即自动装配基础模块；redis/wechat/wire/queue-database/cache-database/jwt/model-cache 等为可选扩展，按需引入） | [README](starter/README.md) |
+| starter | `starter` | 聚合Starter（引入即自动装配基础模块；redis/wechat/wire/queue-database/cache-database/storage-database/jwt/model-cache 等为可选扩展，按需引入） | [README](starter/README.md) |
 | **plugin-jar-core** | `plugin-jar-core` | JAR插件系统（动态加载/卸载/三级ClassLoader/ASM扫描/动态路由） | [README](plugin-jar-core/README.md) |
 | **plugin-jar-database** | `plugin-jar-database` | JAR插件数据库持久化（BaseModel/自动建表/多实例共享） | [README](plugin-jar-database/README.md) |
 | **plugin-java-core** | `plugin-java-core` | Java文件插件系统（动态编译.java/热更新/轻量替代JAR） | [README](plugin-java-core/README.md) |
 | **plugin-jar-multi-tenant** | `plugin-jar-multi-tenant` | JAR插件多租户支持（租户隔离的Bean/路由前缀化，可选） | [README](plugin-jar-multi-tenant/README.md) |
 | **plugin-jar-remote-server** | `plugin-jar-remote-server` | JAR插件远程执行服务端（P2SP子节点，TCP/HTTP） | [README](plugin-jar-remote-server/README.md) |
 | **plugin-jar-remote-client** | `plugin-jar-remote-client` | JAR插件远程执行客户端（P2SP主节点，动态代理/协调器） | [README](plugin-jar-remote-client/README.md) |
-| **storage** | `storage` | 多磁盘文件存储（Filesystem契约/local驱动/@RegisterDisk注解式注册/驱动SPI，对齐Laravel Storage） | [README](storage/README.md) |
+| **storage** | `storage` | 多磁盘文件存储（Filesystem契约/local驱动/@RegisterDisk注解式注册/驱动SPI，零Spring依赖，对齐Laravel Storage） | [README](storage/README.md) |
+| **storage-database** | `storage-database` | 存储 database 磁盘驱动（原生JDBC走database模块连接，不用spring-jdbc，可选；Spring装配在springboot模块） | [README](storage-database/README.md) |
 | **aether-upload** | `aether-upload` | 不限大小分片上传（断点·断线续传/base64传输/多组配置/storage落盘，对齐peinhu/AetherUpload） | [README](aether-upload/README.md) |
 
 ## 快速集成

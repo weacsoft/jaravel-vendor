@@ -36,6 +36,8 @@
   - [11.5 MIME 类型](#115-mime-类型)
   - [11.6 路径安全](#116-路径安全)
   - [11.7 Blade 模板 @asset 指令](#117-blade-模板-asset-指令)
+- [12. Session 功能（SessionStore / CookieSessionStore / RegisterSessionStore）](#12-session-功能sessionstore--cookiesessionstore--registersessionstore)
+- [13. 上传文件落盘助手（UploadFile）](#13-上传文件落盘助手uploadfile)
 
 ---
 
@@ -119,6 +121,8 @@ com.weacsoft.jaravel.vendor
 │       ├── StaticResourceProperties   // 静态资源配置属性
 │       ├── StaticResourceHandler      // 静态资源处理器（MIME 推断/路径安全/双模式加载）
 │       └── StaticResourceRoute        // 静态资源路由（实现 Controllers.Runner）
+└── upload
+    └── UploadFile                     // 上传文件落盘助手（MultipartFile → Target 函数式写入，storage 侧零 Spring 的解耦点）
 ├── route
 │   ├── Router                         // 路由器（注册与分组，支持控制器引用重载）
 │   ├── Route                          // 单条路由
@@ -1520,4 +1524,57 @@ public class SessionConfig {
 - `SessionStoreRegistrar` — 扫描 `@RegisterSessionStore` 注解
 
 auth 模块的 `SessionGuardDriver` 直接注入本配置提供的 `SessionStoreHolder`，不强引用具体 Session 实现。
+
+---
+
+## 13. 上传文件落盘助手（UploadFile）
+
+`com.weacsoft.jaravel.vendor.http.upload.UploadFile`
+
+`MultipartFile` 是 **HTTP 请求侧**概念，其落盘能力（解析原始文件名 + 交给写入目标）因此收敛在 http 模块，
+使 `storage` 等**纯 JVM 核心层模块不感知 Spring**。写入目标通过函数式接口 `Target` 交给调用方，
+http 模块**不反向依赖** storage 的 `Filesystem` 契约。
+
+### 类结构
+
+`UploadFile`（final 工具类）含一个函数式接口 `Target`：
+
+```java
+@FunctionalInterface
+public interface Target {
+    void store(String path, byte[] contents) throws IOException;
+}
+```
+
+### 方法
+
+| 方法 | 说明 |
+| --- | --- |
+| `String baseName(MultipartFile file)` | 解析原始文件名，只取最后一段路径（防路径污染），空值回退 `file` |
+| `String store(MultipartFile file, String dir, Target target)` | 使用原始文件名落盘，返回相对路径 |
+| `String storeAs(MultipartFile file, String dir, String name, Target target)` | 使用指定文件名落盘，返回相对路径 |
+
+`dir` 支持相对目录（`null`/空串=根），并规范化前导/结尾斜杠与反斜杠。
+
+### 与 storage 集成
+
+storage 磁盘的 `Filesystem::put` 可直接作为 `Target` 传入，实现"上传到 storage 磁盘"而 storage 不感知 Spring：
+
+```java
+// Request.file(...) 拿到 MultipartFile（http 模块能力）
+MultipartFile avatar = request.file("avatar");
+
+// Target 直接适配 storage 的 Filesystem::put（storage 模块零 Spring 依赖）
+String path = UploadFile.store(avatar, "avatars", (p, bytes) -> Storage.disk("public").put(p, bytes));
+
+// 或使用默认磁盘
+String path2 = UploadFile.storeAs(avatar, "reports", "a-2026.pdf", (p, b) -> Storage.put(p, b));
+
+// 完全自定义目标（如内存 Map、远端 S3 客户端），storage 不参与
+UploadFile.store(dataFile, "tmp", (p, bytes) -> mySink.put(p, bytes));
+```
+
+> **设计要点**：`Target` 把"写入哪、怎么写"解耦给调用方，http 模块只负责解析上传文件并回调 `store(path, bytes)`，
+> 因此不引入 `storage` 依赖，避免 Spring Web 的 `MultipartFile` 与核心存储层耦合。
+> 若目标需要自行创建父目录，由 `Target` 实现保证（storage 的 `Filesystem::put` 会自动创建父目录）。
 

@@ -27,7 +27,7 @@ import org.springframework.context.annotation.Bean;
  */
 @AutoConfiguration(afterName = {
         "com.weacsoft.jaravel.vendor.springboot.cache.CacheAutoConfiguration",
-        "com.weacsoft.jaravel.vendor.storage.autoconfigure.StorageAutoConfiguration"
+        "com.weacsoft.jaravel.vendor.springboot.storage.StorageAutoConfiguration"
 })
 @EnableConfigurationProperties(AetherUploadProperties.class)
 @ConditionalOnProperty(prefix = "jaravel.aether-upload", name = "enabled",

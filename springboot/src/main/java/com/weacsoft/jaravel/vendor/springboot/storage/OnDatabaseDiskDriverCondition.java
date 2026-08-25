@@ -1,4 +1,4 @@
-package com.weacsoft.jaravel.vendor.storage.autoconfigure;
+package com.weacsoft.jaravel.vendor.springboot.storage;
 
 import com.weacsoft.jaravel.vendor.core.condition.OnDriverInUseCondition;
 

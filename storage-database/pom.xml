@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.lijialong1313</groupId>
+        <artifactId>jaravel-vendor</artifactId>
+        <version>0.1.2</version>
+    </parent>
+
+    <artifactId>storage-database</artifactId>
+    <name>storage-database</name>
+    <description>数据库存储驱动：DatabaseFilesystem 把文件落库（元信息 + 内容分片），原生 JDBC 走 database 模块连接，不依赖 Spring JDBC（对齐 cache-database 拆分惯例）</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>storage</artifactId>
+        </dependency>
+        <!-- 数据库连接直接走 database 模块（ConnectionManager 连接注册表），不再依赖 spring-jdbc -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>database</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <!-- Artisan CLI 集成（optional：仅 SpringBoot 环境下注册 storage:table 命令） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>artisan</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- 迁移文件生成（optional：storage:table 命令生成迁移文件时使用） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>migration</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

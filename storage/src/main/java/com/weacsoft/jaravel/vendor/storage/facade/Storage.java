@@ -8,9 +8,6 @@ import com.weacsoft.jaravel.vendor.storage.contract.FileInfo;
 import com.weacsoft.jaravel.vendor.storage.contract.Filesystem;
 import com.weacsoft.jaravel.vendor.storage.contract.Visibility;
 
-import org.springframework.web.multipart.MultipartFile;
-
-import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URLEncoder;
@@ -374,47 +371,6 @@ public final class Storage {
      */
     public static String path(String path) {
         return disk().path(path);
-    }
-
-    // ==================== HTTP 集成：上传（Request） ====================
-
-    /**
-     * 将 HTTP 上传文件存入指定磁盘。
-     *
-     * @param disk 磁盘名称
-     * @param dir  目标目录
-     * @param file 上传文件
-     * @return 实际写入的相对路径
-     * @throws IOException 读取上传流失败
-     */
-    public static String putFile(String disk, String dir, MultipartFile file) throws IOException {
-        return disk(disk).putFile(dir, file);
-    }
-
-    /**
-     * 将 HTTP 上传文件存入默认磁盘。
-     *
-     * @param dir  目标目录
-     * @param file 上传文件
-     * @return 实际写入的相对路径
-     * @throws IOException 读取上传流失败
-     */
-    public static String putFile(String dir, MultipartFile file) throws IOException {
-        return disk().putFile(dir, file);
-    }
-
-    /**
-     * 将 HTTP 上传文件存入指定磁盘并使用指定文件名。
-     *
-     * @param disk  磁盘名称
-     * @param dir   目标目录
-     * @param file  上传文件
-     * @param name  目标文件名
-     * @return 实际写入的相对路径
-     * @throws IOException 读取上传流失败
-     */
-    public static String putFileAs(String disk, String dir, MultipartFile file, String name) throws IOException {
-        return disk(disk).putFileAs(dir, file, name);
     }
 
     // ==================== HTTP 集成：下载 / 预览（Response） ====================

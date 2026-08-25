@@ -1,4 +1,4 @@
-package com.weacsoft.jaravel.vendor.storage.autoconfigure;
+package com.weacsoft.jaravel.vendor.springboot.storage;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -28,6 +28,13 @@ import java.util.Map;
  *         root: /data/uploads
  *         options:
  *           custom-key: custom-value
+ *       files:
+ *         driver: database        # storage-database 模块
+ *         binary: true            # true=BLOB；false=LONGTEXT(base64)
+ *         content-column: content # 内容列名（默认 content）
+ *         chunk-size: 1048576     # 分片上限（默认 1MB）
+ *         table-prefix: storage_  # 表前缀（默认 storage_）
+ *         connection: primary     # 可选，@RegisterConnection 别名；省略=默认连接
  * </pre>
  *
  * <p>
@@ -72,6 +79,11 @@ public class StorageProperties {
 
     /**
      * 单个磁盘的配置。
+     * <p>
+     * 驱动特定参数（local：root/url/visibility；database：binary/content-column/chunk-size/
+     * table-prefix/connection）作为显式字段绑定，对齐 {@code vendor.springboot.cache.CacheProperties.StoreConfig}
+     * 的模式，保证 {@code driver: database} 的磁盘参数不会被绑定静默丢弃；
+     * 其余自定义参数放 {@link #options}。
      */
     public static class DiskConfig {
 
@@ -86,6 +98,23 @@ public class StorageProperties {
 
         /** 默认可见性：public / private */
         private String visibility;
+
+        // ---- database 磁盘驱动（storage-database 模块）特定参数 ----
+
+        /** 是否以二进制（BLOB）存放；false 时 base64 文本（LONGTEXT），默认 true */
+        private Boolean binary;
+
+        /** 存放文件内容的列名，默认 content */
+        private String contentColumn;
+
+        /** 单条分片字节上限，默认 1MB；0/负=不切分 */
+        private Long chunkSize;
+
+        /** 数据表前缀，默认 storage_ */
+        private String tablePrefix;
+
+        /** 可选的 @RegisterConnection 连接别名（别名不存在时由驱动给出可操作提示） */
+        private String connection;
 
         /** 驱动自定义配置，会与上述字段合并后传给驱动 */
         private Map<String, Object> options = new LinkedHashMap<>();
@@ -122,6 +151,46 @@ public class StorageProperties {
             this.visibility = visibility;
         }
 
+        public Boolean getBinary() {
+            return binary;
+        }
+
+        public void setBinary(Boolean binary) {
+            this.binary = binary;
+        }
+
+        public String getContentColumn() {
+            return contentColumn;
+        }
+
+        public void setContentColumn(String contentColumn) {
+            this.contentColumn = contentColumn;
+        }
+
+        public Long getChunkSize() {
+            return chunkSize;
+        }
+
+        public void setChunkSize(Long chunkSize) {
+            this.chunkSize = chunkSize;
+        }
+
+        public String getTablePrefix() {
+            return tablePrefix;
+        }
+
+        public void setTablePrefix(String tablePrefix) {
+            this.tablePrefix = tablePrefix;
+        }
+
+        public String getConnection() {
+            return connection;
+        }
+
+        public void setConnection(String connection) {
+            this.connection = connection;
+        }
+
         public Map<String, Object> getOptions() {
             return options;
         }
@@ -145,6 +214,21 @@ public class StorageProperties {
             }
             if (visibility != null && !visibility.isBlank()) {
                 config.put("visibility", visibility);
+            }
+            if (binary != null) {
+                config.put("binary", binary);
+            }
+            if (contentColumn != null && !contentColumn.isBlank()) {
+                config.put("content-column", contentColumn);
+            }
+            if (chunkSize != null) {
+                config.put("chunk-size", chunkSize);
+            }
+            if (tablePrefix != null && !tablePrefix.isBlank()) {
+                config.put("table-prefix", tablePrefix);
+            }
+            if (connection != null && !connection.isBlank()) {
+                config.put("connection", connection);
             }
             return config;
         }

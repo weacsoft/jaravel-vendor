@@ -88,6 +88,8 @@
         <module>wire</module>
         <!-- Storage：多磁盘文件存储（Filesystem 契约、local 驱动、@RegisterDisk 注解式注册，对齐 Laravel Storage） -->
         <module>storage</module>
+        <!-- 数据库存储驱动（可选，走 database 模块连接，不依赖 Spring，对齐 cache-database 拆分惯例） -->
+        <module>storage-database</module>
         <!-- AetherUpload：不限大小分片上传（断点/断线续传、base64 传输、多组配置，对齐 peinhu/AetherUpload） -->
         <module>aether-upload</module>
     </modules>
@@ -273,6 +275,11 @@
             <dependency>
                 <groupId>io.github.lijialong1313</groupId>
                 <artifactId>storage</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>storage-database</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

@@ -31,10 +31,13 @@
 - **artisan**：命令注册改注解驱动；`make` 系列命令（迁移/模型/控制器）生成到应用子包；`make:model-from-migration` 反向生成。
 - **starter**：storage 纳入基础必选聚合（对齐 Laravel Storage）。
 - **json**：JsonCodec SPI（SB3/SB4 双 Jackson 支持）。
+- **storage-database 模块（新）**：storage 的 database 磁盘驱动独立模块（对齐 `cache-database` / `queue-database` 拆分惯例）——`DatabaseFilesystem`（原生 JDBC，替代 spring-jdbc `JdbcTemplate`，分片组装/自定义内容列/二进制·base64 双模式）、`DatabaseFilesystemDriver`（纯工厂，`Supplier<DataSource>` 惰性解析 + `connection` 别名走 `database` 模块 `ConnectionManager`，缺失连接时给出可操作提示）、`StorageTableCommand`（`storage:table` 命令，生成建表迁移而非直接建表）。**零 Spring 依赖**，纯 JVM + `database` 模块即可工作；Spring 装配由 `springboot` 模块的 `vendor.springboot.storage` 条件装配（`storage-database` 为 springboot 的 optional 依赖，"jar 在 classpath = 驱动可装配"）。
+- **http · 上传落盘助手（UploadFile）**：`com.weacsoft.jaravel.vendor.http.upload.UploadFile` + 函数式 `Target` 接口（`store(MultipartFile, dir, Target)` / `storeAs(...)` / `baseName(...)`），把 `MultipartFile` 落盘能力收敛到 http 模块——storage 契约与门面不再引用 `MultipartFile`，核心层继续零 Spring；`Target (path, bytes) -> ...` 可直接适配 storage `Filesystem::put` 或任意目标（内存/远端），http 不反向依赖 storage。
 
 ### Changed（变更）
 
 - **cache 模块纯化（去 Spring 化）**：cache 核心模块移除 `spring-boot-autoconfigure` / `spring-jdbc` / `spring-boot-configuration-processor` 全部直接依赖与 `autoconfigure` 装配类——Spring 装配（`CacheAutoConfiguration` / `CacheProperties` / `CacheStoreRegistrar` / `OnDatabaseCacheStoreCondition` / `CacheArtisanAutoConfiguration`）统一迁入 **`springboot` 模块**（`vendor.springboot.cache` 包）；database 驱动迁入 **`cache-database` 模块**（走 `database` 模块连接）。`CacheManager.initFromConfig` 改收纯 Java `CacheConfig`（Spring `CacheProperties` 经 `toCacheConfig()` 映射）。`vendor:publish` 注册（`CachePublishableConfig`）、`@RegisterCacheStore` 契约、`artisan cache:table` 行为不变。
+- **storage 模块纯化（去 Spring 化）**：storage 核心模块移除 `spring-web` / `spring-jdbc` / `spring-boot-autoconfigure` / `spring-boot-configuration-processor` 全部直接依赖与 `autoconfigure` 装配类、`database` 驱动子类、`artisan` 命令——Spring 装配（`StorageAutoConfiguration` / `StorageProperties` / `StorageRegistrar` / `OnLocalDiskDriverCondition` / `OnDatabaseDiskDriverCondition` / `StorageArtisanAutoConfiguration` / `StoragePublishAutoConfiguration`）统一迁入 **`springboot` 模块**（`vendor.springboot.storage` 包，`storage-database` 为 optional 依赖）；database 驱动迁入 **`storage-database` 模块**（原生 JDBC 走 `database` 模块连接）；`MultipartFile` 上传落盘能力拆入 **`http` 模块**（`UploadFile`）。保留于 storage 的 `StoragePublishableConfig`（`vendor:publish` 发布声明，纯 core 契约）、`@RegisterDisk` 契约、`Filesystem` 契约、local 驱动 SPI 与 `Storage` 门面行为不变。`Filesystem` 不再出现 `MultipartFile`（上传落盘改用 `UploadFile.store(file, dir, fs::put)`）。
 - 中间件不再注册为 Spring Bean：classpath 扫描 + 继承式配置，支持 Class 对象/类名/字符串别名三种引用；自动扫描跳过已手动注册的实例。
 - `csrf_field`/`@csrf`/`csrf_token`/`@csor`… 改为框架开箱即用内置注册（注册后自检，失败可见而非静默空值）；`VerifyCsrfToken` 未启用时输出空串。
 - `asset()` 与 `url()` 语义一致（移除 `/assets` 前缀）；`@route` 指令编译目标修正为 `route`。
@@ -44,6 +47,10 @@
 - 模块解耦：database↔jblade 解耦（分页/视图标准上提 core）；queue 发布配置移至 event 基础模块；auth 弱引用 http。
 
 ### Fixed（修复·摘录）
+
+- **springboot · 自动装配注册补齐**：`org.springframework.boot.autoconfigure.AutoConfiguration.imports` 补齐 cache 两条（`CacheAutoConfiguration` / `CacheArtisanAutoConfiguration`）与 storage 三条（`StorageAutoConfiguration` / `StoragePublishAutoConfiguration` / `StorageArtisanAutoConfiguration`）。
+- **aether-upload · 装配顺序字符串**：`@AutoConfiguration(afterName=...)` 中 storage 自动装配类 FQCN 更新为 `springboot` 侧新坐标（`vendor.springboot.storage.StorageAutoConfiguration`）。
+- **model-cache · 装配顺序字符串**：`@AutoConfigureAfter(name=...)` 中 cache 自动装配类 FQCN 更新为 `springboot` 侧新坐标（`vendor.springboot.cache.CacheAutoConfiguration`）。
 
 - wire：局部更新内容重复追加（翻页/改名多出一份列表）、对话框关闭致遮罩滞留（白屏）与 DOM 泄漏、init() 属性选择器失效致组件批量不加载、行级参数与 input value 同步、`hideLoading` 先清除触发按钮再隐藏、注释锚点非法位置失效、fat-jar 下 wire.js 双加载/重复 toast。
 - jblade：并发渲染模板 `ConcurrentModificationException`（点击后页面直接蹦）、组件插槽双重 HTML 转义、布局名继承链被清空导致 PJAX 退化为整页刷新、序列化模板渲染。

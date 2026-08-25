@@ -46,6 +46,17 @@
             <artifactId>database</artifactId>
             <optional>true</optional>
         </dependency>
+        <!-- 存储自动装配：storage 核心（纯 Java，零 Spring 依赖） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>storage</artifactId>
+        </dependency>
+        <!-- 存储 database 磁盘驱动装配（optional：未引入 storage-database 时条件装配自动跳过） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>storage-database</artifactId>
+            <optional>true</optional>
+        </dependency>
         <!-- Artisan CLI 集成（optional：注册 cache:table 命令） -->
         <dependency>
             <groupId>io.github.lijialong1313</groupId>

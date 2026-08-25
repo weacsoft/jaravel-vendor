@@ -18,6 +18,7 @@
 - [10. 自动装配清单](#10-自动装配清单)
 - [11. 配置选项](#11-配置选项)
 - [12. 缓存自动装配 —— CacheAutoConfiguration](#12-缓存自动装配--cacheautoconfiguration)
+- [13. 存储自动装配 —— StorageAutoConfiguration](#13-存储自动装配--storageautoconfiguration)
 
 ---
 
@@ -56,6 +57,8 @@
 | --- | --- | --- |
 | `io.github.lijialong1313:http` | compile | 路由、中间件、Request / Response |
 | `io.github.lijialong1313:auth` | optional | `AuthContext` / `AuthManager`（认证上下文） |
+| `io.github.lijialong1313:storage` | compile | 存储核心（纯 Java，`StorageManager` / `Filesystem` 契约 / local 驱动，零 Spring） |
+| `io.github.lijialong1313:storage-database` | optional | database 磁盘驱动装配（`DatabaseFilesystemDriver`） |
 | `org.springframework:spring-webmvc` | compile | `RouterFunction`、`HandlerMethodArgumentResolver` 等 |
 | `org.springframework.boot:spring-boot-autoconfigure` | compile | `@AutoConfiguration` 自动装配支持 |
 | `jakarta.servlet:jakarta.servlet-api` | provided | Servlet API |
@@ -87,8 +90,14 @@ com.weacsoft.jaravel.vendor.springboot
 自动装配注册文件（`META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`）：
 
 ```
+com.weacsoft.jaravel.vendor.springboot.JsonCodecAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.SpringBootRouteAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.ResponseAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.cache.CacheAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.cache.CacheArtisanAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.storage.StorageAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.storage.StoragePublishAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.storage.StorageArtisanAutoConfiguration
 ```
 
 ---
@@ -516,6 +525,11 @@ returnValue == null？
 | `CacheArtisanAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.cache`） | imports 文件 | 注册 `cache:table` artisan 命令（artisan + cache-database 在 classpath 时） |
 | `cacheStoreRegistrar` (CacheStoreRegistrar) | `@Bean` | `CacheAutoConfiguration` | 扫描 `@RegisterCacheStore` 注解方法并注册 store |
 | `databaseCacheDriverFactory` (DatabaseCacheDriverFactory) | `@Bean`（条件装配） | `CacheAutoConfiguration.DatabaseCacheConfiguration` | 数据库缓存驱动工厂；仅当 `cache-database` 在 classpath **且** 配置声明了 `driver: database` 的 store 时装配 |
+| `StorageAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.storage`） | imports 文件 | 存储装配：`StorageManager` + local 驱动 + `@RegisterDisk` 扫描 + vendor:publish 注册 |
+| `databaseStorageConfiguration.databaseFilesystemDriver` | `@Bean`（条件装配） | `StorageAutoConfiguration.DatabaseStorageConfiguration` | database 磁盘驱动；仅当 `storage-database` 在 classpath **且** 配置声明了 `driver: database` 的磁盘时装配 |
+| `storageRegistrar` (StorageRegistrar) | `@Bean` | `StorageAutoConfiguration` | 扫描 `@RegisterDisk` 注解方法并注册磁盘 |
+| `StorageArtisanAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.storage`） | imports 文件 | 注册 `storage:table` artisan 命令（artisan + storage-database 在 classpath 时） |
+| `StoragePublishAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.storage`） | imports 文件 | 注册 `storage` 发布 tag（发布 `StorageConfig.java`，与运行开关解耦） |
 
 > 注意：`@Component` / `@ControllerAdvice` 标注的类需要应用的主类包路径能扫描到 `com.weacsoft.jaravel.vendor.springboot`。若应用包名不同，需手动 `@ComponentScan` 或通过 `@AutoConfiguration` 的 imports 文件确保 `@AutoConfiguration` 类被加载（`@AutoConfiguration` 类内部的 `@Bean` 不受组件扫描限制）。
 
@@ -574,3 +588,49 @@ public CacheManager cacheManager(CacheProperties properties, List<CacheDriverFac
 ```
 
 > 详细行为（stores 配置、TTL、upsert 方言、artisan 命令、第三方驱动扩展）见 [cache/README.md](../cache/README.md) 第 12–13 节与 [cache-database/README.md](../cache-database/README.md)。
+
+---
+
+## 13. 存储自动装配 —— StorageAutoConfiguration
+
+`com.weacsoft.jaravel.vendor.springboot.storage.*`
+
+存储的 **Spring 装配统一收口在本模块**（storage 核心模块零 Spring 依赖，database 驱动在 `storage-database` 模块）：
+
+| 类 | 职责 |
+| --- | --- |
+| `StorageProperties` | `@ConfigurationProperties(prefix="jaravel.storage")` 绑定（`enabled` / `defaultDisk` / `disks`） |
+| `StorageAutoConfiguration` | `@AutoConfiguration` 主装配：注册 `StorageManager`、`LocalFilesystemDriver`、`StorageRegistrar`（`@RegisterDisk` 注解扫描） |
+| `StorageAutoConfiguration.DatabaseStorageConfiguration` | database 驱动条件装配：`@ConditionalOnClass(DatabaseFilesystemDriver.class)` + `@Conditional(OnDatabaseDiskDriverCondition)`；数据源解析顺序「`ConnectionManager` 注册表 → Spring 容器 `DataSource` Bean」 |
+| `StorageRegistrar` | 扫描 `@RegisterDisk` 注解方法，反射调用后注册磁盘（继承 core `AnnotationDrivenRegistrar`） |
+| `OnLocalDiskDriverCondition` | local 磁盘「显式选用或缺省」判定（继承 core `OnDriverInUseCondition`，`matchIfAbsent`） |
+| `OnDatabaseDiskDriverCondition` | 「声明了 `driver: database` 才装配」判定（继承 core `OnDriverInUseCondition`） |
+| `StorageArtisanAutoConfiguration` | artisan + storage-database 在 classpath 时注册 `storage:table` 命令 |
+| `StoragePublishAutoConfiguration` | 注册 `storage` 发布 tag（发布 `StorageConfig.java`） |
+
+```java
+@EnableConfigurationProperties(StorageProperties.class)
+@Bean
+public StorageManager storageManager(StorageProperties properties) {
+    StorageManager manager = new StorageManager();
+    manager.initFromConfig(properties);  // Spring 属性 → storage 模块纯 Java 配置
+    return manager;
+}
+```
+
+配置示例：
+
+```yaml
+jaravel:
+  storage:
+    default-disk: local
+    disks:
+      local:
+        driver: local
+        root: storage/app
+      files:
+        driver: database        # storage-database 模块
+        connection: primary     # @RegisterConnection 别名（可选）
+```
+
+> 详细行为（磁盘契约、可见性、URL 生成、database 分片、artisan 命令、第三方驱动扩展）见 [storage/README.md](../storage/README.md) 与 [storage-database/README.md](../storage-database/README.md)。
