@@ -25,7 +25,7 @@ class RedisManagerTest {
 
     @Test
     void testDefaultConnectionSelectedWhenPresent() {
-        RedisProperties props = buildPropertiesWithConnections("default", "cache", "session");
+        RedisConfig props = buildPropertiesWithConnections("default", "cache", "session");
         manager = new RedisManager(props);
         assertEquals("default", manager.getDefaultConnection(),
                 "存在 default 连接时应选择 default 作为默认连接");
@@ -33,7 +33,7 @@ class RedisManagerTest {
 
     @Test
     void testDefaultConnectionFallbackToFirst() {
-        RedisProperties props = buildPropertiesWithConnections("cache", "session");
+        RedisConfig props = buildPropertiesWithConnections("cache", "session");
         manager = new RedisManager(props);
         assertEquals("cache", manager.getDefaultConnection(),
                 "不存在 default 连接时应回退到第一个连接");
@@ -41,7 +41,7 @@ class RedisManagerTest {
 
     @Test
     void testEmptyConnectionsThrowsOnSync() {
-        RedisProperties props = new RedisProperties();
+        RedisConfig props = new RedisConfig();
         manager = new RedisManager(props);
         assertNull(manager.getDefaultConnection(), "空连接时默认连接应为 null");
         assertThrows(IllegalStateException.class, () -> manager.sync(),
@@ -50,7 +50,7 @@ class RedisManagerTest {
 
     @Test
     void testUnknownConnectionThrows() {
-        RedisProperties props = buildPropertiesWithConnections("default");
+        RedisConfig props = buildPropertiesWithConnections("default");
         manager = new RedisManager(props);
         assertThrows(IllegalArgumentException.class, () -> manager.sync("unknown"),
                 "使用未配置的连接名应抛出 IllegalArgumentException");
@@ -58,7 +58,7 @@ class RedisManagerTest {
 
     @Test
     void testGetPrefix() {
-        RedisProperties props = buildPropertiesWithConnections("default");
+        RedisConfig props = buildPropertiesWithConnections("default");
         props.getOptions().setPrefix("manage_database_");
         manager = new RedisManager(props);
         assertEquals("manage_database_", manager.getPrefix(),
@@ -67,7 +67,7 @@ class RedisManagerTest {
 
     @Test
     void testConnectionNames() {
-        RedisProperties props = buildPropertiesWithConnections("default", "cache", "session");
+        RedisConfig props = buildPropertiesWithConnections("default", "cache", "session");
         manager = new RedisManager(props);
         assertEquals(3, manager.connectionNames().size(), "应返回所有 3 个连接名");
         assertTrue(manager.connectionNames().contains("default"));
@@ -75,12 +75,12 @@ class RedisManagerTest {
         assertTrue(manager.connectionNames().contains("session"));
     }
 
-    /** 构建含指定连接名的 RedisProperties */
-    private RedisProperties buildPropertiesWithConnections(String... names) {
-        RedisProperties props = new RedisProperties();
-        Map<String, RedisProperties.ConnectionConfig> connections = new LinkedHashMap<>();
+    /** 构建含指定连接名的 RedisConfig */
+    private RedisConfig buildPropertiesWithConnections(String... names) {
+        RedisConfig props = new RedisConfig();
+        Map<String, RedisConfig.ConnectionConfig> connections = new LinkedHashMap<>();
         for (String name : names) {
-            connections.put(name, new RedisProperties.ConnectionConfig());
+            connections.put(name, new RedisConfig.ConnectionConfig());
         }
         props.setConnections(connections);
         return props;

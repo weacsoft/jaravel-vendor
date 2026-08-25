@@ -12,7 +12,7 @@
 
     <artifactId>session-redis</artifactId>
     <name>session-redis</name>
-    <description>Redis Session 守卫：基于 Redis 实现 Session 存储，支持多机 Session 同步，对齐 Laravel redis session driver</description>
+    <description>Redis Session 存储（零 Spring 依赖）：基于 Redis 实现 Session 存储，支持多机 Session 同步，对齐 Laravel redis session driver；Spring 装配见 springboot 模块（vendor.springboot.sessionredis）</description>
 
     <dependencies>
         <dependency>
@@ -32,10 +32,6 @@
             <artifactId>redis</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-autoconfigure</artifactId>
-        </dependency>
-        <dependency>
             <groupId>jakarta.servlet</groupId>
             <artifactId>jakarta.servlet-api</artifactId>
             <scope>provided</scope>
@@ -47,11 +43,6 @@
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-configuration-processor</artifactId>
-            <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>

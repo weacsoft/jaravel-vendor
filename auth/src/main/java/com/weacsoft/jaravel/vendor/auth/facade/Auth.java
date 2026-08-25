@@ -30,7 +30,11 @@ public final class Auth {
     }
 
     private static AuthManager inst() {
-        return Facade.resolve(AuthManager.class);
+        AuthManager resolved = Facade.resolve(AuthManager.class);
+        if (resolved != null) {
+            return resolved;
+        }
+        throw new IllegalStateException("AuthManager 未初始化：请通过 Spring 装配（AuthAutoConfiguration）或 AuthManager.init(AuthConfig) 手动初始化");
     }
 
     public static boolean check() {

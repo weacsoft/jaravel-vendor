@@ -12,7 +12,7 @@
 
     <artifactId>migration</artifactId>
     <name>migration</name>
-    <description>数据库迁移：Laravel 风格 Blueprint 流式建表、up/down 迁移引擎、migrate/rollback/refresh/status 命令，支持 DIRECTORY/JAR/CLASSPATH 三种迁移源模式</description>
+    <description>数据库迁移（零 Spring 依赖）：Laravel 风格 Blueprint 流式建表、up/down 迁移引擎、migrate/rollback/refresh/status 命令，支持 DIRECTORY/JAR/CLASSPATH 三种迁移源模式；Spring 装配见 springboot 模块（vendor.springboot.migration）</description>
 
     <dependencies>
         <dependency>
@@ -25,26 +25,15 @@
             <artifactId>artisan</artifactId>
             <optional>true</optional>
         </dependency>
-        <!-- core（optional：仅用于声明 PublishableConfig，独立运行时不需要） -->
+        <!-- core（optional：用于 PublishableConfig 声明与门面基础设施，独立运行时不需要） -->
         <dependency>
             <groupId>io.github.lijialong1313</groupId>
             <artifactId>core</artifactId>
             <optional>true</optional>
         </dependency>
-        <!-- SpringBoot 适配（optional：独立运行时不需要） -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-autoconfigure</artifactId>
-            <optional>true</optional>
-        </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-configuration-processor</artifactId>
-            <optional>true</optional>
         </dependency>
 
         <!-- 测试依赖 -->

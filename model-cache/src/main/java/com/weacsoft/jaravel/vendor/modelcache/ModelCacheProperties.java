@@ -1,9 +1,13 @@
 package com.weacsoft.jaravel.vendor.modelcache;
 
-import org.springframework.boot.context.properties.ConfigurationProperties;
-
 /**
- * 模型缓存配置属性，前缀 {@code jaravel.model-cache}。
+ * 模型缓存配置，前缀 {@code jaravel.model-cache}。
+ * <p>
+ * <b>独立于 SpringBoot</b>：此类为纯 POJO，不依赖任何 Spring 注解。
+ * 在 SpringBoot 环境中通过 springboot 模块
+ * {@code vendor.springboot.modelcache.ModelCacheAutoConfiguration} 的
+ * {@code @Bean @ConfigurationProperties} 方法绑定配置；
+ * 在独立运行时通过构造器手动设置（见 {@link ModelCacheService}）。
  * <pre>
  * jaravel:
  *   model-cache:
@@ -14,7 +18,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * </pre>
  * TTL 单位为秒（对齐 cache 模块）。
  */
-@ConfigurationProperties(prefix = "jaravel.model-cache")
 public class ModelCacheProperties {
 
     /** 全局开关，关闭后所有模型缓存不生效（直接回源） */

@@ -2,6 +2,9 @@
 
 > 包名：`com.weacsoft.jaravel.vendor.auth`
 > 对齐 Laravel 特性：`Illuminate\Auth`（AuthManager、Guard、UserProvider、Auth 门面、auth 中间件）
+>
+> **零 Spring 依赖**：本模块保留纯 Java 的 `AuthManager` / `AuthContext` / `contract/*` / `facade/Auth` / `guard/*` / `middleware/Authenticate` / `@RegisterGuard` / `@RegisterProvider` 与 `AuthPublishableConfig`。
+> Spring 装配收口于 **springboot** 模块（`vendor.springboot.auth` 包）：`AuthAutoConfiguration` / `AuthProperties` / `AuthRegistrar` / `OnSessionGuardDriverCondition` / `AuthLifecycleFilter` / `AuthPublishAutoConfiguration`。
 
 ## 目录
 
@@ -116,12 +119,13 @@ com.weacsoft.jaravel.vendor.auth
 │   └── SessionGuardDriver   # Session 守卫驱动（support("session") → 创建 SessionGuard）
 ├── middleware
 │   └── Authenticate         # 认证中间件（支持守卫名称参数）
-├── filter
-│   └── AuthLifecycleFilter  # 认证生命周期过滤器
 └── autoconfigure
-    ├── AuthAutoConfiguration # Spring Boot 自动装配（自动收集 AuthGuardDriver Bean）
-    └── AuthProperties        # 配置属性（jaravel.auth.*）
+    └── AuthPublishableConfig  # vendor:publish 发布声明（纯 Java 契约载体，不迁）
 ```
+
+> **Spring 装配类**：`springboot` 模块 `vendor.springboot.auth` 包——
+> `AuthAutoConfiguration` / `AuthProperties` / `AuthRegistrar` /
+> `OnSessionGuardDriverCondition` / `AuthLifecycleFilter` / `AuthPublishAutoConfiguration`。
 
 ---
 
@@ -795,7 +799,9 @@ router.post("/api/wire/demo", handler).middleware(new Authenticate());
 
 ## 过滤器（filter）
 
-### AuthLifecycleFilter
+### AuthLifecycleFilter（springboot 模块）
+
+该过滤器位于 springboot 模块（`vendor.springboot.auth.AuthLifecycleFilter`），因继承 spring-web 的 `OncePerRequestFilter`；auth 模块本身零 Spring。
 
 认证生命周期过滤器，继承 Spring 的 `OncePerRequestFilter`。每个请求开始时绑定 `AuthContext`，结束时清理 ThreadLocal，对齐 Laravel 每个请求独立的认证上下文。
 
@@ -831,7 +837,7 @@ public class AuthLifecycleFilter extends OncePerRequestFilter {
 
 ## 自动装配（autoconfigure）
 
-### AuthAutoConfiguration
+### AuthAutoConfiguration（springboot 模块）
 
 Spring Boot 自动装配类，注册 `AuthManager`、`AuthLifecycleFilter` 和 `SessionGuardDriver`，并自动收集所有 `AuthGuardDriver` Bean 注册到 `AuthManager`。**Session 存储（CookieSessionStore / SessionStoreHolder / 扫描 @RegisterSessionStore）由 http 模块的 `HttpSessionAutoConfiguration` 负责**，auth 仅消费 http 提供的 `SessionStoreHolder`（通过 `@Autowired(required = false)` 弱引用，缺失时兜底构造，退化为原生 HttpSession），不强依赖具体 Session 实现。
 
@@ -877,7 +883,7 @@ public class AuthAutoConfiguration implements SmartInitializingSingleton {
 
 ---
 
-### AuthProperties
+### AuthProperties（springboot 模块）
 
 认证配置属性，前缀 `jaravel.auth`。
 

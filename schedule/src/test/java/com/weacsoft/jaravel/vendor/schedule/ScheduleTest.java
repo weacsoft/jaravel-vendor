@@ -10,7 +10,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Schedule 与 ScheduleRunner 单元测试。
+ * Schedule 单元测试。
+ * <p>
+ * （{@code ScheduleRunner} 的测试已随去 Spring 化迁入 springboot 模块 {@code ScheduleRunnerTest}。）
  */
 class ScheduleTest {
 
@@ -59,25 +61,6 @@ class ScheduleTest {
 
         schedule.call("added", () -> { }).everyMinute();
         assertEquals(2, schedule.size());
-    }
-
-    @Test
-    @DisplayName("ScheduleRunner 执行到期任务并获取分布式锁")
-    void testScheduleRunnerExecuteTask() throws InterruptedException {
-        Schedule schedule = new Schedule();
-        AtomicInteger counter = new AtomicInteger(0);
-
-        schedule.call("runner-test", () -> counter.incrementAndGet())
-                .everyMinute()
-                .withDistributedLock();
-
-        ScheduleRunner runner = new ScheduleRunner(schedule, null, new LockProviderManager());
-
-        runner.run();
-
-        Thread.sleep(1000);
-
-        runner.shutdown();
     }
 
     @Test

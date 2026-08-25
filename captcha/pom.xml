@@ -28,17 +28,6 @@
             <artifactId>core</artifactId>
             <optional>true</optional>
         </dependency>
-        <!-- SpringBoot 自动装配（兼容层，optional） -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-autoconfigure</artifactId>
-            <optional>true</optional>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-configuration-processor</artifactId>
-            <optional>true</optional>
-        </dependency>
         <!-- 测试 -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>

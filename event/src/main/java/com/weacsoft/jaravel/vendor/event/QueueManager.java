@@ -18,7 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <p>
  * 每个命名队列（由 {@link ShouldQueue#queue()} 指定）拥有独立的线程池，
  * 不同队列的监听器互不阻塞。队列按需创建：首次向某队列提交任务时，
- * 才根据 {@link EventProperties} 配置创建对应大小的线程池。
+ * 才根据 {@link EventConfig} 配置创建对应大小的线程池。
  * <p>
  * <b>配置项</b>（前缀 {@code jaravel.event}）：
  * <ul>
@@ -61,7 +61,7 @@ public class QueueManager {
      * 无参构造器，使用默认配置（便于快速原型和测试）。
      */
     public QueueManager() {
-        this(new EventProperties());
+        this(new EventConfig());
     }
 
     /**
@@ -69,12 +69,12 @@ public class QueueManager {
      *
      * @param properties 事件配置属性，为 {@code null} 时使用默认配置
      */
-    public QueueManager(EventProperties properties) {
+    public QueueManager(EventConfig properties) {
         if (properties == null) {
-            properties = new EventProperties();
+            properties = new EventConfig();
         }
-        EventProperties.Queue queueCfg = properties.getQueue();
-        EventProperties.Retry retryCfg = properties.getRetry();
+        EventConfig.Queue queueCfg = properties.getQueue();
+        EventConfig.Retry retryCfg = properties.getRetry();
 
         this.defaultPoolSize = resolveDefaultPoolSize(queueCfg);
         this.queuePoolSizes = new ConcurrentHashMap<>();
@@ -92,7 +92,7 @@ public class QueueManager {
     }
 
     /** 计算默认线程池大小：配置优先，否则使用 CPU 核心数 */
-    private int resolveDefaultPoolSize(EventProperties.Queue queueCfg) {
+    private int resolveDefaultPoolSize(EventConfig.Queue queueCfg) {
         if (queueCfg != null && queueCfg.getDefaultPoolSize() != null && queueCfg.getDefaultPoolSize() > 0) {
             return queueCfg.getDefaultPoolSize();
         }

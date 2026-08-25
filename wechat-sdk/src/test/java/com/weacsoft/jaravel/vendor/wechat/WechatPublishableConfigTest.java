@@ -21,14 +21,9 @@ class WechatPublishableConfigTest {
         PublishableRegistry.clearForTest();
     }
 
-    @Test
-    void testPublishableRegistryContainsWechatSdk() {
-        // 实例化（触发类静态初始化 → PublishableRegistry.register）
-        assertNotNull(new WechatPublishAutoConfiguration());
-        List<Publishable> all = PublishableRegistry.list();
-        boolean found = all.stream().anyMatch(p -> "wechat-sdk".equals(p.tag()));
-        assertTrue(found, "PublishableRegistry 必须包含 tag=wechat-sdk 的可发布配置");
-    }
+    // 注：「PublishableRegistry 包含 tag=wechat-sdk」的断言已随注册触发点
+    // （WechatPublishAutoConfiguration 静态块）迁至 springboot 模块
+    // （WechatPublishAutoConfigurationTest），本文件只验证纯模板本体。
 
     @Test
     void testTemplateCoversDeclarationOauthAndMiniApp() {

@@ -68,11 +68,15 @@ TTL 单位统一为**秒**（对齐 cache 模块）。
 ```
 com.weacsoft.jaravel.vendor.modelcache
 ├── CachableModel              // 注解：标注在 Model 类上手动开启缓存
-├── ModelCacheProperties       // 配置属性（jaravel.model-cache.*）
+├── ModelCacheProperties       // 纯 POJO 配置（jaravel.model-cache.*，无 Spring 注解）
 ├── ModelCacheService          // 核心服务（版本化缓存读写/失效，非 @Component）
 ├── ModelCache                 // 门面（静态 API，对齐 ModelCache::）
-└── ModelCacheAutoConfiguration// 自动装配（@Bean 注册 ModelCacheService）
+└── (ModelCacheAutoConfiguration 已迁至 springboot 模块 vendor.springboot.modelcache)
 ```
+
+> **Spring 装配类**：`springboot` 模块 `vendor.springboot.modelcache` 包——
+> `ModelCacheAutoConfiguration`（`@Bean` 绑定 `ModelCacheProperties` + 注册 `ModelCacheService`；
+> 经 `@AutoConfigureAfter(CacheAutoConfiguration)` 引用 springboot 侧的 cache 装配类）。
 
 ---
 

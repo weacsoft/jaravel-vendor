@@ -19,6 +19,7 @@
         <dependency>
             <groupId>io.github.lijialong1313</groupId>
             <artifactId>jblade</artifactId>
+            <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>io.github.lijialong1313</groupId>
@@ -57,6 +58,84 @@
             <artifactId>storage-database</artifactId>
             <optional>true</optional>
         </dependency>
+        <!-- Redis 装配（optional：redis 不在 starter 基础集，jar 在 classpath = 驱动可装配） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>redis</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- Redis 缓存装配（optional：redis-cache 不在 starter 基础集） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>redis-cache</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- Session Redis 装配（optional：session-redis 不在 starter 基础集） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>session-redis</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- JWT 装配（optional：jwt 不在 starter 基础集） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>jwt</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- 迁移装配（base 模块；starter 直接声明 migration） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>migration</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- 模型缓存装配（optional：model-cache 不在 starter 基础集） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>model-cache</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- 验证码装配（optional：captcha 不在 starter 基础集） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>captcha</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- aether-upload 装配（optional；aether-upload 不在 starter 基础集） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>aether-upload</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- 定时任务装配（base 模块；starter 直接声明 schedule） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>schedule</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- wire 装配（optional；wire 不在 starter 基础集） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>wire</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- 队列（database/redis 驱动）装配（optional；driver 层保留 spring-jdbc/spring-context） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>queue-database</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- 微信 SDK 装配（optional；wechat-sdk 模块零 Spring，纯 SDK + publish 模板） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>wechat-sdk</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- 事件装配（base 模块；可选以保持 springboot 的最小传递集，starter 直接声明 event） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>event</artifactId>
+            <optional>true</optional>
+        </dependency>
         <!-- Artisan CLI 集成（optional：注册 cache:table 命令） -->
         <dependency>
             <groupId>io.github.lijialong1313</groupId>
@@ -90,6 +169,13 @@
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- 测试：wechat-sdk 的 registrar 单测（迁入本模块 test 树）需要 Mockito 模拟 ApplicationContext
+             （spring-context 经 spring-boot-autoconfigure 传递，禁止在此声明 test scope——会遮蔽传递的 compile scope） -->
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

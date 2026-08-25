@@ -31,7 +31,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *       {@link com.weacsoft.jaravel.vendor.auth.RegisterProvider @RegisterProvider} 声明 UserProvider，
  *       {@link com.weacsoft.jaravel.vendor.auth.RegisterGuard @RegisterGuard} 声明
  *       {@link com.weacsoft.jaravel.vendor.auth.contract.GuardDefinition}。
- *       {@link com.weacsoft.jaravel.vendor.auth.autoconfigure.AuthRegistrar} 扫描注解并注册</li>
+ *       {@link com.weacsoft.jaravel.vendor.springboot.auth.AuthRegistrar} 扫描注解并注册</li>
  *   <li><b>配置式</b>：通过 {@code jaravel.auth.providers} 和 {@code jaravel.auth.guards} 配置，
  *       由工厂驱动按配置自动创建</li>
  *   <li><b>手动调用</b>：直接调用 {@link #registerProvider} / {@link #registerGuard}（向后兼容）</li>
@@ -54,7 +54,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *   <li><b>请求级守卫实例（current）</b>：使用 {@link ThreadLocal}，每个请求线程持有独立的
  *       {@code Map<String, AuthGuard>}，因此 {@link AuthGuard} 实例中缓存的 {@code cachedUser}、
  *       {@code resolved}、{@code lastToken} 等可变状态天然按请求隔离，<b>不会</b>跨请求共享。
- *       请求结束时由 {@link com.weacsoft.jaravel.vendor.auth.filter.AuthLifecycleFilter} 调用 {@link #clear()}
+ *       请求结束时由 {@link com.weacsoft.jaravel.vendor.springboot.auth.AuthLifecycleFilter} 调用 {@link #clear()}
  *       清理 ThreadLocal，防止线程池复用导致的串态。</li>
  *   <li><b>defaultGuard</b>：启动阶段设置后不再变更，使用 {@code volatile} 保证可见性。</li>
  * </ul>
@@ -251,7 +251,7 @@ public class AuthManager {
     /**
      * 请求结束时清理 ThreadLocal，防止线程池复用导致的串态。
      * <p>
-     * 由 {@link com.weacsoft.jaravel.vendor.auth.filter.AuthLifecycleFilter} 在 finally 中调用。
+     * 由 {@link com.weacsoft.jaravel.vendor.springboot.auth.AuthLifecycleFilter} 在 finally 中调用。
      */
     public void clear() {
         current.remove();

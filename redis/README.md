@@ -1,11 +1,12 @@
 # redis
 
-Redis 连接管理模块，对齐 Laravel `RedisManager`（`Illuminate\Redis\RedisManager`）。基于 Lettuce 客户端管理多个命名连接（default / cache / session / model-cache 等），支持 standalone、sentinel、cluster 三种部署模式，是 redis-cache、session-redis 等模块的基础依赖。
+Redis 连接管理模块（**零 Spring 依赖**），对齐 Laravel `RedisManager`（`Illuminate\Redis\RedisManager`）。基于 Lettuce 客户端管理多个命名连接（default / cache / session / model-cache 等），支持 standalone、sentinel、cluster 三种部署模式，是 redis-cache、session-redis 等模块的基础依赖。
+
+> Spring 自动装配收口于 **springboot** 模块（`vendor.springboot.redis` 包）：`RedisAutoConfiguration` / `RedisProperties`（`@ConfigurationProperties(prefix="jaravel.redis")`，经 `toRedisConfig()` 映射为纯 Java `RedisConfig`）/ `RedisPublishAutoConfiguration`。本模块保留纯 Java 的 `RedisManager`、`RedisConfig`、`RedisLockProvider(Impl)` 与 `RedisPublishableConfig`。
 
 ## 依赖
 
 - `core` — 基础设施（含 `LockProvider` 分布式锁契约与 `LockProviderManager` 管理器）
-- `spring-boot-autoconfigure` — 自动装配
 - `lettuce-core` — 非阻塞、线程安全的 Redis 客户端
 - `slf4j-api` — 日志
 
@@ -17,7 +18,7 @@ Redis 连接管理器，对齐 Laravel `RedisManager`。管理多个命名连接
 
 ```java
 public class RedisManager {
-    public RedisManager(RedisProperties properties);
+    public RedisManager(RedisConfig properties);
 
     // 字符串编码同步命令接口
     public RedisCommands<String, String> sync();              // 默认连接
@@ -43,9 +44,10 @@ public class RedisManager {
 - **sentinel**：哨兵高可用，通过 sentinel 列表自动发现 master
 - **cluster**：Redis Cluster，通过集群节点列表连接，自动路由
 
-### RedisProperties
+### RedisProperties（springboot 模块）
 
 配置属性，前缀 `jaravel.redis`，对齐 Laravel `config/database.php` 的 redis 段。支持多命名连接，每个连接独立 host/port/database/password。
+该类位于 springboot 模块（`vendor.springboot.redis.RedisProperties`）；经 `toRedisConfig()` 映射为本模块的纯 Java 对象 `RedisConfig`（字段一一对应）后交给 `RedisManager`。
 
 ```java
 @ConfigurationProperties(prefix = "jaravel.redis")
@@ -81,9 +83,9 @@ public class RedisLockProviderImpl implements RedisLockProvider {
 }
 ```
 
-### RedisAutoConfiguration
+### RedisAutoConfiguration（springboot 模块）
 
-自动装配类：创建 `RedisManager` bean，并通过 `@RegisterLockProvider(value = "redis", defaultProvider = true)` 把 Redis 分布式锁注册为 `LockProviderManager` 的默认 provider（注解驱动注册，**不进入 Spring 容器**）。
+自动装配类（位于 `vendor.springboot.redis.RedisAutoConfiguration`）：创建 `RedisManager` bean，并通过 `@RegisterLockProvider(value = "redis", defaultProvider = true)` 把 Redis 分布式锁注册为 `LockProviderManager` 的默认 provider（注解驱动注册，**不进入 Spring 容器**）。
 
 ## 配置
 
@@ -185,7 +187,7 @@ public void executeWithLock(String taskName) {
 
 ## 自动装配
 
-`RedisAutoConfiguration` 通过 `@AutoConfiguration` 注册，当 classpath 存在 `RedisManager` 且配置了 `jaravel.redis.connections` 时生效。
+`RedisAutoConfiguration`（springboot 模块 `vendor.springboot.redis`）通过 `@AutoConfiguration` 注册，当 classpath 存在 `RedisManager` 且配置了 `jaravel.redis.connections` 时生效。
 
 创建的 bean：
 - `RedisManager` — Redis 管理器（`@ConditionalOnMissingBean`，便于业务方覆盖）

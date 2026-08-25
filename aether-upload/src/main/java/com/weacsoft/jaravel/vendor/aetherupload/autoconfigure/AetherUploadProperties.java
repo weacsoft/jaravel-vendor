@@ -1,7 +1,5 @@
 package com.weacsoft.jaravel.vendor.aetherupload.autoconfigure;
 
-import org.springframework.boot.context.properties.ConfigurationProperties;
-
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -35,8 +33,11 @@ import java.util.Map;
  *         allow-client-chunk-size: true # 是否允许前端在 prepare 时自定义分片大小
  *         middleware: []              # 该组专属中间件别名
  * </pre>
+ * <p>
+ * <b>独立于 SpringBoot</b>：纯 POJO，无 Spring 注解；SpringBoot 环境中经 springboot 模块
+ * {@code vendor.springboot.aetherupload.AetherUploadAutoConfiguration} 的
+ * {@code @Bean @ConfigurationProperties} 方法完成绑定。
  */
-@ConfigurationProperties(prefix = "jaravel.aether-upload")
 public class AetherUploadProperties {
 
     /** 是否启用模块 */

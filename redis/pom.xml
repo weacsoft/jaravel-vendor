@@ -12,16 +12,12 @@
 
     <artifactId>redis</artifactId>
     <name>redis</name>
-    <description>Redis 连接管理：Lettuce 客户端 / 多命名连接 / standalone·sentinel·cluster，对齐 Laravel config/database.php redis 段</description>
+    <description>Redis 连接管理（零 Spring 依赖）：Lettuce 客户端 / 多命名连接 / standalone·sentinel·cluster，对齐 Laravel config/database.php redis 段；Spring 装配见 springboot 模块（vendor.springboot.redis）</description>
 
     <dependencies>
         <dependency>
             <groupId>io.github.lijialong1313</groupId>
             <artifactId>core</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-autoconfigure</artifactId>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
@@ -31,11 +27,6 @@
         <dependency>
             <groupId>io.lettuce</groupId>
             <artifactId>lettuce-core</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-configuration-processor</artifactId>
-            <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>

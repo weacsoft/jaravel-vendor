@@ -55,10 +55,24 @@
 
 | 依赖 | scope | 用途 |
 | --- | --- | --- |
-| `io.github.lijialong1313:http` | compile | 路由、中间件、Request / Response |
+| `io.github.lijialong1313:http` | compile | 路由、中间件、Request 
+| `io.github.lijialong1313:jblade` | optional | Blade 模板引擎集成（`BladeIntegrationConfiguration` / `ViewAutoConfiguration` / `JbladeArtisanAutoConfiguration`；`@ConditionalOnClass` 保护，jblade 模块零 Spring）/ Response |
 | `io.github.lijialong1313:auth` | optional | `AuthContext` / `AuthManager`（认证上下文） |
 | `io.github.lijialong1313:storage` | compile | 存储核心（纯 Java，`StorageManager` / `Filesystem` 契约 / local 驱动，零 Spring） |
 | `io.github.lijialong1313:storage-database` | optional | database 磁盘驱动装配（`DatabaseFilesystemDriver`） |
+| `io.github.lijialong1313:redis` | optional | Redis 连接管理装配（`RedisManager`，redis 模块零 Spring） |
+| `io.github.lijialong1313:redis-cache` | optional | Redis 缓存驱动装配（`RedisCacheDriverFactory`） |
+| `io.github.lijialong1313:session-redis` | optional | Redis Session 存储装配（`RedisSessionStore`） |
+| `io.github.lijialong1313:event` | optional | 事件装配（`EventAutoConfiguration` / `QueueManager`，event 模块零 Spring） |
+| `io.github.lijialong1313:jwt` | optional | JWT 装配（`JwtAutoConfiguration` / `JwtService`，jwt 模块零 Spring） |
+| `io.github.lijialong1313:migration` | optional | 迁移装配（`MigrationAutoConfiguration` / `MigrationRunner`，migration 模块零 Spring） |
+| `io.github.lijialong1313:model-cache` | optional | 模型缓存装配（`ModelCacheAutoConfiguration` / `ModelCacheService`，model-cache 模块零 Spring） |
+| `io.github.lijialong1313:captcha` | optional | 验证码装配（`CaptchaAutoConfiguration` / `CaptchaManager`，captcha 模块零 Spring） |
+| `io.github.lijialong1313:aether-upload` | optional | 大文件上传装配（`AetherUploadAutoConfiguration` / `AetherUploadManager`，aether-upload 模块零 Spring） |
+| `io.github.lijialong1313:schedule` | optional | 定时任务装配（`ScheduleAutoConfiguration` / `ScheduleRunner`，schedule 模块零 Spring） |
+| `io.github.lijialong1313:wire` | optional | Wire 响应式 UI 装配（`WireAutoConfiguration`，wire 模块零 Spring） |
+| `io.github.lijialong1313:queue-database` | optional | 队列驱动装配（`QueueDatabaseAutoConfiguration` 等，driver 层保留 spring-jdbc/spring-context，D3 豁免） |
+| `io.github.lijialong1313:wechat-sdk` | optional | 微信 SDK 装配（`WechatAutoConfiguration` / `WechatPublishAutoConfiguration` 等，模块零 Spring，SDK 纯 + publish 模板） |
 | `org.springframework:spring-webmvc` | compile | `RouterFunction`、`HandlerMethodArgumentResolver` 等 |
 | `org.springframework.boot:spring-boot-autoconfigure` | compile | `@AutoConfiguration` 自动装配支持 |
 | `jakarta.servlet:jakarta.servlet-api` | provided | Servlet API |
@@ -92,12 +106,40 @@ com.weacsoft.jaravel.vendor.springboot
 ```
 com.weacsoft.jaravel.vendor.springboot.JsonCodecAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.SpringBootRouteAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.BlaeConfiguration
 com.weacsoft.jaravel.vendor.springboot.ResponseAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.jblade.ViewAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.jblade.JbladeArtisanAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.cache.CacheAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.cache.CacheArtisanAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.storage.StorageAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.storage.StoragePublishAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.storage.StorageArtisanAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.redis.RedisAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.redis.RedisPublishAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.rediscache.RedisCacheAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.rediscache.RedisCachePublishAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.sessionredis.SessionRedisAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.sessionredis.SessionRedisPublishAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.auth.AuthAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.auth.AuthPublishAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.event.EventAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.jwt.JwtAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.migration.MigrationAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.migration.MigrationArtisanAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.migration.MigrationPublishAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.modelcache.ModelCacheAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.aetherupload.AetherUploadAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.aetherupload.AetherUploadPublishAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.schedule.ScheduleAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.schedule.SchedulePublishAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.queuedatabase.QueueDatabaseAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.queuedatabase.RedisQueueAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.queuedatabase.QueueArtisanAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.wire.WireAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.captcha.CaptchaAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.wechat.WechatAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.wechat.WechatPublishAutoConfiguration
 ```
 
 ---
@@ -515,6 +557,9 @@ returnValue == null？
 | --- | --- | --- | --- |
 | `SpringBootRouteAutoConfiguration` | `@AutoConfiguration` | imports 文件 | 路由桥接 + 中间件执行 + `@MiddlewareAlias` 别名扫描注册 |
 | `ResponseAutoConfiguration` | `@AutoConfiguration` | imports 文件 | 注入返回值处理器 |
+| `BladeIntegrationConfiguration` | `@AutoConfiguration`（`@ConditionalOnClass(BladeFunctions)`，P2-J：无 jblade 不加载） | imports 文件 | jblade 集成：`BladeDirectiveRegistrar` Bean + 开箱即用模板函数 `csrf_token()/route()/url()` 注册（自检硬保证） |
+| `jblade.ViewAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.jblade`） | imports 文件 | 视图装配：三层优先级收集 `@RegisterView` 声明 → 兜底 Blade 运行时 → `ViewFacade` 绑定；`View::preheat` 模板函数 |
+| `jblade.JbladeArtisanAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.jblade`，artisan 在场时） | imports 文件 | 注册 `view:cache` / `view:clear` 命令 |
 | `SpringBootRequestMVCResolver` | `@Component` | 组件扫描 | Request 参数注入 |
 | `SpringBootResponseMVCResolver` | `@ControllerAdvice` | 组件扫描 | Response 响应处理 + 安全头 |
 | `@MiddlewareAlias` 标注的中间件类 | 纯注解（非 Spring Bean） | classpath 扫描 | 用户中间件类，启动时由 `SpringBootRouteAutoConfiguration.scanMiddlewareAliases()` 通过 classpath 扫描发现，反射实例化后注册到 `MiddlewareAliasRegistry.getGlobal()` |
@@ -530,6 +575,34 @@ returnValue == null？
 | `storageRegistrar` (StorageRegistrar) | `@Bean` | `StorageAutoConfiguration` | 扫描 `@RegisterDisk` 注解方法并注册磁盘 |
 | `StorageArtisanAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.storage`） | imports 文件 | 注册 `storage:table` artisan 命令（artisan + storage-database 在 classpath 时） |
 | `StoragePublishAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.storage`） | imports 文件 | 注册 `storage` 发布 tag（发布 `StorageConfig.java`，与运行开关解耦） |
+| `RedisAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.redis`） | imports 文件 | Redis 装配：`RedisManager` bean（`RedisProperties.toRedisConfig()` 映射）+ `@RegisterLockProvider` 分布式锁 |
+| `RedisPublishAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.redis`） | imports 文件 | 注册 `redis` 发布 tag（静态，与 `jaravel.redis.connections` 条件解耦） |
+| `RedisCacheAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.rediscache`） | imports 文件 | `driver: redis` 缓存 store 声明 + `RedisManager` 存在时注册 `RedisCacheDriverFactory` |
+| `RedisCachePublishAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.rediscache`） | imports 文件 | 注册 `redis-cache` 发布 tag（静态，与运行条件解耦） |
+| `SessionRedisAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.sessionredis`） | imports 文件 | `jaravel.session.driver=redis` 显式选用 + `RedisManager` 存在 + Web 应用：`@RegisterSessionStore` 注册 `RedisSessionStore` |
+| `SessionRedisPublishAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.sessionredis`） | imports 文件 | 注册 `session-redis` 发布 tag（静态，与运行条件解耦） |
+| `AuthAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.auth`） | imports 文件 | 认证装配：`AuthManager` + `AuthLifecycleFilter` + `SessionGuardDriver`（声明/缺省 session 时）+ `AuthRegistrar`（所有单例就绪后统一注册驱动/配置/注解声明） |
+| `AuthPublishAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.auth`，无 Web 条件） | imports 文件 | 注册 `auth` 发布 tag（静态，命令行模式同样可用） |
+| `EventAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.event`） | imports 文件 | 事件装配：`QueueManager`（`EventProperties.toEventConfig()`）+ `EventDispatcher` + `EventListenerRegistrar`（`@ListensTo` 扫描）；静态块注册 `queue` 发布 tag |
+| `JwtAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.jwt`，SERVLET Web 必需） | imports 文件 | JWT 装配：`JwtConfig`（`JwtProperties` 映射 + `jaravel.key` 密钥兜底）+ `JwtService`（可选黑名单 store）+ `JwtGuardDriver`（显式 `driver: jwt` 或 `@RegisterGuard` 声明时）+ `JwtTokenResponseFilter`（响应头写回新 token） |
+| `MigrationAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.migration`，`jaravel.migration.enabled` 默认开） | imports 文件 | 迁移装配：`MigrationProperties`（@Bean 绑定）+ `MigrationExecutor`（`ConnectionAliasResolver` 注册表 + Spring `DataSource` 双源解析）+ `MigrationRunner`（`CommandLineRunner`） |
+| `MigrationArtisanAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.migration`，artisan + executor 在场时） | imports 文件 | Artisan 集成：migrate / migrate:rollback / migrate:reset / migrate:refresh / migrate:status / make:model-from-table / make:model-from-migration |
+| `MigrationPublishAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.migration`，无运行条件） | imports 文件 | 注册 `migration` 发布 tag（静态，`enabled=false` 时也可 `vendor:publish`） |
+| `ModelCacheAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.modelcache`，cache + model-cache 在场时） | imports 文件 | 模型缓存装配：`ModelCacheProperties`（@Bean 绑定）+ `ModelCacheService`（按 store 解析，`@AutoConfigureAfter(CacheAutoConfiguration)`） |
+| `CaptchaAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.captcha`，`jaravel.captcha.enabled` 默认开） | imports 文件 | 验证码装配：`CaptchaManager`（五种类型 + AppKey 密钥兜底 + Store 自动选择）/ `CaptchaSceneRegistry`（场景白名单）；注册 publish tag（captcha + captcha-static） |
+| `AetherUploadAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.aetherupload`，`jaravel.aether-upload.enabled` 默认开） | imports 文件 | 大文件上传装配：`AetherUploadProperties`（@Bean 绑定）/ `AetherUploadManager` / `AetherUploadController`（MultipartFile，注册全局控制器） |
+| `AetherUploadPublishAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.aetherupload`，无运行条件） | imports 文件 | 注册 `aether-upload` 发布 tag（配置模板 + 静态前端资源，`enabled=false` 时也可发布） |
+| `ScheduleAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.schedule`，`jaravel.schedule.enabled` 默认开 + `@EnableScheduling`） | imports 文件 | 定时任务装配：`Schedule` / `ScheduleRegistrar`（扫 `@RegisterSchedule`）/ `ScheduleRunner`（Spring `@Scheduled` 每分钟扫描）/ 分布式锁管理器 |
+| `SchedulePublishAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.schedule`，无运行条件） | imports 文件 | 注册 `schedule` 发布 tag（`enabled=false` 时也可 `vendor:publish`） |
+| `WireAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.wire`，`jaravel.wire.enabled` 默认开） | imports 文件 | Wire 响应式 UI 装配：构造器应用 `WireProperties`（auto-inject-js/js-path/排除节/组件模板映射）到 `WireManager`；注册 wire.js 静态发布 |
+| `QueueDatabaseAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.queuedatabase`） | imports 文件 | 队列 database 驱动装配：`QueueDatabaseProperties`（@Bean 绑定）/ `DatabaseQueueDriver`（@Conditional(OnDatabaseQueueDriverCondition)+DataSource）/ `QueueDriverHolder`/Registrar/`DatabaseQueueWorker`/`DatabaseQueueDispatcher` |
+| `RedisQueueAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.queuedatabase`，beforeQueueDatabase；redis 在场+driver=redis） | imports 文件 | redis 队列驱动装配：`RedisQueueDriver`（复用 database 配置段的 retry-after 等参数） |
+| `QueueArtisanAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.queuedatabase`，artisan 在场时） | imports 文件 | 注册 `queue:table` artisan 命令（纯 `QueueTableCommand`，位于 queue-database 模块） |
+| `BladeIntegrationConfiguration` | `@AutoConfiguration`（`@ConditionalOnClass(BladeFunctions)`） | imports 文件 | Blade/jblade 专属装配：注册 `BladeDirectiveRegistrar` + 模板内置指令（csrf_token() 等）；**仅在 classpath 存在 jblade 时启用**，无 jblade 的应用不受影响 |
+| `wechat.WechatAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.wechat`，`jaravel.wechat.enabled` 默认开，`@ConditionalOnClass(OkHttpClient)`） | imports 文件 | 微信 SDK 装配：`wechatHttpClient` / `accessTokenManager` / `officialAccountService` / `miniProgramService` / `wechatOAuth` / `wechatOAuthMiddleware` / 两个 `@Register*` 注册器；`WechatProperties`（纯 POJO，位于 wechat-sdk 模块）经 `@ConfigurationProperties` 绑定 |
+| `wechat.WechatPublishAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.wechat`） | imports 文件 | 静态注册 wechat-sdk 的 publish 配置（`WechatPublishableConfig`，纯，位于 wechat-sdk 模块；从主装配拆出，不受 `enabled`/okhttp 条件约束） |
+| `jblade.ViewAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.jblade`） | imports 文件 | 视图装配：三层优先级（`@RegisterView` 声明 → `jaravel.view.default` → Blade 兜底），绑定 `ViewFacade`；注册 `View::preheat` 模板函数 |
+| `jblade.JbladeArtisanAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.jblade`，artisan 在场时） | imports 文件 | 注册 `view:cache` / `view:clear` 命令（纯命令类，位于 jblade 模块） |
 
 > 注意：`@Component` / `@ControllerAdvice` 标注的类需要应用的主类包路径能扫描到 `com.weacsoft.jaravel.vendor.springboot`。若应用包名不同，需手动 `@ComponentScan` 或通过 `@AutoConfiguration` 的 imports 文件确保 `@AutoConfiguration` 类被加载（`@AutoConfiguration` 类内部的 `@Bean` 不受组件扫描限制）。
 
@@ -634,3 +707,46 @@ jaravel:
 ```
 
 > 详细行为（磁盘契约、可见性、URL 生成、database 分片、artisan 命令、第三方驱动扩展）见 [storage/README.md](../storage/README.md) 与 [storage-database/README.md](../storage-database/README.md)。
+
+---
+
+## 14. 自动装配 —— Redis 系（RedisAutoConfiguration / RedisCacheAutoConfiguration / SessionRedisAutoConfiguration）
+
+`com.weacsoft.jaravel.vendor.springboot.redis.*`、`com.weacsoft.jaravel.vendor.springboot.rediscache.*`、`com.weacsoft.jaravel.vendor.springboot.sessionredis.*`
+
+Redis 连接、Redis 缓存与 Redis Session 的 Spring 装配统一收口在本模块（redis / redis-cache / session-redis 核心模块零 Spring 依赖，三者均为本模块的 **optional** 依赖——"jar 在 classpath = 装配可用"）：
+
+| 类 | 职责 |
+| --- | --- |
+| `RedisProperties` | `@ConfigurationProperties(prefix="jaravel.redis")` 绑定（client/options/connections）；`toRedisConfig()` 映射为 redis 模块纯 Java `RedisConfig` |
+| `RedisAutoConfiguration` | 注册 `RedisManager` bean + `@RegisterLockProvider(value="redis", defaultProvider=true)` 分布式锁（注解驱动，不进容器） |
+| `RedisPublishAutoConfiguration` | 注册 `redis` 发布 tag（静态，不受 `jaravel.redis.connections` 条件牵连） |
+| `RedisCacheProperties` | `@ConfigurationProperties(prefix="jaravel.cache.redis")` 绑定（connection/auto-register 覆盖开关） |
+| `RedisCacheAutoConfiguration` | `@Conditional(OnRedisCacheStoreCondition)` + `@ConditionalOnBean(RedisManager)` + `@ConditionalOnClass`：声明了 `driver: redis` 的缓存 store 才注册 `RedisCacheDriverFactory` |
+| `OnRedisCacheStoreCondition` | 「声明了 `driver: redis` 才装配」判定（继承 core `OnDriverInUseCondition`，`jaravel.cache.redis.auto-register` 为最高优先级覆盖开关） |
+| `RedisCachePublishAutoConfiguration` | 注册 `redis-cache` 发布 tag（静态，与运行条件解耦） |
+| `SessionRedisProperties` | `@ConfigurationProperties(prefix="jaravel.session.redis")` 绑定（connection/prefix/lifetime/cookie/auto-register 覆盖开关） |
+| `SessionRedisAutoConfiguration` | `@Conditional(OnRedisSessionDriverCondition)` + `@ConditionalOnBean(RedisManager)` + `@ConditionalOnWebApplication(SERVLET)`：显式 `driver: redis` 时 `@RegisterSessionStore` 注册 `RedisSessionStore`（多机 Session 同步） |
+| `OnRedisSessionDriverCondition` | 「session driver=redis」判定（继承 core `OnDriverInUseCondition`，`jaravel.session.redis.auto-register` 覆盖开关） |
+| `SessionRedisPublishAutoConfiguration` | 注册 `session-redis` 发布 tag（静态，与运行条件解耦） |
+
+装配顺序：`RedisCacheAutoConfiguration` `@AutoConfigureAfter(RedisAutoConfiguration)`（类引用，两者同在本包）。
+
+```yaml
+jaravel:
+  redis:
+    client: lettuce
+    connections:
+      default: { host: 127.0.0.1, port: 6379, database: 0 }
+      cache:   { host: 127.0.0.1, port: 6379, database: 1 }
+  cache:
+    stores:
+      redis: { driver: redis, connection: cache }   # 显式声明才装配 redis-cache
+
+jaravel:
+  session:
+    driver: redis                # 显式选用才装配 session-redis
+    redis: { connection: session, prefix: laravel_session, lifetime: 30 }
+```
+
+> 详细行为（连接模式、锁 API、驱动工厂语义、TTL、Session 生命周期）见 [redis/README.md](../redis/README.md)、[redis-cache/README.md](../redis-cache/README.md) 与 [session-redis/README.md](../session-redis/README.md)。

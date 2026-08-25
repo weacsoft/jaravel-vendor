@@ -53,10 +53,10 @@ public class RedisManager {
     private static final Logger logger = LoggerFactory.getLogger(RedisManager.class);
 
     /** 连接名 -> 连接配置，进程级共享，启动后只读 */
-    private final Map<String, RedisProperties.ConnectionConfig> connectionConfigs;
+    private final Map<String, RedisConfig.ConnectionConfig> connectionConfigs;
 
     /** 全局选项 */
-    private final RedisProperties.Options options;
+    private final RedisConfig.Options options;
 
     /** 连接名 -> 字符串编码连接（惰性创建），进程级共享 */
     private final ConcurrentMap<String, StatefulConnection<String, String>> stringConnections = new ConcurrentHashMap<>();
@@ -80,7 +80,7 @@ public class RedisManager {
      * 无参构造器，使用默认配置（便于快速原型和测试）。
      */
     public RedisManager() {
-        this(new RedisProperties());
+        this(new RedisConfig());
     }
 
     /**
@@ -88,9 +88,9 @@ public class RedisManager {
      *
      * @param properties Redis 配置属性，为 {@code null} 时使用默认配置
      */
-    public RedisManager(RedisProperties properties) {
+    public RedisManager(RedisConfig properties) {
         if (properties == null) {
-            properties = new RedisProperties();
+            properties = new RedisConfig();
         }
         this.connectionConfigs = properties.getConnections();
         this.options = properties.getOptions();
@@ -194,7 +194,7 @@ public class RedisManager {
 
     /** 创建字符串编码连接 */
     private StatefulConnection<String, String> createStringConnection(String name) {
-        RedisProperties.ConnectionConfig cfg = connectionConfigs.get(name);
+        RedisConfig.ConnectionConfig cfg = connectionConfigs.get(name);
         String clusterMode = options.getCluster();
 
         if ("cluster".equalsIgnoreCase(clusterMode) && hasClusterNodes(cfg)) {
@@ -220,7 +220,7 @@ public class RedisManager {
 
     /** 创建字节编码连接 */
     private StatefulConnection<byte[], byte[]> createBinaryConnection(String name) {
-        RedisProperties.ConnectionConfig cfg = connectionConfigs.get(name);
+        RedisConfig.ConnectionConfig cfg = connectionConfigs.get(name);
         String clusterMode = options.getCluster();
 
         if ("cluster".equalsIgnoreCase(clusterMode) && hasClusterNodes(cfg)) {
@@ -245,7 +245,7 @@ public class RedisManager {
     }
 
     /** 构建单机 RedisURI */
-    private RedisURI buildStandaloneUri(RedisProperties.ConnectionConfig cfg) {
+    private RedisURI buildStandaloneUri(RedisConfig.ConnectionConfig cfg) {
         if (cfg.getUrl() != null && !cfg.getUrl().isEmpty()) {
             return RedisURI.create(cfg.getUrl());
         }
@@ -265,7 +265,7 @@ public class RedisManager {
     }
 
     /** 构建哨兵 RedisURI */
-    private RedisURI buildSentinelUri(RedisProperties.ConnectionConfig cfg) {
+    private RedisURI buildSentinelUri(RedisConfig.ConnectionConfig cfg) {
         RedisURI.Builder builder = RedisURI.builder()
                 .withSentinelMasterId(cfg.getSentinelMaster())
                 .withTimeout(Duration.ofMillis(cfg.getTimeoutMs()));
@@ -286,7 +286,7 @@ public class RedisManager {
     }
 
     /** 构建集群 RedisURI 列表 */
-    private List<RedisURI> buildClusterUris(RedisProperties.ConnectionConfig cfg) {
+    private List<RedisURI> buildClusterUris(RedisConfig.ConnectionConfig cfg) {
         List<RedisURI> uris = new ArrayList<>();
         for (String node : cfg.getClusterNodes().split(",")) {
             String[] parts = node.trim().split(":");
@@ -308,11 +308,11 @@ public class RedisManager {
         return uris;
     }
 
-    private boolean hasClusterNodes(RedisProperties.ConnectionConfig cfg) {
+    private boolean hasClusterNodes(RedisConfig.ConnectionConfig cfg) {
         return cfg.getClusterNodes() != null && !cfg.getClusterNodes().isEmpty();
     }
 
-    private boolean hasSentinels(RedisProperties.ConnectionConfig cfg) {
+    private boolean hasSentinels(RedisConfig.ConnectionConfig cfg) {
         return cfg.getSentinels() != null && !cfg.getSentinels().isEmpty()
                 && cfg.getSentinelMaster() != null && !cfg.getSentinelMaster().isEmpty();
     }

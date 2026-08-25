@@ -1,6 +1,8 @@
 # redis-cache 模块
 
-> Jaravel-Vendor 的 Redis 缓存驱动模块，对齐 Laravel `Illuminate\Cache\RedisStore`。提供 `RedisCacheDriverFactory` 驱动工厂（实现 `CacheDriverFactory`，按需创建），由 `CacheManager` 在配置了 `redis` store 时按需创建 `RedisCacheDriver` 实例。底层通过 `redis` 模块的 `RedisManager` 获取指定命名连接的 Redis 命令接口，所有缓存键值以 JSON 序列化存储，TTL 通过 Redis `SETEX`/`EXPIRE` 实现。包名统一为 `com.weacsoft.jaravel.vendor.redis.cache`。
+> Jaravel-Vendor 的 Redis 缓存驱动模块（**零 Spring 依赖**），对齐 Laravel `Illuminate\Cache\RedisStore`。提供 `RedisCacheDriverFactory` 驱动工厂（实现 `CacheDriverFactory`，按需创建），由 `CacheManager` 在配置了 `redis` store 时按需创建 `RedisCacheDriver` 实例。底层通过 `redis` 模块的 `RedisManager` 获取指定命名连接的 Redis 命令接口，所有缓存键值以 JSON 序列化存储，TTL 通过 Redis `SETEX`/`EXPIRE` 实现。包名统一为 `com.weacsoft.jaravel.vendor.redis.cache`。
+>
+> Spring 自动装配收口于 **springboot** 模块（`vendor.springboot.rediscache` 包）：`RedisCacheAutoConfiguration` / `RedisCacheProperties` / `OnRedisCacheStoreCondition` / `RedisCachePublishAutoConfiguration`。本模块保留纯 Java 的 `RedisCacheDriver` / `RedisCacheDriverFactory` 与 `RedisCachePublishableConfig`。
 
 ---
 
@@ -59,11 +61,10 @@ CacheManager（cache 模块，按配置按需创建 store）
 | --- | --- |
 | `cache` | 提供 `CacheDriver` 接口、`CacheDriverFactory` 工厂契约与 `CacheManager` |
 | `redis` | 提供 `RedisManager` 命名连接管理 |
-| `spring-boot-autoconfigure` | 自动装配 |
 | `jackson-databind` | 缓存值 JSON 序列化 |
 | `slf4j-api` | 日志门面 |
 
-> 运行环境要求：JDK 17+，Spring Boot 3.2.12（Spring 6.x）。
+> 运行环境要求：JDK 17+。本模块**不依赖 Spring**——Spring 自动装配在 `springboot` 模块（`redis-cache`/`redis` 为其 optional 依赖）。
 
 ---
 
@@ -73,8 +74,10 @@ CacheManager（cache 模块，按配置按需创建 store）
 com.weacsoft.jaravel.vendor.redis.cache
 ├── RedisCacheDriverFactory     // Redis 驱动工厂（support("redis") + create(config)）
 ├── RedisCacheDriver            // Redis 缓存驱动（实现 CacheDriver，JSON 序列化）
-├── RedisCacheProperties        // 配置属性（jaravel.cache.redis.*）
-└── RedisCacheAutoConfiguration // 自动装配（注册 RedisCacheDriverFactory Bean）
+└── RedisCachePublishableConfig // vendor:publish 发布声明（纯 Java 契约载体，不迁）
+
+> **Spring 装配类**：`springboot` 模块 `vendor.springboot.rediscache` 包（`RedisCacheAutoConfiguration` /
+> `RedisCacheProperties` / `OnRedisCacheStoreCondition` / `RedisCachePublishAutoConfiguration`）。
 ```
 
 ---
@@ -172,7 +175,7 @@ Object val = Cache.store("redis").get("key");
 
 ## 6. RedisCacheProperties —— 配置属性
 
-`com.weacsoft.jaravel.vendor.redis.cache.RedisCacheProperties`
+`com.weacsoft.jaravel.vendor.springboot.rediscache.RedisCacheProperties`（springboot 模块）
 
 配置属性，前缀 `jaravel.cache.redis`。
 
@@ -197,7 +200,7 @@ public class RedisCacheProperties {
 
 ## 7. RedisCacheAutoConfiguration —— 自动装配
 
-`com.weacsoft.jaravel.vendor.redis.cache.RedisCacheAutoConfiguration`
+`com.weacsoft.jaravel.vendor.springboot.rediscache.RedisCacheAutoConfiguration`（springboot 模块）
 
 Redis 缓存自动装配。当 `RedisManager` 存在时，创建 `RedisCacheDriverFactory` 并注册为 Spring Bean。`CacheAutoConfiguration` 会自动收集所有 `CacheDriverFactory` Bean 并注册到 `CacheManager`，由 `CacheManager` 在配置了 `redis` store 时按需创建驱动。
 

@@ -31,9 +31,10 @@ import java.util.List;
  */
 public final class AetherUploadRoutes {
 
-    /** 控制器全限定名（ControllerRegistry 按全限定名解析，无需依赖扫描包配置） */
+    /** 控制器全限定名（ControllerRegistry 按全限定名解析，无需依赖扫描包配置）；
+     *  控制器位于 springboot 模块（AetherUploadController 使用 Spring Web MultipartFile） */
     private static final String C =
-            "com.weacsoft.jaravel.vendor.aetherupload.http.AetherUploadController";
+            "com.weacsoft.jaravel.vendor.springboot.aetherupload.AetherUploadController";
 
     private AetherUploadRoutes() {
     }

@@ -3,6 +3,7 @@
 > 包名：`com.weacsoft.jaravel.vendor.wechat`
 > 对齐 PHP 扩展包：`overtrue/laravel-wechat`（EasyWeChat 5.x）
 > 状态：**类型化消息模型（Typed Message Model）已全量实现** —— 旧 Map 裸接口已移除，不再保留。
+> **零 Spring 依赖（P2-W）**：SDK 内核与配置属性（`WechatProperties` 纯 POJO）不依赖 Spring；`WechatAutoConfiguration` / `WechatPublishAutoConfiguration` / 两个 `@Register*` 注册器位于 **`springboot`** 模块（`vendor.springboot.wechat[.registrar]` 包），属性绑定由 `WechatAutoConfiguration` 的 `@Bean @ConfigurationProperties(prefix="jaravel.wechat")` 完成。
 
 ## 模块概述
 

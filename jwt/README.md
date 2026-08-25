@@ -2,6 +2,9 @@
 
 > 包名：`com.weacsoft.jaravel.vendor.jwt`
 > 对齐 Laravel 特性：`tymon/jwt-auth`（JWT 签发/解析/校验/刷新/黑名单）
+>
+> **零 Spring 依赖**：本模块保留纯 Java 的 `JwtConfig` / `JwtService` / `JwtGuard` / `JwtGuardDriver`（依赖 jjwt + core + auth + cache）。
+> Spring 装配收口于 **springboot** 模块（`vendor.springboot.jwt` 包）：`JwtAutoConfiguration` / `JwtProperties` / `OnJwtGuardDriverCondition` / `JwtTokenResponseFilter`。
 
 ## 目录
 
@@ -121,10 +124,12 @@ com.weacsoft.jaravel.vendor.jwt
 ├── JwtService               # JWT 服务（签发/解析/校验/刷新/黑名单/宽限期判断）
 ├── JwtGuard                 # JWT 守卫（实现 AuthGuard 契约）
 ├── JwtGuardDriver           # JWT 守卫驱动（实现 AuthGuardDriver，support("jwt")）
-├── JwtTokenResponseFilter   # 响应过滤器（自动将新 token 写入响应 header）
 └── autoconfigure
-    ├── JwtProperties        # 配置属性（jaravel.jwt.*）
-    └── JwtAutoConfiguration # Spring Boot 自动装配
+    └── (已迁出，见下)
+
+> **Spring 装配类**：`springboot` 模块 `vendor.springboot.jwt` 包——
+> `JwtAutoConfiguration` / `JwtProperties` / `OnJwtGuardDriverCondition` /
+> `JwtTokenResponseFilter`（继承 `OncePerRequestFilter` 的响应过滤器）。
 ```
 
 ---

@@ -1,6 +1,8 @@
 # jblade 模块
 
 > Jaravel-Vendor 的模板引擎模块，提供 Laravel Blade 风格的模板编译与渲染。支持 `{{ }}` 输出、`@if/@foreach/@for/@while` 控制结构、`@extends/@section/@yield` 模板继承、`@component` 组件等特性，通过内存编译（`MemoryClassLoader`）将模板编译为 Java 类后执行。支持预编译模式：开发阶段将模板预编译为字节码（打包文件或散乱 class），生产环境仅需 JRE 即可运行。包名统一为 `com.weacsoft.jaravel.vendor.jblade`。
+>
+> **零 Spring 依赖（P2-J）**：模板引擎内核不依赖 Spring。`ViewAutoConfiguration` / `JbladeArtisanAutoConfiguration` / `@RegisterView` / `ViewRegistrar` 等装配类位于 **`springboot`** 模块（`vendor.springboot.jblade` 包）；`BladeDirectiveRegistrar` 与开箱即用模板函数注册（`csrf_token()/route()/url()`）位于 `springboot` 根包的 `BladeIntegrationConfiguration`（`@ConditionalOnClass(BladeFunctions)`，无 jblade 时不加载任何 Blade 类）。
 
 ---
 
@@ -116,8 +118,6 @@ com.weacsoft.jaravel.vendor
 │   ├── ViewFacade               // 视图门面（bind/unbind）
 │   ├── view/
 │   │   ├── ViewManager          // 视图管理者
-│   │   ├── ViewRegistrar        // 视图注册器
-│   │   ├── RegisterView         // @RegisterView 注解
 │   │   └── BladeView            // BladeView 实现 core.view.View
 │   └── artisan/
 │       ├── ViewCacheCommand     // view:cache 命令

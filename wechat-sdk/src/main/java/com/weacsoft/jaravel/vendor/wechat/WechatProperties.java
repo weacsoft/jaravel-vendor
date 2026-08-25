@@ -1,7 +1,5 @@
 package com.weacsoft.jaravel.vendor.wechat;
 
-import org.springframework.boot.context.properties.ConfigurationProperties;
-
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -63,7 +61,6 @@ import java.util.Map;
  *
  * @author weacsoft
  */
-@ConfigurationProperties(prefix = "jaravel.wechat")
 public class WechatProperties {
 
     /** 是否启用微信 SDK，默认 true */

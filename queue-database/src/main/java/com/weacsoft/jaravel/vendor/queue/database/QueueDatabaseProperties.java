@@ -1,7 +1,5 @@
 package com.weacsoft.jaravel.vendor.queue.database;
 
-import org.springframework.boot.context.properties.ConfigurationProperties;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -23,8 +21,12 @@ import java.util.List;
  *         - oracle
  *       auto-start: true             # 是否自动启动 worker
  * </pre>
+ * <p>
+ * <b>独立于 SpringBoot</b>：纯 POJO，无 Spring 注解；{@code DatabaseQueueDriver} /
+ * {@code DatabaseQueueWorker} 直接消费。SpringBoot 环境中经 springboot 模块
+ * {@code vendor.springboot.queuedatabase.QueueDatabaseAutoConfiguration} 的
+ * {@code @Bean @ConfigurationProperties} 方法完成绑定。
  */
-@ConfigurationProperties(prefix = "jaravel.queue.database")
 public class QueueDatabaseProperties {
 
     /** 任务表名 */

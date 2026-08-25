@@ -22,7 +22,7 @@ import com.weacsoft.jaravel.vendor.http.controller.request.Request;
  *
  * <h3>响应 header 中的新 token</h3>
  * 当自动续期或宽限期续期触发时，新 token 可通过 {@link #token()} 获取。
- * {@link JwtTokenResponseFilter} 会在请求结束时自动将新 token 写入响应 header。
+ * {@code JwtTokenResponseFilter}（springboot 模块）会在请求结束时自动将新 token 写入响应 header。
  *
  * <h3>线程安全</h3>
  * 本守卫实例由 {@link com.weacsoft.jaravel.vendor.auth.AuthManager} 通过 ThreadLocal 按请求隔离，
@@ -183,7 +183,7 @@ public class JwtGuard implements AuthGuard {
      * 包括：{@link #login} 签发的 token，或 {@link #user()} 自动续期/宽限期续期签发的新 token。
      * 若本次请求既未登录也未触发续期，返回 {@code null}。
      * <p>
-     * {@link JwtTokenResponseFilter} 会在请求结束时自动将此 token 写入响应 header。
+     * {@code JwtTokenResponseFilter}（springboot 模块）会在请求结束时自动将此 token 写入响应 header。
      */
     @Override
     public String token() {

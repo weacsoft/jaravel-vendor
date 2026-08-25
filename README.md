@@ -21,23 +21,23 @@ Java 版 Laravel 框架核心库，在 Spring Boot 3.2.12 基础上近乎 100% �
 | http | `http` | Middleware管道/Request·Response/路由系统 | [README](http/README.md) |
 | cache | `cache` | CacheManager/驱动分包/Cache门面（零 Spring 依赖） | [README](cache/README.md) |
 | cache-database | `cache-database` | DatabaseCacheDriver/database驱动工厂（原生 JDBC 走 database 模块，不依赖 spring-jdbc，可选） | [README](cache-database/README.md) |
-| jblade | `jblade` | Blade模板引擎（@if/@foreach/@extends等指令，表达式编译） | [README](jblade/README.md) |
-| auth | `auth` | AuthManager/Guard(JWT·Session)/UserProvider/Auth门面 | [README](auth/README.md) |
-| jwt | `jwt` | JWT认证插件（续期/登出黑名单/Cache集成） | [README](jwt/README.md) |
+| jblade | `jblade` | Blade模板引擎（零Spring依赖，装配在springboot；@if/@foreach/@extends等指令，表达式编译） | [README](jblade/README.md) |
+| auth | `auth` | AuthManager/Guard(Session)/UserProvider/Auth门面（零Spring依赖，装配在springboot） | [README](auth/README.md) |
+| jwt | `jwt` | JWT认证插件（零Spring依赖，装配在springboot；续期/登出黑名单/Cache集成） | [README](jwt/README.md) |
 | database | `database` | BaseModel(Eloquent合并模式)/@DataSource多数据源 | [README](database/README.md) |
-| migration | `migration` | Blueprint/Schema/Migrator/方言分包（5种源模式：DIRECTORY/DIRECTORY_CLASSES/PACKAGED/JAR/CLASSPATH；MySQL/SQLite/H2/SQL Server/PostgreSQL/Oracle，跨库表迁移） | [README](migration/README.md) |
-| event | `event` | Dispatcher/Listener/QueueManager（多队列+重试） | [README](event/README.md) |
-| redis | `redis` | RedisManager/RedisProperties（多命名连接，standalone/sentinel/cluster，分布式锁） | [README](redis/README.md) |
-| redis-cache | `redis-cache` | RedisCacheDriver（CacheDriver实现，多机缓存同步） | [README](redis-cache/README.md) |
-| session-redis | `session-redis` | RedisSessionStore（多机Session同步，基于 http 的 SessionStore） | [README](session-redis/README.md) |
+| migration | `migration` | Blueprint/Schema/Migrator/方言分包（零Spring依赖，装配在springboot；5种源模式：DIRECTORY/DIRECTORY_CLASSES/PACKAGED/JAR/CLASSPATH；MySQL/SQLite/H2/SQL Server/PostgreSQL/Oracle，跨库表迁移） | [README](migration/README.md) |
+| event | `event` | Dispatcher/Listener/QueueManager（零Spring依赖，装配在springboot；多队列+重试） | [README](event/README.md) |
+| redis | `redis` | RedisManager/RedisConfig（零Spring依赖，装配在springboot；多命名连接，standalone/sentinel/cluster，分布式锁） | [README](redis/README.md) |
+| redis-cache | `redis-cache` | RedisCacheDriver（零Spring依赖，装配在springboot；CacheDriver实现，多机缓存同步） | [README](redis-cache/README.md) |
+| session-redis | `session-redis` | RedisSessionStore（零Spring依赖，装配在springboot；多机Session同步，基于 http 的 SessionStore） | [README](session-redis/README.md) |
 | artisan | `artisan` | ArtisanApplication/ArtisanCommand/ArtisanRunner（CLI命令框架，签名解析） | [README](artisan/README.md) |
-| schedule | `schedule` | Schedule/ScheduleRunner/ScheduledTask（Cron调度，Redis分布式锁） | [README](schedule/README.md) |
-| queue-database | `queue-database` | DatabaseQueueDriver/DatabaseQueueWorker（持久化队列，多实例消费，重试） | [README](queue-database/README.md) |
+| schedule | `schedule` | Schedule/ScheduledTask + 装配（零Spring依赖，装配在springboot；Cron调度，分布式锁） | [README](schedule/README.md) |
+| queue-database | `queue-database` | DatabaseQueueDriver/Worker（装配在springboot；driver层保留spring-jdbc/spring-context（D3豁免），持久化队列，多实例消费，重试） | [README](queue-database/README.md) |
 | springboot | `springboot` | RouterFunction桥接/全局中间件注入/MVC解析 | [README](springboot/README.md) |
-| wire | `wire` | Wire响应式UI（Livewire风格，wire:model双向绑定/wire:click事件/部分更新/延迟重定向） | [README](wire/README.md) |
-| captcha | `captcha` | 验证码生成器/存储/加密分子包（number/arithmetic/slider/rotate，轨迹验证，水印） | [README](captcha/README.md) |
-| wechat-sdk | `wechat-sdk` | 微信SDK（公众号/小程序API，对齐overtrue/laravel-wechat） | [README](wechat-sdk/README.md) |
-| **model-cache** | `model-cache` | 模型查询缓存（版本化失效，@CachableModel注解按需开启，可选） | [README](model-cache/README.md) |
+| wire | `wire` | Wire响应式UI（零Spring依赖，装配在springboot；Livewire风格，wire:model双向绑定/wire:click事件/部分更新/延迟重定向） | [README](wire/README.md) |
+| captcha | `captcha` | 验证码生成器/存储/加密分子包（零Spring依赖，装配在springboot；number/arithmetic/slider/rotate，轨迹验证，水印） | [README](captcha/README.md) |
+| wechat-sdk | `wechat-sdk` | 微信SDK（零Spring依赖，装配在springboot；公众号/小程序API，对齐overtrue/laravel-wechat） | [README](wechat-sdk/README.md) |
+| **model-cache** | `model-cache` | 模型查询缓存（零Spring依赖，装配在springboot；版本化失效，@CachableModel注解按需开启，可选） | [README](model-cache/README.md) |
 | starter | `starter` | 聚合Starter（引入即自动装配基础模块；redis/wechat/wire/queue-database/cache-database/storage-database/jwt/model-cache 等为可选扩展，按需引入） | [README](starter/README.md) |
 | **plugin-jar-core** | `plugin-jar-core` | JAR插件系统（动态加载/卸载/三级ClassLoader/ASM扫描/动态路由） | [README](plugin-jar-core/README.md) |
 | **plugin-jar-database** | `plugin-jar-database` | JAR插件数据库持久化（BaseModel/自动建表/多实例共享） | [README](plugin-jar-database/README.md) |
@@ -47,7 +47,7 @@ Java 版 Laravel 框架核心库，在 Spring Boot 3.2.12 基础上近乎 100% �
 | **plugin-jar-remote-client** | `plugin-jar-remote-client` | JAR插件远程执行客户端（P2SP主节点，动态代理/协调器） | [README](plugin-jar-remote-client/README.md) |
 | **storage** | `storage` | 多磁盘文件存储（Filesystem契约/local驱动/@RegisterDisk注解式注册/驱动SPI，零Spring依赖，对齐Laravel Storage） | [README](storage/README.md) |
 | **storage-database** | `storage-database` | 存储 database 磁盘驱动（原生JDBC走database模块连接，不用spring-jdbc，可选；Spring装配在springboot模块） | [README](storage-database/README.md) |
-| **aether-upload** | `aether-upload` | 不限大小分片上传（断点·断线续传/base64传输/多组配置/storage落盘，对齐peinhu/AetherUpload） | [README](aether-upload/README.md) |
+| **aether-upload** | `aether-upload` | 不限大小分片上传（零Spring依赖，装配在springboot；断点·断线续传/base64传输/多组配置/storage落盘，对齐peinhu/AetherUpload） | [README](aether-upload/README.md) |
 
 ## 快速集成
 

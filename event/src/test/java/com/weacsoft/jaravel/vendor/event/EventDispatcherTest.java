@@ -25,7 +25,7 @@ class EventDispatcherTest {
 
     @BeforeEach
     void setUp() {
-        queueManager = new QueueManager(new EventProperties());
+        queueManager = new QueueManager(new EventConfig());
         dispatcher = new EventDispatcher(queueManager);
     }
 

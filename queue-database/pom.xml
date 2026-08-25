@@ -23,13 +23,16 @@
             <groupId>io.github.lijialong1313</groupId>
             <artifactId>event</artifactId>
         </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-autoconfigure</artifactId>
-        </dependency>
+        <!-- D3（去 Spring 化豁免）：驱动/工作线程层保留 spring-jdbc + spring-context
+             （DatabaseQueueDriver 的 JdbcTemplate；DatabaseQueueWorker/Dispatcher 经
+             ApplicationContext 解析监听器 bean）；自动装配类已迁 springboot 模块（vendor.springboot.queuedatabase） -->
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-jdbc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context</artifactId>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
@@ -55,11 +58,6 @@
         <dependency>
             <groupId>io.github.lijialong1313</groupId>
             <artifactId>migration</artifactId>
-            <optional>true</optional>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-configuration-processor</artifactId>
             <optional>true</optional>
         </dependency>
 

@@ -19,7 +19,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * 但 per-listener 的 {@link ShouldQueue} 决策优先。
  * <p>
  * <b>多队列能力</b>：每个命名队列（由 {@link ShouldQueue#queue()} 返回）拥有独立的线程池，
- * 不同队列的监听器互不阻塞。队列大小、重试次数等通过 {@link EventProperties} 配置。
+ * 不同队列的监听器互不阻塞。队列大小、重试次数等通过 {@link EventConfig} 配置。
  * <p>
  * <b>重试机制</b>：监听器执行抛出异常时，按 {@code retry.max-attempts} 配置自动重试，
  * 重试间隔由 {@code retry.delay-ms} 配置。重试在原队列的线程池中执行，线程安全。

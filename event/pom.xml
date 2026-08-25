@@ -12,7 +12,7 @@
 
     <artifactId>event</artifactId>
     <name>event</name>
-    <description>事件：Event/Listener/Dispatcher 契约与实现、EventFacade 门面、@ListensTo 注解自动注册、异步队列分发</description>
+    <description>事件（零 Spring 依赖）：Event/Listener/Dispatcher 契约与实现、EventFacade 门面、@ListensTo 注解、异步队列分发；Spring 装配见 springboot 模块（vendor.springboot.event）</description>
 
     <dependencies>
         <dependency>

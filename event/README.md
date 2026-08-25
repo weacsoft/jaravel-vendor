@@ -1,6 +1,8 @@
 # event 模块
 
-> Jaravel-Vendor 的事件模块，提供 Laravel 风格的 Event/Listener 契约、同步与异步事件分发、`ShouldQueue` per-listener 队列决策、`QueueManager` 多队列线程池管理、`@ListensTo` 注解自动注册、`EventFacade` 静态门面。包名统一为 `com.weacsoft.jaravel.vendor.event`。
+> Jaravel-Vendor 的事件模块（**零 Spring 依赖**），提供 Laravel 风格的 Event/Listener 契约、同步与异步事件分发、`ShouldQueue` per-listener 队列决策、`QueueManager` 多队列线程池管理、`@ListensTo` 注解自动注册、`EventFacade` 静态门面。包名统一为 `com.weacsoft.jaravel.vendor.event`。
+>
+> Spring 自动装配收口于 **springboot** 模块（`vendor.springboot.event` 包）：`EventAutoConfiguration`（含 `queue` 发布 tag 静态注册）/ `EventProperties`（`@ConfigurationProperties(prefix="jaravel.event")`，经 `toEventConfig()` 映射为纯 Java `EventConfig`）/ `EventListenerRegistrar` / `EventServiceProvider`。本模块保留纯 Java 的 `Event`/`Listener`/`Dispatcher`/`EventDispatcher`/`QueueManager`/`QueueDispatcher`/`EventFacade`/`@ListensTo`/`ShouldQueue`/`QueuePublishableConfig`。
 
 ---
 
@@ -68,10 +70,9 @@
 | 依赖 | 用途 |
 | --- | --- |
 | `io.github.lijialong1313:core` | `Facade` 基础设施、`ServiceProvider` 基类 |
-| `org.springframework.boot:spring-boot-autoconfigure` | 自动装配 |
 | `org.slf4j:slf4j-api` | 日志门面 |
 
-> 运行环境要求：JDK 17+，Spring Boot 3.2.12（Spring 6.x）。
+> 运行环境要求：JDK 17+。本模块**不依赖 Spring**——Spring 自动装配在 `springboot` 模块。
 
 ---
 
@@ -428,7 +429,7 @@ public class SendWelcomeMail implements Listener<UserRegisteredEvent> {
 
 ## 12. EventListenerRegistrar —— 自动注册器
 
-`com.weacsoft.jaravel.vendor.event.EventListenerRegistrar`
+`com.weacsoft.jaravel.vendor.springboot.event.EventListenerRegistrar`（springboot 模块；依赖 `SmartInitializingSingleton`/`ApplicationContext`，故随装配同迁）
 
 对齐 Laravel `EventServiceProvider::boot()` 中批量注册监听器的行为。标注 `@Component`，实现 `SmartInitializingSingleton`。
 
@@ -456,7 +457,7 @@ applicationContext.getBeansOfType(Listener.class)
 
 ## 13. EventServiceProvider —— 事件服务提供者基类
 
-`com.weacsoft.jaravel.vendor.event.EventServiceProvider`
+`com.weacsoft.jaravel.vendor.springboot.event.EventServiceProvider`（springboot 模块；含 `@Autowired` 字段，故随装配同迁）
 
 对齐 Laravel 的 `EventServiceProvider`。子类在 `register()` 中调用 `listen()` 注册事件-监听器映射。继承自 `core` 模块的 `ServiceProvider`。
 
@@ -584,9 +585,9 @@ EventFacade.dispatch(new UserRegisteredEvent(1L, "Alice"));
 
 ## 16. EventAutoConfiguration —— 自动装配
 
-`com.weacsoft.jaravel.vendor.event.EventAutoConfiguration`
+`com.weacsoft.jaravel.vendor.springboot.event.EventAutoConfiguration`（springboot 模块）
 
-Spring Boot 自动装配类，注册以下 Bean：
+Spring Boot 自动装配类，注册以下 Bean：`queueManager`（`QueueManager`，按 `EventProperties.toEventConfig()` 初始化）、`eventDispatcher`（`EventDispatcher`）、`eventListenerRegistrar`（`@ListensTo` 扫描注册）；静态块注册 `queue` 发布 tag（`QueuePublishableConfig` 留在 event 模块）。
 
 | Bean | 类型 | 说明 |
 | --- | --- | --- |

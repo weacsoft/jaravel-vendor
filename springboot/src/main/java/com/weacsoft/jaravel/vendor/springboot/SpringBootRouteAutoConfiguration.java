@@ -10,7 +10,6 @@ import com.weacsoft.jaravel.vendor.http.controller.response.Response;
 import com.weacsoft.jaravel.vendor.http.middleware.Middleware;
 import com.weacsoft.jaravel.vendor.http.middleware.MiddlewareAliasRegistry;
 import com.weacsoft.jaravel.vendor.http.middleware.VerifyCsrfToken;
-import com.weacsoft.jaravel.vendor.jblade.BladeFunctions;
 import com.weacsoft.jaravel.vendor.route.RouteDefinition;
 import com.weacsoft.jaravel.vendor.route.RouteHelper;
 import com.weacsoft.jaravel.vendor.route.Router;
@@ -117,18 +116,6 @@ public class SpringBootRouteAutoConfiguration {
     @ConditionalOnMissingBean
     public SpringBootRequestMVCResolver requestMVCResolver() {
         return new SpringBootRequestMVCResolver();
-    }
-
-    /**
-     * 注册 {@link BladeDirectiveRegistrar}，扫描 {@code @RegisterDirective}
-     * 注解方法并把自定义指令注册到 {@code BladeDirectives}。
-     * <p>
-     * 未声明任何 {@code @RegisterDirective} 时不注册任何指令，不影响启动。
-     */
-    @Bean
-    @ConditionalOnMissingBean
-    public BladeDirectiveRegistrar bladeDirectiveRegistrar(ApplicationContext applicationContext) {
-        return new BladeDirectiveRegistrar(applicationContext);
     }
 
     /**
@@ -257,22 +244,14 @@ public class SpringBootRouteAutoConfiguration {
     }
 
     /**
-     * 框架级开箱即用注册：将内置 CSRF 校验中间件以别名 {@code "VerifyCsrfToken"} 注册，
-     * 并向模板引擎注册 {@code csrf_token()} / {@code csrf_field()} 与 {@code route()} 辅助函数。
+     * 框架级开箱即用注册（路由内核部分，<b>不依赖 jblade</b>）：
+     * 将内置 CSRF 校验中间件以别名 {@code "VerifyCsrfToken"} 注册到
+     * {@link MiddlewareAliasRegistry}。
      * <p>
-     * 这样应用层无需自定义 {@code VerifyCsrfToken} 子类、也无需在 BladeEngineProvider 中额外注册，
-     * 只要路由组引用 {@code "VerifyCsrfToken"} 别名即可启用校验，模板中即可直接使用
-     * {@code {{ csrf_field() }}} / {@code {{ route('name') }}}。
-     */
-    /**
-     * 框架级开箱即用注册：将内置 CSRF 校验中间件以别名 {@code "VerifyCsrfToken"} 注册，
-     * 并向模板引擎注册 {@code csrf_token()} / {@code csrf_field()} 与 {@code route()} 辅助函数。
-     * <p>
-     * <b>硬保证（注册即可用）</b>：本方法在注册后立即自检——只要走了注册流程，
-     * 中间件别名与模板辅助函数就必须确实生效；任一注册未落地将抛出
-     * {@link IllegalStateException} 使应用启动失败（而非悄悄留下“空 value / 空路由”的不可用状态），
-     * 从而满足“一旦注册就必须自动可用、开发者零额外代码”的契约。
-     * 仅当应用已自定义同名别名时，框架不覆盖（启动日志可见）。
+     * 模板辅助函数（{@code csrf_token()} / {@code route()} / {@code url()}，依赖 jblade
+     * {@code BladeFunctions}）与 {@code @RegisterDirective} 指令扫描已收口到
+     * {@link BladeIntegrationConfiguration}（内部配置类，{@code @ConditionalOnClass}
+     * 保护：无 jblade 的应用不加载任何 Blade 类，P2-J）。
      */
     void registerBuiltinMiddlewareAndHelpers(Router router) {
         MiddlewareAliasRegistry registry = MiddlewareAliasRegistry.getGlobal();
@@ -290,43 +269,6 @@ public class SpringBootRouteAutoConfiguration {
         } else {
             log.info("[builtin] 检测到应用已自定义 VerifyCsrfToken 别名，框架不覆盖（开箱即用）");
         }
-
-        // 2) csrf_token() 辅助函数：从当前请求 session 读取/生成 token，与中间件校验同源
-        BladeFunctions.register("csrf_token", args -> {
-            try {
-                Request req = RequestFactory.getCurrentRequest();
-                return VerifyCsrfToken.currentToken(req);
-            } catch (Exception e) {
-                // 失败可见：记录 ERROR 而非静默吞掉，避免开发者拿到空 value 却无感知
-                log.error("[builtin] csrf_token() 生成令牌失败", e);
-                return "";
-            }
-        });
-
-        // 3) route() 辅助函数：按路由别名解析 URL（对齐 Laravel route('name')）
-        //    委托 RouteHelper.route()，与 Java 侧 AppConfig.app().route().route(...) 共用同一实现
-        BladeFunctions.register("route", args -> {
-            String name = String.valueOf(args[0]);
-            Object params = args.length > 1 ? args[1] : null;
-            return RouteHelper.route(name, params);
-        });
-
-        // 4) url() 辅助函数：按路径生成 URL，不校验是否存在（对齐 Laravel url('/path')）
-        //    委托 RouteHelper.url()，与 Java 侧 AppConfig.app().route().url(...) 共用同一实现
-        BladeFunctions.register("url", args -> RouteHelper.url(String.valueOf(args[0])));
-
-        // 自检：模板辅助函数必须确实注册成功（硬保证，避免静默不可用）
-        if (!BladeFunctions.has("csrf_token")) {
-            throw new IllegalStateException("[builtin] 模板辅助函数 csrf_token() 注册失败，csrf_field() 将不可用。");
-        }
-        if (!BladeFunctions.has("route")) {
-            throw new IllegalStateException("[builtin] 模板辅助函数 route() 注册失败，route() 将不可用。");
-        }
-        if (!BladeFunctions.has("url")) {
-            throw new IllegalStateException("[builtin] 模板辅助函数 url() 注册失败，url() 将不可用。");
-        }
-
-        log.info("[builtin] 已注册模板辅助函数 csrf_token() / csrf_field() / route() / url()（开箱即用，自检通过）");
     }
 
     /**
