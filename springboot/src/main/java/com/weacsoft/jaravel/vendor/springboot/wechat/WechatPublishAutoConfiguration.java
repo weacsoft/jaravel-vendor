@@ -25,6 +25,7 @@ import com.weacsoft.jaravel.vendor.wechat.WechatPublishableConfig;
  * {@code artisan vendor:publish --tag=wechat-sdk}。
  */
 @org.springframework.boot.autoconfigure.AutoConfiguration
+@org.springframework.boot.autoconfigure.condition.ConditionalOnClass(WechatPublishableConfig.class)
 public class WechatPublishAutoConfiguration {
     static {
         PublishableRegistry.register(new WechatPublishableConfig());

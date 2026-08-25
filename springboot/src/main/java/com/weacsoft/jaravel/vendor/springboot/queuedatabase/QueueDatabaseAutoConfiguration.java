@@ -75,7 +75,7 @@ import javax.sql.DataSource;
  * 或手动调用 {@link DatabaseQueueDriver#createTable()}。
  */
 @AutoConfiguration
-@ConditionalOnClass(QueueDriver.class)
+@ConditionalOnClass({QueueDriver.class, QueueDatabaseProperties.class, DatabaseQueueDriver.class})
 public class QueueDatabaseAutoConfiguration {
 
     private static final Logger logger = LoggerFactory.getLogger(QueueDatabaseAutoConfiguration.class);

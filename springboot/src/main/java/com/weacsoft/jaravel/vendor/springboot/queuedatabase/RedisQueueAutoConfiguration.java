@@ -36,7 +36,7 @@ import org.springframework.context.annotation.Conditional;
  * 因此 {@link RedisManager} / {@link RedisQueueDriver} 的类引用不会引发 {@code NoClassDefFoundError}。
  */
 @AutoConfiguration(before = QueueDatabaseAutoConfiguration.class)
-@ConditionalOnClass(RedisManager.class)
+@ConditionalOnClass({RedisManager.class, RedisQueueDriver.class, QueueDatabaseProperties.class})
 @ConditionalOnBean(RedisManager.class)
 @Conditional(OnRedisQueueDriverCondition.class)
 public class RedisQueueAutoConfiguration {

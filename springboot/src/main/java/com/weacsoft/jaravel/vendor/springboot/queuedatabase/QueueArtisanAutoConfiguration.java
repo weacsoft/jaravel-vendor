@@ -26,7 +26,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
  */
 @AutoConfiguration
 @AutoConfigureAfter(QueueDatabaseAutoConfiguration.class)
-@ConditionalOnClass(ArtisanCommand.class)
+@ConditionalOnClass({ArtisanCommand.class, QueueTableCommand.class})
 public class QueueArtisanAutoConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(QueueArtisanAutoConfiguration.class);

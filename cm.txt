@@ -1,0 +1,9 @@
+﻿fix(springboot)：装配守护指向错误类的补齐（queue-database/wechat）+ 组合缺口加固
+
+- QueueDatabaseAutoConfiguration：原守护 @ConditionalOnClass(QueueDriver) 指向 core 恒在类、形同虚设，补 QueueDatabaseProperties/DatabaseQueueDriver（queue-database）
+- QueueArtisanAutoConfiguration：原守护仅 ArtisanCommand（artisan 恒在），补 QueueTableCommand（queue-database）
+- WechatPublishAutoConfiguration：无守护的静态注册块引用 wechat-sdk 类，补守护
+- RedisQueueAutoConfiguration / WechatAutoConfiguration：补齐【可选 B 缺失而守护类 A 在场】的组合守护（防止另一侧应用组合下崩溃）
+- captcha/jblade/jwt/modelcache/session-redis 主装配守护逐一核对均正确（无需改动）
+- 测试：全仓 34 模块 clean install（含测试）EXIT=0（jblade/migration 的 ERROR 日志行为负样本测试预期输出）
+- 版本保持 0.1.2；starter 聚合集不变

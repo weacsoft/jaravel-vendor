@@ -57,7 +57,7 @@ import java.util.concurrent.TimeUnit;
  * @author weacsoft
  */
 @AutoConfiguration
-@ConditionalOnClass(OkHttpClient.class)
+@ConditionalOnClass({OkHttpClient.class, WechatProperties.class})
 @ConditionalOnProperty(name = "jaravel.wechat.enabled", havingValue = "true", matchIfMissing = true)
 public class WechatAutoConfiguration {
 
