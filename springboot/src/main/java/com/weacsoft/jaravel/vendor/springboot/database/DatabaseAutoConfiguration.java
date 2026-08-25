@@ -97,7 +97,7 @@ public class DatabaseAutoConfiguration {
      * {@code getGaarasonDataSource()} 仍会按别名/默认连接经 {@code ConnectionManager} 解析）。
      */
     @Bean
-    public BaseModelDataSourceBindingPostProcessor baseModelDataSourceBindingPostProcessor() {
+    public static BaseModelDataSourceBindingPostProcessor baseModelDataSourceBindingPostProcessor() {
         return new BaseModelDataSourceBindingPostProcessor();
     }
 }
