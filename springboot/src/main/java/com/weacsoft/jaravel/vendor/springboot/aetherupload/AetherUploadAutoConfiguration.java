@@ -10,6 +10,7 @@ import com.weacsoft.jaravel.vendor.storage.StorageManager;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -35,6 +36,7 @@ import org.springframework.context.annotation.Bean;
  */
 @AutoConfiguration
 @AutoConfigureAfter({CacheAutoConfiguration.class, StorageAutoConfiguration.class})
+@ConditionalOnClass({AetherUploadManager.class, AetherUploadProperties.class})
 @ConditionalOnProperty(prefix = "jaravel.aether-upload", name = "enabled",
         havingValue = "true", matchIfMissing = true)
 public class AetherUploadAutoConfiguration {

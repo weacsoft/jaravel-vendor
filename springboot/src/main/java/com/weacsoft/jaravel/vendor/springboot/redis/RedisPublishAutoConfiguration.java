@@ -3,6 +3,7 @@ package com.weacsoft.jaravel.vendor.springboot.redis;
 import com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry;
 import com.weacsoft.jaravel.vendor.redis.RedisPublishableConfig;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 
 /**
  * redis 模块「发布配置」自动装配。
@@ -24,6 +25,7 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
  * 确保任何情况下都能执行 {@code artisan vendor:publish --tag=redis}。
  */
 @AutoConfiguration
+@ConditionalOnClass(RedisPublishableConfig.class)
 public class RedisPublishAutoConfiguration {
     static {
         PublishableRegistry.register(new RedisPublishableConfig());

@@ -4,6 +4,7 @@ import com.weacsoft.jaravel.vendor.aetherupload.autoconfigure.AetherUploadPublis
 import com.weacsoft.jaravel.vendor.aetherupload.autoconfigure.AetherUploadStaticPublishable;
 import com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 
 /**
  * aether-upload 模块「发布配置」自动装配。
@@ -25,6 +26,7 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
  * 两个 Publishable 契约类为纯 Java，保留在 aether-upload 模块。
  */
 @AutoConfiguration
+@ConditionalOnClass({AetherUploadPublishableConfig.class, AetherUploadStaticPublishable.class})
 public class AetherUploadPublishAutoConfiguration {
 
     static {

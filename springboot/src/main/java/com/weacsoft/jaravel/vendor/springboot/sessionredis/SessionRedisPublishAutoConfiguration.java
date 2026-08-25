@@ -3,6 +3,7 @@ package com.weacsoft.jaravel.vendor.springboot.sessionredis;
 import com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry;
 import com.weacsoft.jaravel.vendor.session.redis.SessionRedisPublishableConfig;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 
 /**
  * session-redis 模块「发布配置」自动装配。
@@ -25,6 +26,7 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
  * {@code artisan vendor:publish --tag=session-redis}。
  */
 @AutoConfiguration
+@ConditionalOnClass(SessionRedisPublishableConfig.class)
 public class SessionRedisPublishAutoConfiguration {
     static {
         PublishableRegistry.register(new SessionRedisPublishableConfig());

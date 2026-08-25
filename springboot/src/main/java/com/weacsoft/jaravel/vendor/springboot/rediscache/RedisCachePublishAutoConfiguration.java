@@ -23,6 +23,7 @@ import com.weacsoft.jaravel.vendor.redis.cache.RedisCachePublishableConfig;
  * {@code artisan vendor:publish --tag=redis-cache}。
  */
 @org.springframework.context.annotation.Configuration(proxyBeanMethods = false)
+@org.springframework.boot.autoconfigure.condition.ConditionalOnClass(RedisCachePublishableConfig.class)
 public class RedisCachePublishAutoConfiguration {
     static {
         PublishableRegistry.register(new RedisCachePublishableConfig());
