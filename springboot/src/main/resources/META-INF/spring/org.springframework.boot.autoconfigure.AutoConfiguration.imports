@@ -16,6 +16,8 @@ com.weacsoft.jaravel.vendor.springboot.sessionredis.SessionRedisAutoConfiguratio
 com.weacsoft.jaravel.vendor.springboot.sessionredis.SessionRedisPublishAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.auth.AuthAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.auth.AuthPublishAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.database.DatabaseAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.database\EloquentUserProviderAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.event.EventAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.jwt.JwtAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.migration.MigrationAutoConfiguration

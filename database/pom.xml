@@ -44,17 +44,14 @@
             <artifactId>druid</artifactId>
         </dependency>
 
-        <!-- SpringBoot jdbc / aop，供 gaarason 核心使用 -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-jdbc</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-aop</artifactId>
-        </dependency>
+        <!-- D2（Spring 解耦）：原 spring-boot-starter-jdbc / spring-boot-starter-aop 编译依赖已移除——
+             本模块源码零 Spring import。Spring 宿主侧装配（DatabaseAutoConfiguration /
+             EloquentUserProviderAutoConfiguration / ModelShadowPatcher / EloquentUserProviderDriver /
+             BaseModel 数据源绑定 BPP）位于 jaravel-springboot 模块 vendor.springboot.database 包；
+             gaarason 运行期所需的 Spring JDBC/AOP 由宿主（springboot/starter）提供。 -->
 
-        <!-- 测试依赖 -->
+        <!-- 测试依赖（spring-boot-starter-test 携带 spring-test / spring-context，
+             供测试态 ApplicationContext 适配使用） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

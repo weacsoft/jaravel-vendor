@@ -14,8 +14,6 @@ import gaarason.database.provider.ModelShadowProvider;
 import gaarason.database.query.QueryBuilder;
 import gaarason.database.support.EntityMember;
 import gaarason.database.support.ModelMember;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Lazy;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -77,13 +75,15 @@ import java.util.Set;
  * 本类覆盖它以返回 Spring 管理的 Bean（含注入的数据源）。由于 Java 不允许静态方法与继承的实例方法同名同参，
  * 静态访问使用 {@link #self(Class)} 方法。每个业务 Model 声明自己的 {@code public static XxxModel self()}
  * 即可通过 {@code XxxModel.self()} 静态获取 Spring Bean，进而调用所有 gaarason 实例方法。
- * 数据源通过 {@code @Autowired @Lazy} 由 Spring 容器注入（懒加载，避免循环依赖），
+ * 数据源由宿主侧装配注入（Spring 宿主由 jaravel-springboot 的
+ * {@code BaseModelDataSourceBindingPostProcessor} 自动绑定，等效原 {@code @Autowired @Lazy} 语义；
+ * 非 Spring 宿主可经 {@link #setGaarasonDataSource(GaarasonDataSource)} 手动绑定），
  * 支持多个 Model 使用不同数据源。业务 Model 可通过 {@link DataSource @DataSource}
- * 注解指定数据源 Bean 名称，对齐 Laravel Model 的 {@code $connection} 属性；未标注则使用默认数据源。
+ * 注解指定数据源名称，对齐 Laravel Model 的 {@code $connection} 属性；未标注则使用默认数据源。
  * <p>
  * 实现要点：{@code new User()} 创建的是普通实例（非 Spring Bean），调用 {@link #save()}
- * 等实例方法时，统一通过 {@link SpringContext#bean(Class)} 取回本类的 Spring 单例
- * 来真正执行 gaarason 的查询/写入。Spring 单例上的 {@code gaarasonDataSource} 字段由容器注入，
+ * 等实例方法时，统一通过 {@link SpringContext#bean(Class)} 取回本类的宿主单例
+ * 来真正执行 gaarason 的查询/写入。单例上的 {@code gaarasonDataSource} 字段由宿主绑定，
  * 因此所有数据库操作均经由单例完成。
  * <p>
  * JSON 序列化：通过 {@link JsonAutoDetect} 仅序列化字段（不通过 getter），避免 gaarason
@@ -101,13 +101,22 @@ import java.util.Set;
 public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
 
     /**
-     * 数据源（由 Spring 容器懒注入），非数据库字段，需排除 ORM 映射与 JSON 序列化
+     * 数据源（D2 起为纯 Java setter 注入；Spring 宿主由 jaravel-springboot 的
+     * {@code BaseModelDataSourceBindingPostProcessor} 自动绑定，承接原 {@code @Autowired @Lazy} 语义），
+     * 非数据库字段，需排除 ORM 映射与 JSON 序列化
      */
-    @Autowired
-    @Lazy
     @Column(inDatabase = false)
     @JsonIgnore
     private GaarasonDataSource gaarasonDataSource;
+
+    /**
+     * 绑定本模型使用的数据源（宿主侧装配，如 Spring 宿主；非 Spring 宿主可手动调用）。
+     *
+     * @param gaarasonDataSource 数据源实例
+     */
+    public void setGaarasonDataSource(GaarasonDataSource gaarasonDataSource) {
+        this.gaarasonDataSource = gaarasonDataSource;
+    }
 
     /**
      * 覆盖父类的 modelShadow 字段，添加 @Column(inDatabase = false) 排除 ORM 映射。
@@ -121,7 +130,7 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
      * {@code inDatabase=false} 时会被跳过，导致父类字段（{@code inDatabase=true}）
      * 仍然被加入 SELECT 列表。此问题通过<b>双保险</b>修复：
      * <ol>
-     *   <li>{@link com.weacsoft.jaravel.vendor.database.autoconfigure.ModelShadowPatcher}
+     *   <li>{@code springboot.database.ModelShadowPatcher}（D2 起位于 jaravel-springboot）
      *       在 Spring 容器就绪后统一移除（同时修补 ModelMember 和 parseAnyEntityWithCache 两个来源）</li>
      *   <li>{@link #getModelMember()} 在每次调用时进行幂等修补，
      *       确保 parseAnyEntityWithCache 新建的 EntityMember 也被处理</li>

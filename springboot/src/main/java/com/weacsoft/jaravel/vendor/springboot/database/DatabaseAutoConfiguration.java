@@ -1,52 +1,44 @@
-package com.weacsoft.jaravel.vendor.database.autoconfigure;
+package com.weacsoft.jaravel.vendor.springboot.database;
 
 import com.weacsoft.jaravel.vendor.database.JaravelDataSource;
+import com.weacsoft.jaravel.vendor.database.autoconfigure.ConnectionRegistrar;
 import gaarason.database.contract.eloquent.Model;
 import gaarason.database.provider.ModelShadowProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.ApplicationContext;
-import com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
-
 import java.util.Map;
+
+import com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry;
 
 /**
  * 数据库模块核心自动装配（不依赖 auth）。
  * <p>
- * 只要引入 {@code database} 模块即生效，负责注册：
+ * 只要引入 {@code database} 模块即生效（D2 起装配位于 springboot 模块，database 模块零 Spring），负责注册：
  * <ul>
- *   <li>{@code @RegisterConnection} 扫描器（{@link com.weacsoft.jaravel.vendor.database.ConnectionRegistrar}）</li>
+ *   <li>{@code @RegisterConnection} 扫描器（{@link ConnectionRegistrar}，纯类 + SmartInitializingSingleton 触发）</li>
  *   <li>默认连接的惰性委托数据源 {@link JaravelDataSource}（暴露为 {@link javax.sql.DataSource}）</li>
- *   <li>可发布配置 {@code DatabasePublishableConfig}（{@code vendor:publish --tag=database}）</li>
- *   <li>{@code ModelShadow} 修复器</li>
+ *   <li>可发布配置 {@link com.weacsoft.jaravel.vendor.database.autoconfigure.DatabasePublishableConfig}（{@code vendor:publish --tag=database}，模板类留 database 模块）</li>
+ *   <li>{@code ModelShadow} 修复器（{@link ModelShadowPatcher}）</li>
+ *   <li>{@link BaseModelDataSourceBindingPostProcessor}——为所有 {@code BaseModel} Bean 自动绑定
+ *       {@code GaarasonDataSource}（承接 D2 前 BaseModel 字段上的 {@code @Autowired @Lazy} 注入语义）</li>
  * </ul>
  * <p>
- * <b>不再依赖 auth 模块</b>：auth 的 {@code EloquentUserProviderDriver} 由独立的
- * {@link com.weacsoft.jaravel.vendor.database.autoconfigure.EloquentUserProviderAutoConfiguration}
- * 在检测到 auth 存在时才注册，避免「未引入 auth 却用数据库」时整个数据库装配被禁用。
+ * <b>不再依赖 auth 模块</b>：auth 的 {@code EloquentUserProviderDriver} 由
+ * {@link EloquentUserProviderAutoConfiguration} 在检测到 auth 存在时才注册。
  */
 @AutoConfiguration
 public class DatabaseAutoConfiguration {
     static {
-        PublishableRegistry.register(new DatabasePublishableConfig());
+        PublishableRegistry.register(new com.weacsoft.jaravel.vendor.database.autoconfigure.DatabasePublishableConfig());
     }
 
     /**
-     * 注册 {@code @RegisterConnection} 扫描器。
-     * <p>
-     * 在所有单例就绪后扫描配置类中的
-     * {@link com.weacsoft.jaravel.vendor.database.RegisterConnection @RegisterConnection}
-     * 方法，把连接按别名登记到
-     * {@link com.weacsoft.jaravel.vendor.database.ConnectionManager ConnectionManager}，
-     * 并绑定全局唯一的 {@code ContainerBootstrap}。
-     *
-     * P3：{@link ConnectionRegistrar} 为 core 纯扫描器（零 Spring），扫描时机由下方
-     * SmartInitializingSingleton 触发（保持原「所有单例就绪后扫描」时序）。
-     *
-     * @return 连接注册器
+     * 注册 {@code @RegisterConnection} 扫描器（D2/P3：core 纯扫描器，
+     * 扫描时机由下方 SmartInitializingSingleton 触发，保持原「所有单例就绪后扫描」时序）。
      */
     @Bean
     @ConditionalOnMissingBean
@@ -66,21 +58,8 @@ public class DatabaseAutoConfiguration {
     /**
      * 把 {@code @RegisterConnection} 的<b>默认连接</b>暴露为 Spring 的 {@link javax.sql.DataSource} Bean。
      * <p>
-     * 连接改用注解声明后，业务工程不再手写 {@code @Bean DataSource}，但 Spring 生态里
-     * {@code DataSourceTransactionManager}、{@code JdbcTemplate} 以及各类
-     * {@code @ConditionalOnBean(DataSource.class)} 仍需要容器中存在该类型的 Bean。
-     * 这里注册 {@link JaravelDataSource} 惰性委托即可同时满足两者：
-     * <ul>
-     *   <li>Bean 本身可以很早创建，不会与 {@code @RegisterConnection} 的扫描时机冲突；</li>
-     *   <li>真正取连接时才委托到 {@code ConnectionManager} 的默认连接。</li>
-     * </ul>
-     * 默认连接 = 标记了 {@code defaultConnection = true} 的连接；若一个都没标记，
-     * 则第一个注册的连接自动成为默认连接。
-     * <p>
-     * 若业务工程自己定义了 {@code DataSource} Bean（历史写法），
-     * {@code @ConditionalOnMissingBean} 会让本 Bean 自动让位，保持向后兼容。
-     *
-     * @return 默认连接的惰性委托数据源
+     * 详见 database 模块 {@code ConnectionManager} 说明：Bean 早期创建不冲突，
+     * 真正取连接时才委托到默认连接的原始数据源；业务自定义 {@code DataSource} Bean 时自动让位。
      */
     @Bean
     @Primary
@@ -106,5 +85,19 @@ public class DatabaseAutoConfiguration {
     public ModelShadowPatcher modelShadowPatcher(ApplicationContext applicationContext) {
         Map<String, Model> models = applicationContext.getBeansOfType(Model.class);
         return new ModelShadowPatcher(models);
+    }
+
+    /**
+     * BaseModel 数据源绑定后处理器：把所有 {@code BaseModel} Bean 的
+     * {@code GaarasonDataSource} 字段绑定为容器的 {@code GaarasonDataSource} Bean。
+     * <p>
+     * 承接 D2 前 {@code BaseModel} 字段上的 {@code @Autowired @Lazy} 注入：
+     * 字段本身保持纯 Java（setter 注入），Spring 注入机制收敛到本装配侧，
+     * 容器中没有 {@code GaarasonDataSource} Bean 时跳过（与字段回退逻辑一致：
+     * {@code getGaarasonDataSource()} 仍会按别名/默认连接经 {@code ConnectionManager} 解析）。
+     */
+    @Bean
+    public BaseModelDataSourceBindingPostProcessor baseModelDataSourceBindingPostProcessor() {
+        return new BaseModelDataSourceBindingPostProcessor();
     }
 }

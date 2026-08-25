@@ -1,4 +1,4 @@
-package com.weacsoft.jaravel.vendor.database.autoconfigure;
+package com.weacsoft.jaravel.vendor.springboot.database;
 
 import gaarason.database.contract.eloquent.Model;
 import gaarason.database.provider.ModelShadowProvider;

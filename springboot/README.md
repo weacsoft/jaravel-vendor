@@ -110,8 +110,10 @@ com.weacsoft.jaravel.vendor.springboot
     └── MiddlewareAlias                // 中间件别名注解（纯注解，不组合 @Component）
 ```
 
-自动装配注册文件（`META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`，P3 起 37 项，**P3 新增 1 项**：
-首行 `core.CoreSpringConfiguration`，负责安装 core 所需的 `GlobalBeanProvider`（见下文「P3 解耦适配层」））：
+自动装配注册文件（`META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`，D2 起 39 项
+（P3 37 项 + **D2 新增 2 项**：`database.DatabaseAutoConfiguration` /
+`database\EloquentUserProviderAutoConfiguration`，数据库装配自 database 模块迁入；
+首行 `core.CoreSpringConfiguration` 负责安装 core 所需的 `GlobalBeanProvider`（见下文「P3 解耦适配层」））：
 
 ```
 com.weacsoft.jaravel.vendor.springboot.core.CoreSpringConfiguration
@@ -132,6 +134,8 @@ com.weacsoft.jaravel.vendor.springboot.sessionredis.SessionRedisAutoConfiguratio
 com.weacsoft.jaravel.vendor.springboot.sessionredis.SessionRedisPublishAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.auth.AuthAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.auth.AuthPublishAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.database.DatabaseAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.database\EloquentUserProviderAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.event.EventAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.jwt.JwtAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.migration.MigrationAutoConfiguration
@@ -624,6 +628,8 @@ returnValue == null？
 | `SessionRedisPublishAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.sessionredis`） | imports 文件 | 注册 `session-redis` 发布 tag（静态，与运行条件解耦） |
 | `AuthAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.auth`） | imports 文件 | 认证装配：`AuthManager` + `AuthLifecycleFilter` + `SessionGuardDriver`（声明/缺省 session 时）+ `AuthRegistrar`（所有单例就绪后统一注册驱动/配置/注解声明） |
 | `AuthPublishAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.auth`，无 Web 条件） | imports 文件 | 注册 `auth` 发布 tag（静态，命令行模式同样可用） |
+| `database.DatabaseAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.database`，D2 自 database 模块迁入） | imports 文件 | 数据库核心装配：`ConnectionRegistrar`（纯类）+ SmartInitializingSingleton 扫描触发 + `@Primary` `JaravelDataSource`（`@ConditionalOnMissingBean(DataSource)`）+ `ModelShadowPatcher`（`@ConditionalOnClass(ModelShadowProvider)`）+ `BaseModelDataSourceBindingPostProcessor`（为所有 BaseModel Bean 绑定 `GaarasonDataSource`，承接 D2 前字段 `@Autowired @Lazy` 注入）；静态块注册 `database` 发布 tag（模板类留 database 模块 `DatabasePublishableConfig`） |
+| `database\EloquentUserProviderAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.database`，D2 自 database 模块迁入；`@ConditionalOnClass(UserProviderDriver)`） | imports 文件 | auth 在场时注册 `EloquentUserProviderDriver`（`driver: eloquent` 的配置式用户驱动） |
 | `EventAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.event`） | imports 文件 | 事件装配：`QueueManager`（`EventProperties.toEventConfig()`）+ `EventDispatcher` + `EventListenerRegistrar`（`@ListensTo` 扫描）；静态块注册 `queue` 发布 tag |
 | `JwtAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.jwt`，SERVLET Web 必需） | imports 文件 | JWT 装配：`JwtConfig`（`JwtProperties` 映射 + `jaravel.key` 密钥兜底）+ `JwtService`（可选黑名单 store）+ `JwtGuardDriver`（显式 `driver: jwt` 或 `@RegisterGuard` 声明时）+ `JwtTokenResponseFilter`（响应头写回新 token） |
 | `MigrationAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.migration`，`jaravel.migration.enabled` 默认开） | imports 文件 | 迁移装配：`MigrationProperties`（@Bean 绑定）+ `MigrationExecutor`（`ConnectionAliasResolver` 注册表 + Spring `DataSource` 双源解析）+ `MigrationRunner`（`CommandLineRunner`） |

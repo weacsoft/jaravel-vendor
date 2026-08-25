@@ -1,7 +1,6 @@
-package com.weacsoft.jaravel.vendor.database.autoconfigure;
+package com.weacsoft.jaravel.vendor.springboot.database;
 
 import com.weacsoft.jaravel.vendor.auth.contract.UserProviderDriver;
-import com.weacsoft.jaravel.vendor.database.EloquentUserProviderDriver;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;

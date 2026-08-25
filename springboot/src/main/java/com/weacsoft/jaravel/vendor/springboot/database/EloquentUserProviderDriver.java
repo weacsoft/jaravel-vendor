@@ -1,7 +1,8 @@
-package com.weacsoft.jaravel.vendor.database;
+package com.weacsoft.jaravel.vendor.springboot.database;
 
 import com.weacsoft.jaravel.vendor.auth.contract.UserProvider;
 import com.weacsoft.jaravel.vendor.auth.contract.UserProviderDriver;
+import com.weacsoft.jaravel.vendor.database.EloquentUserProvider;
 import gaarason.database.contract.eloquent.Model;
 import org.springframework.context.ApplicationContext;
 
@@ -11,7 +12,8 @@ import java.util.Map;
  * Eloquent 用户提供者驱动，对齐 Laravel {@code EloquentUserProvider} 的工厂创建。
  * <p>
  * 支持 {@code "eloquent"} 驱动名，从配置中读取 Model 类名和凭证字段，
- * 通过 Spring 容器获取 Model 单例后创建 {@link EloquentUserProvider}。
+ * 通过 Spring 容器获取 Model 单例后创建 {@link EloquentUserProvider}
+ * （D2 起位于 springboot 模块：本类持有 {@link ApplicationContext}，属 Spring 宿主侧装配）。
  *
  * <h3>配置示例</h3>
  * <pre>

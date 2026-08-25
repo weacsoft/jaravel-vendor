@@ -87,7 +87,12 @@ public class User extends BaseModel<User, Long> {
 - `auth` 模块（提供 `Authenticatable`、`UserProvider` 契约）
 - `io.github.gaarason:database-query`（Laravel 风格 ORM 核心，依赖 `database-core` + Druid）
 - `com.alibaba:druid`（数据源）
-- `spring-boot-starter-jdbc` / `spring-boot-starter-aop`（供 gaarason 核心使用）
+
+> D2（Spring 解耦）：本模块已零 Spring import（原 `spring-boot-starter-jdbc` /
+> `spring-boot-starter-aop` 编译依赖已移除）。Spring 宿主侧装配（`DatabaseAutoConfiguration` /
+> `EloquentUserProviderAutoConfiguration` / `ModelShadowPatcher` / `EloquentUserProviderDriver` /
+> BaseModel 数据源绑定 BPP）位于 **jaravel-springboot** 模块 `vendor.springboot.database` 包；
+> gaarason 运行期所需的 Spring JDBC/AOP 由宿主（starter/springboot）提供。
 
 > 注意：本模块使用 `gaarason/database-query`（不含 SpringBoot 自动配置），
 > 连接由 `config/DatabaseConfig.java` 中的 `@RegisterConnection` 声明，
@@ -105,9 +110,14 @@ com.weacsoft.jaravel.vendor.database
 ├── ConnectionManager                  # 连接注册表 + 全局唯一 ContainerBootstrap 持有者
 ├── EloquentUserProvider               # 基于 Eloquent 的用户提供者（认证集成）
 └── autoconfigure/
-    ├── ConnectionRegistrar            # 扫描 @RegisterConnection 并注册到 ConnectionManager
+    ├── ConnectionRegistrar            # 扫描 @RegisterConnection 并注册到 ConnectionManager（纯类）
     └── DatabasePublishableConfig      # vendor:publish --tag=database 的模板
 ```
+
+> **D2（Spring 解耦）**：`DatabaseAutoConfiguration` / `EloquentUserProviderAutoConfiguration` /
+> `ModelShadowPatcher` / `EloquentUserProviderDriver` 已迁入 **jaravel-springboot** 模块
+> `com.weacsoft.jaravel.vendor.springboot.database` 包（Spring 宿主侧装配 + BaseModel 数据源绑定 BPP）；
+> 本模块保持零 Spring import，运行期 Spring 依赖由宿主提供。
 
 ---
 
@@ -142,7 +152,7 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K>
 
 | 字段 | 注解 | 说明 |
 |---|---|---|
-| `gaarasonDataSource` | `@Autowired @Lazy @Column(inDatabase=false) @JsonIgnore` | 数据源（由 Spring 容器懒注入），非数据库字段 |
+| `gaarasonDataSource` | `@Column(inDatabase=false) @JsonIgnore`（+ 公开 setter） | 数据源（D2 起宿主侧 setter 注入：Spring 宿主由 springboot 的 `BaseModelDataSourceBindingPostProcessor` 自动绑定，等效原 `@Autowired @Lazy`），非数据库字段 |
 | `modelShadow` | `@Column(inDatabase=false) @JsonIgnore` | 覆盖父类字段，排除 ORM 映射 |
 
 ### 数据源解析：getGaarasonDataSource()
@@ -180,7 +190,7 @@ public class Product extends BaseModel<Product, Long> {
 }
 ```
 
-> **关键**：必须先检查 `getConnectionAlias()` / `@DataSource` 注解，否则 `@Autowired` 总是注入 `@Primary` 数据源。
+> **关键**：必须先检查 `getConnectionAlias()` / `@DataSource` 注解，否则宿主侧按类型绑定时总是取到 `@Primary` 数据源（Spring 宿主：`BaseModelDataSourceBindingPostProcessor`；非 Spring 宿主：setter 手动注入）。
 
 ### 实例方法
 
@@ -824,7 +834,8 @@ public class DatabaseConfig {
 - `JdbcTemplate`
 - 第三方 starter 的 `@ConditionalOnBean(DataSource.class)`
 
-因此 `DatabaseAutoConfiguration` 会把**默认连接**以 `JaravelDataSource` 的形式
+因此 springboot 侧的 `DatabaseAutoConfiguration`（D2 起位于 jaravel-springboot 的
+`vendor.springboot.database` 包）会把**默认连接**以 `JaravelDataSource` 的形式
 注册为 `@Primary` 的 Spring Bean：
 
 ```java
