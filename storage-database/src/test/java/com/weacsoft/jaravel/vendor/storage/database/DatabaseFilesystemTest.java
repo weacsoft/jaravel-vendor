@@ -138,6 +138,38 @@ public class DatabaseFilesystemTest {
         roundTrip(fs, "e/default.txt", "默认列名 content".getBytes(StandardCharsets.UTF_8));
     }
 
+    @Test
+    public void testRecursiveListingIncludesSubdirectoryFiles() throws Exception {
+        DataSource ds = h2("storage_listing");
+        createTables(ds, "storage_", "content", true);
+        DatabaseFilesystem fs = new DatabaseFilesystem("db", ds, true, null, 1024L * 1024L, "storage_", "private");
+
+        fs.put("root.txt", "root".getBytes(StandardCharsets.UTF_8));
+        fs.put("uploads/deep/a.txt", "a".getBytes(StandardCharsets.UTF_8));
+        fs.put("uploads/deep/b/c.png", "c".getBytes(StandardCharsets.UTF_8));
+
+        // allFiles("") 递归文件列表：顶层与任意深度子目录文件都必须在列
+        // （回归：listEntries 此前遗漏"recursive+文件+含斜杠路径"分支，allFiles 列不出任何子路径文件）
+        Set<String> all = new HashSet<>();
+        for (var fi : fs.allFiles("")) {
+            all.add(fi.path());
+        }
+        assertTrue(all.contains("root.txt"), "顶层文件应在递归列表中: " + all);
+        assertTrue(all.contains("uploads/deep/a.txt"), "子目录文件应在递归列表中（回归）: " + all);
+        assertTrue(all.contains("uploads/deep/b/c.png"), "深层子目录文件应在递归列表中（回归）: " + all);
+
+        // 非递归 directories("")：根下第一级目录
+        Set<String> dirs = new HashSet<>();
+        for (var di : fs.directories("")) {
+            dirs.add(di.path());
+        }
+        assertTrue(dirs.contains("uploads"), "第一级目录应在列表中: " + dirs);
+
+        fs.delete("root.txt");
+        fs.delete("uploads/deep/a.txt");
+        fs.delete("uploads/deep/b/c.png");
+    }
+
     // ==================== 工厂（DatabaseFilesystemDriver） ====================
 
     @Test

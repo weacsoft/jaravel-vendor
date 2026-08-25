@@ -461,6 +461,9 @@ public class DatabaseFilesystem implements Filesystem {
                 } else {
                     collected.add(dir.isEmpty() ? firstSeg : dir + "/" + firstSeg);
                 }
+            } else if (recursive) {
+                // 递归文件列表：子目录下的文件同样收集（此前遗漏，导致 allFiles 列不出任何子路径文件）
+                collected.add(p);
             }
         }
 

@@ -56,6 +56,7 @@
   - **测试同步**：`DatabaseQueueDispatcherTest` 的 `GenericApplicationContext` 桩改为空 Map 版 `BeanLookup` 适配器（断言逐行保留）；`DatabaseQueueDriverTest` 构造签名未变（仍为 `DataSource` 入参）零改动通过。
   - **模板不变**：`QueueDatabasePublishableConfig` 字节级未动（V5 核验）。
 - **core·ACL 锁定遗留文件清理（P3 收尾 · 用户已删除源码文件）**：`core/pom.xml` 移除 maven-compiler / maven-jar 的 `<excludes>` 排除配置（`CoreAutoConfiguration.java` 与 core imports 资源文件已由用户以更高权限删除）；`core/README.md` 对应遗留注记移除。至此 core 模块**编译与打包无任何排外逻辑**，P3 完全落地。
+- **storage-database · `allFiles`/`files` 递归列表缺陷修复（jaravel 应用浏览器验证暴露）**：`DatabaseFilesystem.listEntries` 此前仅收集「顶层无斜杠路径」的文件，**任何子目录下的文件在递归文件列表中全部丢失**（`allFiles("")` 对 `uploads/x.txt` 一律空白；目录列表不受影响）——补 `recursive + 文件` 分支后行为正确；新增回归测试 `testRecursiveListingIncludesSubdirectoryFiles`（顶层/二级/三级子目录文件 + 第一级目录断言）。原存储类测试未覆盖 `files/allFiles/directories` 路径，故未暴露。
 - **springboot 装配守护缺陷修复（P2 遗留跨 jar 缺陷 · 由 jaravel 应用启动暴露）**：5 个引用**可选依赖类**的自动配置在类上补 `@ConditionalOnClass`——未在 classpath 上引入对应可选模块（aether-upload / redis / redis-cache / session-redis）的应用启动时不再因 `@ConditionalOnMissingBean` 类型推断 `ClassNotFoundException` 而崩溃（此前 P2 将这些装配从可选模块收敛至 springboot 后，springboot 恒在 classpath 上，缺失守护直接启动失败；全模块测试因 optional 依赖齐备未能暴露）：
   - `AetherUploadAutoConfiguration` → `@ConditionalOnClass({AetherUploadManager, AetherUploadProperties})`
   - `AetherUploadPublishAutoConfiguration` → `@ConditionalOnClass({AetherUploadPublishableConfig, AetherUploadStaticPublishable})`
