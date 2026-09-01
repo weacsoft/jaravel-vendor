@@ -75,6 +75,28 @@ public class Schema {
     }
 
     /**
+     * 创建表（若不存在）——驱动模块「幂等建表」的标准入口。
+     * <p>
+     * cache-database / storage-database / queue-database 等模块的 {@code createTable()}
+     * 应经由本方法建表，而不是各自手拼 {@code CREATE TABLE IF NOT EXISTS}
+     * （SQL Server / Oracle 根本不支持该语法，历史上驱动内置 DDL 在这些库上直接失败）。
+     * 表存在性走方言感知的 {@link #hasTable(String)} 检查（{@code information_schema} /
+     * {@code sys.tables} / {@code user_tables} / {@code PRAGMA}），检查命中则直接跳过。
+     *
+     * @param table      表名
+     * @param definition 表结构定义回调（同 {@link #create(String, java.util.function.Consumer)}）
+     * @return true 表示本次执行了建表；false 表示表已存在被跳过
+     */
+    public boolean createIfAbsent(String table, Consumer<Blueprint> definition) {
+        if (hasTable(table)) {
+            log.info("[migration] 表已存在，跳过建表: {}", table);
+            return false;
+        }
+        create(table, definition);
+        return true;
+    }
+
+    /**
      * 修改已有表，对齐 Laravel Schema::table。
      * <p>
      * 支持增加字段、修改字段、删除字段、重命名字段等操作。

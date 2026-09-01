@@ -1,5 +1,6 @@
 package com.weacsoft.jaravel.vendor.storage.database;
 
+import com.weacsoft.jaravel.vendor.database.JdbcExecutor;
 import com.weacsoft.jaravel.vendor.storage.StorageException;
 import com.weacsoft.jaravel.vendor.storage.contract.FileInfo;
 import com.weacsoft.jaravel.vendor.storage.contract.Filesystem;
@@ -16,10 +17,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -31,8 +28,11 @@ import java.util.Set;
 /**
  * 数据库文件存储实现，对齐 Laravel 的磁盘契约，但数据落地到关系型数据库。
  * <p>
- * 连接<b>走 jaravel database 模块</b>或任意 {@link DataSource}，
- * SQL 操作用<b>原生 JDBC</b> 执行——<b>不依赖 spring-jdbc</b>。
+ * <b>架构对齐（0.1.3）</b>：连接与 SQL 执行统一走 database 模块
+ * （{@link JdbcExecutor}，数据源来自 {@code ConnectionManager} 注册表或业务方显式传入），
+ * 驱动不再自带一套私有 JDBC 工具方法；建表统一走 migration 模块迁移能力
+ * （{@code vendor:publish --tag=migrations} 发布内置迁移 + {@code artisan migrate}，
+ * 或 {@code artisan storage:table} 生成迁移文件）。
  * <p>
  * 设计要点：
  * <ul>
@@ -47,9 +47,11 @@ import java.util.Set;
  *       因此 {@link #makeDirectory} 为无操作（自动「存在」），列举目录由文件路径推导。</li>
  * </ul>
  *
- * <b>不会自动建表</b>：需通过 {@code artisan storage:table} 命令（生成迁移文件后执行
- * {@code artisan migrate}）或手动建 SQL 创建表，表结构为
- * {@code <prefix>file}（元信息）与 {@code <prefix>file_chunk}（内容分片）两张表。
+ * <b>不会自动建表</b>：建表统一走迁移能力——
+ * {@code artisan vendor:publish --tag=migrations} 发布本模块内置迁移（默认
+ * {@code storage_file} / {@code storage_file_chunk} 两张表）后执行 {@code artisan migrate}；
+ * 或 {@code artisan storage:table} 生成迁移文件（支持自定义表前缀/列名）后执行 {@code artisan migrate}。
+ * 自定义表结构时需保证与本类读取的表/列名一致。
  *
  * <p>
  * 线程安全：本类仅持有不可变配置与无状态的 {@link DataSource}，可被多线程共享。
@@ -70,6 +72,9 @@ public class DatabaseFilesystem implements Filesystem {
 
     private final String filesTable;
     private final String chunksTable;
+
+    /** database 模块 SQL 执行底座（驱动不再自带私有 JDBC 四件套） */
+    private final JdbcExecutor jdbc;
 
     /**
      * 便捷构造器：仅指定名称和数据源，其余参数使用默认值
@@ -101,7 +106,8 @@ public class DatabaseFilesystem implements Filesystem {
         this.defaultVisibility = Visibility.from(defaultVisibility);
         this.filesTable = prefix + "file";
         this.chunksTable = prefix + "file_chunk";
-        // 不自动建表：需通过 artisan storage:table 生成迁移并执行 artisan migrate，或手动建表
+        this.jdbc = new JdbcExecutor(dataSource);
+        // 不自动建表：建表统一走迁移能力（vendor:publish --tag=migrations / storage:table + migrate）
     }
 
     // ==================== 路径规范化 ====================
@@ -131,7 +137,7 @@ public class DatabaseFilesystem implements Filesystem {
     @Override
     public boolean exists(String path) {
         String norm = normalize(path);
-        List<Long> counts = queryRows(
+        List<Long> counts = jdbc.queryMapped(
                 "SELECT COUNT(*) FROM " + filesTable + " WHERE disk = ? AND path = ?",
                 rs -> (long) rs.getInt(1), name, norm);
         long count = counts.isEmpty() ? 0L : counts.get(0);
@@ -155,7 +161,7 @@ public class DatabaseFilesystem implements Filesystem {
 
     private byte[] assembleChunks(String norm, boolean isBinary) {
         String col = contentColumn;
-        List<ChunkRow> rows = queryRows(
+        List<ChunkRow> rows = jdbc.queryMapped(
                 "SELECT chunk_index, " + col + " FROM " + chunksTable +
                         " WHERE disk = ? AND path = ? ORDER BY chunk_index ASC",
                 rs -> new ChunkRow(rs.getInt("chunk_index"),
@@ -200,14 +206,14 @@ public class DatabaseFilesystem implements Filesystem {
         int count = chunks.size();
 
         // 先清旧数据（按 disk+path 删除分片与元信息），再写入，保证幂等。
-        executeUpdate("DELETE FROM " + chunksTable + " WHERE disk = ? AND path = ?", name, norm);
-        executeUpdate("DELETE FROM " + filesTable + " WHERE disk = ? AND path = ?", name, norm);
+        jdbc.update("DELETE FROM " + chunksTable + " WHERE disk = ? AND path = ?", name, norm);
+        jdbc.update("DELETE FROM " + filesTable + " WHERE disk = ? AND path = ?", name, norm);
 
         String col = contentColumn;
         if (isBinary) {
             for (int i = 0; i < count; i++) {
                 byte[] c = chunks.get(i);
-                executeUpdate("INSERT INTO " + chunksTable +
+                jdbc.update("INSERT INTO " + chunksTable +
                                 " (disk, path, chunk_index, " + col + ", size, created_at, updated_at)" +
                                 " VALUES (?, ?, ?, ?, ?, ?, ?)",
                         name, norm, i, c, c.length, now, now);
@@ -215,14 +221,14 @@ public class DatabaseFilesystem implements Filesystem {
         } else {
             for (int i = 0; i < count; i++) {
                 byte[] c = chunks.get(i);
-                executeUpdate("INSERT INTO " + chunksTable +
+                jdbc.update("INSERT INTO " + chunksTable +
                                 " (disk, path, chunk_index, " + col + ", size, created_at, updated_at)" +
                                 " VALUES (?, ?, ?, ?, ?, ?, ?)",
                         name, norm, i, Base64.getEncoder().encodeToString(c), c.length, now, now);
             }
         }
 
-        executeUpdate("INSERT INTO " + filesTable +
+        jdbc.update("INSERT INTO " + filesTable +
                         " (disk, path, visibility, mime_type, size, chunk_count, created_at, updated_at)" +
                         " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 name, norm, defaultVisibility.value(), MimeTypeGuesser.guess(norm),
@@ -290,15 +296,15 @@ public class DatabaseFilesystem implements Filesystem {
     @Override
     public boolean delete(String path) {
         String norm = normalize(path);
-        List<Long> counts = queryRows(
+        List<Long> counts = jdbc.queryMapped(
                 "SELECT COUNT(*) FROM " + filesTable + " WHERE disk = ? AND path = ?",
                 rs -> (long) rs.getInt(1), name, norm);
         long count = counts.isEmpty() ? 0L : counts.get(0);
         if (count == 0) {
             return false;
         }
-        executeUpdate("DELETE FROM " + chunksTable + " WHERE disk = ? AND path = ?", name, norm);
-        executeUpdate("DELETE FROM " + filesTable + " WHERE disk = ? AND path = ?", name, norm);
+        jdbc.update("DELETE FROM " + chunksTable + " WHERE disk = ? AND path = ?", name, norm);
+        jdbc.update("DELETE FROM " + filesTable + " WHERE disk = ? AND path = ?", name, norm);
         return true;
     }
 
@@ -330,7 +336,7 @@ public class DatabaseFilesystem implements Filesystem {
     @Override
     public long size(String path) {
         String norm = normalize(path);
-        List<Long> sizes = queryRows(
+        List<Long> sizes = jdbc.queryMapped(
                 "SELECT size FROM " + filesTable + " WHERE disk = ? AND path = ?",
                 rs -> rs.getLong("size"), name, norm);
         if (sizes.isEmpty()) {
@@ -342,7 +348,7 @@ public class DatabaseFilesystem implements Filesystem {
     @Override
     public Instant lastModified(String path) {
         String norm = normalize(path);
-        List<Long> times = queryRows(
+        List<Long> times = jdbc.queryMapped(
                 "SELECT updated_at FROM " + filesTable + " WHERE disk = ? AND path = ?",
                 rs -> rs.getLong("updated_at"), name, norm);
         if (times.isEmpty()) {
@@ -354,7 +360,7 @@ public class DatabaseFilesystem implements Filesystem {
     @Override
     public String mimeType(String path) {
         String norm = normalize(path);
-        List<String> mimes = queryRows(
+        List<String> mimes = jdbc.queryMapped(
                 "SELECT mime_type FROM " + filesTable + " WHERE disk = ? AND path = ?",
                 rs -> rs.getString("mime_type"), name, norm);
         if (!mimes.isEmpty() && mimes.get(0) != null && !mimes.get(0).isEmpty()) {
@@ -366,7 +372,7 @@ public class DatabaseFilesystem implements Filesystem {
     @Override
     public FileInfo info(String path) {
         String norm = normalize(path);
-        List<FileMeta> metas = queryRows(
+        List<FileMeta> metas = jdbc.queryMapped(
                 "SELECT size, updated_at, mime_type, visibility FROM " + filesTable
                         + " WHERE disk = ? AND path = ?",
                 rs -> new FileMeta(
@@ -393,7 +399,7 @@ public class DatabaseFilesystem implements Filesystem {
     @Override
     public Visibility visibility(String path) {
         String norm = normalize(path);
-        List<String> values = queryRows(
+        List<String> values = jdbc.queryMapped(
                 "SELECT visibility FROM " + filesTable + " WHERE disk = ? AND path = ?",
                 rs -> rs.getString("visibility"), name, norm);
         if (values.isEmpty() || values.get(0) == null) {
@@ -405,7 +411,7 @@ public class DatabaseFilesystem implements Filesystem {
     @Override
     public void setVisibility(String path, Visibility visibility) {
         String norm = normalize(path);
-        int updated = executeUpdate(
+        int updated = jdbc.update(
                 "UPDATE " + filesTable + " SET visibility = ?, updated_at = ? WHERE disk = ? AND path = ?",
                 visibility.value(), System.currentTimeMillis(), name, norm);
         if (updated == 0) {
@@ -481,7 +487,7 @@ public class DatabaseFilesystem implements Filesystem {
 
     private List<String> queryPaths(String dir) {
         String pattern = dir.isEmpty() ? "%" : dir + "/%";
-        return queryRows(
+        return jdbc.queryMapped(
                 "SELECT path FROM " + filesTable + " WHERE disk = ? AND path LIKE ?",
                 rs -> rs.getString("path"), name, pattern);
     }
@@ -495,15 +501,15 @@ public class DatabaseFilesystem implements Filesystem {
     public boolean deleteDirectory(String directory) {
         String norm = normalize(directory);
         boolean existed = exists(norm) || hasAnyUnder(norm);
-        executeUpdate("DELETE FROM " + chunksTable + " WHERE disk = ? AND (path = ? OR path LIKE ?)",
+        jdbc.update("DELETE FROM " + chunksTable + " WHERE disk = ? AND (path = ? OR path LIKE ?)",
                 name, norm, norm + "/%");
-        executeUpdate("DELETE FROM " + filesTable + " WHERE disk = ? AND (path = ? OR path LIKE ?)",
+        jdbc.update("DELETE FROM " + filesTable + " WHERE disk = ? AND (path = ? OR path LIKE ?)",
                 name, norm, norm + "/%");
         return existed;
     }
 
     private boolean hasAnyUnder(String norm) {
-        List<Long> counts = queryRows(
+        List<Long> counts = jdbc.queryMapped(
                 "SELECT COUNT(*) FROM " + filesTable + " WHERE disk = ? AND path LIKE ?",
                 rs -> (long) rs.getInt(1), name, norm + "/%");
         long count = counts.isEmpty() ? 0L : counts.get(0);
@@ -525,61 +531,6 @@ public class DatabaseFilesystem implements Filesystem {
     @Override
     public String name() {
         return name;
-    }
-
-    // ==================== 原生 JDBC 工具方法 ====================
-
-    /**
-     * 执行更新语句（INSERT/UPDATE/DELETE）。
-     *
-     * @return 受影响行数
-     * @throws IllegalStateException 数据库错误（含表不存在——请先生成/执行 storage 迁移）
-     */
-    private int executeUpdate(String sql, Object... params) {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            bind(ps, params);
-            return ps.executeUpdate();
-        } catch (SQLException e) {
-            logger.debug("[storage-db] 数据库操作失败: {}", sql);
-            throw new IllegalStateException("数据库操作失败: " + sql, e);
-        }
-    }
-
-    /**
-     * 执行查询并逐行映射。
-     *
-     * @throws IllegalStateException 数据库错误
-     */
-    private <T> List<T> queryRows(String sql, RowMapper<T> mapper, Object... params) {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            bind(ps, params);
-            List<T> rows = new ArrayList<>();
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    rows.add(mapper.map(rs));
-                }
-            }
-            return rows;
-        } catch (SQLException e) {
-            logger.debug("[storage-db] 数据库查询失败: {}", sql);
-            throw new IllegalStateException("数据库操作失败: " + sql, e);
-        }
-    }
-
-    /**
-     * 行映射函数：允许抛出受检的 {@link SQLException}。
-     */
-    @FunctionalInterface
-    private interface RowMapper<T> {
-        T map(ResultSet rs) throws SQLException;
-    }
-
-    private static void bind(PreparedStatement ps, Object... params) throws SQLException {
-        for (int i = 0; i < params.length; i++) {
-            ps.setObject(i + 1, params[i]);
-        }
     }
 
     // ==================== 内部类型 ====================

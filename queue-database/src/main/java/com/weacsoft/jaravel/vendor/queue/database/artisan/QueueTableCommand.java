@@ -1,6 +1,7 @@
 package com.weacsoft.jaravel.vendor.queue.database.artisan;
 
 import com.weacsoft.jaravel.vendor.artisan.ArtisanCommand;
+import com.weacsoft.jaravel.vendor.artisan.make.MakeCodeProperties;
 import com.weacsoft.jaravel.vendor.migration.MigrationGenerator;
 import com.weacsoft.jaravel.vendor.queue.database.QueueDatabaseProperties;
 
@@ -22,9 +23,19 @@ public class QueueTableCommand extends ArtisanCommand {
     private static final String DEFAULT_PACKAGE = "database.migrations";
 
     private final QueueDatabaseProperties dbProps;
+    private final MakeCodeProperties makeProps;
 
     public QueueTableCommand(QueueDatabaseProperties dbProps) {
+        this(dbProps, null);
+    }
+
+    /**
+     * @param dbProps   数据库队列配置（含任务表名）
+     * @param makeProps artisan 代码生成配置（决定迁移文件落盘目录与包名，可为 null）
+     */
+    public QueueTableCommand(QueueDatabaseProperties dbProps, MakeCodeProperties makeProps) {
         this.dbProps = dbProps;
+        this.makeProps = makeProps;
     }
 
     @Override
@@ -68,8 +79,10 @@ public class QueueTableCommand extends ArtisanCommand {
                 "        schema.dropIfExists(\"" + table + "\");";
 
         try {
+            String outputDir = makeProps != null ? makeProps.getMigrationSourceDir() : DEFAULT_OUTPUT_DIR;
+            String packageName = makeProps != null ? makeProps.getMigrationPackage() : DEFAULT_PACKAGE;
             String path = MigrationGenerator.generate(
-                    DEFAULT_OUTPUT_DIR, DEFAULT_PACKAGE,
+                    outputDir, packageName,
                     "create queue tables", upBody, downBody);
             info("迁移文件已生成: " + path);
             info("请执行 artisan migrate 以创建表");

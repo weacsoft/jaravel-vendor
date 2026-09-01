@@ -10,6 +10,12 @@ Java 版 Laravel 框架核心库，在 Spring Boot 3.2.12 基础上近乎 100% �
 > 模块间"有则使用无则回退"策略、`artisan vendor:publish` 发布配置类、
 > 以及各模块的 artisan 命令与**数据库表要求**，
 > 请统一参见 **[MODULES.md](MODULES.md)**。
+>
+> **建表统一走迁移（0.1.3 起）**：cache/storage/queue 等数据库表由模块内置迁移（打包在 jar 内）声明——
+> `artisan vendor:publish --tag=migrations` 一键发布**所有模块**的建表迁移到业务工程迁移目录
+>（落点与包名由 `jaravel.artisan.make.*` 决定，发布后直接可编译），再 `artisan migrate` 完成建表；
+> 单模块可用 `--tag=cache-database` / `--tag=storage-database` / `--tag=queue-database`，
+> 亦可用 `cache:table` / `storage:table` / `queue:table` 生成迁移文件后再 `migrate`。
 
 ## 模块结构
 

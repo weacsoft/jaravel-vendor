@@ -2,6 +2,7 @@ package com.weacsoft.jaravel.vendor.springboot.storage;
 
 import com.weacsoft.jaravel.vendor.artisan.ArtisanCommand;
 import com.weacsoft.jaravel.vendor.artisan.RegisterCommand;
+import com.weacsoft.jaravel.vendor.artisan.make.MakeCodeProperties;
 import com.weacsoft.jaravel.vendor.storage.database.artisan.StorageTableCommand;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,11 +30,12 @@ public class StorageArtisanAutoConfiguration {
     /**
      * 注册 {@code storage:table} 命令（生成建表迁移文件，不直接建表）。
      *
+     * @param makeProps artisan 代码生成配置（决定迁移文件落盘目录与包名，与 vendor:publish 一致）
      * @return 建表命令
      */
     @RegisterCommand("生成 storage 数据库表迁移文件")
-    public StorageTableCommand storageTableCommand() {
+    public StorageTableCommand storageTableCommand(MakeCodeProperties makeProps) {
         log.info("[storage-artisan] 注册命令: storage:table");
-        return new StorageTableCommand();
+        return new StorageTableCommand("storage_", "content", true, makeProps);
     }
 }

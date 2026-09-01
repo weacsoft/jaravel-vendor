@@ -42,6 +42,11 @@ public class OracleDialect extends AbstractDialect {
     }
 
     @Override
+    public String upsertSql(String quotedTable, String[] quotedColumns, String quotedKeyColumn) {
+        return AbstractDialect.upsertMergeUsing(quotedTable, quotedColumns, quotedKeyColumn, "dual");
+    }
+
+    @Override
     public String renameTableSql(String from, String to) {
         return "ALTER TABLE " + quote(from) + " RENAME TO " + quote(to);
     }

@@ -31,6 +31,13 @@
             <artifactId>core</artifactId>
             <optional>true</optional>
         </dependency>
+        <!-- database：统一 SQL 执行底座 JdbcExecutor（数据库操作统一经由 database 模块执行；
+             本模块的 JdbcExecutor 为兼容子类）。数据库操作与 DDL 方言由此收敛，
+             驱动模块（cache/storage/queue-database）不再各自维护私有 JDBC 工具。 -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>database</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>

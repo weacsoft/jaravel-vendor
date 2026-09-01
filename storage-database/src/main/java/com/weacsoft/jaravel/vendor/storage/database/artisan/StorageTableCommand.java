@@ -1,6 +1,7 @@
 package com.weacsoft.jaravel.vendor.storage.database.artisan;
 
 import com.weacsoft.jaravel.vendor.artisan.ArtisanCommand;
+import com.weacsoft.jaravel.vendor.artisan.make.MakeCodeProperties;
 import com.weacsoft.jaravel.vendor.migration.MigrationGenerator;
 
 import java.io.IOException;
@@ -29,13 +30,14 @@ public class StorageTableCommand extends ArtisanCommand {
     private final String tablePrefix;
     private final String contentColumn;
     private final boolean binary;
+    private final MakeCodeProperties makeProps;
 
     /**
      * 使用默认配置创建命令。
      * tablePrefix="storage_", contentColumn="content", binary=true
      */
     public StorageTableCommand() {
-        this("storage_", "content", true);
+        this("storage_", "content", true, null);
     }
 
     /**
@@ -44,9 +46,21 @@ public class StorageTableCommand extends ArtisanCommand {
      * @param binary        是否使用二进制列（true=LONGBLOB, false=LONGTEXT）
      */
     public StorageTableCommand(String tablePrefix, String contentColumn, boolean binary) {
+        this(tablePrefix, contentColumn, binary, null);
+    }
+
+    /**
+     * @param tablePrefix   表名前缀（默认 storage_）
+     * @param contentColumn 内容列名（默认 content）
+     * @param binary        是否使用二进制列（true=LONGBLOB, false=LONGTEXT）
+     * @param makeProps     artisan 代码生成配置（决定迁移文件落盘目录与包名，可为 null）
+     */
+    public StorageTableCommand(String tablePrefix, String contentColumn, boolean binary,
+                               MakeCodeProperties makeProps) {
         this.tablePrefix = (tablePrefix == null || tablePrefix.isBlank()) ? "storage_" : tablePrefix;
         this.contentColumn = (contentColumn == null || contentColumn.isBlank()) ? "content" : contentColumn.trim();
         this.binary = binary;
+        this.makeProps = makeProps;
     }
 
     @Override
@@ -74,8 +88,10 @@ public class StorageTableCommand extends ArtisanCommand {
         String downBody = buildDownBody(filesTable, chunksTable);
 
         try {
+            String outputDir = makeProps != null ? makeProps.getMigrationSourceDir() : DEFAULT_OUTPUT_DIR;
+            String packageName = makeProps != null ? makeProps.getMigrationPackage() : DEFAULT_PACKAGE;
             String path = MigrationGenerator.generate(
-                    DEFAULT_OUTPUT_DIR, DEFAULT_PACKAGE,
+                    outputDir, packageName,
                     "create storage tables", upBody, downBody);
             info("迁移文件已生成: " + path);
             info("请执行 artisan migrate 以创建表");

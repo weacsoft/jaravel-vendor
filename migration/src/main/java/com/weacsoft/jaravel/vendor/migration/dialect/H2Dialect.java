@@ -26,6 +26,11 @@ public class H2Dialect extends AbstractDialect {
     }
 
     @Override
+    public String upsertSql(String quotedTable, String[] quotedColumns, String quotedKeyColumn) {
+        return AbstractDialect.upsertH2(quotedTable, quotedColumns, quotedKeyColumn);
+    }
+
+    @Override
     public String renameTableSql(String from, String to) {
         return "ALTER TABLE " + quote(from) + " RENAME TO " + quote(to);
     }

@@ -5,8 +5,10 @@ com.weacsoft.jaravel.vendor.springboot.BladeIntegrationConfiguration
 com.weacsoft.jaravel.vendor.springboot.ResponseAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.cache.CacheAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.cache.CacheArtisanAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.cache.CacheDatabasePublishAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.storage.StorageAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.storage.StoragePublishAutoConfiguration
+com.weacsoft.jaravel.vendor.springboot.storage.StorageDatabasePublishAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.storage.StorageArtisanAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.redis.RedisAutoConfiguration
 com.weacsoft.jaravel.vendor.springboot.redis.RedisPublishAutoConfiguration

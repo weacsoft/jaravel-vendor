@@ -52,6 +52,24 @@ public interface Dialect {
      */
     String tableOptions();
 
+    /**
+     * 生成 upsert（INSERT ... 冲突则更新）SQL，参数顺序固定为 {@code columns} 的列序，
+     * 每列一个 {@code ?} 占位符。
+     * <p>
+     * 这是「按主键/唯一键写入或覆盖」的标准语义（对齐 Laravel 缓存 database 驱动的
+     * {@code INSERT ... ON DUPLICATE KEY UPDATE} / {@code ON CONFLICT DO UPDATE} 等方言写法）。
+     * cache-database 等驱动模块应<b>统一经由本方法</b>获得方言 SQL，
+     * 而不是各自内置一套 {@code isMysql()/upsertSql()} 方言判断——方言知识集中在一处。
+     *
+     * @param quotedTable      已加引号的表名
+     * @param quotedColumns    已加引号的列名数组（插入顺序）
+     * @param quotedKeyColumn  已加引号的冲突判定列（主键/唯一键）
+     * @return 完整 upsert SQL
+     */
+    default String upsertSql(String quotedTable, String[] quotedColumns, String quotedKeyColumn) {
+        return AbstractDialect.upsertMysql(quotedTable, quotedColumns, quotedKeyColumn);
+    }
+
     // ==================== 表操作 ====================
 
     /**

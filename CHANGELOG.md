@@ -3,9 +3,21 @@
 本项目所有显著变更都记录在此文件。
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，语义化版本基于 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]（目标版本 0.1.2 · 待发布）
+## [Unreleased]（目标版本 0.1.3 · 开发中）
 
 ### Added（新增）
+
+- **架构对齐：数据库操作统一收口 database 模块 + 建表统一走迁移能力 + `vendor:publish --tag=migrations`（0.1.3 主线）**：
+  - **database 模块新增 `JdbcExecutor`**（连接 + 参数化 SQL 执行底座：execute/update/queryMapped/queryFor*List/Map/queryForObject/insertReturningKey）——驱动类模块不再各自维护一套私有「JDBC 四件套（executeUpdate/queryRows/executeSql/bind）+ 方言判断 + 建表 DDL」；`migration` 模块原 `JdbcExecutor` 保留为等价兼容子类（标注 `@Deprecated`），既有代码与外部引用不受影响（`migration` 由此新增对 `database` 的依赖，无循环）。
+  - **migration 模块新增 `Schema.createIfAbsent(table, def)`**：方言感知的存在性检查 + DDL 生成，作为驱动「幂等建表」标准入口（SQL Server / Oracle 不支持 `CREATE TABLE IF NOT EXISTS`，旧驱动内置 DDL 在这些库上直接失败；SQLite 的 AUTO_INCREMENT 硬编码同样消除）。
+  - **migration 模块新增 `Dialect#upsertSql(...)`**（default = MySQL 变体）+ `AbstractDialect` 五个静态变体（MySQL `ON DUPLICATE KEY UPDATE` / PostgreSQL·SQLite `ON CONFLICT` / H2 `MERGE ... KEY` / SQL Server·Oracle `MERGE ... USING`）；六个方言类全部重写。`cache-database` 的驱动级 upsert 方言判断（`isMysql()/upsertSql()/textType()/quote()` 私有套）整体移除，改由 `DialectFactory.detect` + `Dialect` 统一提供。
+  - **三个数据库驱动收敛**：`DatabaseCacheDriver`（cache-database）、`DatabaseFilesystem`（storage-database）、`DatabaseQueueDriver`（queue-database）全部改为经由 `JdbcExecutor` 执行 SQL；`createTable()` 全部改为 `Schema.createIfAbsent` + Blueprint DSL（`cache-database` 的私有建表 DDL 与 `queue-database` 的 `AUTO_INCREMENT` 硬编码 DDL 移除，queue-database 由此新增 `database` 模块依赖）；驱动暴露单一事实来源的 `defineXxxTable(Blueprint)` 定义，与内置迁移文件一致。
+  - **core 模块新增 `PublishableMigration` SPI + `PublishType.MIGRATION`**：与 `PublishableConfig`/`PublishableStatic` 平行的第三种可发布项——发布模块自带的**迁移 Java 源文件**到业务工程迁移源代码目录（`MakeCodeProperties#getMigrationSourceDir`，默认 `src/main/java/<basePackage>/database/migrations`，包名自动重写为 `<basePackage>.database.migrations`，发布后直接可编译，含目录穿越防护）。
+  - **三个模块自带建表迁移并声明发布**：`cache-database`（`jaravel_cache`）、`storage-database`（`storage_file`/`storage_file_chunk`）、`queue-database`（`jobs`/`failed_jobs`）各打包一份内置迁移 Java 源（`jaravel/migrations/Migration_20240101_*.java`，与驱动 `defineXxxTable` 一致）+ `XxxDatabaseMigrationPublishable` 声明；springboot 侧以 `@ConditionalOnClass` 守卫的 `XxxDatabasePublishAutoConfiguration` 注册（queue 侧并入既有 `QueueDatabaseAutoConfiguration` 静态块）——未引入可选模块的应用不受影响。
+  - **`vendor:publish` 命令扩展**：新保留标签 `--tag=migrations`（一键发布**所有模块**的建表迁移，对齐 Laravel `vendor:publish --tag=migrations`）；各模块 tag（`--tag=cache-database` 等）同时发布其配置与迁移；`--all` 包含迁移文件；`--list` 展示迁移清单（类型 migration + 文件名列出）。
+  - **`xxx:table` 生成命令对齐**：`cache:table` / `storage:table` / `queue:table` 的生成目录与包名改为注入 `MakeCodeProperties`（与 `vendor:publish` 落点一致：`getMigrationSourceDir()` / `getMigrationPackage()`），消除「命令写 `database/migrations` 包 `database.migrations`、发布写源码树包 `<basePackage>.database.migrations`」的不一致。
+  - **推荐工作流（新）**：`artisan vendor:publish --tag=migrations` → `artisan migrate`，一条链完成所有模块建表；原有 `xxx:table` + `migrate` 工作流继续可用。
+  - springboot 装配对齐：`QueueDatabaseAutoConfiguration.databaseQueueDriver` 数据源解析顺序改为「先 `ConnectionManager` 注册表、后 Spring `DataSource` Bean」，与 cache/storage 驱动一致（装配条件与 sync 回退语义不变）。
 
 - **core · `core.lookup` Bean 提供者 SPI（P3 · Spring 解耦终章）**：`BeanLookup` / `GlobalBeanProvider` / `GlobalLookup` 三个纯 Java 接口/类——Spring 宿主由 `jaravel-springboot` 的 `CoreSpringConfiguration` 自动安装 `ContextBeanProvider`（`ApplicationContext` 适配器），非 Spring 宿主一行 `GlobalLookup.install(...)` 即可让 `SpringContext` / `Facade` / `App` / `Config` / 各 `@Register*` 注解扫描全链路开箱可用（发布模板 stable FQCN 不变）。
 - **springboot · `CoreSpringConfiguration` + `ContextBeanProvider`**：P3 解耦适配层（imports 首行注册）；业务方可用自定义 `GlobalBeanProvider` Bean 覆盖（`@ConditionalOnMissingBean`）。
@@ -120,5 +132,6 @@
 
 ### Tests（测试）
 
+- 0.1.3 架构对齐新增用例：`DialectUpsertTest`（6 方言 × upsert SQL 形状 + default 兜底 + 未知产品名回退）、`VendorPublishCommandTest` 迁移发布 4 例（`--tag=migrations` / 模块 tag / 包名重写 / skip + `--force` / `--all` 含迁移）、`CacheDatabaseMigrationPublishableTest`（内置资源打包核对）、`BundledMigrationE2ETest`（内置迁移 → 内存编译 → H2 上 migrate → 驱动读写 → rollback 全链路）。
 - 全模块单测保持全绿；wechat-sdk 由历史 19 个锁定用例扩展到 **198 个**（类型化消息模型 134 + 洋葱内核/网页授权 42 + 发布模板回归 3），无一联网（mock OkHttp/Servlet）。
 - **P3 · 非 Spring 可用性冒烟（§5.4 新增门禁）**：core 新增 `NonSpringAvailabilitySmokeTest`——不 import 任何 Spring 类型，手动安装 Map 版 `GlobalBeanProvider` 后验证 `Facade`/`App.app()`/`Application` 三种注册（bind/single/default）/`publishToSpring` 全链路可用；移除提供者后 `beanOrNull` 空安全降级、强依赖路径给出含 `GlobalLookup.install` 指引的异常（不再抛 Spring 类加载异常）。

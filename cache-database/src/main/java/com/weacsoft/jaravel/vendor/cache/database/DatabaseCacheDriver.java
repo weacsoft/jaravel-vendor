@@ -1,17 +1,15 @@
 package com.weacsoft.jaravel.vendor.cache.database;
 
 import com.weacsoft.jaravel.vendor.cache.CacheDriver;
+import com.weacsoft.jaravel.vendor.database.JdbcExecutor;
 import com.weacsoft.jaravel.vendor.json.Json;
+import com.weacsoft.jaravel.vendor.migration.Schema;
+import com.weacsoft.jaravel.vendor.migration.dialect.Dialect;
+import com.weacsoft.jaravel.vendor.migration.dialect.DialectFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.sql.DataSource;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -20,12 +18,25 @@ import java.util.concurrent.Executors;
 /**
  * 基于关系型数据库的缓存驱动，对齐 Laravel {@code "database"} 缓存驱动。
  * <p>
- * 连接<b>走 jaravel database 模块</b>：数据源来自 {@code jaravel_cache} 表所在连接
- * （{@code ConnectionManager} 注册表或业务方传入的任意 {@link DataSource}），
- * SQL 操作用原生 JDBC 执行——<b>不依赖 spring-jdbc</b>。
+ * <b>架构对齐（0.1.3）</b>：驱动不再自带一套「JDBC 四件套 + 方言判断 + 建表 DDL」，
+ * 数据库操作统一收敛到框架模块：
+ * <ul>
+ *   <li><b>连接与 SQL 执行</b> → database 模块（{@link JdbcExecutor}，
+ *       数据源来自 {@code ConnectionManager} 注册表或业务方显式传入）；</li>
+ *   <li><b>方言差异（引号 / upsert / 建表）</b> → migration 模块
+ *       （{@link Dialect} + {@link DialectFactory} + {@link Schema}）。</li>
+ * </ul>
+ * 历史版本中驱动内置的 {@code isMysql()/quote()/upsertSql()/textType()/createTable() DDL}
+ * 已移除——方言知识只存在于 migration 模块一方。
  * <p>
- * 缓存值以 JSON 字符串存储。<b>不会自动建表</b>：需通过 {@code artisan cache:table}
- * 命令或手动调用 {@link #createTable()} 创建表，表结构如下：
+ * 缓存值以 JSON 字符串存储。<b>不会自动建表</b>：建表统一走迁移能力——
+ * <ul>
+ *   <li>{@code artisan vendor:publish --tag=migrations} 发布本模块内置迁移文件，
+ *       再执行 {@code artisan migrate}（推荐，对齐 Laravel）；</li>
+ *   <li>或执行 {@code artisan cache:table} 生成一份迁移文件再 {@code artisan migrate}；</li>
+ *   <li>或手动调用 {@link #createTable()}（内部即经由 {@link Schema#createIfAbsent} 建表）。</li>
+ * </ul>
+ * 表结构如下：
  * <pre>
  * CREATE TABLE jaravel_cache (
  *   cache_key   VARCHAR(255) NOT NULL PRIMARY KEY,   -- 缓存键
@@ -33,7 +44,6 @@ import java.util.concurrent.Executors;
  *   expires_at  BIGINT NOT NULL DEFAULT 0            -- 过期时间戳（毫秒），0=永不过期
  * );
  * </pre>
- * 自动适配 MySQL / PostgreSQL / SQLite / H2 / SQL Server 方言（建表与 upsert 语义）。
  * <p>
  * <b>TTL 单位为秒</b>（对齐 Laravel）：{@code expires_at = System.currentTimeMillis() + ttlSeconds * 1000}，
  * {@code ttlSeconds <= 0} 时 {@code expires_at = 0}（永不过期）。
@@ -51,19 +61,30 @@ public class DatabaseCacheDriver implements CacheDriver {
     /** 默认缓存表名 */
     private static final String DEFAULT_TABLE = "jaravel_cache";
 
+    /** 缓存键列 */
+    private static final String COL_KEY = "cache_key";
+    /** 缓存值列 */
+    private static final String COL_VALUE = "cache_value";
+    /** 过期时间列 */
+    private static final String COL_EXPIRES = "expires_at";
+
     /** 数据源（来自 database 模块连接注册表或业务方显式传入） */
     private final DataSource dataSource;
+
+    /** database 模块 SQL 执行底座 */
+    private final JdbcExecutor jdbc;
 
     /** 缓存表名 */
     private final String table;
 
     /**
-     * 数据库产品名（小写），用于方言适配。
+     * migration 模块方言（惰性求值并缓存）。
      * <p>
-     * <b>惰性求值</b>：驱动可能在 {@code @RegisterConnection} 扫描完成之前就被创建，
-     * 此时探测方言会失败并错误地回退到 MySQL。因此推迟到第一次真正用到方言时才探测。
+     * 驱动可能在 {@code @RegisterConnection} 扫描完成之前就被创建，
+     * 此刻检测方言会失败并错误地回退到 MySQL。因此推迟到第一次真正用到方言时才探测；
+     * 探测失败<b>不缓存</b>，下次调用重试，临时回退 MySQL 方言。
      */
-    private volatile String databaseProductName;
+    private volatile Dialect dialect;
 
     /** 用于异步删除过期记录的后台执行器（守护线程，不阻塞 JVM 退出） */
     private final ExecutorService expireCleaner;
@@ -96,14 +117,51 @@ public class DatabaseCacheDriver implements CacheDriver {
         }
         this.dataSource = dataSource;
         this.table = (table == null || table.isEmpty()) ? DEFAULT_TABLE : table;
-        // 方言不在构造期探测：此刻连接可能尚未注册完成，探测会失败并错误回退到 MySQL
+        this.jdbc = new JdbcExecutor(dataSource);
         this.expireCleaner = Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "jaravel-cache-db-expire-cleaner");
             t.setDaemon(true);
             return t;
         });
-        // 不自动建表：需通过 artisan cache:table 命令或手动调用 createTable() 创建
+        // 方言不在构造期探测（连接可能尚未就绪）；也不自动建表：
+        // 建表走迁移能力（vendor:publish --tag=migrations / cache:table / Schema）
     }
+
+    // ==================== 表结构定义与建表（建表统一走 migration 能力） ====================
+
+    /**
+     * 声明缓存表结构——{@link #createTable()} 与模块内置迁移文件共用的一致定义
+     * （cache_key 主键 / cache_value 文本 / expires_at 默认 0 = 永不过期）。
+     *
+     * @param builder migration 模块 Blueprint 构建器
+     */
+    public void defineTable(com.weacsoft.jaravel.vendor.migration.Blueprint builder) {
+        builder.string(COL_KEY, 255).primary();
+        builder.text(COL_VALUE).nullable();
+        builder.bigInteger(COL_EXPIRES).defaultValue(0L);
+    }
+
+    /**
+     * 创建缓存表（若不存在）——统一经由 migration 模块 {@link Schema#createIfAbsent}
+     * 完成（方言感知的存在性检查 + DDL 生成），不再手拼 {@code CREATE TABLE IF NOT EXISTS}
+     * （SQL Server / Oracle 不支持该语法，驱动内置 DDL 在这些库上会直接失败）。
+     *
+     * @return true 表示建表成功或表已存在
+     */
+    public boolean createTable() {
+        try {
+            boolean created = new Schema(dataSource).createIfAbsent(table, this::defineTable);
+            if (created) {
+                logger.info("[cache-db] 缓存表已创建: {}", table);
+            }
+            return true;
+        } catch (Exception e) {
+            logger.warn("[cache-db] 创建缓存表失败: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    // ==================== CacheDriver 实现 ====================
 
     @Override
     public boolean put(String key, Object value, long ttlSeconds) {
@@ -117,7 +175,7 @@ public class DatabaseCacheDriver implements CacheDriver {
             return false;
         }
         try {
-            executeUpdate(upsertSql(), key, json, expiresAt);
+            jdbc.update(upsertSql(), key, json, expiresAt);
             return true;
         } catch (Exception e) {
             logger.warn("[cache-db] 写入缓存失败: key={}, err={}", key, e.getMessage());
@@ -127,11 +185,11 @@ public class DatabaseCacheDriver implements CacheDriver {
 
     @Override
     public Object get(String key) {
-        List<Row> rows = queryRows(
-                "SELECT " + quote("cache_value") + ", " + quote("expires_at")
-                        + " FROM " + quote(table)
-                        + " WHERE " + quote("cache_key") + " = ?",
-                rs -> new Row(rs.getString("cache_value"), rs.getLong("expires_at")),
+        List<Row> rows = jdbc.queryMapped(
+                "SELECT " + q(COL_VALUE) + ", " + q(COL_EXPIRES)
+                        + " FROM " + q(table)
+                        + " WHERE " + q(COL_KEY) + " = ?",
+                rs -> new Row(rs.getString(COL_VALUE), rs.getLong(COL_EXPIRES)),
                 key);
         if (rows.isEmpty()) {
             return null;
@@ -147,11 +205,11 @@ public class DatabaseCacheDriver implements CacheDriver {
 
     @Override
     public boolean exists(String key) {
-        List<Long> expires = queryRows(
-                "SELECT " + quote("expires_at")
-                        + " FROM " + quote(table)
-                        + " WHERE " + quote("cache_key") + " = ?",
-                rs -> rs.getLong("expires_at"),
+        List<Long> expires = jdbc.queryMapped(
+                "SELECT " + q(COL_EXPIRES)
+                        + " FROM " + q(table)
+                        + " WHERE " + q(COL_KEY) + " = ?",
+                rs -> rs.getLong(COL_EXPIRES),
                 key);
         if (expires.isEmpty()) {
             return false;
@@ -167,13 +225,12 @@ public class DatabaseCacheDriver implements CacheDriver {
 
     @Override
     public boolean remove(String key) {
-        return executeUpdate(
-                "DELETE FROM " + quote(table) + " WHERE " + quote("cache_key") + " = ?", key) > 0;
+        return jdbc.update("DELETE FROM " + q(table) + " WHERE " + q(COL_KEY) + " = ?", key) > 0;
     }
 
     @Override
     public void removeAll() {
-        executeUpdate("DELETE FROM " + quote(table));
+        jdbc.update("DELETE FROM " + q(table));
     }
 
     @Override
@@ -181,89 +238,56 @@ public class DatabaseCacheDriver implements CacheDriver {
         long now = System.currentTimeMillis();
         // 顺带清理已过期记录，仅返回未过期键
         try {
-            executeUpdate(
-                    "DELETE FROM " + quote(table)
-                            + " WHERE " + quote("expires_at") + " > 0 AND " + quote("expires_at") + " <= ?",
+            jdbc.update(
+                    "DELETE FROM " + q(table)
+                            + " WHERE " + q(COL_EXPIRES) + " > 0 AND " + q(COL_EXPIRES) + " <= ?",
                     now);
         } catch (Exception e) {
             logger.debug("[cache-db] 清理过期记录失败（忽略）: {}", e.getMessage());
         }
-        return queryRows(
-                "SELECT " + quote("cache_key")
-                        + " FROM " + quote(table)
-                        + " WHERE " + quote("expires_at") + " = 0 OR " + quote("expires_at") + " > ?",
-                rs -> rs.getString("cache_key"),
+        return jdbc.queryMapped(
+                "SELECT " + q(COL_KEY)
+                        + " FROM " + q(table)
+                        + " WHERE " + q(COL_EXPIRES) + " = 0 OR " + q(COL_EXPIRES) + " > ?",
+                rs -> rs.getString(COL_KEY),
                 now);
     }
 
-    // ==================== 原生 JDBC 工具方法 ====================
+    // ==================== 内部工具 ====================
 
-    /**
-     * 执行更新语句（INSERT/UPDATE/DELETE）。
-     *
-     * @return 受影响行数
-     * @throws IllegalStateException 数据库错误（含表不存在——请先生成/执行 cache 迁移）
-     */
-    private int executeUpdate(String sql, Object... params) {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            bind(ps, params);
-            return ps.executeUpdate();
-        } catch (SQLException e) {
-            throw new IllegalStateException("数据库操作失败: " + sql, e);
+    /** 解析方言（惰性 + 缓存，失败临时回退 MySQL） */
+    private Dialect dialect() {
+        Dialect cached = dialect;
+        if (cached != null) {
+            return cached;
         }
-    }
-
-    /**
-     * 执行建表等 DDL 语句。
-     *
-     * @throws IllegalStateException 数据库错误
-     */
-    private void executeSql(String sql) {
-        try (Connection conn = dataSource.getConnection();
-             Statement st = conn.createStatement()) {
-            st.execute(sql);
-        } catch (SQLException e) {
-            throw new IllegalStateException("数据库操作失败: " + sql, e);
-        }
-    }
-
-    /**
-     * 执行查询并逐行映射。
-     *
-     * @throws IllegalStateException 数据库错误
-     */
-    private <T> List<T> queryRows(String sql, RowMapper<T> mapper, Object... params) {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            bind(ps, params);
-            List<T> rows = new ArrayList<>();
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    rows.add(mapper.map(rs));
-                }
+        synchronized (this) {
+            if (dialect != null) {
+                return dialect;
             }
-            return rows;
-        } catch (SQLException e) {
-            throw new IllegalStateException("数据库操作失败: " + sql, e);
+            try {
+                Dialect detected = DialectFactory.detect(dataSource);
+                logger.debug("[cache-db] 使用 migration 模块方言: {}", detected.getName());
+                dialect = detected;
+                return detected;
+            } catch (Exception e) {
+                // 不缓存失败结果，留待下次重试
+                logger.debug("[cache-db] 暂时无法识别数据库方言，临时使用 MySQL 方言: {}", e.getMessage());
+                return DialectFactory.create("mysql");
+            }
         }
     }
 
-    /**
-     * 行映射函数：允许抛出受检的 {@link SQLException}。
-     */
-    @FunctionalInterface
-    private interface RowMapper<T> {
-        T map(ResultSet rs) throws SQLException;
+    /** 按方言对标识符加引号（委托 migration 模块 Dialect） */
+    private String q(String identifier) {
+        return dialect().quote(identifier);
     }
 
-    private static void bind(PreparedStatement ps, Object... params) throws SQLException {
-        for (int i = 0; i < params.length; i++) {
-            ps.setObject(i + 1, params[i]);
-        }
+    /** upsert SQL 由 migration 模块方言统一生成（驱动不再内置方言判断） */
+    private String upsertSql() {
+        String[] columns = { q(COL_KEY), q(COL_VALUE), q(COL_EXPIRES) };
+        return dialect().upsertSql(q(table), columns, q(COL_KEY));
     }
-
-    // ==================== 内部工具方法 ====================
 
     /** 是否已过期：{@code expiresAt > 0} 且当前时间已达到 / 超过过期时间 */
     private static boolean isExpired(long expiresAt) {
@@ -287,164 +311,11 @@ public class DatabaseCacheDriver implements CacheDriver {
     private void deleteAsync(String key) {
         expireCleaner.submit(() -> {
             try {
-                executeUpdate(
-                        "DELETE FROM " + quote(table) + " WHERE " + quote("cache_key") + " = ?", key);
+                jdbc.update("DELETE FROM " + q(table) + " WHERE " + q(COL_KEY) + " = ?", key);
             } catch (Exception e) {
                 logger.debug("[cache-db] 异步删除过期记录失败: key={}, err={}", key, e.getMessage());
             }
         });
-    }
-
-    /**
-     * 取数据库产品名（小写），首次调用时才真正探测并缓存结果。
-     * <p>
-     * 探测失败<b>不缓存</b>，下次调用会重试——这样即便首次访问发生在连接就绪之前，
-     * 后续也能拿到正确方言。
-     *
-     * @return 数据库产品名（小写），探测失败时临时回退 {@code mysql}
-     */
-    private String productName() {
-        String cached = databaseProductName;
-        if (cached != null) {
-            return cached;
-        }
-        synchronized (this) {
-            if (databaseProductName != null) {
-                return databaseProductName;
-            }
-            try (Connection conn = dataSource.getConnection()) {
-                String detected = conn.getMetaData().getDatabaseProductName().toLowerCase();
-                logger.debug("[cache-db] 识别数据库方言: {}", detected);
-                databaseProductName = detected;
-                return detected;
-            } catch (Exception e) {
-                // 不缓存失败结果，留待下次重试
-                logger.debug("[cache-db] 暂时无法识别数据库产品，临时使用 MySQL 方言: {}", e.getMessage());
-                return "mysql";
-            }
-        }
-    }
-
-    private boolean isMysql() {
-        return productName().contains("mysql");
-    }
-
-    private boolean isPostgres() {
-        String name = productName();
-        return name.contains("postgresql") || name.contains("postgres");
-    }
-
-    private boolean isSqlite() {
-        return productName().contains("sqlite");
-    }
-
-    private boolean isH2() {
-        return productName().contains("h2");
-    }
-
-    private boolean isSqlServer() {
-        String name = productName();
-        return name.contains("sql server") || name.contains("microsoft");
-    }
-
-    /** 按方言对标识符加引号 */
-    private String quote(String identifier) {
-        if (isSqlServer()) {
-            return "[" + identifier + "]";
-        }
-        if (isPostgres()) {
-            return "\"" + identifier + "\"";
-        }
-        return "`" + identifier + "`";
-    }
-
-    /** 按方言返回大文本类型 */
-    private String textType() {
-        if (isSqlServer()) {
-            return "NVARCHAR(MAX)";
-        }
-        if (isH2()) {
-            return "CLOB";
-        }
-        return "TEXT";
-    }
-
-    /** 是否支持 {@code CREATE TABLE IF NOT EXISTS} 语法（SQL Server 旧版本不支持，已通过 sys.tables 预检） */
-    private boolean supportsIfNotExists() {
-        return !isSqlServer();
-    }
-
-    /**
-     * 创建缓存表（若不存在）。
-     * <p>
-     * 由 {@code artisan cache:table} 命令调用，或由业务方手动调用。
-     * 自动适配 MySQL / PostgreSQL / SQLite / H2 / SQL Server 方言。
-     *
-     * @return true 表示建表成功或表已存在
-     */
-    public boolean createTable() {
-        try {
-            if (isSqlServer()) {
-                List<Integer> cnt = queryRows(
-                        "SELECT COUNT(*) FROM sys.tables WHERE name = ?", rs -> rs.getInt(1), table);
-                if (!cnt.isEmpty() && cnt.get(0) > 0) {
-                    logger.info("[cache-db] 缓存表已存在: {}", table);
-                    return true;
-                }
-            }
-            String sql = "CREATE TABLE " + (supportsIfNotExists() ? "IF NOT EXISTS " : "")
-                    + quote(table) + " ("
-                    + quote("cache_key") + " VARCHAR(255) NOT NULL PRIMARY KEY, "
-                    + quote("cache_value") + " " + textType() + ", "
-                    + quote("expires_at") + " BIGINT NOT NULL DEFAULT 0"
-                    + (isMysql() ? ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4" : ")");
-            logger.info("[cache-db] 创建缓存表: {}", sql);
-            executeSql(sql);
-            return true;
-        } catch (Exception e) {
-            // 并发建表或表已存在时可能抛异常，忽略
-            logger.warn("[cache-db] 创建缓存表失败（可能已存在，忽略）: {}", e.getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * 按方言生成 upsert SQL（MERGE / REPLACE 语义）。
-     * <p>
-     * 参数顺序固定为：{@code cache_key}, {@code cache_value}, {@code expires_at}。
-     */
-    private String upsertSql() {
-        String tbl = quote(table);
-        String k = quote("cache_key");
-        String v = quote("cache_value");
-        String e = quote("expires_at");
-        if (isMysql()) {
-            // MySQL: INSERT ... ON DUPLICATE KEY UPDATE
-            return "INSERT INTO " + tbl + " (" + k + ", " + v + ", " + e + ") VALUES (?, ?, ?) "
-                    + "ON DUPLICATE KEY UPDATE " + v + " = VALUES(" + v + "), " + e + " = VALUES(" + e + ")";
-        }
-        if (isPostgres() || isSqlite()) {
-            // PostgreSQL / SQLite: INSERT ... ON CONFLICT DO UPDATE
-            return "INSERT INTO " + tbl + " (" + k + ", " + v + ", " + e + ") VALUES (?, ?, ?) "
-                    + "ON CONFLICT (" + k + ") DO UPDATE SET "
-                    + v + " = EXCLUDED." + v + ", " + e + " = EXCLUDED." + e;
-        }
-        if (isH2()) {
-            // H2: MERGE ... KEY(...) VALUES (...)
-            return "MERGE INTO " + tbl + " (" + k + ", " + v + ", " + e + ") KEY (" + k + ") VALUES (?, ?, ?)";
-        }
-        if (isSqlServer()) {
-            // SQL Server: MERGE ... USING ...
-            return "MERGE " + tbl + " AS t "
-                    + "USING (SELECT ? AS " + k + ", ? AS " + v + ", ? AS " + e + ") AS s "
-                    + "ON (t." + k + " = s." + k + ") "
-                    + "WHEN MATCHED THEN UPDATE SET t." + v + " = s." + v + ", t." + e + " = s." + e + " "
-                    + "WHEN NOT MATCHED THEN INSERT (" + k + ", " + v + ", " + e + ") "
-                    + "VALUES (s." + k + ", s." + v + ", s." + e + ");";
-        }
-        // 默认按 MySQL 方言处理
-        return "INSERT INTO " + tbl + " (" + k + ", " + v + ", " + e + ") VALUES (?, ?, ?) "
-                + "ON DUPLICATE KEY UPDATE " + v + " = VALUES(" + v + "), " + e + " = VALUES(" + e + ")";
     }
 
     /** 缓存行：{@code cacheValue} + {@code expiresAt} */

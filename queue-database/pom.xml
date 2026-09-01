@@ -24,10 +24,15 @@
             <artifactId>event</artifactId>
         </dependency>
         <!-- D3（Spring 解耦终收，经用户确认执行）：原 spring-jdbc + spring-context 编译依赖已移除——
-             · DatabaseQueueDriver 的 SQL 操作改为原生 JDBC（复刻 cache-database 驱动模板）
              · DatabaseQueueDispatcher / DatabaseQueueWorker 改经 core.lookup.BeanLookup SPI 解析监听器 bean
              · Spring 宿主接线（DatabaseQueueDriver 装配 / ContextBeanProvider 适配）位于 springboot 模块
                vendor.springboot.queuedatabase，运行期 Spring 依赖由宿主提供 -->
+        <!-- 0.1.3 架构对齐：SQL 执行统一使用 database 模块 JdbcExecutor（不再自带私有 JDBC 四件套），
+             建表统一走 migration 模块 Schema（不再手拼 CREATE TABLE IF NOT EXISTS） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>database</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>

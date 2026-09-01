@@ -4,6 +4,7 @@ import com.weacsoft.jaravel.vendor.artisan.ArtisanCommand;
 import com.weacsoft.jaravel.vendor.artisan.make.MakeCodeProperties;
 import com.weacsoft.jaravel.vendor.core.publish.Publishable;
 import com.weacsoft.jaravel.vendor.core.publish.PublishableConfig;
+import com.weacsoft.jaravel.vendor.core.publish.PublishableMigration;
 import com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry;
 import com.weacsoft.jaravel.vendor.core.publish.PublishableStatic;
 import com.weacsoft.jaravel.vendor.core.publish.PublishType;
@@ -30,13 +31,24 @@ import java.util.Map;
  *
  * <h3>用法</h3>
  * <pre>
- * artisan vendor:publish                       # 列出所有可发布项（配置 + 资源）
- * artisan vendor:publish --all                 # 发布全部（配置类 + 静态资源）
- * artisan vendor:publish --tag=cache           # 只发布 cache 模块（其配置与资源）
- * artisan vendor:publish --tag=resources       # 只发布全部静态前端资源
- * artisan vendor:publish --tag=config          # 只发布全部 Java 配置类
- * artisan vendor:publish --tag=captcha --force # 覆盖已存在文件
+ * artisan vendor:publish                          # 列出所有可发布项（配置 + 资源 + 迁移）
+ * artisan vendor:publish --all                    # 发布全部（配置类 + 静态资源 + 迁移文件）
+ * artisan vendor:publish --tag=cache              # 只发布 cache 模块（其配置与资源）
+ * artisan vendor:publish --tag=resources          # 只发布全部静态前端资源
+ * artisan vendor:publish --tag=config             # 只发布全部 Java 配置类
+ * artisan vendor:publish --tag=migrations         # 发布所有模块的建表迁移文件（对齐 Laravel vendor:publish --tag=migrations）
+ * artisan vendor:publish --tag=cache-database     # 只发布 cache-database 模块的迁移
+ * artisan vendor:publish --tag=captcha --force    # 覆盖已存在文件
  * </pre>
+ *
+ * <h3>迁移文件发布</h3>
+ * 实现 {@link PublishableMigration} 的模块（cache-database / storage-database /
+ * queue-database 等）把<b>内置迁移 Java 源文件</b>（打包在模块 jar 内）发布到业务工程的
+ * 迁移源代码目录（{@code MakeCodeProperties#getMigrationSourceDir}，默认
+ * {@code src/main/java/<basePackage 路径>/database/migrations}），
+ * 并自动把包名重写为工程迁移包（{@code <basePackage>.database.migrations}）。
+ * 随后执行 {@code artisan migrate} 即完成全部模块的建表——对齐 Laravel 的工作流：
+ * 模块自带迁移 → vendor:publish 发布到业务工程 → migrate 执行。
  *
  * <h3>可选依赖说明</h3>
  * 本命令通过 {@link PublishableRegistry} 扫描已注册的可发布项。
@@ -89,6 +101,8 @@ public class VendorPublishCommand extends ArtisanCommand {
                 publishConfig(cfg, force, c);
             } else if (p instanceof PublishableStatic st) {
                 publishStatic(st, force, c);
+            } else if (p instanceof PublishableMigration mig) {
+                publishMigration(mig, force, c);
             }
         }
 
@@ -123,6 +137,9 @@ public class VendorPublishCommand extends ArtisanCommand {
             if ("config".equals(tag)) {
                 return filterByType(all, PublishType.CONFIG);
             }
+            if ("migrations".equals(tag)) {
+                return filterByType(all, PublishType.MIGRATION);
+            }
             List<Publishable> matched = new ArrayList<>();
             for (Publishable p : all) {
                 if (tag.equals(p.tag())) {
@@ -132,7 +149,7 @@ public class VendorPublishCommand extends ArtisanCommand {
             if (matched.isEmpty()) {
                 error("未知的 tag: " + tag);
                 info("可用的 tag: " + String.join(", ", tags(all))
-                        + "（保留标签: resources=全部静态资源, config=全部配置类）");
+                        + "（保留标签: resources=全部静态资源, config=全部配置类, migrations=全部模块建表迁移）");
                 return null;
             }
             return matched;
@@ -142,7 +159,8 @@ public class VendorPublishCommand extends ArtisanCommand {
         printList(all);
         info("");
         info("请使用 --all 发布全部；--tag=<标签> 发布指定模块；"
-                + "--tag=resources 发布静态资源；--tag=config 发布配置类。");
+                + "--tag=resources 发布静态资源；--tag=config 发布配置类；"
+                + "--tag=migrations 发布所有模块的建表迁移文件（之后执行 artisan migrate）。");
         return new ArrayList<>();
     }
 
@@ -176,10 +194,23 @@ public class VendorPublishCommand extends ArtisanCommand {
         for (Map.Entry<String, List<Publishable>> entry : grouped.entrySet()) {
             info("  [" + entry.getKey() + "]");
             for (Publishable p : entry.getValue()) {
-                String type = p.type() == PublishType.RESOURCE ? "resource" : "config";
-                String name = p instanceof PublishableConfig c
-                        ? c.className()
-                        : (p instanceof PublishableStatic s ? String.join(", ", s.resources().values()) : p.tag());
+                PublishType t = p.type();
+                String type = t == PublishType.RESOURCE ? "resource"
+                        : (t == PublishType.MIGRATION ? "migration" : "config");
+                String name;
+                if (p instanceof PublishableConfig c) {
+                    name = c.className();
+                } else if (p instanceof PublishableStatic s) {
+                    name = String.join(", ", s.resources().values());
+                } else if (p instanceof PublishableMigration m) {
+                    List<String> files = new ArrayList<>();
+                    for (Map.Entry<String, String> f : m.migrationFiles()) {
+                        files.add(f.getValue());
+                    }
+                    name = String.join(", ", files);
+                } else {
+                    name = p.tag();
+                }
                 String desc = p.description();
                 info("    - (" + type + ") " + name + (desc.isEmpty() ? "" : "  # " + desc));
             }
@@ -257,6 +288,95 @@ public class VendorPublishCommand extends ArtisanCommand {
     }
 
     /**
+     * 发布模块内置迁移文件（{@link PublishableMigration}）到业务工程迁移源代码目录：
+     * 从模块 jar 读取 Java 源文件 → 把 {@code package} 声明重写为工程迁移包
+     * （{@code MakeCodeProperties#getMigrationPackage}，与目标目录
+     * {@code getMigrationSourceDir()} 严格对应，保证发布后直接可编译）→ 落盘。
+     */
+    private void publishMigration(PublishableMigration item, boolean force, Counters c) {
+        Path migrationDir = resolveMigrationDir();
+        try {
+            Files.createDirectories(migrationDir);
+        } catch (IOException e) {
+            error("无法创建迁移目录: " + migrationDir + " (" + e.getMessage() + ")");
+            c.failed++;
+            return;
+        }
+
+        ClassLoader loader = item.sourceClassLoader();
+        for (Map.Entry<String, String> file : item.migrationFiles()) {
+            String source = normalizeClasspath(file.getKey());
+            String fileName = file.getValue();
+            Path target = migrationDir.resolve(fileName).normalize();
+
+            // 防目录穿越：目标必须落在迁移目录内
+            if (!target.startsWith(migrationDir)) {
+                error("非法的目标路径（越出迁移目录）: " + fileName);
+                c.failed++;
+                continue;
+            }
+            if (fileName == null || fileName.isBlank() || fileName.contains("/") || fileName.contains("\\")) {
+                error("非法的迁移文件名（必须是不含目录的路径）: " + fileName);
+                c.failed++;
+                continue;
+            }
+
+            if (Files.exists(target) && !force) {
+                warn("已存在，跳过: " + target + "  (使用 --force 覆盖)");
+                c.skipped++;
+                continue;
+            }
+
+            byte[] content = readClasspath(loader, source);
+            if (content == null) {
+                error("找不到模块内置迁移资源: " + source);
+                c.failed++;
+                continue;
+            }
+
+            String text = rewritePackage(new String(content, StandardCharsets.UTF_8),
+                    properties.getMigrationPackage());
+
+            try {
+                Files.write(target, text.getBytes(StandardCharsets.UTF_8));
+                info("已发布(迁移): " + target);
+                c.published++;
+            } catch (IOException e) {
+                error("写入失败: " + target + " (" + e.getMessage() + ")");
+                c.failed++;
+            }
+        }
+    }
+
+    /**
+     * 把迁移源码的第一个 {@code package ...;} 声明重写为工程迁移包，
+     * 使其落在 {@code getMigrationSourceDir()} 目录后可直接参与编译。
+     * 若源文件没有 package 声明（不应发生），保持不变并在结果中提示。
+     */
+    private static String rewritePackage(String source, String newPackage) {
+        String[] lines = source.split("\n", -1);
+        for (int i = 0; i < lines.length; i++) {
+            if (!lines[i].strip().startsWith("package ")) {
+                continue;
+            }
+            String before = lines[i].substring(0, lines[i].indexOf('p'));
+            String tail = lines[i].substring(lines[i].indexOf(';') + 1); // 同行尾注释（少见），原样保留
+            String newLine = before + "package " + newPackage + ";" + tail;
+            StringBuilder sb = new StringBuilder();
+            for (int j = 0; j < i; j++) {
+                sb.append(lines[j]).append('\n');
+            }
+            sb.append(newLine);
+            for (int j = i + 1; j < lines.length; j++) {
+                sb.append('\n').append(lines[j]);
+            }
+            return sb.toString();
+        }
+        // 未找到 package 声明（不应发生）：原样输出
+        return source;
+    }
+
+    /**
      * 读取 classpath 资源为字节数组。
      */
     private byte[] readClasspath(ClassLoader loader, String path) {
@@ -293,6 +413,17 @@ public class VendorPublishCommand extends ArtisanCommand {
      */
     private Path resolveResourcesRoot() {
         return Paths.get(properties.getResourcesDir())
+                .toAbsolutePath()
+                .normalize();
+    }
+
+    /**
+     * 计算迁移文件输出目录：{@code MakeCodeProperties#getMigrationSourceDir}
+     *（默认 {@code src/main/java/<basePackage 路径>/database/migrations}），
+     * 与 {@code MakeCodeProperties#getMigrationPackage()} 一一对应。
+     */
+    private Path resolveMigrationDir() {
+        return Paths.get(properties.getMigrationSourceDir())
                 .toAbsolutePath()
                 .normalize();
     }

@@ -63,6 +63,11 @@ public class SqlServerDialect extends AbstractDialect {
      * @return 完整的 RENAME SQL
      */
     @Override
+    public String upsertSql(String quotedTable, String[] quotedColumns, String quotedKeyColumn) {
+        return AbstractDialect.upsertMergeUsing(quotedTable, quotedColumns, quotedKeyColumn, "as");
+    }
+
+    @Override
     public String renameTableSql(String from, String to) {
         return "sp_rename '" + from + "', '" + to + "'";
     }

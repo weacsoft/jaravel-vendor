@@ -25,6 +25,11 @@ public class MysqlDialect extends AbstractDialect {
     }
 
     @Override
+    public String upsertSql(String quotedTable, String[] quotedColumns, String quotedKeyColumn) {
+        return AbstractDialect.upsertMysql(quotedTable, quotedColumns, quotedKeyColumn);
+    }
+
+    @Override
     public String renameTableSql(String from, String to) {
         return "RENAME TABLE " + quote(from) + " TO " + quote(to);
     }

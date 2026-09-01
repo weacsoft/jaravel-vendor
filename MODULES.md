@@ -177,9 +177,20 @@ artisan 在各模块的 pom 中均为 `optional`。模块注册命令的方式�
 > **重要**：以下要求**仅在使用对应功能时才需要满足**。
 > 不使用 artisan、不使用 migration 也能正常运行框架。
 >
-> **设计原则**：所有 `xxx:table` 命令（`storage:table`、`cache:table`、`queue:table`）
-> **不直接建表**，而是生成一个迁移 Java 文件到项目的 `database/migrations/` 目录。
-> 用户随后执行 `artisan migrate` 即可创建表。这与 Laravel 的迁移工作流一致。
+> **设计原则（0.1.3 起）**：建表统一走迁移能力，推荐工作流对齐 Laravel：
+>
+> `artisan vendor:publish --tag=migrations` → `artisan migrate`
+>
+> 三个数据库驱动模块（storage-database / cache-database / queue-database）把各自需要的表结构
+> **打包为内置迁移 Java 源文件**，`vendor:publish --tag=migrations` 一键发布到业务工程迁移目录
+> （落点与包名由 `jaravel.artisan.make.*` 决定，包名自动重写为工程迁移包，发布后直接可编译，
+> 已存在的文件默认跳过、`--force` 覆盖），然后 `artisan migrate` 完成建表。
+> 单模块发布用 `--tag=storage-database` / `--tag=cache-database` / `--tag=queue-database`。
+>
+> **备选工作流**：`xxx:table` 命令（`storage:table`、`cache:table`、`queue:table`）
+> **不直接建表**，而是生成一个迁移 Java 文件（生成到与 `vendor:publish` 相同的迁移目录，
+> 由 `jaravel.artisan.make.*` 配置），随后执行 `artisan migrate` 即可建表。
+> `xxx:table` 适合需要自定义表名/前缀/列名的场景。
 
 ### 3.1 storage 模块
 
@@ -191,9 +202,9 @@ artisan 在各模块的 pom 中均为 `optional`。模块注册命令的方式�
 `database` 磁盘采用**分片存储**，需要两张表，表名前缀由 `tablePrefix`
 配置决定（默认 `storage_`，即 `storage_file` 与 `storage_file_chunk`）。
 
-> **注意**：执行 `artisan storage:table` 会在 `database/migrations/` 目录下
-> 生成一个迁移文件，包含 `storage_file` 和 `storage_file_chunk` 两张表的建表代码。
-> 随后执行 `artisan migrate` 即可创建表。
+> **注意**：执行 `artisan storage:table` 会在工程迁移目录（`jaravel.artisan.make.output-dir/<base-package>/database/migrations`，
+> 与 `vendor:publish --tag=migrations` 落点一致）下生成一个迁移文件，
+> 包含 `storage_file` 和 `storage_file_chunk` 两张表的建表代码。随后执行 `artisan migrate` 即可创建表。
 > 磁盘首次使用时**不再自动建表**，需先执行迁移。
 
 ### 3.2 queue-database 模块
@@ -203,7 +214,7 @@ artisan 在各模块的 pom 中均为 `optional`。模块注册命令的方式�
 **数据库表要求**：仅在 `driver=database` 时需要。
 使用 `sync`（默认回退）或 `redis` 时**不需要数据库**。
 
-> **注意**：执行 `artisan queue:table` 会生成一个迁移文件，包含
+> **注意**：执行 `artisan queue:table` 会在工程迁移目录生成一个迁移文件，包含
 > `jobs` 和 `failed_jobs` 两张表的建表代码。随后执行 `artisan migrate` 即可创建表。
 
 队列消费者 `DatabaseQueueWorker` 是**后台 Bean**，

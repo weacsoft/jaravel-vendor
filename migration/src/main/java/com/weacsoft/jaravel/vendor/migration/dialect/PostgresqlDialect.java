@@ -42,6 +42,11 @@ public class PostgresqlDialect extends AbstractDialect {
     }
 
     @Override
+    public String upsertSql(String quotedTable, String[] quotedColumns, String quotedKeyColumn) {
+        return AbstractDialect.upsertOnConflict(quotedTable, quotedColumns, quotedKeyColumn);
+    }
+
+    @Override
     public String renameTableSql(String from, String to) {
         return "ALTER TABLE " + quote(from) + " RENAME TO " + quote(to);
     }

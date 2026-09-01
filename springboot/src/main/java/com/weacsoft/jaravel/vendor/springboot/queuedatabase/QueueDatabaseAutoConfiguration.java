@@ -9,6 +9,7 @@ import com.weacsoft.jaravel.vendor.core.queue.QueueProperties;
 import com.weacsoft.jaravel.vendor.queue.database.DatabaseQueueDispatcher;
 import com.weacsoft.jaravel.vendor.queue.database.DatabaseQueueDriver;
 import com.weacsoft.jaravel.vendor.queue.database.DatabaseQueueWorker;
+import com.weacsoft.jaravel.vendor.queue.database.QueueDatabaseMigrationPublishable;
 import com.weacsoft.jaravel.vendor.queue.database.QueueDatabaseProperties;
 import com.weacsoft.jaravel.vendor.queue.database.QueueDatabasePublishableConfig;
 
@@ -124,8 +125,13 @@ public class QueueDatabaseAutoConfiguration {
     public DatabaseQueueDriver databaseQueueDriver(DataSource dataSource,
                                                    QueueDatabaseProperties dbProps,
                                                    QueueProperties props) {
+        // 数据源解析顺序（0.1.3 对齐 cache/storage）：先 database 模块 ConnectionManager，再回退 Spring DataSource
+        DataSource resolved = com.weacsoft.jaravel.vendor.database.ConnectionManager.defaultRawDataSource();
+        if (resolved == null) {
+            resolved = dataSource;
+        }
         logger.info("[queue] 使用 database 驱动: table={}", dbProps.getTable());
-        return new DatabaseQueueDriver(dataSource, dbProps.getTable(),
+        return new DatabaseQueueDriver(resolved, dbProps.getTable(),
                 dbProps.getRetryAfter(), props.getFailedJobRetentionDays());
     }
 
@@ -204,5 +210,9 @@ public class QueueDatabaseAutoConfiguration {
 
     static {
         PublishableRegistry.register(new QueueDatabasePublishableConfig());
+        // 0.1.3：注册迁移发布声明（vendor:publish --tag=migrations / --tag=queue-database）。
+        // 本类已被 @ConditionalOnClass(DatabaseQueueDriver.class) 守卫，
+        // QueueDatabaseMigrationPublishable 与驱动同属 queue-database 模块，加载安全。
+        PublishableRegistry.register(new QueueDatabaseMigrationPublishable());
     }
 }

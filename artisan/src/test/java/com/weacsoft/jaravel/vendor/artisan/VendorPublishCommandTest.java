@@ -4,6 +4,7 @@ import com.weacsoft.jaravel.vendor.artisan.make.MakeCodeProperties;
 import com.weacsoft.jaravel.vendor.artisan.vendor.VendorPublishCommand;
 import com.weacsoft.jaravel.vendor.core.publish.Publishable;
 import com.weacsoft.jaravel.vendor.core.publish.PublishableConfig;
+import com.weacsoft.jaravel.vendor.core.publish.PublishableMigration;
 import com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry;
 import com.weacsoft.jaravel.vendor.core.publish.PublishableStatic;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,13 +28,15 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * {@link VendorPublishCommand} 单元测试（统一处理配置类 + 静态资源）。
+ * {@link VendorPublishCommand} 单元测试（统一处理配置类 + 静态资源 + 迁移文件）。
  * <p>
  * 测试覆盖：
  * <ul>
- *   <li>{@code --all} 同时发布配置类与静态资源</li>
+ *   <li>{@code --all} 同时发布配置类、静态资源与迁移文件</li>
  *   <li>{@code --tag=<模块>} 只发布该标签（含其配置与资源）</li>
- *   <li>{@code --tag=resources} 只发布静态资源；{@code --tag=config} 只发布配置类</li>
+ *   <li>{@code --tag=resources} 只发布静态资源；{@code --tag=config} 只发布配置类；
+ *       {@code --tag=migrations} 只发布所有模块的建表迁移</li>
+ *   <li>迁移发布产物的包名被重写为工程迁移包（与目标目录一致，直接可编译）</li>
  *   <li>{@code --force} 覆盖语义与默认跳过语义</li>
  *   <li>{@code --list} 只列出不写文件</li>
  *   <li>未知 tag 返回失败码</li>
@@ -64,6 +67,11 @@ class VendorPublishCommandTest {
     /** 静态资源应发布到 {@code <resourcesDir>/static/}。 */
     private Path resourcesDir() {
         return tempDir.resolve("resources");
+    }
+
+    /** 迁移文件应发布到 {@code <outputDir>/com/example/test/database/migrations/}（MakeCodeProperties 约定）。 */
+    private Path migrationDir() {
+        return tempDir.resolve("com/example/test/database/migrations");
     }
 
     /**
@@ -136,6 +144,36 @@ class VendorPublishCommandTest {
         };
     }
 
+    /** 简单的可发布迁移桩（用内存 ClassLoader 提供模块 jar 内置迁移源码）。 */
+    private PublishableMigration migrationStub(String tag, String cp, String target, byte[] bytes) {
+        return new PublishableMigration() {
+            @Override
+            public String tag() {
+                return tag;
+            }
+
+            @Override
+            public List<Map.Entry<String, String>> migrationFiles() {
+                return List.of(Map.entry(cp, target));
+            }
+
+            @Override
+            public String description() {
+                return "测试迁移桩";
+            }
+
+            @Override
+            public ClassLoader sourceClassLoader() {
+                return new ClassLoader() {
+                    @Override
+                    public InputStream getResourceAsStream(String name) {
+                        return name.equals(cp) ? new ByteArrayInputStream(bytes) : null;
+                    }
+                };
+            }
+        };
+    }
+
     @Test
     void testPublishAll() throws IOException {
         PublishableRegistry.register(stub("cache", "CacheConfig"));
@@ -189,6 +227,105 @@ class VendorPublishCommandTest {
         assertEquals(0, code);
         assertTrue(Files.exists(configDir().resolve("CacheConfig.java")), "--tag=config 应发布配置类");
         assertFalse(Files.exists(resourcesDir().resolve("static/x.js")), "--tag=config 不应发布静态资源");
+    }
+
+    @Test
+    void testPublishMigrationsTag() throws IOException {
+        // 内置迁移源码带模块自己的包名（模拟模块 jar 内资源），发布后必须被重写为工程迁移包
+        byte[] cacheMigration = ("package com.weacsoft.vendor.internal;\n"
+                + "@MigrationAnnotation\npublic class Migration_20240101_CreateJaravelCacheTable {}\n")
+                .getBytes(StandardCharsets.UTF_8);
+        byte[] queueMigration = ("package com.weacsoft.vendor.internal;\n"
+                + "@MigrationAnnotation\npublic class Migration_20240101_CreateQueueTables {}\n")
+                .getBytes(StandardCharsets.UTF_8);
+        PublishableRegistry.register(stub("cache", "CacheConfig"));
+        PublishableRegistry.register(migrationStub("cache-database",
+                "jaravel/migrations/Migration_20240101_CreateJaravelCacheTable.java",
+                "Migration_20240101_CreateJaravelCacheTable.java", cacheMigration));
+        PublishableRegistry.register(migrationStub("queue-database",
+                "jaravel/migrations/Migration_20240101_CreateQueueTables.java",
+                "Migration_20240101_CreateQueueTables.java", queueMigration));
+
+        int code = command("tag=migrations").handle();
+
+        assertEquals(0, code);
+        Path cacheTarget = migrationDir().resolve("Migration_20240101_CreateJaravelCacheTable.java");
+        Path queueTarget = migrationDir().resolve("Migration_20240101_CreateQueueTables.java");
+        assertTrue(Files.exists(cacheTarget), "cache-database 内置迁移应被发布");
+        assertTrue(Files.exists(queueTarget), "queue-database 内置迁移应被发布");
+        assertFalse(Files.exists(configDir().resolve("CacheConfig.java")),
+                "--tag=migrations 不应发布配置类");
+
+        String content = Files.readString(cacheTarget, StandardCharsets.UTF_8);
+        assertTrue(content.startsWith("package com.example.test.database.migrations;"),
+                "迁移文件包名应重写为工程迁移包，实际: " + content);
+        assertTrue(content.contains("Migration_20240101_CreateJaravelCacheTable"),
+                "迁移类内容应保留");
+    }
+
+    @Test
+    void testPublishMigrationByModuleTag() throws IOException {
+        byte[] migrationBytes = ("package com.weacsoft.vendor.internal;\n"
+                + "public class Migration_20240101_CreateStorageTables {}\n")
+                .getBytes(StandardCharsets.UTF_8);
+        PublishableRegistry.register(migrationStub("cache-database", "a.java", "Migration_A.java", migrationBytes));
+        PublishableRegistry.register(migrationStub("storage-database", "b.java", "Migration_B.java", migrationBytes));
+
+        int code = command("tag=storage-database").handle();
+
+        assertEquals(0, code, "应按模块 tag 发布对应迁移");
+        assertTrue(Files.exists(migrationDir().resolve("Migration_B.java")));
+        assertFalse(Files.exists(migrationDir().resolve("Migration_A.java")),
+                "非本 tag 的迁移不应被发布");
+    }
+
+    @Test
+    void testMigrationSkipExistingAndForce() throws IOException {
+        byte[] migrationBytes = ("package com.weacsoft.vendor.internal;\n"
+                + "public class Migration_20240101_CreateJaravelCacheTable {}\n")
+                .getBytes(StandardCharsets.UTF_8);
+        PublishableRegistry.register(migrationStub("cache-database",
+                "m.java", "Migration_20240101_CreateJaravelCacheTable.java", migrationBytes));
+        Path target = migrationDir().resolve("Migration_20240101_CreateJaravelCacheTable.java");
+
+        // 首次：发布成功
+        assertEquals(0, command("tag=migrations").handle());
+        assertTrue(Files.exists(target));
+        String first = Files.readString(target, StandardCharsets.UTF_8);
+
+        // 用户修改后重跑：默认跳过，不覆盖
+        Files.writeString(target, "// 用户已修改", StandardCharsets.UTF_8);
+        PublishableRegistry.clearForTest();
+        PublishableRegistry.register(migrationStub("cache-database",
+                "m.java", "Migration_20240101_CreateJaravelCacheTable.java", migrationBytes));
+        assertEquals(0, command("tag=migrations").handle());
+        assertEquals("// 用户已修改", Files.readString(target, StandardCharsets.UTF_8),
+                "默认不应覆盖业务工程已存在的迁移文件");
+
+        // --force：覆盖
+        PublishableRegistry.clearForTest();
+        PublishableRegistry.register(migrationStub("cache-database",
+                "m.java", "Migration_20240101_CreateJaravelCacheTable.java", migrationBytes));
+        assertEquals(0, command("tag=migrations", "force").handle());
+        assertTrue(Files.readString(target, StandardCharsets.UTF_8).contains("Migration_20240101_CreateJaravelCacheTable"),
+                "--force 应覆盖已存在的迁移文件");
+    }
+
+    @Test
+    void testAllIncludesMigrations() throws IOException {
+        byte[] migrationBytes = ("package com.weacsoft.vendor.internal;\n"
+                + "public class Migration_20240101_CreateJaravelCacheTable {}\n")
+                .getBytes(StandardCharsets.UTF_8);
+        PublishableRegistry.register(stub("cache", "CacheConfig"));
+        PublishableRegistry.register(migrationStub("cache-database", "m.java",
+                "Migration_20240101_CreateJaravelCacheTable.java", migrationBytes));
+
+        int code = command("all").handle();
+
+        assertEquals(0, code);
+        assertTrue(Files.exists(configDir().resolve("CacheConfig.java")));
+        assertTrue(Files.exists(migrationDir().resolve("Migration_20240101_CreateJaravelCacheTable.java")),
+                "--all 应同时发布迁移文件");
     }
 
     @Test

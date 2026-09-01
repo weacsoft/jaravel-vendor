@@ -2,18 +2,12 @@ package com.weacsoft.jaravel.vendor.queue.database;
 
 import com.weacsoft.jaravel.vendor.core.queue.QueueDriver;
 import com.weacsoft.jaravel.vendor.core.queue.QueuedJob;
-
+import com.weacsoft.jaravel.vendor.database.JdbcExecutor;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.sql.DataSource;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -22,9 +16,11 @@ import java.util.List;
  * 将任务持久化到数据库 {@code jobs} 表，支持多实例消费、重试和延迟执行。
  * 失败任务归档到 {@code failed_jobs} 表，对齐 Laravel {@code failed_jobs}。
  * <p>
- * <b>D3（Spring 解耦终收）</b>：SQL 操作已全部改为原生 JDBC（{@code Connection/PreparedStatement/ResultSet}，
- * 复刻 {@code cache-database} 模块的驱动模板），不再依赖 spring-jdbc；
- * {@link DataSource} 来自 database 模块 {@code ConnectionManager} 注册表或业务方显式传入。
+ * <b>架构对齐（D3 收口 + 0.1.3）</b>：SQL 操作统一经由 database 模块的
+ * {@link JdbcExecutor} 执行（连接来自 {@code ConnectionManager} 注册表或业务方显式传入），
+ * 不再依赖 spring-jdbc，也不再自带一套私有 JDBC 工具；建表统一走 migration 模块
+ * 迁移能力（{@code vendor:publish --tag=migrations} 发布内置迁移 + {@code artisan migrate}，
+ * 或 {@code artisan queue:table} 生成迁移文件）。
  *
  * <h3>多实例消费</h3>
  * 使用 {@code SELECT ... FOR UPDATE SKIP LOCKED}（MySQL 8+）实现非阻塞抢占式消费，
@@ -36,9 +32,12 @@ import java.util.List;
  * 超过 {@code retryAfterSeconds}（默认 1800 秒 = 30 分钟）未被确认的任务会被重新预约。
  * 超过最大重试次数后通过 {@link #fail} 归档到 {@code failed_jobs} 表。
  *
- * <h3>手动建表</h3>
- * <b>不会自动建表</b>：需通过 {@code artisan queue:table} 命令或手动调用 {@link #createTable()} 创建
- * {@code jobs} 与 {@code failed_jobs} 表。若数据库账号无 DDL 权限则需提前手动建表。
+ * <h3>建表（统一走迁移能力）</h3>
+ * <b>不会自动建表</b>：推荐 {@code artisan vendor:publish --tag=migrations} 发布本模块内置迁移
+ * （默认 {@code jobs} / {@code failed_jobs} 表）后执行 {@code artisan migrate}；
+ * 或 {@code artisan queue:table} 生成迁移文件后 migrate；也可手动调用 {@link #createTable()}
+ *（内部即经由 migration 模块 {@code Schema.createIfAbsent} 建表）。
+ * 若数据库账号无 DDL 权限则需提前手动建表。
  *
  * <h3>数据库表结构</h3>
  * 对齐 Laravel {@code jobs} / {@code failed_jobs} 表：
@@ -84,6 +83,9 @@ public class DatabaseQueueDriver implements QueueDriver {
     /** 失败任务保留天数，超过后可由 {@link #purgeOldFailedJobs()} 清理 */
     private final int failedJobRetentionDays;
 
+    /** database 模块 SQL 执行底座（驱动不再自带私有 JDBC 四件套） */
+    private final JdbcExecutor jdbc;
+
     /**
      * 构造数据库队列驱动（失败任务保留 7 天）。
      *
@@ -127,57 +129,66 @@ public class DatabaseQueueDriver implements QueueDriver {
         this.failedTable = failedTable;
         this.retryAfterSeconds = retryAfterSeconds;
         this.failedJobRetentionDays = failedJobRetentionDays;
-        // 不自动建表：需通过 artisan queue:table 命令或手动调用 createTable() 创建
+        this.jdbc = new JdbcExecutor(dataSource);
+        // 不自动建表：建表统一走迁移能力（vendor:publish --tag=migrations / queue:table + migrate）
     }
 
     /**
-     * 创建任务表与失败任务表（IF NOT EXISTS）。
-     * <p>
-     * 由 {@code artisan queue:table} 命令调用，或由业务方手动调用。
+     * 声明任务表结构——与模块内置迁移文件（jobs：自增主键 + queue/payload/attempts/
+     * reserved_at/available_at/created_at + queue 索引）共用的一致定义。
      *
-     * @return true 表示建表成功
+     * @param builder migration 模块 Blueprint 构建器
+     */
+    public void defineJobsTable(com.weacsoft.jaravel.vendor.migration.Blueprint builder) {
+        builder.id();
+        builder.string("queue", 255);
+        builder.text("payload");
+        builder.integer("attempts").defaultValue(0);
+        builder.bigInteger("reserved_at").nullable();
+        builder.bigInteger("available_at");
+        builder.bigInteger("created_at");
+        builder.index("queue");
+    }
+
+    /**
+     * 声明失败任务表结构——与模块内置迁移文件共用的一致定义。
+     *
+     * @param builder migration 模块 Blueprint 构建器
+     */
+    public void defineFailedJobsTable(com.weacsoft.jaravel.vendor.migration.Blueprint builder) {
+        builder.id();
+        builder.string("queue", 255);
+        builder.text("payload");
+        builder.text("exception").nullable();
+        builder.integer("attempts").defaultValue(0);
+        builder.bigInteger("failed_at");
+        builder.index("queue");
+    }
+
+    /**
+     * 创建任务表与失败任务表（若不存在）——统一经由 migration 模块
+     * {@link com.weacsoft.jaravel.vendor.migration.Schema#createIfAbsent} 完成：
+     * 方言感知的存在性检查 + DDL 生成（自增主键 / 索引均由方言负责，
+     * 不再手拼 {@code CREATE TABLE IF NOT EXISTS}——SQL Server 不支持该语法，
+     * 且旧内置 DDL 硬编码 {@code AUTO_INCREMENT}，SQLite / Oracle 上直接失败）。
+     * <p>
+     * 建表同样推荐走迁移能力：{@code vendor:publish --tag=migrations} 发布内置迁移 +
+     * {@code artisan migrate}，或 {@code artisan queue:table} 生成迁移文件后 migrate。
+     *
+     * @return true 表示建表成功或表已存在
      */
     public boolean createTable() {
         try {
-            // 建表（不在 CREATE TABLE 内使用 INDEX，保证 SQLite/MySQL/H2 通用）
-            executeSql("CREATE TABLE IF NOT EXISTS " + table + " ("
-                    + "id BIGINT AUTO_INCREMENT PRIMARY KEY, "
-                    + "queue VARCHAR(255) NOT NULL, "
-                    + "payload TEXT NOT NULL, "
-                    + "attempts INT NOT NULL DEFAULT 0, "
-                    + "reserved_at BIGINT NULL, "
-                    + "available_at BIGINT NOT NULL, "
-                    + "created_at BIGINT NOT NULL"
-                    + ")");
-            executeSql("CREATE TABLE IF NOT EXISTS " + failedTable + " ("
-                    + "id BIGINT AUTO_INCREMENT PRIMARY KEY, "
-                    + "queue VARCHAR(255) NOT NULL, "
-                    + "payload TEXT NOT NULL, "
-                    + "exception TEXT, "
-                    + "attempts INT NOT NULL DEFAULT 0, "
-                    + "failed_at BIGINT NOT NULL"
-                    + ")");
-            // 单独创建索引（SQLite/MySQL/H2 均支持 CREATE INDEX IF NOT EXISTS 语法）
-            createIndexIfAbsent(table + "_queue_index", table, "queue");
-            createIndexIfAbsent(failedTable + "_queue_index", failedTable, "queue");
-            logger.info("[queue-db] 建表完成: jobs={}, failed_jobs={}", table, failedTable);
+            com.weacsoft.jaravel.vendor.migration.Schema schema =
+                    new com.weacsoft.jaravel.vendor.migration.Schema(dataSource);
+            boolean jobs = schema.createIfAbsent(table, this::defineJobsTable);
+            boolean failed = schema.createIfAbsent(failedTable, this::defineFailedJobsTable);
+            logger.info("[queue-db] 建表完成: jobs={} (created={}), failed_jobs={} (created={})",
+                    table, jobs, failedTable, failed);
             return true;
         } catch (Exception e) {
-            logger.warn("[queue-db] 建表失败（请确认 DDL 权限或手动建表）: {}", e.getMessage());
+            logger.warn("[queue-db] 建表失败（请确认 DDL 权限，或先执行内置迁移 / artisan queue:table）: {}", e.getMessage());
             return false;
-        }
-    }
-
-    /** 建索引；不支持 {@code IF NOT EXISTS} 的数据库退化为普通 CREATE（已存在则忽略） */
-    private void createIndexIfAbsent(String indexName, String tbl, String column) {
-        try {
-            executeSql("CREATE INDEX IF NOT EXISTS " + indexName + " ON " + tbl + " (" + column + ")");
-        } catch (Exception ignored) {
-            try {
-                executeSql("CREATE INDEX " + indexName + " ON " + tbl + " (" + column + ")");
-            } catch (Exception ignored2) {
-                // 索引已存在或无权限，忽略
-            }
         }
     }
 
@@ -201,32 +212,11 @@ public class DatabaseQueueDriver implements QueueDriver {
         long now = System.currentTimeMillis();
         long availableAt = delayMs > 0 ? now + delayMs : now;
 
-        String sql = "INSERT INTO " + table + " (queue, payload, attempts, reserved_at, available_at, created_at) VALUES (?, ?, 0, NULL, ?, ?)";
-        long jobId = insertReturningKey(
-                queueName, payload, availableAt, now, sql);
+        long jobId = jdbc.insertReturningKey(
+                "INSERT INTO " + table + " (queue, payload, attempts, reserved_at, available_at, created_at) VALUES (?, ?, 0, NULL, ?, ?)",
+                queueName, payload, availableAt, now);
         logger.debug("[queue-db] 推送任务: queue={}, jobId={}, delayMs={}", queueName, jobId, delayMs);
         return jobId;
-    }
-
-    /**
-     * 执行带自增键返回的 INSERT。
-     *
-     * @return 自增主键；取不到时为 -1
-     */
-    private long insertReturningKey(Object p1, Object p2, Object p3, Object p4, String sql) {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-            bind(ps, p1, p2, p3, p4);
-            ps.executeUpdate();
-            try (ResultSet keys = ps.getGeneratedKeys()) {
-                if (keys.next()) {
-                    return keys.getLong(1);
-                }
-            }
-            return -1;
-        } catch (SQLException e) {
-            throw new IllegalStateException("数据库操作失败: " + sql, e);
-        }
     }
 
     @Override
@@ -241,7 +231,7 @@ public class DatabaseQueueDriver implements QueueDriver {
                 + "WHERE queue = ? AND available_at <= ? AND (reserved_at IS NULL OR reserved_at < ?) "
                 + "ORDER BY id ASC LIMIT 1";
 
-        List<QueuedJob> jobs = queryRows(selectSql, rs -> {
+        List<QueuedJob> jobs = jdbc.queryMapped(selectSql, rs -> {
             long id = rs.getLong("id");
             int attempts = rs.getInt("attempts");
             String payloadStr = rs.getString("payload");
@@ -258,7 +248,7 @@ public class DatabaseQueueDriver implements QueueDriver {
         // 乐观锁：尝试预约（只有未被预约或已过期的任务才能被预约）
         String updateSql = "UPDATE " + table + " SET reserved_at = ?, attempts = attempts + 1 "
                 + "WHERE id = ? AND (reserved_at IS NULL OR reserved_at < ?)";
-        int updated = executeUpdate(updateSql, now, job.getId(), expired);
+        int updated = jdbc.update(updateSql, now, job.getId(), expired);
         if (updated == 0) {
             // 被其他实例抢占了
             return null;
@@ -268,7 +258,7 @@ public class DatabaseQueueDriver implements QueueDriver {
 
     @Override
     public void delete(long jobId) {
-        executeUpdate("DELETE FROM " + table + " WHERE id = ?", jobId);
+        jdbc.update("DELETE FROM " + table + " WHERE id = ?", jobId);
         logger.debug("[queue-db] 删除任务: jobId={}", jobId);
     }
 
@@ -280,7 +270,7 @@ public class DatabaseQueueDriver implements QueueDriver {
     @Override
     public void release(long jobId, long delayMs) {
         long availableAt = System.currentTimeMillis() + delayMs;
-        executeUpdate(
+        jdbc.update(
                 "UPDATE " + table + " SET reserved_at = NULL, available_at = ? WHERE id = ?",
                 availableAt, jobId);
         logger.debug("[queue-db] 释放任务: jobId={}, delayMs={}", jobId, delayMs);
@@ -290,7 +280,7 @@ public class DatabaseQueueDriver implements QueueDriver {
     public int size(String queueName) {
         long now = System.currentTimeMillis();
         long expired = now - (retryAfterSeconds * 1000);
-        List<Integer> counts = queryRows(
+        List<Integer> counts = jdbc.queryMapped(
                 "SELECT COUNT(*) FROM " + table + " WHERE queue = ? AND available_at <= ? AND (reserved_at IS NULL OR reserved_at < ?)",
                 rs -> rs.getInt(1), queueName, now, expired);
         return counts.isEmpty() ? 0 : counts.get(0);
@@ -298,7 +288,7 @@ public class DatabaseQueueDriver implements QueueDriver {
 
     @Override
     public void clear(String queueName) {
-        executeUpdate("DELETE FROM " + table + " WHERE queue = ?", queueName);
+        jdbc.update("DELETE FROM " + table + " WHERE queue = ?", queueName);
         logger.info("[queue-db] 清空队列: {}", queueName);
     }
 
@@ -307,7 +297,7 @@ public class DatabaseQueueDriver implements QueueDriver {
     @Override
     public void fail(long jobId, String queue, String payload, int attempts, String exception) {
         long now = System.currentTimeMillis();
-        executeUpdate(
+        jdbc.update(
                 "INSERT INTO " + failedTable + " (queue, payload, exception, attempts, failed_at) VALUES (?, ?, ?, ?, ?)",
                 queue, payload, exception, attempts, now);
         // 从 jobs 表移除原任务
@@ -317,7 +307,7 @@ public class DatabaseQueueDriver implements QueueDriver {
 
     @Override
     public List<QueuedJob> getFailedJobs() {
-        return queryRows(
+        return jdbc.queryMapped(
                 "SELECT id, queue, payload, exception, attempts, failed_at FROM " + failedTable + " ORDER BY id DESC",
                 rs -> {
                     long id = rs.getLong("id");
@@ -332,7 +322,7 @@ public class DatabaseQueueDriver implements QueueDriver {
 
     @Override
     public void retryFailedJob(long failedJobId) {
-        List<QueuedJob> jobs = queryRows(
+        List<QueuedJob> jobs = jdbc.queryMapped(
                 "SELECT id, queue, payload, exception, attempts, failed_at FROM " + failedTable + " WHERE id = ?",
                 rs -> {
                     long id = rs.getLong("id");
@@ -351,13 +341,13 @@ public class DatabaseQueueDriver implements QueueDriver {
         // 重新推入原队列（重置尝试次数为 0）
         long newJobId = push(job.getQueue(), job.getPayload());
         // 从失败队列移除
-        executeUpdate("DELETE FROM " + failedTable + " WHERE id = ?", failedJobId);
+        jdbc.update("DELETE FROM " + failedTable + " WHERE id = ?", failedJobId);
         logger.info("[queue-db] 重试失败任务: failedJobId={}, 新 jobId={}, queue={}", failedJobId, newJobId, job.getQueue());
     }
 
     @Override
     public void deleteFailedJob(long failedJobId) {
-        int deleted = executeUpdate("DELETE FROM " + failedTable + " WHERE id = ?", failedJobId);
+        int deleted = jdbc.update("DELETE FROM " + failedTable + " WHERE id = ?", failedJobId);
         if (deleted > 0) {
             logger.info("[queue-db] 删除失败任务: failedJobId={}", failedJobId);
         } else {
@@ -367,7 +357,7 @@ public class DatabaseQueueDriver implements QueueDriver {
 
     @Override
     public void clearFailedJobs() {
-        executeUpdate("DELETE FROM " + failedTable);
+        jdbc.update("DELETE FROM " + failedTable);
         logger.info("[queue-db] 清空所有失败任务");
     }
 
@@ -379,74 +369,10 @@ public class DatabaseQueueDriver implements QueueDriver {
      */
     public void purgeOldFailedJobs() {
         long threshold = System.currentTimeMillis() - (long) failedJobRetentionDays * 24 * 60 * 60 * 1000;
-        int deleted = executeUpdate("DELETE FROM " + failedTable + " WHERE failed_at < ?", threshold);
+        int deleted = jdbc.update("DELETE FROM " + failedTable + " WHERE failed_at < ?", threshold);
         if (deleted > 0) {
             logger.info("[queue-db] 清理过期失败任务: count={}, retentionDays={}", deleted, failedJobRetentionDays);
         }
     }
 
-    // ==================== 原生 JDBC 工具方法（复刻 cache-database 四件套） ====================
-
-    /**
-     * 执行更新语句（INSERT/UPDATE/DELETE）。
-     *
-     * @return 受影响行数
-     * @throws IllegalStateException 数据库错误（含表不存在——请先执行 {@code artisan queue:table}）
-     */
-    private int executeUpdate(String sql, Object... params) {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            bind(ps, params);
-            return ps.executeUpdate();
-        } catch (SQLException e) {
-            throw new IllegalStateException("数据库操作失败: " + sql, e);
-        }
-    }
-
-    /**
-     * 执行建表等 DDL 语句。
-     *
-     * @throws IllegalStateException 数据库错误
-     */
-    private void executeSql(String sql) {
-        try (Connection conn = dataSource.getConnection();
-             Statement st = conn.createStatement()) {
-            st.execute(sql);
-        } catch (SQLException e) {
-            throw new IllegalStateException("数据库操作失败: " + sql, e);
-        }
-    }
-
-    /**
-     * 执行查询并逐行映射。
-     *
-     * @throws IllegalStateException 数据库错误
-     */
-    private <T> List<T> queryRows(String sql, RowMapper<T> mapper, Object... params) {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            bind(ps, params);
-            List<T> rows = new ArrayList<>();
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    rows.add(mapper.map(rs));
-                }
-            }
-            return rows;
-        } catch (SQLException e) {
-            throw new IllegalStateException("数据库操作失败: " + sql, e);
-        }
-    }
-
-    /** 行映射函数：允许抛出受检的 {@link SQLException} */
-    @FunctionalInterface
-    private interface RowMapper<T> {
-        T map(ResultSet rs) throws SQLException;
-    }
-
-    private static void bind(PreparedStatement ps, Object... params) throws SQLException {
-        for (int i = 0; i < params.length; i++) {
-            ps.setObject(i + 1, params[i]);
-        }
-    }
 }

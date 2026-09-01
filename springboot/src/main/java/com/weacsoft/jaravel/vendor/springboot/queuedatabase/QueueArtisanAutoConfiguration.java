@@ -2,6 +2,7 @@ package com.weacsoft.jaravel.vendor.springboot.queuedatabase;
 
 import com.weacsoft.jaravel.vendor.artisan.ArtisanCommand;
 import com.weacsoft.jaravel.vendor.artisan.RegisterCommand;
+import com.weacsoft.jaravel.vendor.artisan.make.MakeCodeProperties;
 import com.weacsoft.jaravel.vendor.queue.database.QueueDatabaseProperties;
 import com.weacsoft.jaravel.vendor.queue.database.artisan.QueueTableCommand;
 import org.slf4j.Logger;
@@ -32,8 +33,9 @@ public class QueueArtisanAutoConfiguration {
     private static final Logger log = LoggerFactory.getLogger(QueueArtisanAutoConfiguration.class);
 
     @RegisterCommand("生成队列任务表迁移文件")
-    public QueueTableCommand queueTableCommand(QueueDatabaseProperties dbProps) {
+    public QueueTableCommand queueTableCommand(QueueDatabaseProperties dbProps,
+                                               MakeCodeProperties makeProps) {
         log.info("[queue-artisan] 注册命令: queue:table");
-        return new QueueTableCommand(dbProps);
+        return new QueueTableCommand(dbProps, makeProps);
     }
 }
