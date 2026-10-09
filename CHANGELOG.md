@@ -5,6 +5,12 @@
 
 ## [Unreleased]（目标版本 0.1.3 · 开发中）
 
+### Fixed（修复 · 第四轮：会话固定与 Session 存储加固）
+
+- **会话固定防护（CWE-384，安全角色标为 High）**：`SessionStore` 契约新增 `rotate()`（默认空实现以保持第三方实现源码兼容），内置实现全部覆盖：`CookieSessionStore` 使旧会话失效（容器随后下发新的 JSESSIONID）、`RedisSessionStore` 把数据搬到新 ID + 删除旧 ID + **同时更新请求与响应 Cookie**（只更新响应会导致同一请求内后续仍读到旧 ID，登录态被写进刚删除的旧 key）。`SessionGuard.login` 现在**先 `rotate()` 再写入登录态**（顺序颠倒会让登录立刻失效），并对「未覆盖 `rotate()` 的实现」打印一次性告警，避免防护被静默跳过。新增 `SessionGuardTest` 用例固定「rotate → put」顺序与「logout 不轮换」。
+- **Session ID 格式白名单**：`RedisSessionStore` 的 Cookie 值会被直接拼进 Redis 键，原先无任何校验（可提交含空白/路径分隔符/超长内容的任意串）。现要求 `[A-Za-z0-9_-]{16,128}`，非法值按「无会话」处理（对齐 Laravel 的 `^[a-zA-Z0-9,-]{22,250}$` 形状约束）。
+- **Session Cookie 属性与登出清理**：会话 Cookie 补 `SameSite=Lax`（跨站请求不携带会话 Cookie，降低 CSRF 面）；`destroy()` 除删除服务端数据外，还会下发 `Max-Age=0` 的失效 Cookie 并清空请求侧取值 —— 原先退出后浏览器仍会继续携带同一个 session id。新增白名单正/反用例（含路径穿越字符、空白、换行、非 ASCII、超长）。
+
 ### Fixed（修复 · 第三轮：队列与缓存原子性）
 
 - **`RedisQueueDriver` 迁移/领取/释放原子化 + 索引 O(1)（审计 M12/M13，此前零测试）**：①到期延迟任务与超时预约任务的迁移由「`ZREM` 后再 `LPUSH`」两步改为 **Lua 脚本**（每个成员的 `ZREM`+`LPUSH` 在同一脚本内原子完成）—— 原实现若进程死在两步之间，任务已从 ZSET 移除却未进就绪队列 → **永久丢失**；②领取由「`RPOP` 后再 `ZADD`」改为 **Lua 领取脚本**，避免「已取出未预约」时崩溃丢任务，随后用第二个脚本**原子替换**预约成员（写入递增后的 attempts/reservedAt）并刷新索引 —— 崩溃时原始成员仍在预约集合，语义是「至少一次」而非丢失；③`release` 同样改为单个 Lua 脚本（`ZREM` + 入队 + 刷新索引）；④索引值由「只存队列名」改为 **`queue<US>member`**，`delete/release` 变为 O(1)（原实现每次 `ZRANGE 0 -1` 全量扫描并逐条反序列化，是热路径 O(N)），旧格式索引仍回退到扫描以兼容滚动升级；⑤`push` 改为**先写索引再入队**（后者最坏留一条无害孤儿索引，前者会导致定位不到队列）；⑥索引缺失不再静默 debug，改为告警并说明任务将由超时迁移重新投递。新增 `RedisQueueDriverTest`（8 例，Mockito mock `RedisCommands`；含「新格式不再扫描」「旧格式回退扫描」「迁移/领取走 eval 且不再用两步命令」等断言）。**Lua 的原子语义本身需真实 Redis 才能验证，已列为未验证项。**

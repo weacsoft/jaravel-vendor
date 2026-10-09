@@ -72,6 +72,51 @@ class SessionGuardTest {
         return new InMemorySessionStore();
     }
 
+    /** 记录 rotate/put 调用顺序的存储实现，用于「会话固定防护」回归 */
+    static class RecordingSessionStore implements SessionStore {
+        final java.util.List<String> calls = new java.util.ArrayList<>();
+        final Map<String, Object> data = new HashMap<>();
+
+        @Override
+        public Object get(String key) { return data.get(key); }
+        @Override
+        public void put(String key, Object value) { calls.add("put"); data.put(key, value); }
+        @Override
+        public void remove(String key) { data.remove(key); }
+        @Override
+        public void destroy() { data.clear(); }
+        @Override
+        public void rotate() { calls.add("rotate"); data.clear(); }
+    }
+
+    // ==================== 会话固定防护（CWE-384）====================
+
+    @Test
+    void loginRotatesSessionIdBeforePersistingLogin() {
+        RecordingSessionStore store = new RecordingSessionStore();
+        // 模拟攻击者预置的旧会话内容：登录后必须被轮换（清除）掉
+        store.data.put("login_web_id", 999L);
+
+        SessionGuard guard = new SessionGuard("web", new StubProvider(), store);
+        guard.login(new TestUser(1L));
+
+        assertEquals(java.util.List.of("rotate", "put"), store.calls,
+                "登录必须先轮换 Session ID 再写入登录态（顺序颠倒会让登录态写入即将失效的旧会话）");
+        assertEquals(1L, store.data.get("login_web_id"), "登录态应落在轮换后的新会话");
+    }
+
+    @Test
+    void logoutDoesNotRotate() {
+        RecordingSessionStore store = new RecordingSessionStore();
+        SessionGuard guard = new SessionGuard("web", new StubProvider(), store);
+        guard.login(new TestUser(2L));
+        store.calls.clear();
+
+        guard.logout();
+
+        assertEquals(java.util.List.of(), store.calls, "logout 只移除登录态，不需要轮换");
+    }
+
     // ==================== 内存存储：基本逻辑 ====================
 
     @Test

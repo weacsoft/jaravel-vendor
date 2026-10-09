@@ -17,6 +17,13 @@ import com.weacsoft.jaravel.vendor.auth.contract.UserProvider;
  */
 public class SessionGuard implements AuthGuard {
 
+    private static final org.slf4j.Logger logger =
+            org.slf4j.LoggerFactory.getLogger(SessionGuard.class);
+
+    /** 「实现未覆盖 rotate」的告警去重（按实现类名，只告警一次） */
+    private static final java.util.Set<String> ROTATE_UNSUPPORTED_WARNED =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     private final String name;
     private final UserProvider provider;
     private final SessionStore sessionStore;
@@ -75,9 +82,31 @@ public class SessionGuard implements AuthGuard {
 
     @Override
     public void login(Authenticatable user) {
+        // 会话固定防护（CWE-384）：先把 Session ID 轮换掉，再把登录态写入新会话。
+        // 顺序不可颠倒 —— 反了会把登录态写进马上要被删除的旧会话，登录随即失效。
+        warnIfRotationUnsupported();
+        sessionStore.rotate();
         cachedUser = user;
         resolved = true;
         sessionStore.put(sessionKey(), user.getAuthIdentifier());
+    }
+
+    /**
+     * 一次性告警：若某个 {@code SessionStore} 实现没有覆盖 {@code rotate()}（接口默认空实现），
+     * 登录时的会话固定防护会被静默跳过，必须让运维看得见。
+     */
+    private void warnIfRotationUnsupported() {
+        try {
+            Class<?> declaring = sessionStore.getClass().getMethod("rotate").getDeclaringClass();
+            if (declaring == SessionStore.class
+                    && ROTATE_UNSUPPORTED_WARNED.add(sessionStore.getClass().getName())) {
+                logger.warn("[auth] SessionStore 实现 {} 未覆盖 rotate()：登录时无法轮换 Session ID，"
+                        + "存在会话固定风险（CWE-384），请为该实现补上 rotate()",
+                        sessionStore.getClass().getName());
+            }
+        } catch (NoSuchMethodException ignored) {
+            // rotate 是接口默认方法，正常不会走到这里
+        }
     }
 
     @Override

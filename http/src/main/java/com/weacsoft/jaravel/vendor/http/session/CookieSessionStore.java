@@ -57,4 +57,18 @@ public class CookieSessionStore implements SessionStore {
             session.invalidate();
         }
     }
+
+    /**
+     * 轮换 Session ID：使旧会话失效，随后由容器在创建新会话时下发新的 JSESSIONID。
+     * <p>
+     * 容器负责 JSESSIONID 的生成与下发（invalidate 后再次 getSession 会得到新 ID），
+     * 因此这里只需销毁旧会话；登录态由 {@code SessionGuard} 在 rotate 之后写入新会话。
+     */
+    @Override
+    public void rotate() {
+        HttpSession session = session(false);
+        if (session != null) {
+            session.invalidate();
+        }
+    }
 }
