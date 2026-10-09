@@ -48,7 +48,7 @@ public class AppPublishableConfig implements PublishableConfig {
                 + "import com.weacsoft.jaravel.vendor.core.SpringContext;\n"
                 + "import com.weacsoft.jaravel.vendor.core.config.ConfigRepository;\n"
                 + "import com.weacsoft.jaravel.vendor.event.Dispatcher;\n"
-                + "import com.weacsoft.jaravel.vendor.http.session.SessionStore;\n"
+                + "import com.weacsoft.jaravel.vendor.session.SessionStore;\n"
                 + "import com.weacsoft.jaravel.vendor.route.RouteHelper;\n"
                 + "import com.weacsoft.jaravel.vendor.route.Router;\n"
                 + "import org.springframework.context.annotation.Configuration;\n"

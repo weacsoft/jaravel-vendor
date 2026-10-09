@@ -55,15 +55,21 @@ public class AetherUploadAutoConfiguration {
 
     /**
      * 上传核心管理器。
+     * <p>
+     * 若应用引入了 auth（认证标准），这里会注入「当前登录用户 id」作为上传归属主体，
+     * 使 identifier 续传按主体隔离、并对跨主体的读/写/中止做归属校验（防越权）；
+     * 未引入 auth 时一律按匿名处理（匿名默认禁用 identifier 续传）。
      */
     @Bean
     @ConditionalOnMissingBean
     public AetherUploadManager aetherUploadManager(AetherUploadProperties properties,
                                                     ObjectProvider<CacheManager> cacheManagerProvider,
                                                     ObjectProvider<StorageManager> storageManagerProvider) {
-        return new AetherUploadManager(properties,
+        AetherUploadManager manager = new AetherUploadManager(properties,
                 cacheManagerProvider.getIfAvailable(),
                 storageManagerProvider.getIfAvailable());
+        manager.setOwnerResolver(AetherUploadOwnerResolver.resolve());
+        return manager;
     }
 
     /**

@@ -85,6 +85,7 @@ jaravel:
         token: your-token
         aes-key: your-aes-key
         message-mode: plain       # plain（默认）| safe
+        verify-post-signature: false  # 明文模式 POST 是否校验 signature（默认 false = 完全不校验）
         oauth:
           scopes: snsapi_base
           callback: /oauth_callback
@@ -109,6 +110,7 @@ jaravel:
 | `...official-accounts.{name}.app-id / secret` | string | - | 公众号凭据 |
 | `...official-accounts.{name}.token / aes-key` | string | - | 消息校验与加解密密钥（safe 模式必填） |
 | `...official-accounts.{name}.message-mode` | string | `plain` | 回调模式：`plain`/`safe` |
+| `...official-accounts.{name}.verify-post-signature` | boolean | `false` | 是否校验明文模式 POST 的 `signature`：`false`=完全不校验（缺失/错误都放行）；`true`=缺失或不匹配都拒绝。**GET 接入校验与 `safe` 模式的 `msg_signature` 恒校验，不受本项影响** |
 | `...official-accounts.{name}.oauth.scopes/callback/enforce-https` | - | - | OAuth 配置 |
 | `...mini-apps.{name}.app-id / secret / type` | - | - | 小程序配置 |
 | `...http.timeout / retry` | - | - | HTTP 配置 |

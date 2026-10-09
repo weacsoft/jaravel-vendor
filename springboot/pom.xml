@@ -30,6 +30,18 @@
             <artifactId>auth</artifactId>
             <optional>true</optional>
         </dependency>
+        <!-- Session 守卫实现（可选）：缺席时 auth 仍可装配，session 守卫不注册 -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>auth-session</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- Session 存储标准（可选）：提供 SessionStoreHolder 与 CookieSessionStore 回退 -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>session</artifactId>
+            <optional>true</optional>
+        </dependency>
         <!-- 缓存自动装配：cache 核心（纯 Java，零 Spring 依赖） -->
         <dependency>
             <groupId>io.github.lijialong1313</groupId>

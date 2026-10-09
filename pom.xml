@@ -50,6 +50,8 @@
         <module>http</module>
         <module>jblade</module>
         <module>auth</module>
+        <module>auth-session</module>
+        <module>session</module>
         <module>jwt</module>
         <module>database</module>
         <module>migration</module>
@@ -153,6 +155,18 @@
             <dependency>
                 <groupId>io.github.lijialong1313</groupId>
                 <artifactId>auth</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <!-- auth 标准与 session 实现之间的桥接（Session 守卫），按需引入 -->
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>auth-session</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <!-- Session 存储标准（契约 + Cookie/HttpSession 默认实现） -->
+            <dependency>
+                <groupId>io.github.lijialong1313</groupId>
+                <artifactId>session</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

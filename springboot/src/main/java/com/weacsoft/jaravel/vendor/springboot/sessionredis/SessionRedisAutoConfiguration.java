@@ -1,8 +1,8 @@
 package com.weacsoft.jaravel.vendor.springboot.sessionredis;
 
-import com.weacsoft.jaravel.vendor.http.autoconfigure.HttpSessionAutoConfiguration;
-import com.weacsoft.jaravel.vendor.http.session.RegisterSessionStore;
-import com.weacsoft.jaravel.vendor.http.session.SessionStore;
+import com.weacsoft.jaravel.vendor.springboot.session.HttpSessionAutoConfiguration;
+import com.weacsoft.jaravel.vendor.session.RegisterSessionStore;
+import com.weacsoft.jaravel.vendor.session.SessionStore;
 import com.weacsoft.jaravel.vendor.redis.RedisManager;
 import com.weacsoft.jaravel.vendor.session.redis.RedisSessionStore;
 import org.springframework.boot.autoconfigure.AutoConfiguration;

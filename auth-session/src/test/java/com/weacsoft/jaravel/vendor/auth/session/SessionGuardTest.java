@@ -1,11 +1,11 @@
-package com.weacsoft.jaravel.vendor.auth.guard;
+package com.weacsoft.jaravel.vendor.auth.session;
 
 import com.weacsoft.jaravel.vendor.auth.contract.Authenticatable;
 import com.weacsoft.jaravel.vendor.auth.contract.UserProvider;
 import com.weacsoft.jaravel.vendor.http.controller.request.Request;
 import com.weacsoft.jaravel.vendor.http.controller.request.RequestFactory;
-import com.weacsoft.jaravel.vendor.http.session.CookieSessionStore;
-import com.weacsoft.jaravel.vendor.http.session.SessionStore;
+import com.weacsoft.jaravel.vendor.session.CookieSessionStore;
+import com.weacsoft.jaravel.vendor.session.SessionStore;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import org.junit.jupiter.api.AfterEach;

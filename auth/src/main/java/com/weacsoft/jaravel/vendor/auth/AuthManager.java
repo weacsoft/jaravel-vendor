@@ -69,7 +69,22 @@ public class AuthManager {
     /** 提供者：name -> UserProvider，进程级共享，启动后只读 */
     private final Map<String, UserProvider> providers = new ConcurrentHashMap<>();
     /** 守卫驱动列表（工厂模式），进程级共享，启动后只读 */
-    private final List<AuthGuardDriver> guardDrivers = new CopyOnWriteArrayList<>();
+    /**
+     * 守卫驱动（含 auth 内置的空守卫驱动兜底）。
+     * <p>
+     * 空驱动放进来是为了「只依赖 auth」也能装配：它 support 恒为 false，不会抢真实驱动的匹配，
+     * 仅在遍历后仍无匹配时被 {@code createGuard} 显式兜底使用。
+     */
+    private final List<AuthGuardDriver> guardDrivers =
+            new CopyOnWriteArrayList<>(List.of(
+                    new com.weacsoft.jaravel.vendor.auth.guard.NullGuardDriver()));
+
+    private static final org.slf4j.Logger logger =
+            org.slf4j.LoggerFactory.getLogger(AuthManager.class);
+
+    /** 「无匹配驱动，已用空守卫兜底」告警去重（按驱动名） */
+    private static final java.util.Set<String> NULL_GUARD_WARNED =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
     /** 提供者驱动列表（工厂模式），进程级共享，启动后只读 */
     private final List<UserProviderDriver> providerDrivers = new CopyOnWriteArrayList<>();
     /** 请求级守卫实例：name -> AuthGuard，每线程独立，请求结束清理 */
@@ -195,10 +210,24 @@ public class AuthManager {
             throw new IllegalStateException("未注册的提供者: " + cfg.providerName);
         }
         // 工厂模式：遍历所有驱动，找到第一个匹配的
+        AuthGuardDriver fallback = null;
         for (AuthGuardDriver driver : guardDrivers) {
             if (driver.support(cfg.driver)) {
                 return driver.create(name, provider, cfg.config);
             }
+            if (driver instanceof com.weacsoft.jaravel.vendor.auth.guard.NullGuardDriver) {
+                fallback = driver;
+            }
+        }
+        // auth 是「认证标准」，不应因为没引入具体守卫实现就崩：用内置空守卫兜底（恒未登录）。
+        // 需要真实登录态时引入实现模块（auth-session / jwt / 自定义驱动）。
+        if (fallback != null) {
+            if (NULL_GUARD_WARNED.add(cfg.driver)) {
+                logger.warn("[auth] 没有驱动支持 guard driver='{}'，已回退到内置空守卫"
+                        + "（check() 恒为 false）。需要登录态请引入实现模块（如 auth-session / jwt）"
+                        + "或注册自定义 AuthGuardDriver。", cfg.driver);
+            }
+            return fallback.create(name, provider, cfg.config);
         }
         throw new IllegalStateException(
                 "未知 guard driver: " + cfg.driver + "，请引入对应插件（如 jwt 模块）");

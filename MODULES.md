@@ -15,7 +15,7 @@
 |------|---------|---------|-------|------|
 | `@RegisterGuard` | auth | `GuardDefinition` | ✅ 命名多实例 | 守卫，`defaultGuard = true` 设为默认 |
 | `@RegisterProvider` | auth | `UserProvider` | ✅ 命名多实例 | 用户提供者 |
-| `@RegisterSessionStore` | http | `SessionStore` | ❌ **全局唯一** | Session 存储（归属 http 模块） |
+| `@RegisterSessionStore` | session | `SessionStore` | ❌ **全局唯一** | Session 存储（归属 session 模块） |
 | `@RegisterCacheStore` | cache | `CacheStore` | ✅ 命名多实例 | 缓存 store，`defaultStore = true` 设为默认 |
 | `@RegisterDisk` | storage | `DiskDefinition` / `Filesystem` | ✅ 命名多实例 | 文件磁盘，`defaultDisk = true` 设为默认 |
 | `@RegisterConnection` | database | `GaarasonDataSource` | ✅ 命名多实例 | 数据源连接 |

@@ -4,7 +4,7 @@ import com.weacsoft.jaravel.vendor.http.controller.request.Request;
 import com.weacsoft.jaravel.vendor.http.controller.response.Response;
 import com.weacsoft.jaravel.vendor.http.controller.response.ResponseBuilder;
 import com.weacsoft.jaravel.vendor.http.middleware.Middleware;
-import com.weacsoft.jaravel.vendor.http.session.SessionStore;
+import com.weacsoft.jaravel.vendor.session.SessionStore;
 
 import java.util.ArrayList;
 import java.util.List;

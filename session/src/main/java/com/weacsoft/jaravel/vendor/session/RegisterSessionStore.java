@@ -1,4 +1,4 @@
-package com.weacsoft.jaravel.vendor.http.session;
+package com.weacsoft.jaravel.vendor.session;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;

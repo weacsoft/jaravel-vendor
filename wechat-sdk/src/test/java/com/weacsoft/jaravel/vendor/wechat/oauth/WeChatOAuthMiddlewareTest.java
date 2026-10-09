@@ -3,7 +3,7 @@ package com.weacsoft.jaravel.vendor.wechat.oauth;
 import com.weacsoft.jaravel.vendor.http.controller.request.Request;
 import com.weacsoft.jaravel.vendor.http.controller.response.Response;
 import com.weacsoft.jaravel.vendor.http.controller.response.ResponseBuilder;
-import com.weacsoft.jaravel.vendor.http.session.SessionStore;
+import com.weacsoft.jaravel.vendor.session.SessionStore;
 import com.weacsoft.jaravel.vendor.wechat.WechatProperties;
 import com.weacsoft.jaravel.vendor.wechat.response.WeChatResponse;
 import com.weacsoft.jaravel.vendor.wechat.transport.WechatTransport;

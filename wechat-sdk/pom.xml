@@ -36,6 +36,11 @@
             <groupId>io.github.lijialong1313</groupId>
             <artifactId>http</artifactId>
         </dependency>
+        <!-- SessionStore 契约（OAuth 的 userInSession/saveToSession） -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>session</artifactId>
+        </dependency>
         <!-- OkHttp：所有微信 API HTTP 调用 -->
         <dependency>
             <groupId>com.squareup.okhttp3</groupId>

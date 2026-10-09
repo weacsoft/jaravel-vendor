@@ -99,24 +99,24 @@ class WeChatServerTest {
     }
 
     @Test
-    void verifyPostSignatureDefaultsToFalseButStillVerifiesWhenPresent() {
+    void defaultModeSkipsPlainPostSignatureVerification() {
         WechatProperties props = plainProps();
         WechatProperties.OfficialAccountConfig cfg = props.getOfficialAccounts().get("default");
         // 默认值锚点：防止「默认值被无声翻转」（本项曾从 true 改为 false，属有意的策略调整）
         assertFalse(cfg.isVerifyPostSignature(),
-                "明文模式默认不强制要求 signature（带了仍会校验）");
+                "明文模式默认不校验 POST 签名（开关关闭即完全不验）");
 
         WeChatServer server = new WeChatServer(props, "default");
-        // ① 未携带签名 + 默认（不强制）→ 放行（兼容未签名推送；微信自身推送带签名，故线上仍走验签）
+        // 开关关闭 → 缺失签名放行
         Map<String, String> unsigned = new LinkedHashMap<>();
         assertDoesNotThrow(
                 () -> server.handlePost(unsigned, textPush("hi"), (m, s) -> new Text("x")),
-                "默认不强制签名：未携带 signature 应放行");
-        // ② 携带但错误 → 恒拒绝（否则省略签名即可绕过，验签形同虚设）
-        assertThrows(WechatCryptoException.class,
+                "开关关闭时未携带 signature 应放行");
+        // 开关关闭 → 错误签名同样放行（用户明确的语义：关了就不验）
+        assertDoesNotThrow(
                 () -> server.handlePost(query("bad", "1407564400", "999", null), textPush("hi"),
                         (m, s) -> new Text("x")),
-                "带了 signature 就必须验过，不匹配必须拒绝");
+                "开关关闭时不校验签名，错误签名也放行");
     }
 
     @Test
@@ -124,11 +124,16 @@ class WeChatServerTest {
         WechatProperties props = plainProps();
         props.getOfficialAccounts().get("default").setVerifyPostSignature(true);
         WeChatServer server = new WeChatServer(props, "default");
-        // 严格模式：未携带签名也必须拒绝（可回到「一律要求签名」的行为）
+        // 严格模式：未携带签名必须拒绝
         Map<String, String> unsigned = new LinkedHashMap<>();
         assertThrows(WechatCryptoException.class,
                 () -> server.handlePost(unsigned, textPush("hi"), (m, s) -> new Text("x")),
                 "verify-post-signature=true 时未携带签名必须拒绝");
+        // 严格模式：签名不匹配必须拒绝
+        assertThrows(WechatCryptoException.class,
+                () -> server.handlePost(query("bad", "1407564400", "999", null), textPush("hi"),
+                        (m, s) -> new Text("x")),
+                "verify-post-signature=true 时签名不匹配必须拒绝");
     }
 
     @Test

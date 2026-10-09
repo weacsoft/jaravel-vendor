@@ -3,9 +3,7 @@ package com.weacsoft.jaravel.vendor.auth;
 import com.weacsoft.jaravel.vendor.auth.contract.AuthGuard;
 import com.weacsoft.jaravel.vendor.auth.contract.AuthGuardDriver;
 import com.weacsoft.jaravel.vendor.auth.contract.Authenticatable;
-import com.weacsoft.jaravel.vendor.http.session.SessionStore;
 import com.weacsoft.jaravel.vendor.auth.contract.UserProvider;
-import com.weacsoft.jaravel.vendor.auth.guard.SessionGuard;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -50,30 +48,39 @@ class AuthManagerTest {
         }
     }
 
-    /** 内存 Session 存储，用于测试 */
-    static class InMemorySessionStore implements SessionStore {
-        private final Map<String, Object> data = new HashMap<>();
+    /**
+     * 测试用守卫：登录态放在字段里。
+     * <p>
+     * 刻意不使用任何存储实现 —— auth 是认证标准，其自身测试不应依赖 session 模块
+     * （session 只是其中一种实现，见 auth-session 模块）。
+     */
+    static class TestGuard implements AuthGuard {
+        private final String name;
+        private Authenticatable current;
+
+        TestGuard(String name) {
+            this.name = name;
+        }
 
         @Override
-        public Object get(String key) { return data.get(key); }
+        public boolean check() { return current != null; }
 
         @Override
-        public void put(String key, Object value) { data.put(key, value); }
+        public boolean guest() { return current == null; }
 
         @Override
-        public void remove(String key) { data.remove(key); }
+        @SuppressWarnings("unchecked")
+        public <T extends Authenticatable> T user() { return (T) current; }
 
         @Override
-        public void destroy() { data.clear(); }
+        public void login(Authenticatable user) { this.current = user; }
+
+        @Override
+        public void logout() { this.current = null; }
     }
 
-    /** Session 驱动（使用内存存储） */
+    /** 名为 session 的测试驱动（验证驱动工厂模式；不引入真实 session 模块） */
     static class TestSessionGuardDriver implements AuthGuardDriver {
-        private final SessionStore sessionStore;
-
-        TestSessionGuardDriver(SessionStore sessionStore) {
-            this.sessionStore = sessionStore;
-        }
 
         @Override
         public boolean support(String driver) {
@@ -82,7 +89,7 @@ class AuthManagerTest {
 
         @Override
         public AuthGuard create(String name, UserProvider provider, Map<String, Object> config) {
-            return new SessionGuard(name, provider, sessionStore);
+            return new TestGuard(name);
         }
     }
 
@@ -97,11 +104,11 @@ class AuthManagerTest {
         AuthManager manager = new AuthManager();
         manager.registerProvider("users", new InMemoryProvider());
         manager.registerGuard("web", "session", "users");
-        manager.registerGuardDriver(new TestSessionGuardDriver(new InMemorySessionStore()));
+        manager.registerGuardDriver(new TestSessionGuardDriver());
 
         AuthGuard guard = manager.guard("web");
         assertNotNull(guard);
-        assertTrue(guard instanceof SessionGuard, "session 驱动应创建 SessionGuard");
+        assertTrue(guard instanceof TestGuard, "session 驱动应创建 SessionGuard");
     }
 
     @Test
@@ -109,11 +116,11 @@ class AuthManagerTest {
         AuthManager manager = new AuthManager();
         manager.registerProvider("users", new InMemoryProvider());
         manager.registerGuard("web", "session", "users");
-        manager.registerGuardDriver(new TestSessionGuardDriver(new InMemorySessionStore()));
+        manager.registerGuardDriver(new TestSessionGuardDriver());
 
         AuthGuard defaultGuard = manager.guard();
         assertNotNull(defaultGuard);
-        assertTrue(defaultGuard instanceof SessionGuard);
+        assertTrue(defaultGuard instanceof TestGuard);
     }
 
     @Test
@@ -122,7 +129,7 @@ class AuthManagerTest {
         manager.registerProvider("users", new InMemoryProvider());
         manager.registerGuard("web", "session", "users");
         manager.registerGuard("api", "session", "users");
-        manager.registerGuardDriver(new TestSessionGuardDriver(new InMemorySessionStore()));
+        manager.registerGuardDriver(new TestSessionGuardDriver());
 
         AuthGuard webGuard = manager.guard("web");
         AuthGuard apiGuard = manager.guard("api");
@@ -141,7 +148,7 @@ class AuthManagerTest {
         AuthManager manager = new AuthManager();
         manager.registerProvider("users", new InMemoryProvider());
         manager.registerGuard("web", "session", "users");
-        manager.registerGuardDriver(new TestSessionGuardDriver(new InMemorySessionStore()));
+        manager.registerGuardDriver(new TestSessionGuardDriver());
 
         AuthGuard first = manager.guard("web");
         AuthGuard second = manager.guard("web");
@@ -196,14 +203,36 @@ class AuthManagerTest {
     }
 
     @Test
-    void testUnknownDriverThrows() {
+    void testUnknownDriverFallsBackToBuiltInNullGuard() {
+        // 语义变更（有意的）：auth 是「认证标准」，不应因为没引入具体守卫实现就崩。
+        // 遍历完所有驱动都没匹配时，回退到 auth 内置的空守卫（恒未登录），而不是抛异常 ——
+        // 这样「只依赖 auth、不依赖 session」的应用也能装配起来。
         AuthManager manager = new AuthManager();
         manager.registerProvider("users", new InMemoryProvider());
         manager.registerGuard("web", "weird-driver", "users");
 
-        IllegalStateException ex = assertThrows(IllegalStateException.class,
-                () -> manager.guard("web"));
-        assertTrue(ex.getMessage().contains("weird-driver"));
+        AuthGuard guard = manager.guard("web");
+        assertNotNull(guard, "未知驱动应回退到内置空守卫而不是抛异常");
+        assertFalse(guard.check(), "空守卫 check() 恒为 false");
+        assertTrue(guard.guest());
+        assertNull(guard.user(), "空守卫没有登录用户");
+        // 空守卫的登录/登出是空操作，不应抛异常
+        assertDoesNotThrow(() -> {
+            guard.login(new TestUser(1L));
+            guard.logout();
+        });
+    }
+
+    @Test
+    void testRegisteredDriverStillWinsOverNullGuardFallback() {
+        // 兜底不得抢真实驱动的匹配（NullGuardDriver.support 恒为 false）
+        AuthManager manager = new AuthManager();
+        manager.registerProvider("users", new InMemoryProvider());
+        manager.registerGuard("web", "session", "users");
+        manager.registerGuardDriver(new TestSessionGuardDriver());
+
+        assertInstanceOf(TestGuard.class, manager.guard("web"),
+                "有真实驱动时不得回退到空守卫");
     }
 
     @Test
@@ -239,7 +268,7 @@ class AuthManagerTest {
         AuthManager manager = new AuthManager();
         manager.registerProvider("users", new InMemoryProvider());
         manager.registerGuard("web", "session", "users");
-        manager.registerGuardDriver(new TestSessionGuardDriver(new InMemorySessionStore()));
+        manager.registerGuardDriver(new TestSessionGuardDriver());
 
         // 初始未登录
         assertFalse(manager.check(), "初始应为未登录");

@@ -1,6 +1,6 @@
 package com.weacsoft.jaravel.vendor.wechat.oauth;
 
-import com.weacsoft.jaravel.vendor.http.session.SessionStore;
+import com.weacsoft.jaravel.vendor.session.SessionStore;
 import com.weacsoft.jaravel.vendor.wechat.WechatProperties;
 import com.weacsoft.jaravel.vendor.wechat.response.WeChatResponse;
 import com.weacsoft.jaravel.vendor.wechat.response.WechatApiException;

@@ -1,8 +1,8 @@
-package com.weacsoft.jaravel.vendor.auth.guard;
+package com.weacsoft.jaravel.vendor.auth.session;
 
 import com.weacsoft.jaravel.vendor.auth.contract.AuthGuard;
 import com.weacsoft.jaravel.vendor.auth.contract.Authenticatable;
-import com.weacsoft.jaravel.vendor.http.session.SessionStore;
+import com.weacsoft.jaravel.vendor.session.SessionStore;
 import com.weacsoft.jaravel.vendor.auth.contract.UserProvider;
 
 /**

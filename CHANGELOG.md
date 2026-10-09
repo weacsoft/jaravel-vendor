@@ -5,6 +5,18 @@
 
 ## [Unreleased]（目标版本 0.1.3 · 开发中）
 
+### Changed（变更 · 第五轮：auth/session 模块拆分 + 归属校验 + wechat 语义调整）
+
+- **auth ↔ session 解耦（结构性拆分，用户要求）**：新增两个模块，形成「标准 / 实现」的清晰边界 ——
+  - **`session`**（新）：Session 存储<b>标准</b>：`SessionStore` 契约、`CookieSessionStore`（HttpSession 默认实现）、`@RegisterSessionStore` 声明式注册与 `SessionStoreHolder`（全局持有者 + 惰性回退）；原先这些类在 `http` 模块的 `http.session` 包内。
+  - **`auth-session`**（新）：把 auth 标准落到 session 存储上的<b>一种实现</b>：`SessionGuard` / `SessionGuardDriver`（原先在 `auth` 模块的 `auth.guard` 包内）。
+  - **`auth`**：只保留「认证标准」——`AuthManager`、`AuthGuard`/`AuthGuardDriver`/`UserProvider` 契约、注解声明式注册、以及**自带的空守卫兜底**（`NullGuard` + `NullGuardDriver`）：遍历完所有驱动都没有匹配时不再抛 `IllegalStateException`，而是回退到空守卫（`check()` 恒 false）并告警一次 —— 于是「只依赖 auth、不依赖 session」的应用也能正常装配。`NullGuardDriver.support` 刻意恒为 false，不会与 session/jwt 争抢匹配。
+  - **装配**：`springboot` 新增 `SessionGuardAutoConfiguration`（**类级** `@ConditionalOnClass` 守卫 `SessionStoreHolder`/`SessionGuardDriver`：缺这两个模块时整类不加载，auth 仍可用）；`HttpSessionAutoConfiguration` 从 `http` 迁到 `springboot.session` 并**补上注册**（此前它未被任何 imports 文件登记，等于死配置 —— 顺带修复 `@RegisterSessionStore` 扫描从未生效的问题）。
+  - **`starter`** 聚合 `auth` + `auth-session` + `session`（与拆分前行为一致）；`session-redis` 去掉 `auth` 依赖（原为零 import 的倒挂边）改为依赖 `session`；`wechat-sdk` 补 `session` 依赖（OAuth 的 session 便捷接口）。
+  - **测试去 session 化**：`AuthManagerTest` 改用自带的 `TestGuard`（不再 import SessionStore/SessionGuard），从而「auth 的测试不需要 session」；`SessionGuardTest` 迁至 `auth-session`；新增 `SessionStoreHolderTest`（**重点锁定 holder 必须转发 `rotate()`** —— 否则接口默认空实现会静默吞掉会话固定防护）。
+- **`aether-upload` identifier 归属校验（越权修复，专家团标为 High；该模块尚未被业务使用，故直接改契约）**：identifier 由前端按「文件名+大小+mtime」可预测拼出，原先作为全局键使用 → 知道三要素即可读他人进度、向他人 resourceId 写分片、甚至决定受害者成品内容。现在：①identifier 键按**主体作用域**隔离（`i:<group>:<owner>:<identifier>`）；②`UploadHeader` 记录 `ownerId`，`writeChunk`/`progress`/`abort` 对**跨主体**访问一律拒绝；③**匿名默认禁用 identifier 续传**（新配置 `anonymous-resume-enabled`，默认 false），登录用户不受影响；④新增 `setOwnerResolver(...)` SPI，springboot 侧从认证上下文取用户 id（未引入 auth 时按匿名处理，用反射探测避免强依赖）。新增 `AetherUploadOwnershipTest`（5 例：跨主体不共享续传任务、跨主体写分片/读进度/中止被拒、同主体正常）。
+- **`wechat-sdk` 明文 POST 验签语义按用户要求改为「开关关闭即完全不验」**：`verify-post-signature=false`（默认）时缺失或错误的 `signature`<b>都放行</b>；`true` 时缺失或不匹配都拒绝。GET 接入校验与 `safe` 模式的 `msg_signature` 仍恒校验（不受本项影响）。默认值与两种语义均有用例锁定。
+
 ### Fixed（修复 · 第四轮：会话固定与 Session 存储加固）
 
 - **会话固定防护（CWE-384，安全角色标为 High）**：`SessionStore` 契约新增 `rotate()`（默认空实现以保持第三方实现源码兼容），内置实现全部覆盖：`CookieSessionStore` 使旧会话失效（容器随后下发新的 JSESSIONID）、`RedisSessionStore` 把数据搬到新 ID + 删除旧 ID + **同时更新请求与响应 Cookie**（只更新响应会导致同一请求内后续仍读到旧 ID，登录态被写进刚删除的旧 key）。`SessionGuard.login` 现在**先 `rotate()` 再写入登录态**（顺序颠倒会让登录立刻失效），并对「未覆盖 `rotate()` 的实现」打印一次性告警，避免防护被静默跳过。新增 `SessionGuardTest` 用例固定「rotate → put」顺序与「logout 不轮换」。

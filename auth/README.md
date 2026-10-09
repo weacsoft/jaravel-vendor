@@ -47,7 +47,7 @@ Auth 模块是 Jaravel 框架的认证核心，对齐 Laravel 的 `Illuminate\Au
 - **多守卫（Multi-Guard）**：支持在同一应用中配置多个认证守卫（如 `web` 使用 Session、`api` 使用 JWT），按名称解析。
 - **多提供者（Multi-Provider）**：支持注册多个 `UserProvider`，不同守卫可绑定不同提供者。
 - **工厂模式驱动**：通过 `AuthGuardDriver` 的 `support()` 方法匹配驱动（对齐 database-all 多数据库支持），第三方模块只需注册为 Spring Bean 即可自动收集。
-- **Session 存储分离**：Session 存储后端是**全局配置**（由 `config/SessionConfig.java` 决定），不绑定到具体守卫。`SessionGuardDriver` 注入 http 模块提供的 `SessionStoreHolder`（默认实现 `CookieSessionStore`，基于 Servlet HttpSession，由 http 模块的 `HttpSessionAutoConfiguration` 注册）。**Session 功能归属 http 模块**，auth 仅弱引用，不强依赖具体 Session 实现。
+- **Session 存储分离**：Session 存储后端是**全局配置**（由 `config/SessionConfig.java` 决定），不绑定到具体守卫。`SessionGuardDriver` 注入 `session` 模块提供的 `SessionStoreHolder`（默认实现 `CookieSessionStore`，基于 Servlet HttpSession）。**auth 只保留认证标准**：`SessionGuard`/`SessionGuardDriver` 已迁到 **`auth-session`** 模块，Session 存储契约与实现已迁到 **`session`** 模块（装配在 `springboot.session`）；auth 自身不依赖 session，遍历完所有守卫驱动仍无匹配时回退到内置空守卫（`NullGuard`，`check()` 恒 false）。需要「用 session 保存登录态」时引入 `auth-session`（`starter` 已聚合 auth + auth-session + session）。
 - **请求级隔离**：基于 `ThreadLocal` 实现每请求独立的认证上下文，杜绝线程池复用导致的串态问题。
 - **密码校验解耦**：`Authenticatable` 与 `UserProvider` 均不包含密码相关方法，密码校验完全由应用层负责。
 

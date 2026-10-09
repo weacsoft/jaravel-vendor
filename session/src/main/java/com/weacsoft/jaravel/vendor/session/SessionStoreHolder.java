@@ -1,4 +1,4 @@
-package com.weacsoft.jaravel.vendor.http.session;
+package com.weacsoft.jaravel.vendor.session;
 
 /**
  * 全局 Session 存储持有者，解决「注册时机」与「使用时机」的先后问题。
@@ -67,5 +67,16 @@ public class SessionStoreHolder implements SessionStore {
     @Override
     public void destroy() {
         get().destroy();
+    }
+
+    /**
+     * 轮换 Session ID：<b>必须转发给真实实现</b>。
+     * <p>
+     * 若这里不覆盖，接口默认的空实现会生效 —— 表现为「登录时的会话固定防护被静默跳过」，
+     * 而守卫侧看到 holder 覆盖了 rotate 便不会再告警，风险会被完全掩盖。
+     */
+    @Override
+    public void rotate() {
+        get().rotate();
     }
 }

@@ -12,7 +12,7 @@
 
     <artifactId>auth</artifactId>
     <name>auth</name>
-    <description>认证（零 Spring 依赖）：Guard(Session)、Auth、UserProvider 契约、守卫驱动契约、注解声明式注册（@RegisterGuard/@RegisterProvider）；Spring 装配见 springboot 模块（vendor.springboot.auth）</description>
+    <description>认证标准（零 Spring 依赖）：Auth、Guard/UserProvider/守卫驱动契约、注解声明式注册（@RegisterGuard/@RegisterProvider）与内置空守卫兜底；不含 session 实现（见 auth-session 模块）；Spring 装配见 springboot 模块（vendor.springboot.auth）</description>
 
     <dependencies>
         <dependency>
@@ -27,7 +27,7 @@
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
         </dependency>
-        <!-- 测试使用（SessionGuardTest 构造 Servlet 请求对象） -->
+        <!-- 保留：契约与测试可能需要 Servlet 类型（SessionGuardTest 已迁至 auth-session） -->
         <dependency>
             <groupId>jakarta.servlet</groupId>
             <artifactId>jakarta.servlet-api</artifactId>

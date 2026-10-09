@@ -28,8 +28,8 @@ public final class VerifySignatureMiddleware implements WechatMiddleware {
     /** 全局单例（中间件无状态） */
     public static final VerifySignatureMiddleware INSTANCE = new VerifySignatureMiddleware();
 
-    /** 「未携带签名的推送」告警是否已打印过（进程级一次，避免日志放大） */
-    private static final java.util.concurrent.atomic.AtomicBoolean ABSENT_SIGNATURE_WARNED =
+    /** 「明文 POST 验签已关闭」告警是否已打印过（进程级一次，避免日志放大） */
+    private static final java.util.concurrent.atomic.AtomicBoolean SKIPPED_SIGNATURE_WARNED =
             new java.util.concurrent.atomic.AtomicBoolean(false);
 
     @Override
@@ -44,36 +44,24 @@ public final class VerifySignatureMiddleware implements WechatMiddleware {
                 logger.warn("[wechat-kernel] POST 验签失败（msg_signature）: nonce={}", req.nonce());
                 throw new WechatCryptoException("POST 验签失败（msg_signature 不匹配）");
             }
-        } else if (req.account().isVerifyPostSignature()
-                || hasSignature(req)) {
+        } else if (req.account().isVerifyPostSignature()) {
             // 明文模式：signature = sha1(sort(token, timestamp, nonce))（官方三参数，不含消息体）
-            // 语义：默认不强制要求签名（verify-post-signature=false），但**只要带了签名就必须验过** ——
-            // 否则攻击者只需省略 signature 就能绕过这道控制，验签等于摆设。
+            // 开关开启 → 严格校验：缺失或不匹配都拒绝。
             if (!req.crypt().verifyPlainSignature(req.timestamp(), req.nonce(), req.signature())) {
                 logger.warn("[wechat-kernel] POST 验签失败（signature）: nonce={}", req.nonce());
-                throw new WechatCryptoException("POST 验签失败（明文模式 signature 不匹配）");
+                throw new WechatCryptoException("POST 验签失败（明文模式 signature 不匹配或缺失）");
             }
         } else {
-            // 没带签名且未要求强制：放行，但只告警一次（每条消息都 WARN 会造成日志放大）
-            if (ABSENT_SIGNATURE_WARNED.compareAndSet(false, true)) {
-                logger.warn("[wechat-kernel] 明文模式收到未携带 signature 的 POST 推送，已放行"
-                        + "（verify-post-signature=false）。微信自身推送是带签名的，"
-                        + "若线上出现本告警，请确认是否有第三方在直连回调地址；"
-                        + "需要严格拒绝请设 verify-post-signature=true。");
+            // 开关关闭（默认）→ 完全不校验明文 POST 签名（缺失或错误都放行）。
+            // 注意：此时任何能访问回调地址的人都可以伪造推送，仅建议在不需要来源真实性的场景使用；
+            // 需要来源校验请设 verify-post-signature=true，或改用 message-mode=safe。
+            // 只告警一次：每条消息都 WARN 会造成日志放大。
+            if (SKIPPED_SIGNATURE_WARNED.compareAndSet(false, true)) {
+                logger.warn("[wechat-kernel] 明文模式 POST 验签已关闭（verify-post-signature=false），"
+                        + "推送来源不做真实性校验；GET 接入校验与 safe 模式的 msg_signature 仍恒校验。");
             }
         }
         return next.handle(req);
-    }
-
-    /**
-     * 请求是否携带了明文模式签名。
-     *
-     * @param req 请求
-     * @return 携带非空白 signature 返回 true
-     */
-    private static boolean hasSignature(WechatRequest req) {
-        String signature = req.signature();
-        return signature != null && !signature.isBlank();
     }
 
     /**

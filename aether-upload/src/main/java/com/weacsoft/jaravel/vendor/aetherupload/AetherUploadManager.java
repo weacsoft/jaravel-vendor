@@ -75,6 +75,56 @@ public class AetherUploadManager {
     private final java.util.concurrent.atomic.AtomicLong lastTempSweepAt =
             new java.util.concurrent.atomic.AtomicLong(0L);
 
+    /**
+     * 上传归属主体解析器（登录用户 id；返回 {@code null} 表示匿名）。
+     * <p>
+     * 框架主体零 Spring、不直接依赖 auth：由宿主（如 springboot 的装配）注入
+     * 「从当前认证上下文取用户 id」的实现；未注入时一律视为匿名。
+     */
+    private volatile java.util.function.Supplier<String> ownerResolver = () -> null;
+
+    /**
+     * 设置上传归属主体解析器。
+     *
+     * @param resolver 返回当前用户 id 或 {@code null}（匿名）；传 {@code null} 表示恢复为匿名
+     */
+    public void setOwnerResolver(java.util.function.Supplier<String> resolver) {
+        this.ownerResolver = resolver != null ? resolver : () -> null;
+    }
+
+    /** 当前请求的上传归属主体（匿名返回 null） */
+    private String currentOwner() {
+        try {
+            java.util.function.Supplier<String> resolver = this.ownerResolver;
+            String owner = resolver == null ? null : resolver.get();
+            return owner == null || owner.isEmpty() ? null : owner;
+        } catch (Exception e) {
+            // 解析失败一律按匿名处理：宁可禁用续传，也不能把归属判错导致越权
+            logger.debug("[aether-upload] 解析上传归属失败，按匿名处理: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 断言当前主体有权访问该上传任务。
+     * <p>
+     * 归属为 {@code null}（匿名任务）时不校验 —— 匿名任务本就无归属可言，其越权面
+     * 由「匿名默认禁用 identifier 续传」来收敛。
+     *
+     * @param header 任务记录头
+     */
+    private void assertOwnership(UploadHeader header) {
+        String owner = header.getOwnerId();
+        if (owner == null) {
+            return;
+        }
+        if (!owner.equals(currentOwner())) {
+            logger.warn("[aether-upload] 归属校验失败: resourceId={}, owner={}, requester={}",
+                    header.getResourceId(), owner, currentOwner());
+            throw UploadException.invalid("无权访问该上传任务");
+        }
+    }
+
     /** 单组运行时：配置 + 记录头存储 */
     public static final class GroupRuntime {
         public final String name;
@@ -217,9 +267,15 @@ public class AetherUploadManager {
         // 清理超过记录头 TTL 的分片临时文件（否则匿名反复 prepare 会让 .part 无界堆积）
         sweepStaleTempFiles(g, Math.max(60_000L, g.config.getHeaderTtlSeconds() * 1000L));
 
-        // 断线续传：identifier 已有未完成任务时直接恢复
-        if (identifier != null && !identifier.isEmpty()) {
-            String existingId = g.store.get(idKey(g.name, identifier));
+        // 断线续传：identifier 已有未完成任务时直接恢复。
+        // 归属约束：① 键按主体作用域隔离（不同用户即使 identifier 相同也不会互相命中）；
+        //           ② 匿名默认不启用续传（identifier 由前端按文件名/大小/mtime 可预测拼出，
+        //              允许匿名续传等于「知道三要素即可复用/劫持他人上传任务」）。
+        String owner = currentOwner();
+        boolean resumeAllowed = identifier != null && !identifier.isEmpty()
+                && (owner != null || g.config.isAnonymousResumeEnabled());
+        if (resumeAllowed) {
+            String existingId = g.store.get(idKey(g.name, owner, identifier));
             if (existingId != null) {
                 UploadHeader header = loadHeader(g, existingId);
                 if (header != null && UploadHeader.STATUS_UPLOADING.equals(header.getStatus())
@@ -278,13 +334,14 @@ public class AetherUploadManager {
         header.setStatus(UploadHeader.STATUS_UPLOADING);
         header.setTempPath(tempPath.toAbsolutePath().toString());
         header.setIdentifier(identifier);
+        header.setOwnerId(owner);
         header.setMimeType(mimeType);
         header.setCreatedAt(System.currentTimeMillis());
         header.setUpdatedAt(header.getCreatedAt());
         saveHeader(g, header);
 
-        if (identifier != null && !identifier.isEmpty()) {
-            g.store.put(idKey(g.name, identifier), resourceId, g.config.getHeaderTtlSeconds());
+        if (identifier != null && !identifier.isEmpty() && resumeAllowed) {
+            g.store.put(idKey(g.name, owner, identifier), resourceId, g.config.getHeaderTtlSeconds());
         }
 
         dispatch(new UploadPreparedEvent(g.name, resourceId, safeName, size, totalChunks, chunkSize, false));
@@ -406,6 +463,7 @@ public class AetherUploadManager {
             if (header == null) {
                 throw UploadException.headerNotFound(resourceId);
             }
+            assertOwnership(header);
             if (UploadHeader.STATUS_COMPLETED.equals(header.getStatus())) {
                 return new UploadResult(header, null, false);
             }
@@ -461,6 +519,7 @@ public class AetherUploadManager {
         if (header == null) {
             throw UploadException.headerNotFound(resourceId);
         }
+        assertOwnership(header);
         return new UploadResult(header, header.uploadedChunkList(), false);
     }
 
@@ -473,6 +532,7 @@ public class AetherUploadManager {
         if (header == null) {
             return;
         }
+        assertOwnership(header);
         Object lock = locks.computeIfAbsent(resourceId, k -> new Object());
         synchronized (lock) {
             try {
@@ -482,7 +542,7 @@ public class AetherUploadManager {
             }
             g.store.remove(headerKey(g.name, resourceId));
             if (header.getIdentifier() != null && !header.getIdentifier().isEmpty()) {
-                g.store.remove(idKey(g.name, header.getIdentifier()));
+                g.store.remove(idKey(g.name, header.getOwnerId(), header.getIdentifier()));
             }
         }
         locks.remove(resourceId);
@@ -621,7 +681,7 @@ public class AetherUploadManager {
         header.setUpdatedAt(System.currentTimeMillis());
         saveHeader(g, header);
         if (header.getIdentifier() != null && !header.getIdentifier().isEmpty()) {
-            g.store.remove(idKey(g.name, header.getIdentifier()));
+            g.store.remove(idKey(g.name, header.getOwnerId(), header.getIdentifier()));
         }
         logger.info("[aether-upload] 上传完成: group={}, resourceId={}, file={}, size={}, path={}",
                 g.name, header.getResourceId(), header.getFilename(), header.getSize(), savedLocation);
@@ -717,8 +777,9 @@ public class AetherUploadManager {
         return "h:" + group + ":" + resourceId;
     }
 
-    private static String idKey(String group, String identifier) {
-        return "i:" + group + ":" + identifier;
+    private static String idKey(String group, String owner, String identifier) {
+        // 归属作用域：不同主体的同名 identifier 不得互相复用（防止可预测 identifier 劫持他人任务）
+        return "i:" + group + ":" + (owner == null ? "-" : owner) + ":" + identifier;
     }
 
     /**

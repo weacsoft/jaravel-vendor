@@ -28,14 +28,16 @@ Java 版 Laravel 框架核心库，在 Spring Boot 3.2.12 基础上近乎 100% �
 | cache | `cache` | CacheManager/驱动分包/Cache门面（零 Spring 依赖） | [README](cache/README.md) |
 | cache-database | `cache-database` | DatabaseCacheDriver/database驱动工厂（原生 JDBC 走 database 模块，不依赖 spring-jdbc，可选） | [README](cache-database/README.md) |
 | jblade | `jblade` | Blade模板引擎（零Spring依赖，装配在springboot；@if/@foreach/@extends等指令，表达式编译） | [README](jblade/README.md) |
-| auth | `auth` | AuthManager/Guard(Session)/UserProvider/Auth门面（零Spring依赖，装配在springboot） | [README](auth/README.md) |
+| auth | `auth` | AuthManager/Guard·UserProvider 契约/Auth门面/**空守卫兜底**（零Spring依赖，装配在springboot；不依赖 session） | [README](auth/README.md) |
+| auth-session | `auth-session` | SessionGuard/SessionGuardDriver——把 auth 标准落到 session 存储上的一种实现（零Spring依赖；按需引入） | - |
+| session | `session` | SessionStore 契约/CookieSessionStore/@RegisterSessionStore/SessionStoreHolder（零Spring依赖，装配在springboot.session） | - |
 | jwt | `jwt` | JWT认证插件（零Spring依赖，装配在springboot；续期/登出黑名单/Cache集成） | [README](jwt/README.md) |
 | database | `database` | BaseModel(Eloquent合并模式)/@DataSource多数据源 | [README](database/README.md) |
 | migration | `migration` | Blueprint/Schema/Migrator/方言分包（零Spring依赖，装配在springboot；5种源模式：DIRECTORY/DIRECTORY_CLASSES/PACKAGED/JAR/CLASSPATH；MySQL/SQLite/H2/SQL Server/PostgreSQL/Oracle，跨库表迁移） | [README](migration/README.md) |
 | event | `event` | Dispatcher/Listener/QueueManager（零Spring依赖，装配在springboot；多队列+重试） | [README](event/README.md) |
 | redis | `redis` | RedisManager/RedisConfig（零Spring依赖，装配在springboot；多命名连接，standalone/sentinel/cluster，分布式锁） | [README](redis/README.md) |
 | redis-cache | `redis-cache` | RedisCacheDriver（零Spring依赖，装配在springboot；CacheDriver实现，多机缓存同步） | [README](redis-cache/README.md) |
-| session-redis | `session-redis` | RedisSessionStore（零Spring依赖，装配在springboot；多机Session同步，基于 http 的 SessionStore） | [README](session-redis/README.md) |
+| session-redis | `session-redis` | RedisSessionStore（零Spring依赖，装配在springboot；多机Session同步，基于 session 模块的 SessionStore） | [README](session-redis/README.md) |
 | artisan | `artisan` | ArtisanApplication/ArtisanCommand/ArtisanRunner（CLI命令框架，签名解析） | [README](artisan/README.md) |
 | schedule | `schedule` | Schedule/ScheduledTask + 装配（零Spring依赖，装配在springboot；Cron调度，分布式锁） | [README](schedule/README.md) |
 | queue-database | `queue-database` | DatabaseQueueDriver/Worker（装配在springboot；driver层保留spring-jdbc/spring-context（D3豁免），持久化队列，多实例消费，重试） | [README](queue-database/README.md) |

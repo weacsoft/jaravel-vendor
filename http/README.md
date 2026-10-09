@@ -1,5 +1,8 @@
 # http 模块
 
+> **模块拆分提示（0.1.3）**：原先位于本模块 `http.session` 包的 Session 存储契约与实现（`SessionStore` / `CookieSessionStore` / `@RegisterSessionStore` / `SessionStoreHolder`）已迁至独立的 **`session`** 模块（Spring 装配在 `springboot.session`）；`auth.guard` 的 `SessionGuard`/`SessionGuardDriver` 已迁至 **`auth-session`** 模块。http 模块不再包含 Session 存储。
+
+
 > Jaravel-Vendor 的 HTTP 层模块，提供 Laravel 风格的中间件管道、Request / Response 抽象、路由系统与控制器契约。包名统一为 `com.weacsoft.jaravel.vendor.*`（含 `middleware`、`route`、`http.request`、`http.response`、`controller` 子包）。
 
 ---

@@ -56,6 +56,14 @@ public class UploadHeader {
     /** 前端提供的文件唯一标识（断点/断线续传定位用，如文件 hash） */
     private String identifier;
 
+    /**
+     * 上传归属主体（登录用户 id；匿名上传为 {@code null}）。
+     * <p>
+     * 用于防止「知道别人 文件名+大小+mtime 就能拼出 identifier → 复用/劫持他人上传任务」的越权：
+     * 归属不同主体时既不能续传、也不能对他人 resourceId 写分片或中止。
+     */
+    private String ownerId;
+
     /** MIME 类型 */
     private String mimeType;
 
@@ -255,6 +263,14 @@ public class UploadHeader {
 
     public void setIdentifier(String identifier) {
         this.identifier = identifier;
+    }
+
+    public String getOwnerId() {
+        return ownerId;
+    }
+
+    public void setOwnerId(String ownerId) {
+        this.ownerId = ownerId;
     }
 
     public String getMimeType() {

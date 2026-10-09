@@ -3,8 +3,6 @@ package com.weacsoft.jaravel.vendor.springboot.auth;
 import com.weacsoft.jaravel.vendor.auth.AuthManager;
 import com.weacsoft.jaravel.vendor.auth.contract.AuthGuardDriver;
 import com.weacsoft.jaravel.vendor.auth.contract.UserProviderDriver;
-import com.weacsoft.jaravel.vendor.auth.guard.SessionGuardDriver;
-import com.weacsoft.jaravel.vendor.http.session.SessionStoreHolder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -12,7 +10,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Conditional;
 
 import java.util.List;
 
@@ -52,12 +49,11 @@ import java.util.List;
  *   <li>注册守卫驱动（{@link AuthGuardDriver}）</li>
  * </ol>
  *
- * <h3>Session 存储由 http 模块提供，auth 不强引用</h3>
- * Session 功能（{@code SessionStore} 接口、{@code CookieSessionStore} 默认实现、
- * {@code @RegisterSessionStore} 扫描）已迁移到 http 模块，由
- * {@code HttpSessionAutoConfiguration} 注册全局 {@code SessionStoreHolder} 并回退到 HttpSession。
- * 本配置类仅消费 {@code SessionStoreHolder}；
- * 若项目未引入 http 的 Session 功能，则兜底构造一个 holder，退化为原生 Servlet HttpSession。
+ * <h3>auth 不依赖 session：本类只装配「认证标准」</h3>
+ * 本类只注册 auth 标准相关 Bean（AuthManager、生命周期过滤器、注册器）。
+ * 「用 Session 保存登录态」属于一种<b>实现</b>，装配在 {@link SessionGuardAutoConfiguration}
+ * （该类带类级条件，仅在引入了 {@code auth-session} + {@code session} 时才生效）。
+ * 因此只依赖 auth 的应用不会被拖入 session 能力，也不会因缺这两个模块而启动失败。
  */
 @AutoConfiguration
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
@@ -67,15 +63,6 @@ public class AuthAutoConfiguration {
 
     @Autowired
     private AuthProperties properties;
-
-    /**
-     * http 模块提供的全局 Session 存储持有者（弱引用，缺失时兜底）。
-     * <p>
-     * 弱引用以适配「http 的 Session 功能为 optional」的场景：未启用时由容器注入 {@code null}，
-     * {@link #sessionGuardDriver()} 内部兜底构造 {@code new SessionStoreHolder()}。
-     */
-    @Autowired(required = false)
-    private SessionStoreHolder sessionStoreHolder;
 
     /**
      * 认证管理器 Bean（{@code @ConditionalOnMissingBean}，便于业务方自定义覆盖）。
@@ -100,24 +87,6 @@ public class AuthAutoConfiguration {
     @ConditionalOnMissingBean
     public AuthLifecycleFilter authLifecycleFilter(AuthManager authManager) {
         return new AuthLifecycleFilter(authManager);
-    }
-
-    /**
-     * Session 守卫驱动（工厂模式）。
-     * <p>
-     * 实现 {@link AuthGuardDriver}，支持 "session" 驱动。
-     * 注入 http 模块提供的 {@link SessionStoreHolder}，实际存储实现由
-     * {@code @RegisterSessionStore} 注解或 {@code SessionStore} Bean 决定，
-     * 都没有时回退到 {@code CookieSessionStore}（基于 Servlet HttpSession）。
-     *
-     * @return Session 守卫驱动
-     */
-    @Bean
-    @ConditionalOnMissingBean
-    @Conditional(OnSessionGuardDriverCondition.class)
-    public SessionGuardDriver sessionGuardDriver() {
-        SessionStoreHolder holder = (sessionStoreHolder != null) ? sessionStoreHolder : new SessionStoreHolder();
-        return new SessionGuardDriver(holder);
     }
 
     /**

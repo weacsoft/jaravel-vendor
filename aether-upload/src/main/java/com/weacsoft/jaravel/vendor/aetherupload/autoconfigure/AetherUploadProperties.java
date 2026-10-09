@@ -146,6 +146,17 @@ public class AetherUploadProperties {
         /** 是否允许前端在 prepare 时指定分片大小 */
         private boolean allowClientChunkSize = true;
 
+        /**
+         * 匿名上传是否启用 identifier 断点续传，默认 {@code false}。
+         * <p>
+         * identifier 由前端按「文件名+大小+mtime」这类<b>可预测</b>规则拼出，
+         * 若匿名用户也能用它续传，攻击者只要知道目标文件的三要素就能复用/劫持他人的上传任务
+         * （读到进度、写入分片、甚至决定最终成品内容）。
+         * 因此默认关闭：匿名 prepare 每次都新建上传任务，identifier 仅用于日志。
+         * 登录用户不受本项影响（identifier 会按主体作用域隔离）。
+         */
+        private boolean anonymousResumeEnabled = false;
+
         // ==================== 分片安全上限（DoS 防护） ====================
 
         /**
@@ -190,6 +201,14 @@ public class AetherUploadProperties {
 
         public void setMaxChunks(long maxChunks) {
             this.maxChunks = maxChunks;
+        }
+
+        public boolean isAnonymousResumeEnabled() {
+            return anonymousResumeEnabled;
+        }
+
+        public void setAnonymousResumeEnabled(boolean anonymousResumeEnabled) {
+            this.anonymousResumeEnabled = anonymousResumeEnabled;
         }
 
         /** 该组专属中间件别名列表 */

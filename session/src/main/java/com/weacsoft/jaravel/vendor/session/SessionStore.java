@@ -1,4 +1,4 @@
-package com.weacsoft.jaravel.vendor.http.session;
+package com.weacsoft.jaravel.vendor.session;
 
 /**
  * Session 存储契约，抽象登录态的持久化方式。

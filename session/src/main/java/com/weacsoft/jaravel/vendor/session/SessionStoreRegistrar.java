@@ -1,4 +1,4 @@
-package com.weacsoft.jaravel.vendor.http.session;
+package com.weacsoft.jaravel.vendor.session;
 
 import com.weacsoft.jaravel.vendor.core.registrar.SingletonRegistrar;
 import org.springframework.context.ApplicationContext;

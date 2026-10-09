@@ -1,4 +1,4 @@
-package com.weacsoft.jaravel.vendor.http.session;
+package com.weacsoft.jaravel.vendor.session;
 
 import com.weacsoft.jaravel.vendor.http.controller.request.Request;
 import com.weacsoft.jaravel.vendor.http.controller.request.RequestFactory;

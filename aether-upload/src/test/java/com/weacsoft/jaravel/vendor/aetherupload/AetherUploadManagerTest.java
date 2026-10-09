@@ -100,6 +100,11 @@ class AetherUploadManagerTest {
 
     @Test
     void 相同identifier重新prepare应返回已传分片实现断点续传() {
+        // 匿名续传默认关闭（identifier 由前端按文件名/大小/mtime 可预测拼出，允许匿名续传
+        // 等于「知道三要素即可劫持他人任务」）。本用例验证续传机制本身，因此显式开启；
+        // 登录用户的续传不受该开关影响（identifier 按主体作用域隔离）。
+        properties.getGroups().get("file").setAnonymousResumeEnabled(true);
+
         byte[] content = randomBytes(1024 * 4);
         UploadResult first = manager.prepare("file", "resume.bin", content.length, null, "same-id", null);
         manager.writeChunk("file", first.resourceId, 0, chunkOf(content, 0, 1024));
@@ -117,6 +122,18 @@ class AetherUploadManagerTest {
         manager.writeChunk("file", resumed.resourceId, 2, chunkOf(content, 2, 1024));
         UploadResult done = manager.writeChunk("file", resumed.resourceId, 3, chunkOf(content, 3, 1024));
         assertTrue(done.completed);
+    }
+
+    @Test
+    void 匿名续传默认关闭_相同identifier不会复用他人任务() {
+        byte[] content = randomBytes(1024 * 2);
+        UploadResult first = manager.prepare("file", "anon.bin", content.length, null, "same-id", null);
+        assertFalse(first.resumed);
+
+        // 默认关闭匿名续传：同样的 identifier 应新建任务，而不是复用上一个（越权面收敛）
+        UploadResult second = manager.prepare("file", "anon.bin", content.length, null, "same-id", null);
+        assertFalse(second.resumed, "匿名续传默认必须关闭");
+        assertFalse(first.resourceId.equals(second.resourceId), "不得复用他人/上一次的上传任务");
     }
 
     @Test

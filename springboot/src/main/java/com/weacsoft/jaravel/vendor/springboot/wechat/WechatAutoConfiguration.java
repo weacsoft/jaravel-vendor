@@ -2,7 +2,7 @@ package com.weacsoft.jaravel.vendor.springboot.wechat;
 
 import com.weacsoft.jaravel.vendor.cache.CacheManager;
 import com.weacsoft.jaravel.vendor.http.middleware.MiddlewareAliasRegistry;
-import com.weacsoft.jaravel.vendor.http.session.SessionStoreHolder;
+import com.weacsoft.jaravel.vendor.session.SessionStoreHolder;
 import com.weacsoft.jaravel.vendor.wechat.AccessTokenManager;
 import com.weacsoft.jaravel.vendor.wechat.MiniProgramService;
 import com.weacsoft.jaravel.vendor.wechat.OfficialAccountService;
