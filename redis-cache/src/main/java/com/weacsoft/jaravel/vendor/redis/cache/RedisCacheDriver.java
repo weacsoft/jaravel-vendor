@@ -39,7 +39,8 @@ import java.util.List;
  *   <li>TTL {@code <= 0} 表示永不过期，使用 SET 而非 SETEX</li>
  * </ul>
  */
-public class RedisCacheDriver implements CacheDriver, com.weacsoft.jaravel.vendor.cache.TtlAwareCacheDriver {
+public class RedisCacheDriver implements CacheDriver, com.weacsoft.jaravel.vendor.cache.TtlAwareCacheDriver,
+        com.weacsoft.jaravel.vendor.cache.AtomicCacheDriver {
 
     private static final Logger logger = LoggerFactory.getLogger(RedisCacheDriver.class);
 
@@ -202,6 +203,59 @@ public class RedisCacheDriver implements CacheDriver, com.weacsoft.jaravel.vendo
         } catch (Exception e) {
             logger.error("[redis-cache] 读取 TTL 失败 key={}: {}", key, e.getMessage());
             return java.util.OptionalLong.empty();
+        }
+    }
+
+    // ==================== AtomicCacheDriver：并发安全的原语 ====================
+
+    /** 原子取走：GET+DEL 放进一个脚本（Redis 6.2 以下没有 GETDEL，用脚本兼容所有版本） */
+    private static final String PULL_SCRIPT =
+            "local v = redis.call('GET', KEYS[1]) if v then redis.call('DEL', KEYS[1]) end return v";
+
+    @Override
+    public boolean addIfAbsent(String key, Object value, long ttlSeconds) {
+        try {
+            String json = Json.stringify(value);
+            io.lettuce.core.SetArgs args = ttlSeconds > 0
+                    ? io.lettuce.core.SetArgs.Builder.nx().ex(ttlSeconds)
+                    : io.lettuce.core.SetArgs.Builder.nx();
+            return "OK".equals(commands().set(physicalKey(key), json, args));
+        } catch (Exception e) {
+            logger.error("[redis-cache] 原子写入(setnx)失败 key={}: {}", key, e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public Object pullValue(String key) {
+        try {
+            String json = commands().eval(PULL_SCRIPT, io.lettuce.core.ScriptOutputType.VALUE,
+                    new String[]{physicalKey(key)});
+            if (json == null) {
+                return null;
+            }
+            return Json.parse(json, Object.class);
+        } catch (Exception e) {
+            logger.error("[redis-cache] 原子取走失败 key={}: {}", key, e.getMessage());
+            return null;
+        }
+    }
+
+    @Override
+    public long incrementAndGet(String key, long amount, long ttlIfAbsentSeconds) {
+        try {
+            String physical = physicalKey(key);
+            // 键不存在且要求 TTL 时，先用 SET NX 建 0 并带过期时间（否则 INCRBY 会建出永久的键）
+            if (ttlIfAbsentSeconds > 0) {
+                commands().set(physical, "0",
+                        io.lettuce.core.SetArgs.Builder.nx().ex(ttlIfAbsentSeconds));
+            }
+            // INCRBY 原子，且原生保留既有 TTL —— 这正是「自增不抹掉 TTL」的最省事实现
+            Long value = commands().incrby(physical, amount);
+            return value == null ? amount : value;
+        } catch (Exception e) {
+            logger.error("[redis-cache] 原子自增失败 key={}: {}", key, e.getMessage());
+            return 0L;
         }
     }
 

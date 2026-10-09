@@ -151,4 +151,55 @@ class RedisCacheDriverTest {
 
         verify(mockCmd).del(physical("x"), physical("y"));
     }
+
+    // ==================== AtomicCacheDriver：原子原语 ====================
+
+    @Test
+    void addIfAbsentUsesSetNx() {
+        when(mockCmd.set(eq(physical("once")), any(String.class), any(io.lettuce.core.SetArgs.class)))
+                .thenReturn("OK");
+
+        assertTrue(driver.addIfAbsent("once", "v", 30), "SET NX 返回 OK 时应为写入成功");
+
+        // 代理证据：必须走「带 SetArgs 的 set 重载」（put() 用的是两参 set），
+        // 这条重载就是 SET NX [EX ttl] 的原子写法
+        verify(mockCmd).set(eq(physical("once")), any(String.class), any(io.lettuce.core.SetArgs.class));
+        verify(mockCmd, never()).set(eq(physical("once")), any(String.class));
+    }
+
+    @Test
+    void addIfAbsentReturnsFalseWhenKeyExists() {
+        when(mockCmd.set(eq(physical("dup")), any(String.class), any(io.lettuce.core.SetArgs.class)))
+                .thenReturn(null);
+        assertFalse(driver.addIfAbsent("dup", "v", 30));
+    }
+
+    @Test
+    void pullValueUsesAtomicGetDelScript() {
+        when(mockCmd.eval(any(String.class), any(io.lettuce.core.ScriptOutputType.class),
+                any(String[].class))).thenReturn("\"token\"");
+        assertEquals("token", driver.pullValue("one-shot"));
+
+        var scriptCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(mockCmd).eval(scriptCaptor.capture(), any(io.lettuce.core.ScriptOutputType.class),
+                any(String[].class));
+        assertTrue(scriptCaptor.getValue().contains("GET") && scriptCaptor.getValue().contains("DEL"),
+                "取走必须是 GET+DEL 单脚本（原子），实际=" + scriptCaptor.getValue());
+    }
+
+    @Test
+    void incrementAndGetUsesAtomicIncrby() {
+        when(mockCmd.incrby(physical("counter"), 5L)).thenReturn(7L);
+        assertEquals(7L, driver.incrementAndGet("counter", 5L, 0L));
+        verify(mockCmd).incrby(physical("counter"), 5L);
+    }
+
+    @Test
+    void incrementAndGetSeedsTtlWhenRequested() {
+        when(mockCmd.incrby(physical("rate"), 1L)).thenReturn(1L);
+        driver.incrementAndGet("rate", 1L, 60L);
+        // 键不存在且要求 TTL 时，应先用 SET NX EX 建 0，避免 INCRBY 建出永久的键
+        verify(mockCmd).set(eq(physical("rate")), eq("0"), any(io.lettuce.core.SetArgs.class));
+        verify(mockCmd).incrby(physical("rate"), 1L);
+    }
 }

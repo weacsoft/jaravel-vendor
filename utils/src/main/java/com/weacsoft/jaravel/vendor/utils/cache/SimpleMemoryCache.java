@@ -181,11 +181,19 @@ public class SimpleMemoryCache {
      * @return 是否写入成功
      */
     public boolean add(String key, Object value, long ttlSeconds) {
-        if (exists(key)) {
-            return false;
-        }
-        put(key, value, ttlSeconds);
-        return true;
+        long expiryAt = ttlSeconds > 0 ? System.currentTimeMillis() + ttlSeconds * 1000L : 0L;
+        // compute 对同一 key 是原子的：并发 add 只有一个能成功。
+        // 原实现是 exists→put 两步（先检查后写入），两个线程可能同时通过检查而都返回 true，
+        // 「单次执行/互斥门闩」语义因此失效；已过期条目在此视为不存在。
+        boolean[] written = {false};
+        store.compute(key, (k, existing) -> {
+            if (existing != null && !existing.isExpired()) {
+                return existing;
+            }
+            written[0] = true;
+            return new Entry(value, expiryAt);
+        });
+        return written[0];
     }
 
     /**
@@ -246,18 +254,37 @@ public class SimpleMemoryCache {
      * @return 自增后的值
      */
     public long increment(String key, long amount) {
-        Entry entry = store.get(key);
-        long current = 0;
-        long expiryAt = 0L;
-        if (entry != null && !entry.isExpired()) {
-            if (entry.value instanceof Number) {
-                current = ((Number) entry.value).longValue();
+        return increment(key, amount, 0L);
+    }
+
+    /**
+     * 自增指定步长（原子），并可指定「键不存在时」的 TTL。
+     *
+     * @param key                缓存键
+     * @param amount             步长
+     * @param ttlIfAbsentSeconds 键不存在/已过期时的过期秒数，{@code <= 0} 表示永不过期
+     * @return 自增后的值
+     */
+    public long increment(String key, long amount, long ttlIfAbsentSeconds) {
+        // compute 对同一 key 原子：并发自增不再「丢失更新」（原实现 get→put 两步），
+        // 且保留原 expiryAt（不把有期限的键变成永不过期）
+        long[] result = {0L};
+        store.compute(key, (k, existing) -> {
+            long current = 0L;
+            long expiryAt = 0L;
+            if (existing != null && !existing.isExpired()) {
+                if (existing.value instanceof Number) {
+                    current = ((Number) existing.value).longValue();
+                }
+                expiryAt = existing.expiryAt;
+            } else if (ttlIfAbsentSeconds > 0) {
+                expiryAt = System.currentTimeMillis() + ttlIfAbsentSeconds * 1000L;
             }
-            expiryAt = entry.expiryAt;
-        }
-        long newValue = current + amount;
-        store.put(key, new Entry(newValue, expiryAt));
-        return newValue;
+            long newValue = current + amount;
+            result[0] = newValue;
+            return new Entry(newValue, expiryAt);
+        });
+        return result[0];
     }
 
     /**

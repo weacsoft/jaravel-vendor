@@ -115,6 +115,11 @@ public class DefaultCacheStore implements CacheStore {
 
     @Override
     public Object pull(String key) {
+        // 驱动提供原子取走原语时优先使用：默认实现是 get→forget 两步，
+        // 并发下同一个一次性令牌可能被两个线程同时取到（captcha 等消费方依赖该语义）
+        if (driver instanceof com.weacsoft.jaravel.vendor.cache.AtomicCacheDriver atomic) {
+            return atomic.pullValue(key(key));
+        }
         Object value = get(key);
         if (value != null) {
             forget(key);
@@ -124,6 +129,10 @@ public class DefaultCacheStore implements CacheStore {
 
     @Override
     public boolean add(String key, Object value, long ttlSeconds) {
+        // 同理：默认 has→put 两步会让并发 add 都返回 true（互斥门闩失效）
+        if (driver instanceof com.weacsoft.jaravel.vendor.cache.AtomicCacheDriver atomic) {
+            return atomic.addIfAbsent(key(key), value, ttlSeconds);
+        }
         if (has(key)) {
             return false;
         }
@@ -138,7 +147,11 @@ public class DefaultCacheStore implements CacheStore {
 
     @Override
     public long increment(String key, long amount) {
-        // get-then-put：仍非原子（丢失更新见类注释），但必须保留原 TTL ——
+        // 驱动具备原子自增能力时优先使用（消除丢失更新，且 TTL 由驱动保留）
+        if (driver instanceof com.weacsoft.jaravel.vendor.cache.AtomicCacheDriver atomic) {
+            return atomic.incrementAndGet(key(key), amount, 0L);
+        }
+        // 回退：get-then-put 仍非原子，但必须保留原 TTL ——
         // 原实现写死 put(key,next,0)，会把「有期限」的键变成永不过期：
         // 限流计数永久生效、model-cache 版本键无限堆积（审计 M9）。
         long current = toLong(get(key));
@@ -183,6 +196,9 @@ public class DefaultCacheStore implements CacheStore {
 
     @Override
     public long decrement(String key, long amount) {
+        if (driver instanceof com.weacsoft.jaravel.vendor.cache.AtomicCacheDriver atomic) {
+            return atomic.incrementAndGet(key(key), -amount, 0L);
+        }
         long current = toLong(get(key));
         long next = current - amount;
         put(key, next, resolveTtlForRewrite(key));

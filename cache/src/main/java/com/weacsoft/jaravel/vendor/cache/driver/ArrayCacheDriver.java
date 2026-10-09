@@ -14,7 +14,8 @@ import java.util.Collection;
  * <p>
  * TTL 单位为秒：{@code ttlSeconds <= 0} 表示永不过期。读取 / 存在性判断时会惰性清理过期条目。
  */
-public class ArrayCacheDriver implements CacheDriver, com.weacsoft.jaravel.vendor.cache.TtlAwareCacheDriver {
+public class ArrayCacheDriver implements CacheDriver, com.weacsoft.jaravel.vendor.cache.TtlAwareCacheDriver,
+        com.weacsoft.jaravel.vendor.cache.AtomicCacheDriver {
 
     /** 委托的内存缓存实现 */
     private final SimpleMemoryCache cache = new SimpleMemoryCache();
@@ -67,5 +68,22 @@ public class ArrayCacheDriver implements CacheDriver, com.weacsoft.jaravel.vendo
             return java.util.OptionalLong.empty();
         }
         return java.util.OptionalLong.of(remaining < 0 ? 0L : remaining);
+    }
+
+    // ==================== AtomicCacheDriver：并发安全的原语 ====================
+
+    @Override
+    public boolean addIfAbsent(String key, Object value, long ttlSeconds) {
+        return cache.add(key, value, ttlSeconds);
+    }
+
+    @Override
+    public Object pullValue(String key) {
+        return cache.pull(key);
+    }
+
+    @Override
+    public long incrementAndGet(String key, long amount, long ttlIfAbsentSeconds) {
+        return cache.increment(key, amount, ttlIfAbsentSeconds);
     }
 }

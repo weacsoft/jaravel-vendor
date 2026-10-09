@@ -5,6 +5,15 @@
 
 ## [Unreleased]（目标版本 0.1.3 · 开发中）
 
+### Fixed（修复 · 第三轮：队列与缓存原子性）
+
+- **`RedisQueueDriver` 迁移/领取/释放原子化 + 索引 O(1)（审计 M12/M13，此前零测试）**：①到期延迟任务与超时预约任务的迁移由「`ZREM` 后再 `LPUSH`」两步改为 **Lua 脚本**（每个成员的 `ZREM`+`LPUSH` 在同一脚本内原子完成）—— 原实现若进程死在两步之间，任务已从 ZSET 移除却未进就绪队列 → **永久丢失**；②领取由「`RPOP` 后再 `ZADD`」改为 **Lua 领取脚本**，避免「已取出未预约」时崩溃丢任务，随后用第二个脚本**原子替换**预约成员（写入递增后的 attempts/reservedAt）并刷新索引 —— 崩溃时原始成员仍在预约集合，语义是「至少一次」而非丢失；③`release` 同样改为单个 Lua 脚本（`ZREM` + 入队 + 刷新索引）；④索引值由「只存队列名」改为 **`queue<US>member`**，`delete/release` 变为 O(1)（原实现每次 `ZRANGE 0 -1` 全量扫描并逐条反序列化，是热路径 O(N)），旧格式索引仍回退到扫描以兼容滚动升级；⑤`push` 改为**先写索引再入队**（后者最坏留一条无害孤儿索引，前者会导致定位不到队列）；⑥索引缺失不再静默 debug，改为告警并说明任务将由超时迁移重新投递。新增 `RedisQueueDriverTest`（8 例，Mockito mock `RedisCommands`；含「新格式不再扫描」「旧格式回退扫描」「迁移/领取走 eval 且不再用两步命令」等断言）。**Lua 的原子语义本身需真实 Redis 才能验证，已列为未验证项。**
+- **`cache` 原子原语（审计 M9 的原子性部分）**：新增可选能力接口 `AtomicCacheDriver`（`addIfAbsent` / `pullValue` / `incrementAndGet`），内存驱动与 Redis 驱动实现，`DefaultCacheStore` 优先走原子路径：
+  - 内存侧：`SimpleMemoryCache.add` 由 `exists→put` 改为 `ConcurrentHashMap.compute`（并发 add 只有一个成功，恢复「互斥门闩」语义）；`increment` 由读改写改为 `compute`（**消除丢失更新**并保留 `expiryAt`），新增带「键不存在时 TTL」的重载；
+  - Redis 侧：`addIfAbsent` 用 `SET NX [EX]`、`pullValue` 用 Lua `GET+DEL`（兼容 Redis 6.2 以下，不依赖 `GETDEL`）、`incrementAndGet` 用 `INCRBY`（原子且**原生保留 TTL**），键不存在且要求 TTL 时先 `SET NX EX` 建 0；
+  - `add`/`pull` 在无能力驱动上仍是两步实现，已按「尽力而为」写入接口契约，绝不假装原子；数据库驱动的原子 add/pull 依赖 `JdbcExecutor.inTransaction`（待办）。
+  - 新增 `CacheAtomicityTest`（6 例：并发 add 唯一胜出、并发 pull 唯一取到、并发自增减不丢更新、原子自增仍保留 TTL），`RedisCacheDriverTest` 增补 5 例。
+
 ### Fixed（修复 · 第二轮：专家团评审后落地）
 
 - **`wechat-sdk` 明文推送验签语义调整（用户要求「不强制」，但不做成摆设）**：`verify-post-signature` 默认由 `true` 改为 **`false`**（不强制要求携带签名），但**只要请求带了 `signature` 就必须验过**（不匹配即拒绝）。理由：若「默认关闭且带了也不验」，攻击者只需省略签名即可绕过 —— 来源真实性控制形同虚设；而微信自身推送是带签名的（测试号真机联调在 `verify=true` 下通过即为证据），因此该调整对线上流量仍是实际验签，只对未签名的内部调用/调试放行。同步：GET 接入校验与安全模式 `msg_signature` **恒校验**（不受本开关影响，已加回归用例固定）；未携带签名的推送只告警**一次**（原每请求 WARN 会造成日志放大）；`WxBizMsgCrypt.verifyPlainSignature` 改用 `MessageDigest.isEqual` 常量时间比较（原 `equalsIgnoreCase` 短路比较，CWE-208）。

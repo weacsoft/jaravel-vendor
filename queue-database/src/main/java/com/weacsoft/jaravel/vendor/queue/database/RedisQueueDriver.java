@@ -54,6 +54,48 @@ public class RedisQueueDriver implements QueueDriver {
     /** Redis 键前缀 */
     private static final String DEFAULT_PREFIX = "jaravel:queue";
 
+    /**
+     * 索引值分隔符：索引里存 {@code queue<US>member}（JSON 内不含控制字符，安全）。
+     * <p>
+     * 历史实现只存队列名，于是 {@code delete/release} 必须 {@code ZRANGE 0 -1} 遍历整个预约 ZSET
+     * 并逐条反序列化（O(N) 热路径）；索引里带上成员后，删除/释放变成 O(1)，也不再依赖扫描兜底。
+     */
+    private static final char INDEX_SEPARATOR = '\u0001';
+
+    /** 到期延迟任务 → 就绪队列：ZREM+LPUSH 在同一脚本内，避免「已 ZREM 未 LPUSH」时崩溃丢任务 */
+    private static final String MIGRATE_DUE_SCRIPT =
+            "local members = redis.call('ZRANGEBYSCORE', KEYS[1], 0, ARGV[1]) "
+            + "for i, m in ipairs(members) do "
+            + "  if redis.call('ZREM', KEYS[1], m) > 0 then redis.call('LPUSH', KEYS[2], m) end "
+            + "end return #members";
+
+    /** 原子领取：RPOP 就绪队列 + ZADD 预约集合，避免「已 RPOP 未 ZADD」时崩溃导致任务彻底丢失 */
+    private static final String CLAIM_SCRIPT =
+            "local m = redis.call('RPOP', KEYS[1]) "
+            + "if not m then return false end "
+            + "redis.call('ZADD', KEYS[2], ARGV[1], m) "
+            + "return m";
+
+    /** 原子替换预约成员 + 刷新索引（attempts/reservedAt 更新后写回，替换是原子的，不会产生重复成员） */
+    private static final String RE_RESERVE_SCRIPT =
+            "redis.call('ZREM', KEYS[1], ARGV[1]) "
+            + "redis.call('ZADD', KEYS[1], ARGV[2], ARGV[3]) "
+            + "redis.call('HSET', KEYS[2], ARGV[4], ARGV[5]) "
+            + "return 1";
+
+    /**
+     * 原子释放：ZREM 预约成员 + 入队（就绪 / 延迟）+ 刷新索引。
+     * <p>
+     * KEYS = [reserved, ready, delayed, index]；ARGV = [旧成员, 新成员, availableAt, 是否延迟, jobId, 索引值]。
+     * 原实现是「先 zrem 再 lpush」两步，进程死在中间会让任务彻底消失。
+     */
+    private static final String RELEASE_SCRIPT =
+            "redis.call('ZREM', KEYS[1], ARGV[1]) "
+            + "if ARGV[4] == '1' then redis.call('ZADD', KEYS[3], ARGV[3], ARGV[2]) "
+            + "else redis.call('LPUSH', KEYS[2], ARGV[2]) end "
+            + "redis.call('HSET', KEYS[4], ARGV[5], ARGV[6]) "
+            + "return 1";
+
     /** Redis 管理器，提供命名连接 */
     private final RedisManager redisManager;
 
@@ -139,12 +181,14 @@ public class RedisQueueDriver implements QueueDriver {
         long availableAt = delayMs > 0 ? now + delayMs : now;
         String json = serializeJob(id, queueName, payload, 0, 0L, availableAt, now);
         RedisCommands<String, String> cmd = cmd();
+        // 先写索引再入队：若中途崩溃，最坏留下一条无害的孤儿索引；
+        // 反过来「已入队但没有索引」会让 delete/release 定位不到队列 → 任务被重放。
+        cmd.hset(indexKey(), Long.toString(id), indexValue(queueName, json));
         if (delayMs > 0) {
             cmd.zadd(delayedKey(queueName), availableAt, json);
         } else {
             cmd.lpush(readyKey(queueName), json);
         }
-        cmd.hset(indexKey(), Long.toString(id), queueName);
         logger.debug("[queue-redis] 推送任务: queue={}, jobId={}, delayMs={}", queueName, id, delayMs);
         return id;
     }
@@ -157,24 +201,19 @@ public class RedisQueueDriver implements QueueDriver {
         String delayed = delayedKey(queueName);
         String reserved = reservedKey(queueName);
 
-        // 1. 迁移到期延迟任务到就绪队列
-        List<String> delayedMembers = cmd.zrangebyscore(delayed, 0.0, (double) now);
-        for (String member : delayedMembers) {
-            if (cmd.zrem(delayed, member) > 0) {
-                cmd.lpush(ready, member);
-            }
-        }
+        // 1. 迁移到期延迟任务到就绪队列（Lua：ZREM+LPUSH 原子，崩在中间不丢任务）
+        cmd.eval(MIGRATE_DUE_SCRIPT, io.lettuce.core.ScriptOutputType.INTEGER,
+                new String[]{delayed, ready}, Long.toString(now));
 
         // 2. 迁移超时预约任务到就绪队列（worker 崩溃 / 超时未确认）
-        List<String> reservedMembers = cmd.zrangebyscore(reserved, 0.0, (double) now);
-        for (String member : reservedMembers) {
-            if (cmd.zrem(reserved, member) > 0) {
-                cmd.lpush(ready, member);
-            }
-        }
+        cmd.eval(MIGRATE_DUE_SCRIPT, io.lettuce.core.ScriptOutputType.INTEGER,
+                new String[]{reserved, ready}, Long.toString(now));
 
-        // 3. 弹出就绪任务
-        String json = cmd.rpop(ready);
+        // 3. 原子领取：RPOP + ZADD reserved 在同一脚本内完成。
+        //    原实现是 rpop 之后再 zadd，进程若死在两步之间，任务既不在就绪也不在预约集合 → 彻底丢失。
+        long deadline = now + retryAfterSeconds * 1000;
+        String json = cmd.eval(CLAIM_SCRIPT, io.lettuce.core.ScriptOutputType.VALUE,
+                new String[]{ready, reserved}, Long.toString(deadline));
         if (json == null) {
             return null;
         }
@@ -189,28 +228,40 @@ public class RedisQueueDriver implements QueueDriver {
         int attempts = (int) asLong(job.get("attempts")) + 1;
         long availableAt = asLong(job.get("availableAt"));
         long createdAt = asLong(job.get("createdAt"));
-        long reservedAt = now + retryAfterSeconds * 1000;
+        long reservedAt = deadline;
 
-        // 更新 attempts / reservedAt 后重新写入预约队列
+        // 更新 attempts / reservedAt 后原子替换预约成员并刷新索引。
+        // 若进程在这之前崩溃：原始成员仍留在预约集合（脚本已保证）→ 超时后被迁移回就绪队列，
+        // 语义是「至少一次」而不是「丢失」。
         String updated = serializeJob(id, queueName, payload, attempts, reservedAt, availableAt, createdAt);
-        cmd.zadd(reserved, reservedAt, updated);
+        cmd.eval(RE_RESERVE_SCRIPT, io.lettuce.core.ScriptOutputType.INTEGER,
+                new String[]{reserved, indexKey()},
+                json, Long.toString(reservedAt), updated, Long.toString(id), indexValue(queueName, updated));
 
         return new QueuedJob(id, queueName, payload, attempts, reservedAt, availableAt, createdAt);
     }
 
     @Override
     public void delete(long jobId) {
-        String queue = cmd().hget(indexKey(), Long.toString(jobId));
-        if (queue == null) {
-            logger.debug("[queue-redis] 删除任务：索引中不存在 jobId={}", jobId);
+        String raw = cmd().hget(indexKey(), Long.toString(jobId));
+        if (raw == null) {
+            // 索引缺失时无法定位成员；该任务若仍在预约集合，会在 retryAfter 到期后被迁移回就绪队列
+            // 重新消费（至少一次语义），因此这里只告警、不再静默 debug。
+            logger.warn("[queue-redis] 删除任务：索引中不存在 jobId={}（若仍在预约集合，将由超时迁移重新投递）", jobId);
             return;
         }
-        String member = findReservedMember(queue, jobId);
+        String[] parsed = parseIndexValue(raw);
+        String queue = parsed[0];
+        // 新格式索引里直接带成员 → O(1)；兼容旧格式（只存队列名）时回退到扫描
+        String member = parsed[1] != null ? parsed[1] : findReservedMember(queue, jobId);
         if (member != null) {
             cmd().zrem(reservedKey(queue), member);
+        } else {
+            logger.warn("[queue-redis] 删除任务：预约集合中未找到成员（可能已被超时迁移）: jobId={}, queue={}",
+                    jobId, queue);
         }
         cmd().hdel(indexKey(), Long.toString(jobId));
-        logger.debug("[queue-redis] 删除任务: jobId={}, queue={}", jobId, queue);
+        logger.debug("[queue-redis] 删除任务: jobId={}, queue={}, o1={}", jobId, queue, parsed[1] != null);
     }
 
     @Override
@@ -220,14 +271,16 @@ public class RedisQueueDriver implements QueueDriver {
 
     @Override
     public void release(long jobId, long delayMs) {
-        String queue = cmd().hget(indexKey(), Long.toString(jobId));
-        if (queue == null) {
-            logger.warn("[queue-redis] 释放任务：索引中不存在 jobId={}", jobId);
+        String raw = cmd().hget(indexKey(), Long.toString(jobId));
+        if (raw == null) {
+            logger.warn("[queue-redis] 释放任务：索引中不存在 jobId={}（若仍在预约集合，将由超时迁移重新投递）", jobId);
             return;
         }
-        String member = findReservedMember(queue, jobId);
+        String[] parsed = parseIndexValue(raw);
+        String queue = parsed[0];
+        String member = parsed[1] != null ? parsed[1] : findReservedMember(queue, jobId);
         if (member == null) {
-            logger.warn("[queue-redis] 释放任务：预约队列中不存在 jobId={}", jobId);
+            logger.warn("[queue-redis] 释放任务：预约队列中不存在 jobId={}, queue={}", jobId, queue);
             return;
         }
         Map<String, Object> job = deserialize(member);
@@ -240,12 +293,11 @@ public class RedisQueueDriver implements QueueDriver {
                 asLong(job.get("id")), queue, asString(job.get("payload")),
                 (int) asLong(job.get("attempts")), 0L, availableAt, asLong(job.get("createdAt")));
         RedisCommands<String, String> cmd = cmd();
-        cmd.zrem(reservedKey(queue), member);
-        if (delayMs > 0) {
-            cmd.zadd(delayedKey(queue), availableAt, updated);
-        } else {
-            cmd.lpush(readyKey(queue), updated);
-        }
+        // 原子释放：ZREM + 入队 + 刷新索引在一个脚本内完成（崩在中间不丢任务）
+        cmd.eval(RELEASE_SCRIPT, io.lettuce.core.ScriptOutputType.INTEGER,
+                new String[]{reservedKey(queue), readyKey(queue), delayedKey(queue), indexKey()},
+                member, updated, Long.toString(availableAt), delayMs > 0 ? "1" : "0",
+                Long.toString(jobId), indexValue(queue, updated));
         logger.debug("[queue-redis] 释放任务: jobId={}, delayMs={}", jobId, delayMs);
     }
 
@@ -394,6 +446,37 @@ public class RedisQueueDriver implements QueueDriver {
             }
         }
         return null;
+    }
+
+    /**
+     * 构造索引值：{@code queue<US>member}。
+     * <p>
+     * 带上成员后，{@code delete/release} 无需遍历预约 ZSET（原实现是 O(N) 反序列化热路径），
+     * 也不再需要「扫描兜底」。
+     *
+     * @param queue  队列名
+     * @param member 任务成员 JSON
+     * @return 索引值
+     */
+    private String indexValue(String queue, String member) {
+        return queue + INDEX_SEPARATOR + (member == null ? "" : member);
+    }
+
+    /**
+     * 解析索引值。
+     * <p>
+     * 兼容旧格式（只存队列名）：此时第二元素为 {@code null}，调用方回退到扫描。
+     *
+     * @param raw 索引值
+     * @return 长度 2 的数组：{@code [queue, memberOrNull]}
+     */
+    private String[] parseIndexValue(String raw) {
+        int separator = raw.indexOf(INDEX_SEPARATOR);
+        if (separator < 0) {
+            return new String[]{raw, null};
+        }
+        String member = raw.substring(separator + 1);
+        return new String[]{raw.substring(0, separator), member.isEmpty() ? null : member};
     }
 
     private String serializeJob(long id, String queue, String payload, int attempts,
