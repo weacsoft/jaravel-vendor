@@ -54,12 +54,19 @@ import java.util.concurrent.Executors;
  * 注意：由于 {@code cache_value} 以 JSON 存储，{@code Object} 反序列化时复杂对象会还原为
  * {@code LinkedHashMap} / {@code ArrayList} 等基础类型，这是 JSON 缓存的固有特性。
  */
-public class DatabaseCacheDriver implements CacheDriver {
+public class DatabaseCacheDriver implements CacheDriver,
+        com.weacsoft.jaravel.vendor.cache.AtomicCacheDriver {
 
     private static final Logger logger = LoggerFactory.getLogger(DatabaseCacheDriver.class);
 
     /** 默认缓存表名 */
     private static final String DEFAULT_TABLE = "jaravel_cache";
+
+    /** 原子自增（乐观 CAS）的最长等待时间：预算内持续重试，超时即抛错（绝不静默丢一次自增） */
+    private static final long INCREMENT_MAX_WAIT_MS = 3000L;
+
+    /** 自增重试退避毫秒（第 n 次退避 = n × 本值） */
+    private static final long INCREMENT_RETRY_BACKOFF_MS = 15L;
 
     /** 缓存键列 */
     private static final String COL_KEY = "cache_key";
@@ -226,6 +233,156 @@ public class DatabaseCacheDriver implements CacheDriver {
     @Override
     public boolean remove(String key) {
         return jdbc.update("DELETE FROM " + q(table) + " WHERE " + q(COL_KEY) + " = ?", key) > 0;
+    }
+
+    // ==================== AtomicCacheDriver：真原子原语（基于 inTransaction）====================
+
+    /**
+     * 原子写入（仅当键不存在或已过期）：靠<b>主键唯一约束 + 事务</b>兜底并发，
+     * 不再依赖「先查后写」两步（那会让并发 add 都返回 true，互斥门闩语义失效）。
+     */
+    @Override
+    public boolean addIfAbsent(String key, Object value, long ttlSeconds) {
+        long expiresAt = ttlSeconds > 0 ? System.currentTimeMillis() + ttlSeconds * 1000L : 0L;
+        String json;
+        try {
+            json = Json.stringify(value);
+        } catch (Exception e) {
+            logger.warn("[cache-db] addIfAbsent 序列化失败: key={}, err={}", key, e.getMessage());
+            return false;
+        }
+        try {
+            jdbc.inTransaction(tx -> {
+                // 已过期记录先清掉：使「存在但已过期」等价于不存在（与 get() 语义一致）
+                tx.update("DELETE FROM " + q(table) + " WHERE " + q(COL_KEY) + " = ? AND "
+                                + q(COL_EXPIRES) + " > 0 AND " + q(COL_EXPIRES) + " <= ?",
+                        key, System.currentTimeMillis());
+                // 并发同时写入时，主键冲突会让本语句抛异常 → 整个事务回滚 → 返回 false
+                tx.update("INSERT INTO " + q(table) + " (" + q(COL_KEY) + ", " + q(COL_VALUE)
+                                + ", " + q(COL_EXPIRES) + ") VALUES (?, ?, ?)",
+                        key, json, expiresAt);
+                return null;
+            });
+            return true;
+        } catch (Exception e) {
+            logger.debug("[cache-db] addIfAbsent 未写入（键已存在或并发冲突）: key={}, err={}",
+                    key, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 原子取走：同一事务内 {@code SELECT ... FOR UPDATE} + {@code DELETE}。
+     * <p>
+     * 行锁是「一次性令牌」语义的关键：并发 pull 同一键时，后到的事务会在锁上等待，
+     * 拿到锁时该行已被删除 → 读到空 → 返回 null。
+     * <p>
+     * SQLite 不支持 {@code FOR UPDATE}（全库写锁），此时退化为「读 + 删」两步
+     * （仍在同一事务内，但不是行级互斥）—— 该限制已在本驱动文档声明。
+     */
+    @Override
+    public Object pullValue(String key) {
+        try {
+            String json = jdbc.inTransaction(tx -> {
+                List<Row> rows = tx.queryMapped(
+                        "SELECT " + q(COL_VALUE) + ", " + q(COL_EXPIRES)
+                                + " FROM " + q(table)
+                                + " WHERE " + q(COL_KEY) + " = ?" + rowLockClause(),
+                        rs -> new Row(rs.getString(COL_VALUE), rs.getLong(COL_EXPIRES)),
+                        key);
+                if (rows.isEmpty()) {
+                    return null;
+                }
+                Row row = rows.get(0);
+                if (isExpired(row.expiresAt())) {
+                    return null;
+                }
+                tx.update("DELETE FROM " + q(table) + " WHERE " + q(COL_KEY) + " = ?", key);
+                return row.cacheValue();
+            });
+            return json == null ? null : deserialize(json);
+        } catch (Exception e) {
+            logger.warn("[cache-db] 原子取走失败: key={}, err={}", key, e.getMessage());
+            return null;
+        }
+    }
+
+    /** 行锁子句：不支持的方言（SQLite）返回空串 */
+    private String rowLockClause() {
+        try {
+            Dialect current = dialect();
+            String name = current == null || current.getName() == null
+                    ? "" : current.getName().toLowerCase();
+            return name.contains("sqlite") ? "" : " FOR UPDATE";
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    /**
+     * 原子自增（乐观 CAS，可移植）：读当前值 → 计算 → 条件更新（{@code WHERE value = 读到的原值}），
+     * 更新 0 行说明期间被别人改过 → 重读重算；键不存在/已过期时尝试插入（主键冲突则重试）。
+     * <p>
+     * 为什么不用 {@code SELECT ... FOR UPDATE}：各家 MVCC/行锁实现细节不同（H2 MVStore 下实测
+     * {@code FOR UPDATE} 不足以防丢更新），CAS 的语义在所有方言上一致。
+     * <p>
+     * TTL：已存在的键<b>保留原 expires_at</b>；新键使用 {@code ttlIfAbsentSeconds}。
+     */
+    @Override
+    public long incrementAndGet(String key, long amount, long ttlIfAbsentSeconds) {
+        long deadline = System.currentTimeMillis() + INCREMENT_MAX_WAIT_MS;
+        int attempt = 0;
+        while (System.currentTimeMillis() < deadline) {
+            attempt++;
+            try {
+                List<Row> rows = jdbc.queryMapped(
+                        "SELECT " + q(COL_VALUE) + ", " + q(COL_EXPIRES)
+                                + " FROM " + q(table)
+                                + " WHERE " + q(COL_KEY) + " = ?",
+                        rs -> new Row(rs.getString(COL_VALUE), rs.getLong(COL_EXPIRES)),
+                        key);
+                Row row = rows.isEmpty() ? null : rows.get(0);
+                boolean usable = row != null && !isExpired(row.expiresAt());
+                long current = 0L;
+                if (usable) {
+                    Object value = deserialize(row.cacheValue());
+                    if (value instanceof Number number) {
+                        current = number.longValue();
+                    }
+                }
+                long next = current + amount;
+                if (usable) {
+                    int updated = jdbc.update(
+                            "UPDATE " + q(table) + " SET " + q(COL_VALUE) + " = ?, " + q(COL_EXPIRES)
+                                    + " = ? WHERE " + q(COL_KEY) + " = ? AND " + q(COL_VALUE) + " = ?",
+                            Json.stringify(next), row.expiresAt(), key, row.cacheValue());
+                    if (updated > 0) {
+                        return next;
+                    }
+                } else {
+                    long expiresAt = ttlIfAbsentSeconds > 0
+                            ? System.currentTimeMillis() + ttlIfAbsentSeconds * 1000L : 0L;
+                    try {
+                        jdbc.update("INSERT INTO " + q(table) + " (" + q(COL_KEY) + ", "
+                                        + q(COL_VALUE) + ", " + q(COL_EXPIRES) + ") VALUES (?, ?, ?)",
+                                key, Json.stringify(next), expiresAt);
+                        return next;
+                    } catch (RuntimeException concurrentInsert) {
+                        // 并发插入或过期清理竞争：下一轮重读重算
+                    }
+                }
+                Thread.sleep(Math.min(5L, INCREMENT_RETRY_BACKOFF_MS + attempt));
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                break;
+            } catch (RuntimeException e) {
+                logger.debug("[cache-db] 原子自增第 {} 次尝试失败: key={}, err={}",
+                        attempt, key, e.getMessage());
+            }
+        }
+        // 绝不静默丢一次自增：CAS 在预算内始终没成功就让调用方看到失败
+        throw new IllegalStateException("原子自增失败：键 " + key + " 在 " + INCREMENT_MAX_WAIT_MS
+                + "ms 内被持续修改（尝试 " + attempt + " 次）");
     }
 
     @Override

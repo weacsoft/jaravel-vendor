@@ -204,35 +204,31 @@ public class DatabaseFilesystem implements Filesystem {
         boolean isBinary = binary;
         List<byte[]> chunks = split(contents, chunkSize);
         int count = chunks.size();
-
-        // 先清旧数据（按 disk+path 删除分片与元信息），再写入，保证幂等。
-        jdbc.update("DELETE FROM " + chunksTable + " WHERE disk = ? AND path = ?", name, norm);
-        jdbc.update("DELETE FROM " + filesTable + " WHERE disk = ? AND path = ?", name, norm);
-
         String col = contentColumn;
-        if (isBinary) {
-            for (int i = 0; i < count; i++) {
-                byte[] c = chunks.get(i);
-                jdbc.update("INSERT INTO " + chunksTable +
-                                " (disk, path, chunk_index, " + col + ", size, created_at, updated_at)" +
-                                " VALUES (?, ?, ?, ?, ?, ?, ?)",
-                        name, norm, i, c, c.length, now, now);
-            }
-        } else {
-            for (int i = 0; i < count; i++) {
-                byte[] c = chunks.get(i);
-                jdbc.update("INSERT INTO " + chunksTable +
-                                " (disk, path, chunk_index, " + col + ", size, created_at, updated_at)" +
-                                " VALUES (?, ?, ?, ?, ?, ?, ?)",
-                        name, norm, i, Base64.getEncoder().encodeToString(c), c.length, now, now);
-            }
-        }
 
-        jdbc.update("INSERT INTO " + filesTable +
-                        " (disk, path, visibility, mime_type, size, chunk_count, created_at, updated_at)" +
-                        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                name, norm, defaultVisibility.value(), MimeTypeGuesser.guess(norm),
-                contents.length, count, now, now);
+        // 四条语句必须在同一事务里：先清旧数据再写新数据，中途失败会留下
+        // 「元信息已删、分片只写了一半」的坏状态（读出来是半截文件）。
+        // 依赖 JdbcExecutor.inTransaction 保证同一连接 + 失败回滚。
+        jdbc.inTransaction(tx -> {
+            tx.update("DELETE FROM " + chunksTable + " WHERE disk = ? AND path = ?", name, norm);
+            tx.update("DELETE FROM " + filesTable + " WHERE disk = ? AND path = ?", name, norm);
+
+            for (int i = 0; i < count; i++) {
+                byte[] c = chunks.get(i);
+                Object chunkValue = isBinary ? c : Base64.getEncoder().encodeToString(c);
+                tx.update("INSERT INTO " + chunksTable +
+                                " (disk, path, chunk_index, " + col + ", size, created_at, updated_at)" +
+                                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        name, norm, i, chunkValue, c.length, now, now);
+            }
+
+            tx.update("INSERT INTO " + filesTable +
+                            " (disk, path, visibility, mime_type, size, chunk_count, created_at, updated_at)" +
+                            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    name, norm, defaultVisibility.value(), MimeTypeGuesser.guess(norm),
+                    contents.length, count, now, now);
+            return null;
+        });
     }
 
     @Override

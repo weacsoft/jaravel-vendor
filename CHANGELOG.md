@@ -5,6 +5,20 @@
 
 ## [Unreleased]（目标版本 0.1.3 · 开发中）
 
+### Added（新增 · 第六轮：JdbcExecutor 事务原语与数据库驱动的原子语义）
+
+- **`database`：新增 `JdbcExecutor.inTransaction(...)` 事务原语（用户要求）**。此前 `update`/`queryMapped` 等方法各自从 `DataSource` 取一次连接（连接池下可能是不同连接），因此「先查后改」在多实例并发下不是原子的，`SELECT ... FOR UPDATE` 也无法生效（行锁属于连接/事务）。现在提供：
+  - `inTransaction(TransactionWork<T>)`：同一连接、关闭自动提交、成功提交、异常回滚（运行时异常原样抛出，不包装掩盖）、`finally` 恢复 autoCommit 并归还连接；
+  - 事务句柄 `Tx`：`execute` / `update` / `insertReturningKey` / `queryMapped` / `queryForList` / `queryForObject` 全部绑定同一连接，并暴露 `connection()` 供 `FOR UPDATE SKIP LOCKED` 等方言特化语句使用；
+  - 新增 `JdbcExecutorTransactionTest`（7 例：提交可见、异常回滚、事务内可见自己的未提交写入、返回值、条件更新抢占模式、拿到底层连接、事务后执行器仍可用）。
+- **`cache-database`：实现 `AtomicCacheDriver` 真原子原语**（原先 `add`/`pull` 是「先查后写 / 先读后删」两步，并发下会静默失效）：
+  - `addIfAbsent`：事务 + **主键唯一约束**兜底并发（并发 add 只有一个成功，恢复互斥门闩语义），已过期条目视为不存在；
+  - `pullValue`：事务内 `SELECT ... FOR UPDATE` + `DELETE`（一次性令牌只被一个线程取到；SQLite 不支持 `FOR UPDATE`，退化为同事务内「读+删」并在文档声明）；
+  - `incrementAndGet`：**乐观 CAS + 时间预算**（读值→计算→`WHERE value = 读到的原值` 条件更新，失败重读重算），**保留原 `expires_at`**；预算内始终失败时**抛错而不是静默返回 0**（绝不静默丢一次自增）。实测发现 H2 MVStore 下 `FOR UPDATE` 不足以防丢更新，故改用与方言无关的 CAS；
+  - 新增 `DatabaseCacheAtomicityTest`（7 例：并发 add 唯一胜出、并发 pull 唯一取到、并发自增不丢更新、过期为不存在、不覆盖已有值、自增保留 TTL、新键带 TTL）。
+- **`storage-database`：`put` 事务化**：「清旧分片 + 清旧元信息 + 写全部分片 + 写元信息」收进同一事务，原实现中途失败会留下「元信息已删、分片只写一半」的半截文件。
+- **未完成（已登记）**：`queue-database` 的 `pop` 尚未切到 `FOR UPDATE SKIP LOCKED` —— 当前「乐观锁 + 竞争退避重试」路径本身正确且安全（架构师评审结论），切换属性能优化，且需要方言矩阵测试（Oracle/SQL Server 在当前测试基建下无法覆盖）。
+
 ### Changed（变更 · 第五轮：auth/session 模块拆分 + 归属校验 + wechat 语义调整）
 
 - **auth ↔ session 解耦（结构性拆分，用户要求）**：新增两个模块，形成「标准 / 实现」的清晰边界 ——
@@ -35,7 +49,7 @@
 ### Fixed（修复 · 第二轮：专家团评审后落地）
 
 - **`wechat-sdk` 明文推送验签语义调整（用户要求「不强制」，但不做成摆设）**：`verify-post-signature` 默认由 `true` 改为 **`false`**（不强制要求携带签名），但**只要请求带了 `signature` 就必须验过**（不匹配即拒绝）。理由：若「默认关闭且带了也不验」，攻击者只需省略签名即可绕过 —— 来源真实性控制形同虚设；而微信自身推送是带签名的（测试号真机联调在 `verify=true` 下通过即为证据），因此该调整对线上流量仍是实际验签，只对未签名的内部调用/调试放行。同步：GET 接入校验与安全模式 `msg_signature` **恒校验**（不受本开关影响，已加回归用例固定）；未携带签名的推送只告警**一次**（原每请求 WARN 会造成日志放大）；`WxBizMsgCrypt.verifyPlainSignature` 改用 `MessageDigest.isEqual` 常量时间比较（原 `equalsIgnoreCase` 短路比较，CWE-208）。
-- **`EncryptCookies` 增加旧格式（v1）兼容开关（用户要求），默认仍安全**：新增 `protected boolean allowLegacyFormat()`（默认 `false`）、`protected String[] legacyFormatCookieNames()`（默认空；`"*"` 表示通配）与严格结构校验的 `decryptLegacy(...)`（Base64 + 长度/块对齐 + PKCS#5 + **严格 UTF-8** + 独立的 v1 密钥派生，不能复用 v2 的 SHA-256 派生）。行为：仅当显式开启且命中白名单、且名字非安全敏感（`*session*`/`*token*`/`*login*`/`XSRF-*`/`X-*`/`__Host*`/`__Secure*`/`JSESSIONID` 一律硬拒绝）时才按旧格式读取；**出站一律写 v2**（只读旧、写新）；失败仍然「失败即丢弃」，绝不保留请求原值（兼容模式下同样如此，已用例固定）。安全代价已写明：v1 无 MAC，兼容期**无法检测 CBC 比特翻转**，应作为一次性迁移手段并尽快关闭。
+- **`EncryptCookies` 增加旧格式（v1）兼容开关（用户要求），默认仍安全**：新增 `protected boolean allowLegacyFormat()`（默认 `false`）、`protected String[] legacyFormatCookieNames()`（默认空；`"*"` 表示通配）与严格结构校验的 `decryptLegacy(...)`（Base64 + 长度/块对齐 + PKCS#5 + **严格 UTF-8** + 独立的 v1 密钥派生，不能复用 v2 的 SHA-256 派生）。行为：仅当显式开启且命中白名单、且名字非安全敏感（`*session*`/`*token*`/`*login*`/`XSRF-*`/`X-*`/`__Host*`/`__Secure*`/`JSESSIONID` 一律硬拒绝）时才按旧格式读取；**出站一律写 v2**（只读旧、写新）；失败仍然「失败即丢弃」，绝不保留请求原值（兼容模式下同样如此，已用例固定）。安全代价已写明：v1 无 MAC，兼容期**无法检测 CBC 比特翻转**。**本开关不做硬退场**：开启即长期兼容，由使用方按自身迁移节奏决定何时关闭（框架不会因版本升级而自动失效）。
 - **`http` 新增 `EncryptCookiesTest`（19 例）**：此前该安全关键中间件<b>零测试覆盖</b>（专家团一致标为阻断项）。覆盖明文冒充必须移除（v2 与兼容模式各一条）、v2 往返（含 UTF-8）、随机 IV、HMAC 篡改检出、非法 Base64/长度、排除名单透传、出站原地替换且一律 v2、加密失败置空不下发明文、兼容白名单/通配/安全敏感名/非 UTF-8/结构非法等分支。
 - **`aether-upload` 分片 DoS 与溢出（审计 S8）**：①`UploadHeader.uploadedChunkList()` 把位图提取到循环外（原循环内每次 `new byte[(totalChunks+7)/8]`，`totalChunks=1e6` 实测 21.4 秒、1e8 超过 120 秒不返回；空位图直接 O(位图) 返回）；②`prepare` 用 `long` 计算分片数并校验上限后再收窄（原 `(int)` 在 `size=8e9&chunkSize=1` 时得到负数 → 状态机失效、上传永不完成），且**校验全部通过后才创建临时文件**（拒绝路径不产生 `.part`）；③新增 `max-chunks`（默认 10 万，超限时**自动放大分片**而不是拒绝大文件）与 `min/max-chunk-size`（默认 1 字节 / 10MB，客户端值钳制后**回显**，对既有前端透明）；④`tempDir` 增加机会式清理（限频 10 分钟、按记录头 TTL 判定），原实现 `.part` 无任何回收；⑤新增「既未配 `max-size` 又未挂中间件」的一次性告警（该组合下 prepare/chunk 可被匿名调用并预分配磁盘）。新增 `AetherUploadChunkLimitTest`（6 例，含 8e9 溢出等价路径，并保持既有 4 字节分片契约不变）。
 - **`cache` 自增/自减不再抹掉 TTL（审计 M9，已实测复现）**：新增可选能力接口 `TtlAwareCacheDriver`（三态 `OptionalLong`：empty=键不存在或不可判定 / 0=永不过期 / 正数=剩余秒数），`ArrayCacheDriver`（含 `SimpleMemoryCache.remainingTtlSeconds`）与 `RedisCacheDriver`（`TTL` 命令）实现；`DefaultCacheStore.increment/decrement` 按原键剩余 TTL 写回。**明确不做「退化为短 TTL」**：那会让限流计数/缓存版本键中途重置 —— 例如 `model-cache` 版本键过期会让旧版本缓存条目集体复活，属数据正确性问题；驱动不支持该能力时按无 TTL 写入并**每驱动类告警一次**。`CacheStore` 补齐 TTL 与「原子性为尽力而为」的契约文档。新增 `CacheTtlPreservationTest`（7 例，含非能力驱动回退、真实过期、反复自增不延长 TTL）。
