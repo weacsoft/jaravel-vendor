@@ -117,7 +117,13 @@ public final class WxBizMsgCrypt {
         if (signature == null || signature.isEmpty() || timestamp == null || nonce == null) {
             return false;
         }
-        return signPlain(timestamp, nonce).equalsIgnoreCase(signature);
+        // 常量时间比较（与 wire 快照校验一致）：equalsIgnoreCase 短路比较会泄露逐字节的时序信息，
+        // 而本签名的三个输入（token 除外）都是公开参数，理论上可被用来做时序预言。
+        byte[] expected = signPlain(timestamp, nonce)
+                .getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        byte[] actual = signature.toLowerCase(java.util.Locale.ROOT)
+                .getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        return java.security.MessageDigest.isEqual(expected, actual);
     }
 
     /**

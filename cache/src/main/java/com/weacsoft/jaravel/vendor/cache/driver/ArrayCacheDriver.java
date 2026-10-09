@@ -14,7 +14,7 @@ import java.util.Collection;
  * <p>
  * TTL 单位为秒：{@code ttlSeconds <= 0} 表示永不过期。读取 / 存在性判断时会惰性清理过期条目。
  */
-public class ArrayCacheDriver implements CacheDriver {
+public class ArrayCacheDriver implements CacheDriver, com.weacsoft.jaravel.vendor.cache.TtlAwareCacheDriver {
 
     /** 委托的内存缓存实现 */
     private final SimpleMemoryCache cache = new SimpleMemoryCache();
@@ -52,5 +52,20 @@ public class ArrayCacheDriver implements CacheDriver {
     @Override
     public Collection<String> allKeys() {
         return cache.allKeys();
+    }
+
+    /**
+     * 报告剩余 TTL：键存在时返回剩余秒数（永不过期为 0），键不存在返回 empty。
+     * <p>
+     * {@link SimpleMemoryCache#remainingTtlSeconds(String)} 用 -1/-2 区分「永不过期/不存在」，
+     * 这里转成本能力接口的三态约定（empty / 0 / 正数）。
+     */
+    @Override
+    public java.util.OptionalLong remainingTtlSeconds(String key) {
+        long remaining = cache.remainingTtlSeconds(key);
+        if (remaining == -2) {
+            return java.util.OptionalLong.empty();
+        }
+        return java.util.OptionalLong.of(remaining < 0 ? 0L : remaining);
     }
 }

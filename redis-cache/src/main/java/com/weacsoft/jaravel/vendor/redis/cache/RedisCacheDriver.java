@@ -25,8 +25,8 @@ import java.util.List;
  *
  * <h3>键命名空间（重要）</h3>
  * 本驱动写入 Redis 的键统一加前缀 {@code <keyPrefix><逻辑键>}。前缀取自
- * {@link RedisManager#getPrefix()}（{@code jaravel.redis.prefix}），未配置时回退为
- * {@link #DEFAULT_KEY_PREFIX}。
+ * {@link RedisManager#getPrefix()}（配置键为 {@code jaravel.redis.options.prefix}，
+ * 注意不是 {@code jaravel.redis.prefix}），未配置时回退为 {@link #DEFAULT_KEY_PREFIX}。
  * <p>
  * <b>为什么必须有前缀</b>：{@link #allKeys()} 用 SCAN + MATCH 前缀遍历，{@link #removeAll()}
  * 只删除这些键。历史缺陷是 SCAN 时<b>没带 MATCH</b>，于是 {@code Cache::flush()} 会把整个
@@ -39,11 +39,11 @@ import java.util.List;
  *   <li>TTL {@code <= 0} 表示永不过期，使用 SET 而非 SETEX</li>
  * </ul>
  */
-public class RedisCacheDriver implements CacheDriver {
+public class RedisCacheDriver implements CacheDriver, com.weacsoft.jaravel.vendor.cache.TtlAwareCacheDriver {
 
     private static final Logger logger = LoggerFactory.getLogger(RedisCacheDriver.class);
 
-    /** 未配置 {@code jaravel.redis.prefix} 时使用的默认键前缀（保证 flushed 范围可控） */
+    /** 未配置 {@code jaravel.redis.options.prefix} 时使用的默认键前缀（保证 flushed 范围可控） */
     public static final String DEFAULT_KEY_PREFIX = "jaravel:cache:";
 
     /** SCAN 每批数量 */
@@ -179,6 +179,30 @@ public class RedisCacheDriver implements CacheDriver {
             logger.error("[redis-cache] 扫描缓存键失败: {}", e.getMessage());
         }
         return logical;
+    }
+
+    /**
+     * 报告剩余 TTL（供 {@code CacheStore.increment/decrement} 保留原 TTL）。
+     * <p>
+     * Redis 的 {@code TTL} 语义：{@code -2} 键不存在、{@code -1} 存在但无过期时间、
+     * 其他为剩余秒数。这里按能力接口的三态转换（empty / 0 / 正数）。
+     */
+    @Override
+    public java.util.OptionalLong remainingTtlSeconds(String key) {
+        try {
+            Long ttl = commands().ttl(physicalKey(key));
+            if (ttl == null) {
+                return java.util.OptionalLong.empty();
+            }
+            if (ttl >= 0) {
+                return java.util.OptionalLong.of(ttl);
+            }
+            // ttl == -1：键存在且永不过期；ttl == -2：键不存在
+            return ttl == -1L ? java.util.OptionalLong.of(0L) : java.util.OptionalLong.empty();
+        } catch (Exception e) {
+            logger.error("[redis-cache] 读取 TTL 失败 key={}: {}", key, e.getMessage());
+            return java.util.OptionalLong.empty();
+        }
     }
 
     /**

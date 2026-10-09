@@ -146,6 +146,52 @@ public class AetherUploadProperties {
         /** 是否允许前端在 prepare 时指定分片大小 */
         private boolean allowClientChunkSize = true;
 
+        // ==================== 分片安全上限（DoS 防护） ====================
+
+        /**
+         * 客户端可指定的分片大小<b>下限</b>（字节），默认 1（= 不设下限）。
+         * <p>
+         * 为什么默认不设下限：既有调用方/测试存在 4 字节这类极小分片，设下限会直接破坏兼容；
+         * 而「小分片导致位图与请求数膨胀」的真正上界由 {@link #maxChunks} 表达
+         * （超限时框架自动放大分片）。仍需要硬下限的部署可显式配置本项。
+         */
+        private long minChunkSize = 1;
+
+        /** 客户端可指定的分片大小<b>上限</b>（字节），默认 10MB（单分片=单请求一个堆内数组） */
+        private long maxChunkSize = 10 * 1024 * 1024;
+
+        /**
+         * 单文件分片数<b>上限</b>，默认 100000（位图约 12.5KB）。
+         * <p>
+         * 超过时框架会<b>自动放大分片</b>（而不是拒绝大文件），因此大文件仍可上传；
+         * 若放大后仍超限（配置的自适应被禁用或 size 异常巨大）才拒绝。
+         */
+        private long maxChunks = 100_000;
+
+        public long getMinChunkSize() {
+            return minChunkSize;
+        }
+
+        public void setMinChunkSize(long minChunkSize) {
+            this.minChunkSize = minChunkSize;
+        }
+
+        public long getMaxChunkSize() {
+            return maxChunkSize;
+        }
+
+        public void setMaxChunkSize(long maxChunkSize) {
+            this.maxChunkSize = maxChunkSize;
+        }
+
+        public long getMaxChunks() {
+            return maxChunks;
+        }
+
+        public void setMaxChunks(long maxChunks) {
+            this.maxChunks = maxChunks;
+        }
+
         /** 该组专属中间件别名列表 */
         private List<String> middleware = new ArrayList<>();
 

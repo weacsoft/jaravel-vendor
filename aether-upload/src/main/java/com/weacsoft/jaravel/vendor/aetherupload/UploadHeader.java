@@ -106,8 +106,26 @@ public class UploadHeader {
      */
     public List<Integer> uploadedChunkList() {
         List<Integer> list = new ArrayList<>();
+        if (totalChunks <= 0) {
+            return list;
+        }
+        // 位图只取一次。原实现是循环内调 hasChunk(i)，而 hasChunk → bitmapBytes() 在 bitmap 为空时
+        // 每次都 new byte[(totalChunks+7)/8]：totalChunks=1e6 实测 21.4 秒、1e8 时 120 秒以上不返回
+        // （单请求 CPU/GC 长阻塞，审计 S8 的可复现形态）。
+        byte[] bits = bitmapBytes();
+        boolean anyChunkMarked = false;
+        for (byte b : bits) {
+            if (b != 0) {
+                anyChunkMarked = true;
+                break;
+            }
+        }
+        if (!anyChunkMarked) {
+            return list;   // 一个分片都没传：O(位图长度) 直接返回，不再遍历 totalChunks
+        }
         for (int i = 0; i < totalChunks; i++) {
-            if (hasChunk(i)) {
+            int byteIndex = i / 8;
+            if (byteIndex < bits.length && (bits[byteIndex] & (1 << (i % 8))) != 0) {
                 list.add(i);
             }
         }

@@ -23,9 +23,17 @@ import java.util.List;
  * 或 {@code artisan queue:table} 生成迁移文件）。
  *
  * <h3>多实例消费</h3>
- * 使用 {@code SELECT ... FOR UPDATE SKIP LOCKED}（MySQL 8+）实现非阻塞抢占式消费，
- * 确保同一任务在同一时间只被一个实例处理。对于不支持 SKIP LOCKED 的数据库，
- * 降级为基于 {@code reserved_at} 的乐观锁。
+ * 使用<b>乐观锁预约</b>实现抢占式消费：先按可移植的 {@code id = (SELECT MIN(id) ...)} 选出候选任务，
+ * 再用条件 {@code UPDATE ... WHERE id = ? AND (reserved_at IS NULL OR reserved_at < ?)} 原子预约，
+ * 确保同一任务在同一时间只被一个实例处理。
+ * <p>
+ * <b>为什么不走 {@code FOR UPDATE SKIP LOCKED}</b>：那一版实现要求 SELECT 与 UPDATE 处于同一事务，
+ * 而 {@link JdbcExecutor} 目前不提供事务 API（{@code inTransaction} 为待办）；此外
+ * {@code LIMIT} 在 Oracle / SQL Server 上不合法。候选抢占失败时本实现会<b>短暂退避重试</b>，
+ * 而不是把「抢失败」当成「队列为空」。
+ * <p>
+ * 因此投递保证为<b>至少一次</b>：崩溃或超过 {@code retryAfterSeconds} 后任务会被重新取出，
+ * 消费方必须<u>幂等</u>。
  *
  * <h3>重试机制</h3>
  * 任务执行失败后通过 {@link #release(long, long)} 释放预约，设置延迟后重新入队。
@@ -67,6 +75,12 @@ import java.util.List;
 public class DatabaseQueueDriver implements QueueDriver {
 
     private static final Logger logger = LoggerFactory.getLogger(DatabaseQueueDriver.class);
+
+    /** 抢占失败后的最大重试次数（把「抢失败」与「队列为空」区分开） */
+    private static final int POP_MAX_ATTEMPTS = 3;
+
+    /** 抢占重试的基础退避毫秒（第 n 次退避 = n × 本值） */
+    private static final long POP_RETRY_BACKOFF_MS = 10L;
 
     /** 数据源（来自 database 模块 {@code ConnectionManager} 注册表或业务方显式传入） */
     private final DataSource dataSource;
@@ -224,36 +238,46 @@ public class DatabaseQueueDriver implements QueueDriver {
         long now = System.currentTimeMillis();
         long expired = now - (retryAfterSeconds * 1000);
 
-        // 查找到期且未被预约的任务
+        // 可移植写法：用「id = (SELECT MIN(id) ...)」代替 LIMIT 1（Oracle / SQL Server 不支持 LIMIT）
         String selectSql = "SELECT id, queue, payload, attempts, "
                 + "COALESCE(reserved_at, 0) as reserved_at, available_at, created_at "
                 + "FROM " + table + " "
-                + "WHERE queue = ? AND available_at <= ? AND (reserved_at IS NULL OR reserved_at < ?) "
-                + "ORDER BY id ASC LIMIT 1";
+                + "WHERE id = (SELECT MIN(id) FROM " + table + " "
+                + "  WHERE queue = ? AND available_at <= ? AND (reserved_at IS NULL OR reserved_at < ?))";
 
-        List<QueuedJob> jobs = jdbc.queryMapped(selectSql, rs -> {
-            long id = rs.getLong("id");
-            int attempts = rs.getInt("attempts");
-            String payloadStr = rs.getString("payload");
-            long availableAt = rs.getLong("available_at");
-            long createdAt = rs.getLong("created_at");
-            return new QueuedJob(id, queueName, payloadStr, attempts + 1, now, availableAt, createdAt);
-        }, queueName, now, expired);
-
-        if (jobs.isEmpty()) {
-            return null;
-        }
-
-        QueuedJob job = jobs.get(0);
-        // 乐观锁：尝试预约（只有未被预约或已过期的任务才能被预约）
         String updateSql = "UPDATE " + table + " SET reserved_at = ?, attempts = attempts + 1 "
                 + "WHERE id = ? AND (reserved_at IS NULL OR reserved_at < ?)";
-        int updated = jdbc.update(updateSql, now, job.getId(), expired);
-        if (updated == 0) {
-            // 被其他实例抢占了
-            return null;
+
+        for (int attempt = 0; attempt < POP_MAX_ATTEMPTS; attempt++) {
+            List<QueuedJob> jobs = jdbc.queryMapped(selectSql, rs -> {
+                long id = rs.getLong("id");
+                int attempts = rs.getInt("attempts");
+                String payloadStr = rs.getString("payload");
+                long availableAt = rs.getLong("available_at");
+                long createdAt = rs.getLong("created_at");
+                return new QueuedJob(id, queueName, payloadStr, attempts + 1, now, availableAt, createdAt);
+            }, queueName, now, expired);
+
+            if (jobs.isEmpty()) {
+                return null;   // 确实没有可执行任务
+            }
+
+            QueuedJob job = jobs.get(0);
+            // 乐观锁：尝试预约（只有未被预约或已过期的任务才能被预约）
+            int updated = jdbc.update(updateSql, now, job.getId(), expired);
+            if (updated > 0) {
+                return job;
+            }
+            // 被其他实例抢占：短暂退避后重试。不能直接 return null —— 上层 workLoop 把 null
+            // 当成「队列为空」去 sleep，高并发下会表现为空转与任务延迟。
+            try {
+                Thread.sleep(POP_RETRY_BACKOFF_MS * (attempt + 1L));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
         }
-        return job;
+        return null;
     }
 
     @Override

@@ -70,6 +70,15 @@ public class DatabaseQueueWorker {
     /** 任务执行线程池 */
     private final ExecutorService executor;
 
+    /**
+     * 在飞任务许可（背压）。
+     * <p>
+     * 必须先 {@code acquire()} 再 {@code pop()}：保证「已 reserve 但尚未执行」的任务数量有上界。
+     * 否则轮询线程会把大量任务提前 reserve（进程重启后它们在 visibility timeout 内无人可消费），
+     * 且内存随 pop 线性增长。
+     */
+    private final java.util.concurrent.Semaphore inFlight;
+
     /** 工作线程 */
     private final Map<String, Thread> workerThreads = new ConcurrentHashMap<>();
 
@@ -96,11 +105,22 @@ public class DatabaseQueueWorker {
         this.maxAttempts = maxAttempts;
         this.retryDelayMs = retryDelayMs;
         this.pollIntervalMs = pollIntervalMs;
-        this.executor = Executors.newFixedThreadPool(queues.size() * workerThreads, r -> {
-            Thread t = new Thread(r, "jaravel-queue-worker-" + System.nanoTime());
-            t.setDaemon(true);
-            return t;
-        });
+        int capacity = Math.max(1, queues.size() * workerThreads);
+        // 背压：有界队列 + 许可（inFlight）双重约束。
+        // 原实现用 newFixedThreadPool = 无界 LinkedBlockingQueue，而 workLoop 不受执行进度约束地
+        // pop 并丢弃 submit 返回值 —— 会提前 reserve 大量任务（进程重启后它们在 visibility timeout
+        // 内无人可消费），内存也随 pop 线性增长。
+        this.executor = new java.util.concurrent.ThreadPoolExecutor(
+                capacity, capacity, 0L, java.util.concurrent.TimeUnit.MILLISECONDS,
+                new java.util.concurrent.ArrayBlockingQueue<>(capacity),
+                r -> {
+                    Thread t = new Thread(r, "jaravel-queue-worker-" + System.nanoTime());
+                    t.setDaemon(true);
+                    return t;
+                },
+                new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());
+        // 允许在飞任务数 = 2 × 槽位（1 个在执行 + 1 个排队），既不打塌吞吐也保证有上界
+        this.inFlight = new java.util.concurrent.Semaphore(capacity * 2);
     }
 
     /**
@@ -127,14 +147,30 @@ public class DatabaseQueueWorker {
         logger.info("[queue-worker] 队列 '{}' 工作线程启动", queueName);
         while (running) {
             try {
-                QueuedJob job = driver.pop(queueName);
+                // 背压：先取得许可再 pop —— 保证「已 reserve 但尚未执行」的任务数有上界。
+                inFlight.acquire();
+                QueuedJob job;
+                try {
+                    job = driver.pop(queueName);
+                } catch (Exception popError) {
+                    inFlight.release();
+                    throw popError;
+                }
                 if (job == null) {
                     // 无任务，等待
+                    inFlight.release();
                     Thread.sleep(pollIntervalMs);
                     continue;
                 }
-                // 提交到线程池执行
-                executor.submit(() -> executeJob(job));
+                // 提交到线程池执行（执行完毕释放许可）
+                QueuedJob acquired = job;
+                executor.submit(() -> {
+                    try {
+                        executeJob(acquired);
+                    } finally {
+                        inFlight.release();
+                    }
+                });
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
@@ -211,14 +247,20 @@ public class DatabaseQueueWorker {
 
         } catch (Exception e) {
             logger.error("[queue-worker] 任务执行失败: {} - {}", job, e.getMessage(), e);
-            // 重试或归档到失败队列
-            if (job.getAttempts() < maxAttempts) {
-                driver.release(job.getId(), retryDelayMs);
-                logger.info("[queue-worker] 任务重试: {}, attempts={}/{}", job, job.getAttempts(), maxAttempts);
-            } else {
-                // 超过最大重试次数，归档到失败队列（对齐 Laravel failed_jobs）
-                driver.fail(job.getId(), job.getQueue(), job.getPayload(), job.getAttempts(), e.toString());
-                logger.warn("[queue-worker] 任务超过最大重试次数，已归档到失败队列: {}, attempts={}", job, job.getAttempts());
+            // 重试或归档到失败队列。这里必须再包一层 try/catch：原先 release/fail 自身抛异常时
+            // 会逃出本 catch，被丢弃返回值的 Future 吞掉且无人 get() → 任务状态不变、日志缺失。
+            try {
+                if (job.getAttempts() < maxAttempts) {
+                    driver.release(job.getId(), retryDelayMs);
+                    logger.info("[queue-worker] 任务重试: {}, attempts={}/{}", job, job.getAttempts(), maxAttempts);
+                } else {
+                    // 超过最大重试次数，归档到失败队列（对齐 Laravel failed_jobs）
+                    driver.fail(job.getId(), job.getQueue(), job.getPayload(), job.getAttempts(), e.toString());
+                    logger.warn("[queue-worker] 任务超过最大重试次数，已归档到失败队列: {}, attempts={}", job, job.getAttempts());
+                }
+            } catch (Exception stateError) {
+                logger.error("[queue-worker] 任务状态更新失败（release/fail 抛异常）: {} - {}",
+                        job, stateError.getMessage(), stateError);
             }
         }
     }

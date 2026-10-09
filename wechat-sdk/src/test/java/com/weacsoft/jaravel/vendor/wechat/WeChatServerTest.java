@@ -99,18 +99,49 @@ class WeChatServerTest {
     }
 
     @Test
-    void testHandlePostPlainRequiresValidSignature() {
-        WeChatServer server = new WeChatServer(plainProps(), "default");
-        // 缺失签名 → 拒绝（query 里既无 signature 也无 timestamp/nonce）
+    void verifyPostSignatureDefaultsToFalseButStillVerifiesWhenPresent() {
+        WechatProperties props = plainProps();
+        WechatProperties.OfficialAccountConfig cfg = props.getOfficialAccounts().get("default");
+        // 默认值锚点：防止「默认值被无声翻转」（本项曾从 true 改为 false，属有意的策略调整）
+        assertFalse(cfg.isVerifyPostSignature(),
+                "明文模式默认不强制要求 signature（带了仍会校验）");
+
+        WeChatServer server = new WeChatServer(props, "default");
+        // ① 未携带签名 + 默认（不强制）→ 放行（兼容未签名推送；微信自身推送带签名，故线上仍走验签）
         Map<String, String> unsigned = new LinkedHashMap<>();
-        assertThrows(WechatCryptoException.class,
+        assertDoesNotThrow(
                 () -> server.handlePost(unsigned, textPush("hi"), (m, s) -> new Text("x")),
-                "明文模式 POST 必须校验 signature，缺失即拒绝");
-        // 错误签名 → 拒绝
+                "默认不强制签名：未携带 signature 应放行");
+        // ② 携带但错误 → 恒拒绝（否则省略签名即可绕过，验签形同虚设）
         assertThrows(WechatCryptoException.class,
                 () -> server.handlePost(query("bad", "1407564400", "999", null), textPush("hi"),
                         (m, s) -> new Text("x")),
-                "明文模式 POST 签名不匹配必须拒绝");
+                "带了 signature 就必须验过，不匹配必须拒绝");
+    }
+
+    @Test
+    void testHandlePostPlainRequiresSignatureWhenStrictlyConfigured() {
+        WechatProperties props = plainProps();
+        props.getOfficialAccounts().get("default").setVerifyPostSignature(true);
+        WeChatServer server = new WeChatServer(props, "default");
+        // 严格模式：未携带签名也必须拒绝（可回到「一律要求签名」的行为）
+        Map<String, String> unsigned = new LinkedHashMap<>();
+        assertThrows(WechatCryptoException.class,
+                () -> server.handlePost(unsigned, textPush("hi"), (m, s) -> new Text("x")),
+                "verify-post-signature=true 时未携带签名必须拒绝");
+    }
+
+    @Test
+    void testHandleGetPlainStillRequiresSignatureRegardlessOfPostSwitch() {
+        // GET 接入校验不受 POST 开关影响：两种取值下都必须验签
+        for (boolean strict : new boolean[]{false, true}) {
+            WechatProperties props = plainProps();
+            props.getOfficialAccounts().get("default").setVerifyPostSignature(strict);
+            WeChatServer server = new WeChatServer(props, "default");
+            assertThrows(WechatCryptoException.class,
+                    () -> server.handleGet(query("bad_signature", "1407564400", "999", "ECHO123")),
+                    "GET 接入校验必须恒验签（verify-post-signature=" + strict + "）");
+        }
     }
 
     @Test

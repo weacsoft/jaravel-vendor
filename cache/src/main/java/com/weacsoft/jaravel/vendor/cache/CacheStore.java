@@ -60,21 +60,34 @@ public interface CacheStore {
 
     /**
      * 自增 1，对齐 Laravel {@code Cache::increment}。键不存在或非数字时按 0 起算。
+     * <p>
+     * <b>TTL 语义</b>：必须<b>保留原键的剩余 TTL</b>，不得把有期限的键写成永不过期
+     * （否则限流计数永久生效、版本键无限堆积）。实现依赖驱动实现
+     * {@link TtlAwareCacheDriver}；驱动无法报告剩余 TTL 时按无 TTL 写入并告警一次。
+     * <p>
+     * <b>原子性</b>：基础实现为「读改写」，<b>并发下存在丢失更新</b>；需要严格原子自增的
+     * 场景请使用底层支持原子自增的驱动。
      */
     long increment(String key);
 
     /**
      * 自增指定步长，对齐 Laravel {@code Cache::increment(key, amount)}。
+     * <p>
+     * TTL 与原子性语义同 {@link #increment(String)}。
      */
     long increment(String key, long amount);
 
     /**
      * 自减 1，对齐 Laravel {@code Cache::decrement}。
+     * <p>
+     * TTL 与原子性语义同 {@link #increment(String)}。
      */
     long decrement(String key);
 
     /**
      * 自减指定步长，对齐 Laravel {@code Cache::decrement(key, amount)}。
+     * <p>
+     * TTL 与原子性语义同 {@link #increment(String)}。
      */
     long decrement(String key, long amount);
 

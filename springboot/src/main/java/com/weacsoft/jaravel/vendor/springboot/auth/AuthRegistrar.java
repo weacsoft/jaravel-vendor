@@ -92,10 +92,15 @@ public class AuthRegistrar implements SmartInitializingSingleton, ApplicationCon
 
         // 4. 配置式守卫注册
         if (properties.getGuards() != null) {
+            // 兜底：写了 guards 但没写 driver 时使用可配置的 fallback-driver（默认 session）。
+            // 这里刻意不再写死 "session"：auth 是标准，session 只是其中一种驱动实现，
+            // 应用可以把它换成 jwt/token 等而不必改框架代码（配置项 jaravel.auth.fallback-driver）。
+            String fallback = (properties.getFallbackDriver() == null
+                    || properties.getFallbackDriver().isBlank())
+                    ? "session" : properties.getFallbackDriver();
             properties.getGuards().forEach((name, cfg) -> {
-                // 兜底：写了 guards 但没写 driver，使用最基础的 session 守卫保证功能可用
                 String driver = (cfg.getDriver() == null || cfg.getDriver().isBlank())
-                        ? "session" : cfg.getDriver();
+                        ? fallback : cfg.getDriver();
                 authManager.registerGuard(name, driver, cfg.getProvider());
             });
         }

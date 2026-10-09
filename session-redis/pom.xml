@@ -25,10 +25,6 @@
         </dependency>
         <dependency>
             <groupId>io.github.lijialong1313</groupId>
-            <artifactId>auth</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.github.lijialong1313</groupId>
             <artifactId>redis</artifactId>
         </dependency>
         <dependency>

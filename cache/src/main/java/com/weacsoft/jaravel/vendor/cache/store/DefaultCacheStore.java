@@ -14,11 +14,22 @@ import java.util.function.Supplier;
  * 委托给底层 {@link CacheDriver}，所有 key 操作前自动前置 {@code prefix + ":"}，
  * 用于隔离不同模块 / 应用的缓存命名空间。TTL 单位统一为<b>秒</b>。
  * <p>
- * {@code increment} / {@code decrement} 采用 get-then-put 实现（非原子，但简单直观），
- * 当键不存在或值非数字时按 0 起算；{@code remember} / {@code rememberForever} 实现
- * “命中即返回、未命中则加载并回填”的常规模式。
+ * {@code increment} / {@code decrement} 采用 get-then-put 实现，<b>非原子</b>
+ * （并发自增存在丢失更新；需要严格原子自增请用实现了 {@link com.weacsoft.jaravel.vendor.cache.TtlAwareCacheDriver}
+ * 且底层支持原子自增的驱动），当键不存在或值非数字时按 0 起算。
+ * <b>TTL 语义</b>：自增/自减会<b>保留原键的剩余 TTL</b>（不再把键写成永不过期）；驱动无法报告
+ * 剩余 TTL 时按无 TTL 写入并告警一次。{@code add} / {@code pull} 的原子性是<b>尽力而为</b>：
+ * 基础实现是 has→put / get→forget 两步，只有底层驱动提供原子原语时才是真原子。
+ * {@code remember} / {@code rememberForever} 实现「命中即返回、未命中则加载并回填」的常规模式。
  */
 public class DefaultCacheStore implements CacheStore {
+
+    private static final org.slf4j.Logger logger =
+            org.slf4j.LoggerFactory.getLogger(DefaultCacheStore.class);
+
+    /** 不支持 TTL 能力的驱动只告警一次（按驱动类名去重） */
+    private static final java.util.Set<String> TTL_UNSUPPORTED_WARNED =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     private final CacheDriver driver;
     private final String prefix;
@@ -127,11 +138,42 @@ public class DefaultCacheStore implements CacheStore {
 
     @Override
     public long increment(String key, long amount) {
-        // get-then-put：非原子但简单；null / 非数字按 0 起算
+        // get-then-put：仍非原子（丢失更新见类注释），但必须保留原 TTL ——
+        // 原实现写死 put(key,next,0)，会把「有期限」的键变成永不过期：
+        // 限流计数永久生效、model-cache 版本键无限堆积（审计 M9）。
         long current = toLong(get(key));
         long next = current + amount;
-        put(key, next, 0);
+        put(key, next, resolveTtlForRewrite(key));
         return next;
+    }
+
+    /**
+     * 解析「读改写」操作应写回的 TTL。
+     * <p>
+     * 取值规则：
+     * <ul>
+     *   <li>驱动实现 {@link com.weacsoft.jaravel.vendor.cache.TtlAwareCacheDriver}：
+     *       按原键剩余 TTL 写回（{@code 0} = 原本就永不过期 → 保持永久）；</li>
+     *   <li>键不存在：按无 TTL 写入（与原行为一致，新建计数键）；</li>
+     *   <li>驱动不支持该能力：沿用无 TTL + <b>每个驱动类告警一次</b>。</li>
+     * </ul>
+     * <b>禁止「退化为短 TTL」</b>：把一个长期计数器悄悄变成会中途过期的计数器会引发正确性问题 ——
+     * 例如 model-cache 的版本键一旦过期，版本号回落会让旧版本的缓存条目集体「复活」，造成陈旧读。
+     *
+     * @param key 逻辑键
+     * @return 写回的 TTL 秒数
+     */
+    private long resolveTtlForRewrite(String key) {
+        if (driver instanceof com.weacsoft.jaravel.vendor.cache.TtlAwareCacheDriver ttlAware) {
+            java.util.OptionalLong remaining = ttlAware.remainingTtlSeconds(key(key));
+            return remaining.isPresent() ? remaining.getAsLong() : 0L;
+        }
+        if (TTL_UNSUPPORTED_WARNED.add(driver.getClass().getName())) {
+            logger.warn("[cache] 驱动 {} 未实现 TtlAwareCacheDriver：increment/decrement "
+                    + "无法保留原 TTL，键会变成永不过期。给该驱动补上 remainingTtlSeconds(...) 即可修复。",
+                    driver.getClass().getName());
+        }
+        return 0L;
     }
 
     @Override
@@ -143,7 +185,7 @@ public class DefaultCacheStore implements CacheStore {
     public long decrement(String key, long amount) {
         long current = toLong(get(key));
         long next = current - amount;
-        put(key, next, 0);
+        put(key, next, resolveTtlForRewrite(key));
         return next;
     }
 

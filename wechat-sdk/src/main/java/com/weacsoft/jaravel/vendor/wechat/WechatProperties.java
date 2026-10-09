@@ -216,14 +216,24 @@ public class WechatProperties {
         private String messageMode = "plain";
 
         /**
-         * 是否校验<b>明文模式</b> POST 推送的 {@code signature}（默认 {@code true}）。
+         * 是否<b>强制要求</b>明文模式 POST 推送携带 {@code signature}（默认 {@code false}）。
          * <p>
          * 官方规则（《消息加解密说明》「接入指引 · 明文模式」）：
          * {@code signature = sha1(sort(token, timestamp, nonce))}，三个参数，消息体不参与。
-         * 明文模式下这是判断「请求确实来自微信」的唯一手段，关闭等于允许任何人伪造推送，
-         * <b>仅建议本地调试/压测时临时关闭</b>。安全模式恒校验 {@code msg_signature}，不受本项影响。
+         * <p>
+         * <b>语义（重要）</b>：无论本项取值如何，只要请求<b>带了</b> {@code signature}，
+         * 内核就一定会校验，校验不过即拒绝 —— 否则攻击者只要「省略签名」就能绕过验签。
+         * 本项只决定「<b>没带</b>签名时是否放行」：
+         * <ul>
+         *   <li>{@code false}（默认）：没带签名 → 放行（兼容内部调试/未签名推送场景；
+         *       微信自身推送是带签名的，正常线上流量仍会走验签），并打印一次性告警；</li>
+         *   <li>{@code true}：没带签名 → 直接拒绝（最严格）。</li>
+         * </ul>
+         * 安全提示：明文模式不加密消息体，{@code signature} 只是「来源真实性」的判据之一；
+         * 需要更高保证时请使用 {@code message-mode: safe}（该模式恒校验 {@code msg_signature}，
+         * 不受本项影响）。GET 接入校验也<b>恒校验</b>签名，同样不受本项影响。
          */
-        private boolean verifyPostSignature = true;
+        private boolean verifyPostSignature = false;
 
         // ==================== 回复额度软限制（一次问答拆成多条下发） ====================
 

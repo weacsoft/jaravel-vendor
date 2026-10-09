@@ -47,6 +47,15 @@ public class AuthProperties {
     /** 默认守卫名 */
     private String defaultGuard = "web";
 
+    /**
+     * 守卫配置里<b>没写 driver</b> 时使用的兜底驱动名，默认 {@code session}。
+     * <p>
+     * 这是把原先写死在代码里的 {@code "session"} 兜底（{@code AuthRegistrar}）变成<b>显式配置</b>：
+     * 行为默认不变（不写 driver 仍回退到 session），但「auth 默认绑定 session」不再是一段
+     * 隐式代码，而是可被应用显式覆盖的配置项（例如换成 {@code jwt}/{@code token}）。
+     */
+    private String fallbackDriver = "session";
+
     /** 提供者配置，key 为提供者名称 */
     private Map<String, ProviderConfig> providers = new LinkedHashMap<>();
 
@@ -59,6 +68,14 @@ public class AuthProperties {
 
     public void setDefaultGuard(String defaultGuard) {
         this.defaultGuard = defaultGuard;
+    }
+
+    public String getFallbackDriver() {
+        return fallbackDriver;
+    }
+
+    public void setFallbackDriver(String fallbackDriver) {
+        this.fallbackDriver = fallbackDriver;
     }
 
     public Map<String, ProviderConfig> getProviders() {

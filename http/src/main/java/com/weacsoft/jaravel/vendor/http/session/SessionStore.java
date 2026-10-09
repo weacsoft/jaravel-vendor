@@ -3,8 +3,12 @@ package com.weacsoft.jaravel.vendor.http.session;
 /**
  * Session 存储契约，抽象登录态的持久化方式。
  * <p>
- * 认证驱动（{@link com.weacsoft.jaravel.vendor.auth.AuthGuardDriver}）中 {@code session} 驱动
+ * 认证驱动（{@link com.weacsoft.jaravel.vendor.auth.contract.AuthGuardDriver}）中 {@code session} 驱动
  * 使用本接口的实现作为登录态存储后端。
+ * <p>
+ * <b>定位</b>：auth 是「认证标准/契约」，本接口是「登录态存储契约」，而
+ * {@link CookieSessionStore}、{@code RedisSessionStore} 等只是它的实现之一 ——
+ * 换成基于 token 的守卫时无需任何 Session 存储参与。
  * <p>
  * <b>Session 存储是全局配置，不与 Guard 绑定</b>。具体使用哪个实现由应用的
  * {@code config/SessionConfig.java} 决定（通过 {@link RegisterSessionStore} 注册或声明为 Spring Bean）。

@@ -55,6 +55,26 @@ public class AetherUploadManager {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final DateTimeFormatter SUB_DIR = DateTimeFormatter.ofPattern("yyyyMM");
 
+    /** 默认分片大小（1MB）：组未配置或配置非法时兜底 */
+    private static final long DEFAULT_CHUNK_SIZE = 1024 * 1024L;
+
+    /** 默认分片数上限：位图约 12.5KB，同时约束 uploadedChunkList 的响应体规模 */
+    private static final long DEFAULT_MAX_CHUNKS = 100_000L;
+
+    /** 单分片大小兜底上限（10MB）：约束自适应放大与客户端声明值 */
+    private static final long MAX_CHUNK_SIZE_LIMIT = 10 * 1024 * 1024L;
+
+    /** 分片临时目录机会式清理的最小间隔（10 分钟），避免每次 prepare 都扫目录 */
+    private static final long TEMP_SWEEP_INTERVAL_MILLIS = 10 * 60 * 1000L;
+
+    /** 「匿名且未限大小」告警只打印一次 */
+    private static final java.util.concurrent.atomic.AtomicBoolean ANONYMOUS_UNLIMITED_WARNED =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    /** 上次清理分片临时目录的时间戳（毫秒） */
+    private final java.util.concurrent.atomic.AtomicLong lastTempSweepAt =
+            new java.util.concurrent.atomic.AtomicLong(0L);
+
     /** 单组运行时：配置 + 记录头存储 */
     public static final class GroupRuntime {
         public final String name;
@@ -192,6 +212,10 @@ public class AetherUploadManager {
         if (size <= 0) {
             throw UploadException.invalid("分片上传要求文件大小必须大于 0");
         }
+        // 安全可见性：既未限大小又没挂中间件 = 端点可被匿名调用并预分配磁盘
+        warnIfAnonymousAndUnlimited(g);
+        // 清理超过记录头 TTL 的分片临时文件（否则匿名反复 prepare 会让 .part 无界堆积）
+        sweepStaleTempFiles(g, Math.max(60_000L, g.config.getHeaderTtlSeconds() * 1000L));
 
         // 断线续传：identifier 已有未完成任务时直接恢复
         if (identifier != null && !identifier.isEmpty()) {
@@ -207,15 +231,31 @@ public class AetherUploadManager {
             }
         }
 
-        long chunkSize = g.config.getChunkSize();
-        if (clientChunkSize != null && clientChunkSize > 0 && g.config.isAllowClientChunkSize()) {
-            chunkSize = clientChunkSize;
+        long chunkSize = resolveChunkSize(g, size, clientChunkSize);
+        long maxChunks = g.config.getMaxChunks() > 0 ? g.config.getMaxChunks() : DEFAULT_MAX_CHUNKS;
+        long hardMaxChunk = g.config.getMaxChunkSize() > 0 ? g.config.getMaxChunkSize() : MAX_CHUNK_SIZE_LIMIT;
+        // 分片数上限反推最小分片：大文件自动放大分片，而不是拒绝（避免「静默限制文件大小」）。
+        // 但放大必须受「单分片上限」约束，否则超大 size 会把分片放大到荒谬值，
+        // 再被用于 raf.setLength(size) 预分配 —— 那正是磁盘 DoS 的入口。
+        long minChunkForCap = (size + maxChunks - 1) / maxChunks;
+        if (minChunkForCap > hardMaxChunk) {
+            throw UploadException.invalid("文件过大：要满足分片数上限 " + maxChunks
+                    + " 需要 " + minChunkForCap + " 字节的分片，已超过单分片上限 " + hardMaxChunk
+                    + "；请调大 max-chunks/max-chunk-size，或为端点配置 max-size 限制");
         }
-        if (chunkSize <= 0) {
-            chunkSize = 1024 * 1024;
+        if (chunkSize < minChunkForCap) {
+            chunkSize = minChunkForCap;
         }
-        int totalChunks = (int) ((size + chunkSize - 1) / chunkSize);
+        // 关键：先用 long 计算再收窄。原先直接 (int)((size + chunkSize - 1) / chunkSize)，
+        // size=8e9 & chunkSize=1 时会得到 -589934592（负），分片状态机随之失效、上传永不完成。
+        long totalChunksLong = (size + chunkSize - 1) / chunkSize;
+        if (totalChunksLong <= 0 || totalChunksLong > maxChunks || totalChunksLong > Integer.MAX_VALUE) {
+            throw UploadException.invalid("分片数超出上限（" + totalChunksLong + " > " + maxChunks
+                    + "），请调大分片大小或调整 max-chunks 配置");
+        }
+        int totalChunks = (int) totalChunksLong;
 
+        // 校验全部通过后再落盘：上限/溢出被拒时不会创建任何 .part（避免匿名预分配磁盘 DoS）
         String resourceId = UUID.randomUUID().toString().replace("-", "");
         Path tempPath = resolveDir(g.config.getTempDir()).resolve(resourceId + ".part");
         try {
@@ -249,6 +289,102 @@ public class AetherUploadManager {
 
         dispatch(new UploadPreparedEvent(g.name, resourceId, safeName, size, totalChunks, chunkSize, false));
         return new UploadResult(header, header.uploadedChunkList(), false);
+    }
+
+    /**
+     * 解析本次生效的分片大小：组配置 → 客户端值（受区间钳制）→ 默认值。
+     * <p>
+     * 客户端值被<b>钳制</b>而不是拒绝，是为了对既有前端保持兼容：前端始终以服务端
+     * 回显的 {@code chunkSize} 切分（见 {@code aether-upload.js} 的 {@code self.chunkSize = data.chunkSize}），
+     * 因此钳制 + 回显对默认前端是透明的；只有钳制后仍超限才会报错。
+     *
+     * @param g              组运行时
+     * @param size           文件大小
+     * @param clientChunkSize 客户端声明值（可空）
+     * @return 生效的分片大小（字节）
+     */
+    private long resolveChunkSize(GroupRuntime g, long size, Long clientChunkSize) {
+        long chunkSize = g.config.getChunkSize();
+        if (clientChunkSize != null && clientChunkSize > 0 && g.config.isAllowClientChunkSize()) {
+            long min = g.config.getMinChunkSize() > 0 ? g.config.getMinChunkSize() : 1024L;
+            long max = g.config.getMaxChunkSize() > 0 ? g.config.getMaxChunkSize() : MAX_CHUNK_SIZE_LIMIT;
+            if (max < min) {
+                max = min;
+            }
+            long clamped = Math.min(Math.max(clientChunkSize, min), max);
+            if (clamped != clientChunkSize) {
+                logger.warn("[aether-upload] 客户端分片大小 {} 超出允许区间 [{}, {}]，已钳制为 {}（以服务端回显为准）",
+                        clientChunkSize, min, max, clamped);
+            }
+            chunkSize = clamped;
+        }
+        if (chunkSize <= 0) {
+            chunkSize = DEFAULT_CHUNK_SIZE;
+        }
+        return chunkSize;
+    }
+
+    /**
+     * 机会式清理过期分片临时文件（限频）。
+     * <p>
+     * 判定条件：{@code .part} 且最后修改时间早于「now - 记录头 TTL」。上传中的文件会因写入而
+     * 不断刷新 mtime，因此不会被误删；超过 TTL 的续传记录本身也已失效。
+     *
+     * @param g         组运行时
+     * @param ttlMillis 记录头 TTL（毫秒）
+     */
+    private void sweepStaleTempFiles(GroupRuntime g, long ttlMillis) {
+        long now = System.currentTimeMillis();
+        long last = lastTempSweepAt.get();
+        if (now - last < TEMP_SWEEP_INTERVAL_MILLIS || !lastTempSweepAt.compareAndSet(last, now)) {
+            return;
+        }
+        Path dir = resolveDir(g.config.getTempDir());
+        if (!Files.isDirectory(dir)) {
+            return;
+        }
+        int[] removed = {0};
+        try (java.util.stream.Stream<Path> files = Files.list(dir)) {
+            files.filter(p -> p.getFileName().toString().endsWith(".part"))
+                    .filter(p -> {
+                        try {
+                            return Files.getLastModifiedTime(p).toMillis() < now - ttlMillis;
+                        } catch (IOException e) {
+                            return false;
+                        }
+                    })
+                    .forEach(p -> {
+                        try {
+                            if (Files.deleteIfExists(p)) {
+                                removed[0]++;
+                            }
+                        } catch (IOException ignored) {
+                            // 单个文件删不掉不影响后续
+                        }
+                    });
+        } catch (IOException e) {
+            logger.debug("[aether-upload] 清理分片临时目录失败: {}", e.getMessage());
+            return;
+        }
+        if (removed[0] > 0) {
+            logger.info("[aether-upload] 已清理过期分片临时文件 {} 个: dir={}", removed[0], dir);
+        }
+    }
+
+    /**
+     * 匿名 + 未限制大小时打印一次性告警：这是「单请求预分配磁盘」的真实风险面。
+     *
+     * @param g 组运行时
+     */
+    private void warnIfAnonymousAndUnlimited(GroupRuntime g) {
+        boolean noMiddleware = g.config.getMiddleware() == null || g.config.getMiddleware().isEmpty();
+        if (g.config.getMaxSize() <= 0 && noMiddleware
+                && ANONYMOUS_UNLIMITED_WARNED.compareAndSet(false, true)) {
+            logger.warn("[aether-upload] 组 {} 既未配置 max-size 也未挂任何中间件："
+                    + "prepare/chunk 端点可被匿名调用，且 size 会直接用于预分配临时文件。"
+                    + "公网部署请配置 max-size，并为上传端点挂上 auth 中间件（另见 identifier 归属校验说明）。",
+                    g.name);
+        }
     }
 
     /**

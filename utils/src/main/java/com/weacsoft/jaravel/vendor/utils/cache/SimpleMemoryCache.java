@@ -61,6 +61,36 @@ public class SimpleMemoryCache {
     }
 
     /**
+     * 查询键的剩余过期秒数（惰性清理过期条目）。
+     * <p>
+     * 用于「读改写」型操作（如 increment）保留原 TTL：不提供该能力时，
+     * 自增会把键写成永不过期（限流计数永久生效、版本键无限堆积）。
+     *
+     * @param key 缓存键
+     * @return 剩余秒数（{@code > 0}）；键不存在/已过期返回 {@code -2}；永不过期返回 {@code -1}
+     */
+    public long remainingTtlSeconds(String key) {
+        Entry entry = store.get(key);
+        if (entry == null) {
+            return -2;
+        }
+        if (entry.isExpired()) {
+            store.remove(key);
+            return -2;
+        }
+        if (entry.expiryAt <= 0) {
+            return -1;
+        }
+        long remainingMillis = entry.expiryAt - System.currentTimeMillis();
+        if (remainingMillis <= 0) {
+            store.remove(key);
+            return -2;
+        }
+        // 向上取整：还剩 0.4 秒也要报 1 秒，避免写回时变成 0（= 永不过期）
+        return Math.max(1, (remainingMillis + 999) / 1000);
+    }
+
+    /**
      * 读取缓存值，不存在或已过期返回 {@code null}。
      *
      * @param key 缓存键
