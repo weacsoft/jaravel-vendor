@@ -64,10 +64,11 @@ public class WireManager {
     /** 是否自动注入 wire.js 的 script 标签，默认 true（向后兼容） */
     private static boolean autoInjectJs = true;
 
-    /** Wire section 排除列表：在这些列表中的 section 不会被 wire:section 标记包裹 */
-    private static final Set<String> excludedSections = new LinkedHashSet<>();
+    /** Wire section 排除列表：在这些列表中的 section 不会被 wire:section 标记包裹（并发安全） */
+    private static final Set<String> excludedSections = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
-    private static BladeEngine engine;
+    /** Blade 引擎：跨线程可见（懒初始化后由多请求线程读取，必须 volatile） */
+    private static volatile BladeEngine engine;
 
     /**
      * 设置 BladeEngine 实例（由 ServiceProvider 或配置类调用）。

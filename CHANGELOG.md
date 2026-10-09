@@ -7,6 +7,8 @@
 
 ### Fixed（修复）
 
+- **`storage-database` 目录删除会误伤同层其它目录（不可恢复）**：`DatabaseFilesystem` 的 `path LIKE ?` 未转义 LIKE 元字符，目录名里的 `_`/`%` 会被当通配符 —— `deleteDirectory("user_files")` 会连带删掉 `userXfiles/…` 的元信息与分片。现已转义并统一加 `ESCAPE '\'`（`queryPaths`/`deleteDirectory`/`hasAnyUnder` 三处）；同时修掉 `FileMeta.updatedPresent` 把 `null` 传给 `boolean` 形参导致的拆箱 `NullPointerException`（`updated_at` 是可空列），改为可空 `Long updatedAt`。
+- **`wire` 请求级效果状态泄漏与静态可变状态竞争**：`WireController.update()` 的 `finally` 原先只清 `WIRE_LAYOUT_REPLACEMENTS`，另外 5 个效果队列（组件/dispatch/redirect/pushUrl/backUrl）只在成功路径 drain —— 异常与早退路径会把它们留给同线程的下一个请求（残留 `redirect` 可把另一个用户的浏览器跳到上一个用户指定的地址）。现在无条件调用 `WireEffects.clear()`，且 `clear()` 由「清空列表」改为 `ThreadLocal.remove()`（连线程上挂着的 List 实例一并释放）；`WireManager.engine` 补 `volatile`、`excludedSections` 改用 `ConcurrentHashMap.newKeySet()`（原先 `LinkedHashSet` 被多请求线程并发读写）。
 - **自动装配启动阻断（`springboot` 模块，实测复现）**：`@ConditionalOnClass` 挂在方法上无法保护「声明类自身的类加载」，导致缺 optional 模块时应用直接启动失败。已修：
   - `SpringBootRouteAutoConfiguration` 中形参引用 `auth.AuthManager` 的 bean 移入**带类级条件**的内部配置类（缺 auth 时启动不再 `NoClassDefFoundError`）；
   - `DatabaseAutoConfiguration` / `ViewAutoConfiguration` / `MigrationPublishAutoConfiguration` / `SchedulePublishAutoConfiguration` 补**类级** `@ConditionalOnClass`（FQCN 字符串形式）；`ViewAutoConfiguration`、`RedisCachePublishAutoConfiguration` 由 `@Configuration` 归正为 `@AutoConfiguration`；

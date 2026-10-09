@@ -375,19 +375,21 @@ public class DatabaseFilesystem implements Filesystem {
         List<FileMeta> metas = jdbc.queryMapped(
                 "SELECT size, updated_at, mime_type, visibility FROM " + filesTable
                         + " WHERE disk = ? AND path = ?",
-                rs -> new FileMeta(
-                        rs.getLong("size"),
-                        rs.getLong("updated_at"),
-                        rs.wasNull() ? null : Boolean.TRUE,
-                        rs.getString("mime_type"),
-                        rs.getString("visibility")),
+                rs -> {
+                    long size = rs.getLong("size");
+                    // updated_at 在迁移里是可空列：必须紧跟 getLong 判断 wasNull，
+                    // 并用可空的 Long 接收 —— 原先把 null 传给 boolean 形参，拆箱即 NPE
+                    long updatedRaw = rs.getLong("updated_at");
+                    Long updatedAt = rs.wasNull() ? null : updatedRaw;
+                    return new FileMeta(size, updatedAt, rs.getString("mime_type"), rs.getString("visibility"));
+                },
                 name, norm);
         if (metas.isEmpty()) {
             throw StorageException.notFound(norm);
         }
         FileMeta meta = metas.get(0);
         long sz = meta.size();
-        Long updated = meta.updatedPresent() ? meta.updatedAt() : null;
+        Long updated = meta.updatedAt();
         Instant lm = updated == null ? Instant.now() : Instant.ofEpochMilli(updated);
         String mime = (meta.mimeType() == null || meta.mimeType().isEmpty())
                 ? MimeTypeGuesser.guess(norm) : meta.mimeType();
@@ -486,10 +488,24 @@ public class DatabaseFilesystem implements Filesystem {
     }
 
     private List<String> queryPaths(String dir) {
-        String pattern = dir.isEmpty() ? "%" : dir + "/%";
+        String pattern = dir.isEmpty() ? "%" : likeUnder(dir);
         return jdbc.queryMapped(
-                "SELECT path FROM " + filesTable + " WHERE disk = ? AND path LIKE ?",
+                "SELECT path FROM " + filesTable + " WHERE disk = ? AND path LIKE ? ESCAPE '\\'",
                 rs -> rs.getString("path"), name, pattern);
+    }
+
+    /**
+     * 构造「某目录之下」的 LIKE 模式，并<b>转义</b>目录名里的 LIKE 元字符。
+     * <p>
+     * 不转义会出事：{@code _} 在 LIKE 里是「任意单字符」通配符，
+     * 于是 {@code deleteDirectory("user_files")} 会把 {@code userXfiles/…} 也一起删掉，
+     * 且删除不可恢复（元信息与分片同时被删）。
+     *
+     * @param dir 已归一化的目录路径
+     * @return LIKE 模式（配合各查询里的 {@code ESCAPE '\'}）
+     */
+    private static String likeUnder(String dir) {
+        return dir.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "/%";
     }
 
     @Override
@@ -501,17 +517,19 @@ public class DatabaseFilesystem implements Filesystem {
     public boolean deleteDirectory(String directory) {
         String norm = normalize(directory);
         boolean existed = exists(norm) || hasAnyUnder(norm);
-        jdbc.update("DELETE FROM " + chunksTable + " WHERE disk = ? AND (path = ? OR path LIKE ?)",
-                name, norm, norm + "/%");
-        jdbc.update("DELETE FROM " + filesTable + " WHERE disk = ? AND (path = ? OR path LIKE ?)",
-                name, norm, norm + "/%");
+        // LIKE 模式必须转义（见 likeUnder）：否则目录名里的 _ / % 会误伤同层其它目录
+        String under = likeUnder(norm);
+        jdbc.update("DELETE FROM " + chunksTable + " WHERE disk = ? AND (path = ? OR path LIKE ? ESCAPE '\\')",
+                name, norm, under);
+        jdbc.update("DELETE FROM " + filesTable + " WHERE disk = ? AND (path = ? OR path LIKE ? ESCAPE '\\')",
+                name, norm, under);
         return existed;
     }
 
     private boolean hasAnyUnder(String norm) {
         List<Long> counts = jdbc.queryMapped(
-                "SELECT COUNT(*) FROM " + filesTable + " WHERE disk = ? AND path LIKE ?",
-                rs -> (long) rs.getInt(1), name, norm + "/%");
+                "SELECT COUNT(*) FROM " + filesTable + " WHERE disk = ? AND path LIKE ? ESCAPE '\\'",
+                rs -> (long) rs.getInt(1), name, likeUnder(norm));
         long count = counts.isEmpty() ? 0L : counts.get(0);
         return count > 0;
     }
@@ -547,8 +565,8 @@ public class DatabaseFilesystem implements Filesystem {
         }
     }
 
-    /** 文件元信息行（{@link #info} 使用） */
-    private record FileMeta(long size, long updatedAt, boolean updatedPresent,
+    /** 文件元信息行（{@link #info} 使用）：{@code updatedAt} 可为 null（updated_at 是可空列） */
+    private record FileMeta(long size, Long updatedAt,
                             String mimeType, String visibility) {
     }
 }

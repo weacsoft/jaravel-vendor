@@ -93,11 +93,15 @@ public final class WireEffects {
     }
 
     /**
-     * 清空当前请求的队列(不取走)。
+     * 清空并<b>释放</b>当前请求的全部效果状态（不取走）。
+     * <p>
+     * 用 {@code remove()} 而不是清空列表：既清掉值，也释放每个线程上挂着的两个 List 实例。
+     * 请求结束（含异常与早退路径）必须调用，否则同线程的下一个请求会读到上一个请求的
+     * redirect / pushUrl / backUrl / 待下发组件 —— 例如把另一个用户的浏览器跳到别人的目标地址。
      */
     public static void clear() {
-        QUEUE.get().clear();
-        DISPATCH_QUEUE.get().clear();
+        QUEUE.remove();
+        DISPATCH_QUEUE.remove();
         REDIRECT.remove();
         PUSH_URL.remove();
         BACK_URL.remove();

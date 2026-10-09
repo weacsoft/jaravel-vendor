@@ -553,6 +553,10 @@ public abstract class WireController {
         } finally {
             // 控制器多为 Spring 单例,请求级 ThreadLocal 必须显式清除,否则会泄漏到同线程的下一个请求。
             WIRE_LAYOUT_REPLACEMENTS.remove();
+            // 其余 5 个效果队列（组件/dispatch/redirect/pushUrl/backUrl）原先只在成功路径 drain，
+            // 异常与早退路径会把它们留给同线程的下一个请求 —— 例如残留的 redirect 会把
+            // 另一个用户的浏览器跳到上一个用户指定的地址。这里无条件清空。
+            WireEffects.clear();
         }
     }
 
