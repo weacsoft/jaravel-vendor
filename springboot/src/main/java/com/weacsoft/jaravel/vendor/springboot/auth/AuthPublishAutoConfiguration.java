@@ -1,6 +1,5 @@
 package com.weacsoft.jaravel.vendor.springboot.auth;
 
-import com.weacsoft.jaravel.vendor.auth.AuthManager;
 import com.weacsoft.jaravel.vendor.auth.autoconfigure.AuthPublishableConfig;
 import com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry;
 
@@ -17,7 +16,9 @@ import com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry;
  * 位于 auth 模块），不引入任何运行期开销。
  */
 @org.springframework.boot.autoconfigure.AutoConfiguration
-@org.springframework.boot.autoconfigure.condition.ConditionalOnClass(AuthManager.class)
+// auth 是 optional 依赖：守卫统一用 FQCN 字符串形式，避免 import + Class 字面量带来的类加载风险
+@org.springframework.boot.autoconfigure.condition.ConditionalOnClass(
+        name = "com.weacsoft.jaravel.vendor.auth.AuthManager")
 public class AuthPublishAutoConfiguration {
 
     static {

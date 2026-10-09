@@ -31,6 +31,12 @@ import com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry;
  * {@link EloquentUserProviderAutoConfiguration} 在检测到 auth 存在时才注册。
  */
 @AutoConfiguration
+// 类级守卫（必须写在类上，不能只写方法上）：database 是 optional 依赖，本类的方法签名用到
+// ConnectionRegistrar / JaravelDataSource，静态块还 new DatabasePublishableConfig()。
+// 只加方法级 @ConditionalOnClass 保护不了「声明类自身的加载」——实测缺 database 时启动报
+// ClassNotFoundException: com.weacsoft.jaravel.vendor.database.autoconfigure.ConnectionRegistrar。
+// FQCN 字符串形式不会触发类加载，条件不满足时本类根本不会被加载。
+@ConditionalOnClass(name = "com.weacsoft.jaravel.vendor.database.JaravelDataSource")
 public class DatabaseAutoConfiguration {
     static {
         PublishableRegistry.register(new com.weacsoft.jaravel.vendor.database.autoconfigure.DatabasePublishableConfig());

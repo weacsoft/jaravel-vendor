@@ -257,8 +257,11 @@ public class AccessTokenManager {
             String accessToken = (String) result.get("access_token");
 
             if (accessToken == null || accessToken.isEmpty()) {
-                Integer errcode = (Integer) result.get("errcode");
-                String errmsg = (String) result.get("errmsg");
+                // 用 Number 取 errcode：JSON 解析器可能给 Integer/Long，直接 (Integer) 强转会
+                // 抛 ClassCastException 并掩盖真实业务错误
+                Object errcodeRaw = result.get("errcode");
+                Object errcode = errcodeRaw instanceof Number n ? n.intValue() : errcodeRaw;
+                String errmsg = result.get("errmsg") != null ? String.valueOf(result.get("errmsg")) : null;
                 logger.error("[wechat] 获取 AccessToken 业务失败: appId={}, errcode={}, errmsg={}",
                         appId, errcode, errmsg);
                 throw new RuntimeException("获取 AccessToken 失败: errcode=" + errcode + ", errmsg=" + errmsg);

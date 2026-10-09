@@ -171,8 +171,22 @@ public abstract class AbstractCaptcha implements Captcha {
         }
         String nonce = Long.toHexString(System.nanoTime())
                 + Integer.toHexString(new Random().nextInt(0xFFFF));
-        // 格式: expireTime|nonce|answer（answer 在最后，可含特殊字符）
-        String payload = expireTime + "|" + nonce + "|" + answer;
+        // 输入通道密钥：只用于前端加密「用户输入」，可以公开。
+        // 关键：绝不能把「解密 captchaKey 的密钥」下发 —— captchaKey 内含 answer，
+        // 谁拿到那把密钥就能直接解出答案、绕过验证码（对称加密模式下的历史严重缺陷）。
+        //   对称（AES）：每次生成一把一次性输入密钥放进 token，前端拿到的只是它；
+        //   非对称（RSA）：token 用服务端密钥（含私钥）加密，前端只下发公钥。
+        String encType = effectiveEncryptionType();
+        String serverKey = effectiveEncryptionKey(encryptionKey);
+        // 只有「真正启用对称加密」时才需要一次性输入密钥：
+        //   - 加密关闭（none）：输入本就是明文，token 保持 3 段旧格式，不做无谓改动；
+        //   - 非对称（RSA）：前端用公钥加密输入，服务端用私钥解密，无需额外密钥；
+        //   - 对称（AES）：必须换用一次性输入密钥，否则下发 encKey 就等于泄露 token 密钥。
+        String inputKey = (crypto.isEnabled() && isSymmetricType(encType)) ? randomInputKey() : null;
+        // 格式: expireTime|nonce|answer；对称模式下为 expireTime|nonce|inputKey|answer
+        String payload = inputKey == null
+                ? expireTime + "|" + nonce + "|" + answer
+                : expireTime + "|" + nonce + "|" + inputKey + "|" + answer;
         String captchaKey = crypto.encrypt(payload);
 
         result.setCaptchaKey(captchaKey);
@@ -185,8 +199,10 @@ public abstract class AbstractCaptcha implements Captcha {
         // （尤其在服务端启用了 jaravel.key 全局密钥兜底时，前端必须用下发值而非静态配置）。
         // 这里必须取「crypto 实际使用的」参数，而不是 props（可能是场景级副本）中的值，
         // 否则前端会拿到一把服务端并未使用的密钥，校验阶段解密必定失败（表现为恒定 403）。
-        result.setEncType(effectiveEncryptionType());
-        result.setEncKey(effectiveEncryptionKey(encryptionKey));
+        result.setEncType(encType);
+        // RSA 只下发公钥（客户端可加密、不可解密 token）；AES 下发一次性输入密钥。
+        // 两者都无法用来解密 captchaKey → 答案不再可被前端/攻击者还原。
+        result.setEncKey(inputKey != null ? inputKey : publicPartOf(serverKey));
         return result;
     }
 
@@ -235,8 +251,9 @@ public abstract class AbstractCaptcha implements Captcha {
             return VerifyResult.fail();
         }
 
-        // 2. 解析: "expireTime|nonce|answer"（answer 可含 |，用 limit=3 分割）
-        String[] parts = payload.split("\\|", 3);
+        // 2. 解析: "expireTime|nonce|answer"；对称模式新格式为
+        //    "expireTime|nonce|inputKey|answer"（answer 可含 |，故 limit=4）
+        String[] parts = payload.split("\\|", 4);
         if (parts.length < 3) {
             return VerifyResult.fail();
         }
@@ -252,17 +269,21 @@ public abstract class AbstractCaptcha implements Captcha {
         }
 
         String nonce = parts[1];
-        String answer = parts[2];
+        // 4 段 = 新格式（第 3 段是一次性输入密钥）；3 段 = 旧 token，走兼容路径
+        String inputKey = parts.length == 4 ? parts[2] : null;
+        String answer = parts.length == 4 ? parts[3] : parts[2];
 
         // 3. 防复用检查：nonce 已被消费则拒绝（验证码已被使用过）
         if (isNonceConsumed(nonce)) {
             return VerifyResult.alreadyUsed();
         }
 
-        // 4. 解密用户输入（若启用加密）
+        // 4. 解密用户输入（若启用加密）：新格式用 token 里的一次性输入密钥解密，
+        //    旧格式（3 段）继续用服务端密钥，保持向后兼容
         String decryptedInput = userInput;
-        if (crypto.isEnabled() && userInput != null && !userInput.isEmpty()) {
-            decryptedInput = crypto.decrypt(userInput);
+        CaptchaCrypto inputCrypto = inputKey == null ? crypto : createCrypto(props, inputKey);
+        if (inputCrypto.isEnabled() && userInput != null && !userInput.isEmpty()) {
+            decryptedInput = inputCrypto.decrypt(userInput);
             if (decryptedInput == null) {
                 // 解密失败也消费 nonce，防止暴力尝试
                 consumeNonce(nonce, expireTime);
@@ -361,6 +382,45 @@ public abstract class AbstractCaptcha implements Captcha {
             return encryptionKey;
         }
         return this.properties != null ? this.properties.getEncryptionKey() : null;
+    }
+
+    /**
+     * 是否对称加密（AES）。非对称（RSA）需要区分公钥/私钥。
+     *
+     * @param encType 加密类型名（如 aes / rsa / none）
+     * @return true 表示对称加密
+     */
+    private static boolean isSymmetricType(String encType) {
+        return encType == null || !encType.toLowerCase().contains("rsa");
+    }
+
+    /**
+     * 生成一次性「输入通道密钥」。
+     * <p>
+     * 该密钥只用于前端加密用户输入；{@code CaptchaCrypto} 会对密钥字符串做 SHA-256
+     * 派生 AES 密钥，因此任意随机串都可用。用 URL-safe Base64 是为了不与 token
+     * 的 {@code |} 分隔符冲突。
+     *
+     * @return 随机密钥串
+     */
+    private static String randomInputKey() {
+        byte[] bytes = new byte[18];
+        new java.security.SecureRandom().nextBytes(bytes);
+        return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    /**
+     * 取密钥对中的公钥部分（{@code pub|priv} → {@code pub}），避免把私钥下发给前端。
+     *
+     * @param key 完整密钥（可能含私钥）
+     * @return 公钥部分
+     */
+    private static String publicPartOf(String key) {
+        if (key == null) {
+            return null;
+        }
+        int separator = key.indexOf('|');
+        return separator > 0 ? key.substring(0, separator) : key;
     }
 
     // ==================== 公共图像工具 ====================

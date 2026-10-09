@@ -54,6 +54,12 @@ public class RequestFactory {
         Request request = new Request();
         if (baseRequest != null) {
             request.setRequest(baseRequest);
+            // 把当前请求绑定到 ThreadLocal：MVC 路径下同样生效。
+            // 历史缺陷：只有 buildFromServerRequest（jaravel 路由）会 set，MVC 路径不 set，
+            // 且生产代码从不调用 clearCurrentRequest() → Servlet 线程复用时，
+            // 后续请求会读到「上一个请求/上一个用户」的 Request，导致跨用户会话串读。
+            // 清理由 SpringBoot 侧的 JaravelRequestContextFilter 在请求结束时负责。
+            setCurrentRequest(request);
             Map<String, List<String>> result = new LinkedHashMap<>();
             String pairs = baseRequest.getQueryString();
             if (pairs != null) {

@@ -3,12 +3,16 @@ package com.weacsoft.jaravel.vendor.redis.cache;
 import com.weacsoft.jaravel.vendor.cache.CacheDriver;
 import com.weacsoft.jaravel.vendor.json.Json;
 import com.weacsoft.jaravel.vendor.redis.RedisManager;
+import io.lettuce.core.KeyScanCursor;
+import io.lettuce.core.ScanArgs;
+import io.lettuce.core.ScanCursor;
 import io.lettuce.core.api.sync.RedisCommands;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 
 /**
  * Redis 缓存驱动，对齐 Laravel {@code RedisStore}（{@code Illuminate\Cache\RedisStore}）。
@@ -19,26 +23,40 @@ import java.util.Collection;
  * <b>多机同步</b>：由于所有实例共享同一 Redis 实例（或集群），写入的缓存对所有实例立即可见，
  * 天然实现多机缓存同步，无需额外的广播或失效机制。
  *
+ * <h3>键命名空间（重要）</h3>
+ * 本驱动写入 Redis 的键统一加前缀 {@code <keyPrefix><逻辑键>}。前缀取自
+ * {@link RedisManager#getPrefix()}（{@code jaravel.redis.prefix}），未配置时回退为
+ * {@link #DEFAULT_KEY_PREFIX}。
+ * <p>
+ * <b>为什么必须有前缀</b>：{@link #allKeys()} 用 SCAN + MATCH 前缀遍历，{@link #removeAll()}
+ * 只删除这些键。历史缺陷是 SCAN 时<b>没带 MATCH</b>，于是 {@code Cache::flush()} 会把整个
+ * Redis 库的键全部删掉 —— 连同会话、队列、限流计数、同实例其它应用的数据，且不可恢复。
+ *
  * <h3>序列化策略</h3>
  * <ul>
  *   <li>值通过 {@link Json} 序列化为 JSON 字符串存储</li>
  *   <li>读取时返回反序列化后的 Java 对象（Map / List / String / Number 等）</li>
  *   <li>TTL {@code <= 0} 表示永不过期，使用 SET 而非 SETEX</li>
  * </ul>
- *
- * <h3>键扫描</h3>
- * {@link #allKeys()} 使用 SCAN 命令遍历键空间（非 KEYS，避免阻塞），
- * 匹配模式为 {@code prefix + *}。
  */
 public class RedisCacheDriver implements CacheDriver {
 
     private static final Logger logger = LoggerFactory.getLogger(RedisCacheDriver.class);
+
+    /** 未配置 {@code jaravel.redis.prefix} 时使用的默认键前缀（保证 flushed 范围可控） */
+    public static final String DEFAULT_KEY_PREFIX = "jaravel:cache:";
+
+    /** SCAN 每批数量 */
+    private static final int SCAN_BATCH = 100;
 
     /** Redis 管理器，提供命名连接 */
     private final RedisManager redisManager;
 
     /** Redis 连接名（如 cache / model-cache），对应 jaravel.redis.connections 中的配置 */
     private final String connectionName;
+
+    /** 实际使用的键前缀（非空，见类注释） */
+    private final String keyPrefix;
 
     /**
      * 构造 Redis 缓存驱动。
@@ -49,6 +67,8 @@ public class RedisCacheDriver implements CacheDriver {
     public RedisCacheDriver(RedisManager redisManager, String connectionName) {
         this.redisManager = redisManager;
         this.connectionName = connectionName;
+        String configured = redisManager != null ? redisManager.getPrefix() : null;
+        this.keyPrefix = (configured == null || configured.isBlank()) ? DEFAULT_KEY_PREFIX : configured;
     }
 
     /**
@@ -60,9 +80,26 @@ public class RedisCacheDriver implements CacheDriver {
         this(redisManager, null);
     }
 
+    /**
+     * @return 实际使用的键前缀
+     */
+    public String getKeyPrefix() {
+        return keyPrefix;
+    }
+
     /** 获取 Redis 同步命令接口 */
     private RedisCommands<String, String> commands() {
         return redisManager.sync(connectionName);
+    }
+
+    /** 逻辑键 → Redis 实际键 */
+    private String physicalKey(String key) {
+        return keyPrefix + key;
+    }
+
+    /** Redis 实际键 → 逻辑键（用于 allKeys 返回契约值） */
+    private String logicalKey(String physicalKey) {
+        return physicalKey.startsWith(keyPrefix) ? physicalKey.substring(keyPrefix.length()) : physicalKey;
     }
 
     @Override
@@ -71,9 +108,9 @@ public class RedisCacheDriver implements CacheDriver {
             String json = Json.stringify(value);
             RedisCommands<String, String> cmd = commands();
             if (ttlSeconds > 0) {
-                cmd.setex(key, ttlSeconds, json);
+                cmd.setex(physicalKey(key), ttlSeconds, json);
             } else {
-                cmd.set(key, json);
+                cmd.set(physicalKey(key), json);
             }
             return true;
         } catch (Exception e) {
@@ -85,7 +122,7 @@ public class RedisCacheDriver implements CacheDriver {
     @Override
     public Object get(String key) {
         try {
-            String json = commands().get(key);
+            String json = commands().get(physicalKey(key));
             if (json == null) {
                 return null;
             }
@@ -99,7 +136,7 @@ public class RedisCacheDriver implements CacheDriver {
     @Override
     public boolean exists(String key) {
         try {
-            return commands().exists(key) > 0;
+            return commands().exists(physicalKey(key)) > 0;
         } catch (Exception e) {
             logger.error("[redis-cache] 检查缓存存在失败 key={}: {}", key, e.getMessage());
             return false;
@@ -109,7 +146,7 @@ public class RedisCacheDriver implements CacheDriver {
     @Override
     public boolean remove(String key) {
         try {
-            return commands().del(key) > 0;
+            return commands().del(physicalKey(key)) > 0;
         } catch (Exception e) {
             logger.error("[redis-cache] 移除缓存失败 key={}: {}", key, e.getMessage());
             return false;
@@ -120,10 +157,11 @@ public class RedisCacheDriver implements CacheDriver {
     public void removeAll() {
         try {
             RedisCommands<String, String> cmd = commands();
-            // 使用 SCAN 遍历并删除所有键，避免 FLUSHDB 影响其他用途
-            Collection<String> keys = allKeys();
-            if (!keys.isEmpty()) {
-                cmd.del(keys.toArray(new String[0]));
+            // 只删除本驱动命名空间下的键：SCAN + MATCH <prefix>*（绝不 FLUSHDB / 全库 DEL）
+            List<String> physicalKeys = scanPhysicalKeys();
+            if (!physicalKeys.isEmpty()) {
+                cmd.del(physicalKeys.toArray(new String[0]));
+                logger.info("[redis-cache] 已清空本命名空间缓存: prefix={}, keys={}", keyPrefix, physicalKeys.size());
             }
         } catch (Exception e) {
             logger.error("[redis-cache] 清空缓存失败: {}", e.getMessage());
@@ -132,20 +170,32 @@ public class RedisCacheDriver implements CacheDriver {
 
     @Override
     public Collection<String> allKeys() {
-        Collection<String> all = new ArrayList<>();
+        List<String> logical = new ArrayList<>();
         try {
-            RedisCommands<String, String> cmd = commands();
-            // SCAN 遍历，避免 KEYS 阻塞
-            io.lettuce.core.ScanCursor cursor = io.lettuce.core.ScanCursor.INITIAL;
-            do {
-                io.lettuce.core.ScanArgs args = io.lettuce.core.ScanArgs.Builder.limit(100);
-                io.lettuce.core.KeyScanCursor<String> scanResult = cmd.scan(cursor, args);
-                all.addAll(scanResult.getKeys());
-                cursor = scanResult;
-            } while (!cursor.isFinished());
+            for (String physical : scanPhysicalKeys()) {
+                logical.add(logicalKey(physical));
+            }
         } catch (Exception e) {
             logger.error("[redis-cache] 扫描缓存键失败: {}", e.getMessage());
         }
-        return all;
+        return logical;
+    }
+
+    /**
+     * SCAN 遍历本驱动命名空间下的所有物理键（带 MATCH，避免扫到别人的键）。
+     *
+     * @return 物理键列表
+     */
+    private List<String> scanPhysicalKeys() {
+        List<String> keys = new ArrayList<>();
+        RedisCommands<String, String> cmd = commands();
+        ScanCursor cursor = ScanCursor.INITIAL;
+        ScanArgs args = ScanArgs.Builder.limit(SCAN_BATCH).match(keyPrefix + "*");
+        do {
+            KeyScanCursor<String> scanResult = cmd.scan(cursor, args);
+            keys.addAll(scanResult.getKeys());
+            cursor = scanResult;
+        } while (!cursor.isFinished());
+        return keys;
     }
 }

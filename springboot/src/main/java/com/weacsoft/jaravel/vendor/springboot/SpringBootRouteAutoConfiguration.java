@@ -119,31 +119,55 @@ public class SpringBootRouteAutoConfiguration {
     }
 
     /**
-     * 认证处理器 bean：当 auth 模块在 classpath 且 AuthManager bean 存在时启用。
-     * <p>
-     * 封装 {@code AuthContext} 和 {@code AuthManager} 的调用，使主路由逻辑不直接
-     * 引用 auth 模块的类，避免 auth 不在 classpath 时的 {@code NoClassDefFoundError}。
-     * <p>
-     * 使用 {@code @ConditionalOnClass(name = ...)} 字符串形式，不触发 AuthManager 类加载；
-     * 方法参数使用全限定名，无需 import。Spring 通过 ASM 读取注解元数据，
-     * 仅在条件满足时才调用此方法，此时 AuthManager 必然在 classpath。
-     */
-    @Bean
-    @ConditionalOnClass(name = "com.weacsoft.jaravel.vendor.auth.AuthManager")
-    @ConditionalOnBean(type = "com.weacsoft.jaravel.vendor.auth.AuthManager")
-    @ConditionalOnMissingBean(RouteAuthHandler.class)
-    public RouteAuthHandler authRouteAuthHandler(
-            com.weacsoft.jaravel.vendor.auth.AuthManager authManager) {
-        return new AuthRouteAuthHandler(authManager);
-    }
-
-    /**
-     * 认证处理器 bean（fallback）：当 auth 模块不在 classpath 时使用 no-op 实现。
+     * 认证处理器 bean（fallback）：auth 模块不在 classpath 时使用 no-op 实现。
      */
     @Bean
     @ConditionalOnMissingBean(RouteAuthHandler.class)
     public RouteAuthHandler defaultRouteAuthHandler() {
         return new DefaultRouteAuthHandler();
+    }
+
+    /**
+     * 请求上下文清理过滤器：每个请求结束时清掉 {@code RequestFactory} 的 {@code ThreadLocal}。
+     * <p>
+     * 不加它的话，Servlet 线程复用会让下一个请求读到上一个请求（甚至上一个用户）的
+     * {@code Request} —— SessionStore/SessionGuard 正是通过它取 session 的。
+     *
+     * @return 过滤器（Spring Boot 会自动注册 Filter Bean）
+     */
+    @Bean
+    @ConditionalOnMissingBean(JaravelRequestContextFilter.class)
+    public JaravelRequestContextFilter jaravelRequestContextFilter() {
+        return new JaravelRequestContextFilter();
+    }
+
+    /**
+     * auth 模块在场时才生效的配置（独立内部类 + <b>类级</b>条件）。
+     * <p>
+     * <b>为什么必须单独放一个内部配置类</b>：{@code @ConditionalOnClass} 挂在<b>方法</b>上
+     * 保护不了「声明类自身能否被加载」—— 只要方法形参引用了 optional 依赖里的类型，
+     * Spring 内省外层配置类的方法签名时就会抛 {@code NoClassDefFoundError}
+     * （实测：只引 {@code springboot} 而不引 {@code auth}，应用直接启动失败）。
+     * 移入独立的内部类并加类级条件后，条件不满足时这个类根本不会被加载。
+     */
+    @org.springframework.context.annotation.Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(name = "com.weacsoft.jaravel.vendor.auth.AuthManager")
+    @ConditionalOnBean(type = "com.weacsoft.jaravel.vendor.auth.AuthManager")
+    static class AuthRouteAuthHandlerConfiguration {
+
+        /**
+         * 真实认证处理器：把 {@code AuthContext}/{@code AuthManager} 的调用封装在
+         * {@link AuthRouteAuthHandler} 里，使主路由逻辑不直接引用 auth 模块的类。
+         *
+         * @param authManager auth 模块的认证管理器
+         * @return 认证处理器
+         */
+        @Bean
+        @ConditionalOnMissingBean(RouteAuthHandler.class)
+        public RouteAuthHandler authRouteAuthHandler(
+                com.weacsoft.jaravel.vendor.auth.AuthManager authManager) {
+            return new AuthRouteAuthHandler(authManager);
+        }
     }
 
     @Bean
@@ -159,6 +183,14 @@ public class SpringBootRouteAutoConfiguration {
         setupControllerFallbackResolver(applicationContext);
 
         List<RouteDefinition> routes = router.getAllRoutes();
+        if (routes.isEmpty()) {
+            // 零路由时必须返回「空 RouterFunction」而不是 builder.build()：
+            // Spring 的 RouterFunctions.Builder#build() 在没有任何路由时直接抛
+            // IllegalStateException("No routes registered.")，会让「引入了 jaravel 装配、
+            // 但没注册 jaravel 路由」的应用（例如只用 wechat-sdk 的项目）启动失败。
+            log.info("[jaravel] 未注册任何 jaravel 路由，返回空 RouterFunction（不影响 Spring MVC 控制器）");
+            return request -> java.util.Optional.empty();
+        }
         RouterFunctions.Builder builder = RouterFunctions.route();
         routes.forEach(route -> {
             builder.route(createRoutePredicate(route), createRouteFunction(route, routeAuthHandler));

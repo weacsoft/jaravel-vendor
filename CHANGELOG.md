@@ -5,7 +5,28 @@
 
 ## [Unreleased]（目标版本 0.1.3 · 开发中）
 
+### Fixed（修复）
+
+- **自动装配启动阻断（`springboot` 模块，实测复现）**：`@ConditionalOnClass` 挂在方法上无法保护「声明类自身的类加载」，导致缺 optional 模块时应用直接启动失败。已修：
+  - `SpringBootRouteAutoConfiguration` 中形参引用 `auth.AuthManager` 的 bean 移入**带类级条件**的内部配置类（缺 auth 时启动不再 `NoClassDefFoundError`）；
+  - `DatabaseAutoConfiguration` / `ViewAutoConfiguration` / `MigrationPublishAutoConfiguration` / `SchedulePublishAutoConfiguration` 补**类级** `@ConditionalOnClass`（FQCN 字符串形式）；`ViewAutoConfiguration`、`RedisCachePublishAutoConfiguration` 由 `@Configuration` 归正为 `@AutoConfiguration`；
+  - `jaravelRouterFunction` 在**零路由**时不再调用 `RouterFunctions.Builder#build()`（原会抛 `IllegalStateException("No routes registered.")` 使应用起不来），改为返回空 `RouterFunction`；
+  - `AutoConfiguration.imports` 第 22 行类名里的反斜杠改为点号（字节级缺陷，Windows 下侥幸可解析、跨平台会失效）；
+  - 新增 `AutoConfigurationGuardSmokeTest`（6 例）：用自定义 ClassLoader 隐藏 optional 包 + 反射断言外层配置类签名不引用 optional 类型。
+- **`EncryptCookies` 安全重写（严重）**：①解密/验签失败**移除** Cookie（旧行为保留攻击者提供的原值，发一个明文 Cookie 即被当明文接受）；②IV 改为 `SecureRandom` 随机（旧实现恒为全零 → 确定性密文）；③新增 **HMAC-SHA256（encrypt-then-MAC）** 与先验签后解密（仅有 CBC 时可被比特翻转篡改）；④密钥改为 `SHA-256` 派生、加解密与 MAC 用两把派生密钥；⑤出站**原地替换** Cookie 值，不再同名双下发；⑥线格式升级为 `v2:` 前缀，旧格式一律丢弃（升级后用户会掉一次登录态）。
+- **请求上下文 ThreadLocal 泄漏（严重，跨用户会话串读）**：`RequestFactory.buildFromHttpServletRequest` 现在也会 `setCurrentRequest(...)`（原先只有 jaravel 路由路径会 set），并新增 `JaravelRequestContextFilter`（最高优先级）在请求结束时 `clearCurrentRequest()`。
+- **验证码（严重）**：①`encKey` 不再下发「能解密 captchaKey 的密钥」——captchaKey 内含答案，拿到它即可绕过；对称模式改为下发**一次性输入密钥**（真实密钥留在 token 内），非对称模式**只下发公钥**；②`RotateCaptcha` 除 NaN 外新增拒绝 `±Infinity`（提交 `1e999` 会让角度差变成 `-Infinity` 从而通过校验）；③新增 `CaptchaSecurityTest`（4 例）锁定以上行为。
+- **Redis 缓存 `flush` 清空整库（严重，不可恢复）**：`RedisCacheDriver` 为所有键加命名空间前缀（`jaravel.redis.prefix`，未配置回退 `jaravel:cache:`），`allKeys()`/`removeAll()` 改为 SCAN + `MATCH <prefix>*`；`allKeys()` 按契约返回去掉前缀的逻辑键。
+- **Redis 分布式锁属主校验（严重）**：`RedisLockProviderImpl.unlock` 由无条件 `DEL` 改为 **Lua compare-and-delete** —— 只删除本实例加过且值未被替换的锁；未持有锁时直接跳过（原实现会删掉别人的锁，导致同一定时任务多实例并发）。
+- **定时任务锁（严重）**：`ScheduleRunner` 抢锁失败时不再在 `finally` 里 `unlock`（原会把获胜者的锁删掉）。
+- **迁移预编译产物恒为空（严重）**：`MigrationPrecompiler.compileMigrationFiles` 改为复制 `MigrationScanner#getCompiledClasses()` 的返回值 —— 原先拿到内部 Map 本体，紧接着 `finish()` 会 `clear()` 掉它，导致预编译 zip/目录只有 manifest、编译计数为 0、迁移静默不执行且退出码为 0。
+- **wechat-sdk（真机联调暴露）**：①明文模式接入校验按官方**三参数** `sha1(sort(token,timestamp,nonce))` 验签（原把 echostr 计入 sha1 → 微信「服务器配置」必然失败）；②明文模式 POST 也校验 `signature`（原先完全不验签，任何人可伪造推送），并新增 `verify-post-signature` 开关（默认 true）；③`WxBizMsgCrypt.decrypt` 填充非法/长度非法时抛 `WechatCryptoException`（原先抛 `StringIndexOutOfBoundsException`）；④`listUserOpenids` 端点由 `POST cgi-bin/user/getall`（不存在，微信回 40066）改为 `GET cgi-bin/user/get`，响应字段 `data.openid_list` → `data.openid`；⑤`WeChatUser.subscribed`、`ChatRecord.valid` 按微信实际返回的 **0/1 整数**判定（原先 `Boolean.TRUE.equals(...)` 恒为 false，已关注用户被判成未关注）；⑥`AccessTokenManager` 的 `errcode` 改用 `Number` 取值，避免 `(Integer)` 强转掩盖真实错误。
+
 ### Added（新增）
+
+- **wechat-sdk：回复额度软限制 + 一次问答自动拆分为多条下发**：`WechatResponse.messages(...)`/`texts(...)` 一次交多条；`ReplyPlan` 纯函数拆分（第 1 条且支持被动回复时走被动回复，其余走客服消息，**不改变消息顺序**）；`AsyncReplyDispatcher` 做额度记账（CacheStore，键 `wechat:reply_quota:{account}:{openid}`，48h 窗口）+ 单线程守护池异步补发 + 微信返回 `45047`/`45015` 时自动清零止血；新增 `passive-reply-limit`(1)、`customer-service-reply-limit`(5)、`reply-quota-reset-per-interaction`、`reply-overflow-policy`(drop\|merge)、`reply-quota-window-seconds` 配置项；单测 9 例覆盖拆分/额度/merge/止血/重置语义。
+
+### Added（新增 · 0.1.3 主线）
 
 - **架构对齐：数据库操作统一收口 database 模块 + 建表统一走迁移能力 + `vendor:publish --tag=migrations`（0.1.3 主线）**：
   - **database 模块新增 `JdbcExecutor`**（连接 + 参数化 SQL 执行底座：execute/update/queryMapped/queryFor*List/Map/queryForObject/insertReturningKey）——驱动类模块不再各自维护一套私有「JDBC 四件套（executeUpdate/queryRows/executeSql/bind）+ 方言判断 + 建表 DDL」；`migration` 模块原 `JdbcExecutor` 保留为等价兼容子类（标注 `@Deprecated`），既有代码与外部引用不受影响（`migration` 由此新增对 `database` 的依赖，无循环）。

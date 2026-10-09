@@ -68,6 +68,7 @@ public class WeChatServer {
     public static final String MODE_SAFE = "safe";
 
     private final String configName;
+    private final WechatProperties properties;
     private final WechatKernel kernel;
 
     /**
@@ -79,6 +80,16 @@ public class WeChatServer {
      * @throws com.weacsoft.jaravel.vendor.wechat.crypto.WechatCryptoException token/app-id 缺失时
      */
     public WeChatServer(WechatProperties properties, String configName) {
+        this(properties, configName, null);
+    }
+
+    /**
+     * @param properties 微信配置
+     * @param configName 公众号别名
+     * @param dispatcher 多条应答调度器（可空）
+     */
+    WeChatServer(WechatProperties properties, String configName,
+                 com.weacsoft.jaravel.vendor.wechat.reply.AsyncReplyDispatcher dispatcher) {
         String name = (configName == null || configName.isEmpty()) ? "default" : configName;
         // 回调验签/加解密必须使用「确切别名」对应的 token/aes-key（不 fallback 到 default），
         // 否则会用 A 公众号的密钥去验 B 公众号的回调——安全上不可接受。
@@ -88,7 +99,19 @@ public class WeChatServer {
                     + "（@RegisterWechatOfficialAccount 或 yml 配置后重试；server 不会静默回退 default）");
         }
         this.configName = name;
-        this.kernel = new WechatKernel(name, config);
+        this.properties = properties;
+        this.kernel = new WechatKernel(name, config).withDispatcher(dispatcher);
+    }
+
+    /**
+     * 返回带多条应答调度器的服务端副本（内核已装配 dispatcher）。
+     *
+     * @param dispatcher 调度器
+     * @return 新的服务端实例
+     */
+    public WeChatServer withDispatcher(
+            com.weacsoft.jaravel.vendor.wechat.reply.AsyncReplyDispatcher dispatcher) {
+        return new WeChatServer(properties, configName, dispatcher);
     }
 
     /**

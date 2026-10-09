@@ -109,5 +109,25 @@ class UserModelsTest {
         assertTrue(record.isValid());
         assertEquals("text", record.getMsgType());
         assertEquals("你好", record.getTextColor(), "text 类型会话记录应能取到文本内容");
+
+        // 官方实际返回的是整数 0/1（上面喂布尔是测试假设错误），必须也能判对
+        Map<String, Object> numeric = new java.util.LinkedHashMap<>();
+        numeric.put("openid", "o1");
+        numeric.put("valid", 1);
+        assertTrue(ChatRecord.from(numeric).isValid(), "valid=1（整数）应判为有效");
+    }
+
+    @Test
+    void zeroOneIntegerFlagsAreTruthy() {
+        // 回归：WeChatUser 曾用 Boolean.TRUE.equals(subscribe) 比较整数 1，
+        // 导致真实 user/info 响应里已关注用户恒被判为未关注
+        Map<String, Object> subscribed = Map.of("openid", "o1", "subscribe", 1);
+        assertTrue(WeChatUser.from(subscribed).isSubscribed(), "subscribe=1 应判为已关注");
+
+        Map<String, Object> unsubscribed = Map.of("openid", "o1", "subscribe", 0);
+        assertFalse(WeChatUser.from(unsubscribed).isSubscribed(), "subscribe=0 应判为未关注");
+
+        Map<String, Object> stringFlag = Map.of("openid", "o1", "subscribe", "1");
+        assertTrue(WeChatUser.from(stringFlag).isSubscribed(), "字符串 \"1\" 也应判为已关注");
     }
 }

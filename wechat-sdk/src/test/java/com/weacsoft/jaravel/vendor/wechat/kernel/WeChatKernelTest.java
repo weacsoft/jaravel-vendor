@@ -48,6 +48,18 @@ class WeChatKernelTest {
                 "</xml>";
     }
 
+    /**
+     * 明文模式下的合法 query：{@code signature = sha1(sort(token, timestamp, nonce))}
+     * （官方三参数；echostr / 消息体都不参与）。
+     */
+    private static Map<String, String> plainQuery() {
+        Map<String, String> q = new LinkedHashMap<>();
+        q.put("timestamp", "1");
+        q.put("nonce", "2");
+        q.put("signature", new WxBizMsgCrypt(TOKEN, null, APPID).signPlain("1", "2"));
+        return q;
+    }
+
     // ===== Request 提取 =====
 
     @Test
@@ -118,13 +130,28 @@ class WeChatKernelTest {
     void testKernelGetPlainVerify() {
         WechatKernel kernel = new WechatKernel("default", cfg("plain", false));
         WxBizMsgCrypt crypt = new WxBizMsgCrypt(TOKEN, null, APPID);
-        String sig = crypt.sign("1", "2", "ECHO");
+        // 官方明文模式：signature = sha1(sort(token, timestamp, nonce))，echostr 不参与
+        String sig = crypt.signPlain("1", "2");
         Map<String, String> q = new LinkedHashMap<>();
         q.put("timestamp", "1");
         q.put("nonce", "2");
         q.put("echostr", "ECHO");
         q.put("signature", sig);
         assertEquals("ECHO", kernel.handleGet(q), "验签通过回包 echostr");
+    }
+
+    @Test
+    void testKernelGetPlainRejectsFourParamSignature() {
+        // 回归：把 echostr 也算进 sha1 的四参数签名不是官方算法，必须拒绝
+        WechatKernel kernel = new WechatKernel("default", cfg("plain", false));
+        WxBizMsgCrypt crypt = new WxBizMsgCrypt(TOKEN, null, APPID);
+        Map<String, String> q = new LinkedHashMap<>();
+        q.put("timestamp", "1");
+        q.put("nonce", "2");
+        q.put("echostr", "ECHO");
+        q.put("signature", crypt.sign("1", "2", "ECHO"));
+        assertThrows(WechatCryptoException.class, () -> kernel.handleGet(q),
+                "明文模式不得把 echostr 计入签名");
     }
 
     @Test
@@ -141,7 +168,7 @@ class WeChatKernelTest {
     @Test
     void testKernelPostDefaultEmptyWhenNoHandlers() {
         WechatKernel kernel = new WechatKernel("default", cfg("plain", false));
-        assertEquals("", kernel.handlePost(new LinkedHashMap<>(), textPush("hi")),
+        assertEquals("", kernel.handlePost(plainQuery(), textPush("hi")),
                 "无业务层时默认不回复（空串退避）");
     }
 
@@ -151,7 +178,7 @@ class WeChatKernelTest {
                 .middleware((req, next) -> req.isText()
                         ? WechatResponse.text("echo: " + req.textContent())
                         : next.handle(req));
-        String reply = kernel.handlePost(new LinkedHashMap<>(), textPush("你好"));
+        String reply = kernel.handlePost(plainQuery(), textPush("你好"));
         assertTrue(reply.contains("echo: 你好"));
         assertTrue(reply.contains("openid123"));
     }
@@ -173,7 +200,7 @@ class WeChatKernelTest {
                     trace.add("B-out");
                     return r;
                 });
-        kernel.handlePost(new LinkedHashMap<>(), textPush("hi"));
+        kernel.handlePost(plainQuery(), textPush("hi"));
         assertEquals(List.of("A-in", "B-in", "B-out", "A-out"), trace, "洋葱出入顺序应严格嵌套");
     }
 
@@ -189,7 +216,7 @@ class WeChatKernelTest {
                     trace.add("inner");
                     return next.handle(req);
                 });
-        String reply = kernel.handlePost(new LinkedHashMap<>(), textPush("hi"));
+        String reply = kernel.handlePost(plainQuery(), textPush("hi"));
         assertTrue(reply.contains("short"));
         assertEquals(List.of("outer"), trace, "短路后内层不得执行");
     }
@@ -199,8 +226,8 @@ class WeChatKernelTest {
         WechatKernel base = new WechatKernel("default", cfg("plain", false));
         WechatKernel withHandler = base.middleware((req, next) -> WechatResponse.text("x"));
         assertNotSame(base, withHandler, "middleware 必须返回新实例");
-        assertEquals("", base.handlePost(new LinkedHashMap<>(), textPush("a")), "原实例行为不变");
-        assertTrue(withHandler.handlePost(new LinkedHashMap<>(), textPush("a")).contains("x"));
+        assertEquals("", base.handlePost(plainQuery(), textPush("a")), "原实例行为不变");
+        assertTrue(withHandler.handlePost(plainQuery(), textPush("a")).contains("x"));
     }
 
     @Test
@@ -213,7 +240,7 @@ class WeChatKernelTest {
                     throw new IllegalStateException("boom");
                 });
         IllegalStateException ex = assertThrows(IllegalStateException.class,
-                () -> kernel.handlePost(new LinkedHashMap<>(), textPush("hi")));
+                () -> kernel.handlePost(plainQuery(), textPush("hi")));
         assertEquals("boom", ex.getMessage());
     }
 
@@ -221,7 +248,7 @@ class WeChatKernelTest {
     void testKernelParse() {
         WechatKernel kernel = new WechatKernel("default", cfg("plain", false));
         com.weacsoft.jaravel.vendor.wechat.server.ServerMessage msg =
-                kernel.parse(new LinkedHashMap<>(), textPush("parsing"));
+                kernel.parse(plainQuery(), textPush("parsing"));
         assertTrue(MessageParser.isText(msg));
         assertEquals("parsing", MessageParser.asText(msg).getContent());
     }
@@ -289,7 +316,7 @@ class WeChatKernelTest {
         WechatKernel kernel = new WechatKernel("default", cfg("plain", false));
         WechatCryptoException ex = assertThrows(WechatCryptoException.class, () ->
                 kernel.middleware((req, next) -> WechatResponse.message(new WeChatCard("C1")))
-                        .handlePost(new LinkedHashMap<>(), textPush("x")),
+                        .handlePost(plainQuery(), textPush("x")),
                 "不支持被动回复的消息类必须抛错");
         assertTrue(ex.getMessage().contains("WeChatCard"), "异常应指明消息类");
     }

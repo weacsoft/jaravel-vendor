@@ -180,20 +180,23 @@ class OfficialAccountServiceTest {
 
     @Test
     void testListUserOpenidsPaging() {
+        // 官方 user/get 响应形状：{"total":..,"count":..,"data":{"openid":[..]},"next_openid":".."}
         mockResponses(
                 jsonResponse(200,
-                        "{\"count\":3,\"next_openid\":\"o4\",\"data\":{\"openid_list\":[\"o1\",\"o2\",\"o3\"]}}",
+                        "{\"total\":5,\"count\":3,\"next_openid\":\"o4\",\"data\":{\"openid\":[\"o1\",\"o2\",\"o3\"]}}",
                         "application/json"),
                 jsonResponse(200,
-                        "{\"count\":2,\"data\":{\"openid_list\":[\"o4\",\"o5\"]}}",
+                        "{\"total\":5,\"count\":2,\"data\":{\"openid\":[\"o4\",\"o5\"]}}",
                         "application/json")
         );
         List<String> openids = service.listUserOpenids();
-        assertEquals(List.of("o1", "o2", "o3", "o4", "o5"), openids, "分页应汇聚全部 openid");
+        assertEquals(List.of("o1", "o2", "o3", "o4", "o5"), openids, "分页应汇聚全部 openid（回归：曾错读 data.openid_list 导致恒为空）");
         Request page2 = firstRequestSent(2, 1);
-        assertEquals("/cgi-bin/user/getall", page2.url().encodedPath(), "getall 端点应为 user/getall");
-        String body2 = bodyUtf8(page2);
-        assertTrue(body2.contains("\"next_openid\":\"o4\""), "第二页应在 body 携带 next_openid");
+        // 官方端点：GET /cgi-bin/user/get?access_token=…&next_openid=…
+        // （回归：曾误用 POST /cgi-bin/user/getall，微信返回 errcode=40066 invalid url）
+        assertEquals("/cgi-bin/user/get", page2.url().encodedPath(), "用户列表端点必须是 user/get");
+        assertEquals("GET", page2.method(), "user/get 必须用 GET");
+        assertEquals("o4", page2.url().queryParameter("next_openid"), "第二页应通过 query 携带 next_openid");
     }
 
     @Test

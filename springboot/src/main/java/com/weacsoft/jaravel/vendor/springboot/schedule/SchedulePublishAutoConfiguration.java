@@ -20,6 +20,10 @@ import com.weacsoft.jaravel.vendor.schedule.SchedulePublishableConfig;
  * {@code artisan vendor:publish --tag=schedule}。
  */
 @org.springframework.boot.autoconfigure.AutoConfiguration
+// 类级守卫：schedule 是 optional 依赖，静态块在类加载时就 new SchedulePublishableConfig()，
+// 缺 schedule 时不守卫会直接 NoClassDefFoundError（FQCN 形式不触发类加载）。
+@org.springframework.boot.autoconfigure.condition.ConditionalOnClass(
+        name = "com.weacsoft.jaravel.vendor.schedule.SchedulePublishableConfig")
 public class SchedulePublishAutoConfiguration {
     static {
         PublishableRegistry.register(new SchedulePublishableConfig());

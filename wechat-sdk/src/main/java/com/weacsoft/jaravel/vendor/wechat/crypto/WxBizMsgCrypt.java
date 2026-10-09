@@ -72,6 +72,9 @@ public final class WxBizMsgCrypt {
 
     /**
      * 计算消息签名：sha1(sort(token, timestamp, nonce, encrypt))。
+     * <p>
+     * 这是<b>安全模式</b>的 {@code msg_signature} 算法（官方四参数，含 Encrypt）。
+     * 明文模式的 {@code signature} 不含消息体，请用 {@link #signPlain(String, String)}。
      *
      * @param timestamp 时间戳字符串
      * @param nonce     随机串
@@ -83,6 +86,38 @@ public final class WxBizMsgCrypt {
         Arrays.sort(parts);
         String joined = String.join("", parts);
         return sha1Hex(joined);
+    }
+
+    /**
+     * 计算<b>明文模式</b>请求签名：{@code sha1(sort(token, timestamp, nonce))}。
+     * <p>
+     * 官方《消息加解密说明》「接入指引 · 消息解密方式为明文模式」明确：
+     * 「将 token、timestamp、nonce <b>三个</b>参数进行字典序排序 …… 进行 sha1 计算签名」。
+     * 该签名同时用于首次接入的 GET 校验与明文模式的 POST 推送校验。
+     *
+     * @param timestamp 时间戳（URL 参数中的）
+     * @param nonce     随机串（URL 参数中的）
+     * @return 40 位小写十六进制签名
+     */
+    public String signPlain(String timestamp, String nonce) {
+        String[] parts = {token, timestamp, nonce};
+        Arrays.sort(parts);
+        return sha1Hex(String.join("", parts));
+    }
+
+    /**
+     * 校验明文模式签名（GET 接入校验 / POST 推送均使用官方三参数算法）。
+     *
+     * @param timestamp 时间戳
+     * @param nonce     随机串
+     * @param signature 请求携带的 signature
+     * @return 签名匹配返回 true；signature 缺失返回 false
+     */
+    public boolean verifyPlainSignature(String timestamp, String nonce, String signature) {
+        if (signature == null || signature.isEmpty() || timestamp == null || nonce == null) {
+            return false;
+        }
+        return signPlain(timestamp, nonce).equalsIgnoreCase(signature);
     }
 
     /**
@@ -108,21 +143,23 @@ public final class WxBizMsgCrypt {
      */
     public String decrypt(String encrypted) {
         requireCrypt();
-        byte[] plainBytes;
+        byte[] padded;
         try {
             Cipher cipher = Cipher.getInstance("AES/ECB/NoPadding");
             cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(aesKey, "AES"));
-            plainBytes = stripPkcs7Padding(cipher.doFinal(Base64.getDecoder().decode(encrypted)));
+            padded = cipher.doFinal(Base64.getDecoder().decode(encrypted));
         } catch (Exception e) {
             throw new WechatCryptoException("微信消息解密失败: " + e.getMessage(), e);
         }
-        if (plainBytes.length <= RANDOM_LENGTH + 4) {
+        byte[] plainBytes = stripPkcs7Padding(padded);
+        if (plainBytes.length < RANDOM_LENGTH + 4) {
             throw new WechatCryptoException("明文长度异常（不足 random+len 头部）");
         }
         int msgLen = readBigEndianInt(plainBytes, RANDOM_LENGTH);
         int msgStart = RANDOM_LENGTH + 4;
-        if (msgStart + msgLen > plainBytes.length) {
-            throw new WechatCryptoException("明文长度声明超出实际: msgLen=" + msgLen);
+        if (msgLen < 0 || msgStart + msgLen > plainBytes.length) {
+            throw new WechatCryptoException("明文长度声明非法: msgLen=" + msgLen
+                    + "，明文长度=" + plainBytes.length);
         }
         String msg = new String(plainBytes, msgStart, msgLen, StandardCharsets.UTF_8);
         String receiveId = new String(plainBytes, msgStart + msgLen, plainBytes.length - msgStart - msgLen, StandardCharsets.UTF_8);
@@ -187,7 +224,11 @@ public final class WxBizMsgCrypt {
     }
 
     /**
-     * 去除 PKCS#7 填充（尾字节的值即填充字节数，1~32；非法则原样返回交由上层校验）。
+     * 去除 PKCS#7 填充（尾字节的值即填充字节数，1~32）。
+     * <p>
+     * 填充非法说明密文与 EncodingAESKey 不匹配（或被篡改），直接抛
+     * {@link WechatCryptoException} —— 不能把原始数据原样返回，否则后续按长度头解析会
+     * 抛出 {@code StringIndexOutOfBoundsException} 之类的非契约异常。
      */
     private static byte[] stripPkcs7Padding(byte[] data) {
         if (data.length == 0) {
@@ -195,7 +236,8 @@ public final class WxBizMsgCrypt {
         }
         int pad = data[data.length - 1] & 0xff;
         if (pad < 1 || pad > 32 || pad > data.length) {
-            return data;
+            throw new WechatCryptoException("PKCS#7 填充非法（尾字节 " + pad
+                    + "）：密文与 EncodingAESKey 不匹配，或密文被篡改");
         }
         return Arrays.copyOf(data, data.length - pad);
     }

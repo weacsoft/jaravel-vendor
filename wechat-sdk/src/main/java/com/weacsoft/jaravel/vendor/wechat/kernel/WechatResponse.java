@@ -6,7 +6,9 @@ import com.weacsoft.jaravel.vendor.wechat.message.Message;
 import com.weacsoft.jaravel.vendor.wechat.message.Text;
 import com.weacsoft.jaravel.vendor.wechat.xml.XmlUtil;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -42,19 +44,27 @@ public final class WechatResponse {
         /** 不回复（空串退避） */
         EMPTY,
         /** 预组装的最终 XML */
-        RAW
+        RAW,
+        /** 多条应答：第 1 条被动回复，其余客服消息补发 */
+        MULTI
     }
 
     private final Kind kind;
     private final String echostr;
     private final Message message;
     private final String rawXml;
+    private final List<Message> messages;
 
     private WechatResponse(Kind kind, String echostr, Message message, String rawXml) {
+        this(kind, echostr, message, rawXml, null);
+    }
+
+    private WechatResponse(Kind kind, String echostr, Message message, String rawXml, List<Message> messages) {
         this.kind = kind;
         this.echostr = echostr;
         this.message = message;
         this.rawXml = rawXml;
+        this.messages = messages;
     }
 
     // ===== 静态组装 =====
@@ -125,10 +135,61 @@ public final class WechatResponse {
     // ===== 提取 =====
 
     /**
+     * 组装「被动回复 + 客服消息补发」的多条应答。
+     * <p>
+     * 微信协议规定一次推送只能有<b>一条</b>被动回复（5 秒内），业务想「一次问答回多条」时，
+     * 由内核与 {@code AsyncReplyDispatcher} 自动拆分：
+     * 第 1 条走被动回复（XML），其余走客服消息异步补发，并受
+     * {@code passive-reply-limit} / {@code customer-service-reply-limit} 软限制约束。
+     *
+     * @param messages 消息列表（按发送顺序；null/空等价于不回复）
+     * @return 应答
+     */
+    public static WechatResponse messages(List<Message> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return empty();
+        }
+        return new WechatResponse(Kind.MULTI, null, null, null, List.copyOf(messages));
+    }
+
+    /**
+     * 便捷入口：一次问答连发多条文本（第 1 条被动回复，其余客服消息补发）。
+     *
+     * @param texts 文本内容
+     * @return 应答
+     */
+    public static WechatResponse texts(String... texts) {
+        if (texts == null || texts.length == 0) {
+            return empty();
+        }
+        List<Message> messages = new ArrayList<>(texts.length);
+        for (String text : texts) {
+            messages.add(new Text(text));
+        }
+        return messages(messages);
+    }
+
+    /**
      * @return 应答形态
      */
     public Kind kind() {
         return kind;
+    }
+
+    /**
+     * @return 是否多条应答（被动回复 + 客服消息补发）
+     */
+    public boolean isMulti() {
+        return kind == Kind.MULTI;
+    }
+
+    /**
+     * @return 多条应答的消息列表（不可变）
+     * @throws IllegalStateException 非 MULTI 形态
+     */
+    public List<Message> multiMessages() {
+        require(Kind.MULTI);
+        return messages;
     }
 
     /**
@@ -233,6 +294,8 @@ public final class WechatResponse {
                 return "WechatResponse{echo=" + echostr + "}";
             case MESSAGE:
                 return "WechatResponse{message=" + (message != null ? message.getType() : "?") + "}";
+            case MULTI:
+                return "WechatResponse{multi=" + (messages == null ? 0 : messages.size()) + " 条}";
             case RAW:
                 return "WechatResponse{raw=" + (rawXml != null ? rawXml.length() + "B" : "?") + "}";
             case EMPTY:

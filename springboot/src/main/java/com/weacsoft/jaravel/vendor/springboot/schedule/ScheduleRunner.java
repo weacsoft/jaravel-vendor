@@ -91,14 +91,20 @@ public class ScheduleRunner {
 
     private void executeTask(ScheduledTask task) {
         String taskName = task.getName();
+        // 只有「确实抢到锁」的实例才允许在 finally 里解锁。
+        // 否则抢锁失败的实例会把获胜者持有的锁 DEL 掉（provider.unlock 是无条件删除），
+        // 第三个实例又能抢到 → 同一定时任务被多实例并发执行。
+        boolean locked = false;
+        String lockKey = null;
         try {
             if (task.isDistributedLock()) {
                 LockProvider provider = lockProviderManager.provider();
-                String lockKey = "schedule:lock:" + taskName;
+                lockKey = "schedule:lock:" + taskName;
                 if (!provider.tryLock(lockKey, task.getLockTtlSeconds())) {
                     logger.info("[schedule] 任务 '{}' 未获取分布式锁，跳过执行", taskName);
                     return;
                 }
+                locked = true;
             }
 
             logger.info("[schedule] 执行任务: {} (cron={})", taskName, task.getCronExpression());
@@ -121,10 +127,8 @@ public class ScheduleRunner {
             failedCount.incrementAndGet();
             logger.error("[schedule] 任务 '{}' 执行失败: {}", taskName, e.getMessage(), e);
         } finally {
-            if (task.isDistributedLock()) {
-                LockProvider provider = lockProviderManager.provider();
-                String lockKey = "schedule:lock:" + taskName;
-                provider.unlock(lockKey);
+            if (locked) {
+                lockProviderManager.provider().unlock(lockKey);
             }
         }
     }

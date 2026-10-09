@@ -51,7 +51,9 @@ public final class WeChatUser {
         this.province = str(raw.get("province"));
         this.country = str(raw.get("country"));
         this.headimgUrl = str(raw.get("headimgurl"));
-        this.subscribed = Boolean.TRUE.equals(raw.get("subscribe"));
+        // 微信 user/info 的 subscribe 是整数 0/1（非 JSON 布尔）；
+        // 用 Boolean.TRUE.equals(...) 比较会恒为 false，导致已关注用户被判成未关注。
+        this.subscribed = truthy(raw.get("subscribe"));
         this.subscribeTime = longVal(raw.get("subscribe_time"));
         this.remark = str(raw.get("remark"));
         this.groupId = intVal(raw.get("groupid"), 0);
@@ -189,6 +191,24 @@ public final class WeChatUser {
             }
         }
         return defaultValue;
+    }
+
+    /**
+     * 微信 0/1 标志位（subscribe、valid 等）的统一真值判断：
+     * 兼容数字、字符串与布尔三种可能的 JSON 形状。
+     */
+    private static boolean truthy(Object value) {
+        if (value instanceof Boolean b) {
+            return b;
+        }
+        if (value instanceof Number n) {
+            return n.intValue() != 0;
+        }
+        if (value instanceof String s) {
+            String t = s.trim();
+            return "1".equals(t) || "true".equalsIgnoreCase(t);
+        }
+        return false;
     }
 
     private static long longVal(Object value) {

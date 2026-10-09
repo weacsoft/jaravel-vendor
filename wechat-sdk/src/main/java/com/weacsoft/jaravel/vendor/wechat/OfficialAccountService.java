@@ -16,6 +16,7 @@ import com.weacsoft.jaravel.vendor.wechat.message.Video;
 import com.weacsoft.jaravel.vendor.wechat.message.Voice;
 import com.weacsoft.jaravel.vendor.wechat.message.WeChatCard;
 import com.weacsoft.jaravel.vendor.wechat.menu.Menu;
+import com.weacsoft.jaravel.vendor.wechat.reply.AsyncReplyDispatcher;
 import com.weacsoft.jaravel.vendor.wechat.response.WeChatResponse;
 import com.weacsoft.jaravel.vendor.wechat.response.WechatApiException;
 import com.weacsoft.jaravel.vendor.wechat.template.SubscriptionNotice;
@@ -89,10 +90,15 @@ public class OfficialAccountService {
     /** tags/members/batchtagging 单次上限（官方：50） */
     private static final int BATCH_TAGGING_LIMIT = 50;
 
-    /** getall 单页上限（官方：10000） */
-    private static final int GETALL_PAGE_SIZE = 10000;
+    /**
+     * 获取用户列表端点（官方：GET，单页最多返回 10000 个 openid）。
+     * <p>
+     * 注意：官方端点就是 {@code cgi-bin/user/get}；不存在 {@code user/getall}
+     * （曾误用该路径，微信返回 {@code errcode=40066 invalid url}）。
+     */
+    private static final String USER_GET_PATH = "cgi-bin/user/get";
 
-    /** getall 最大翻页次数（安全上限，防无限循环） */
+    /** user/get 最大翻页次数（安全上限，防无限循环） */
     private static final int GETALL_MAX_PAGES = 2000;
 
     /** Access Token 管理器 */
@@ -106,6 +112,9 @@ public class OfficialAccountService {
 
     /** 缓存仓库（用于 jsapi_ticket 缓存） */
     private final CacheStore cacheStore;
+
+    /** 多条应答调度器（懒创建，见 {@link #replyDispatcher()}） */
+    private volatile AsyncReplyDispatcher replyDispatcher;
 
     /**
      * 便捷构造（默认 JSON 编码器 + 无 cache 管理器）。
@@ -210,7 +219,7 @@ public class OfficialAccountService {
     }
 
     /**
-     * 拉取全部关注用户 openid（指定配置，自动翻页）。
+     * 拉取全部关注用户 openid（自动翻页 {@code user/get}）。
      *
      * @param configName 公众号配置名
      * @return 全部关注用户 openid 列表
@@ -220,19 +229,25 @@ public class OfficialAccountService {
         List<String> all = new ArrayList<>();
         String nextOpenid = null;
         for (int page = 0; page < GETALL_MAX_PAGES; page++) {
-            Map<String, Object> body = new LinkedHashMap<>();
-            body.put("count", GETALL_PAGE_SIZE);
-            if (nextOpenid != null) {
-                body.put("next_openid", nextOpenid);
+            // 官方接口：GET /cgi-bin/user/get?access_token=…&next_openid=…
+            // （不是 cgi-bin/user/getall —— 那会返回 errcode=40066 invalid url）
+            Map<String, String> query = new LinkedHashMap<>(tokenQuery(configName));
+            if (nextOpenid != null && !nextOpenid.isEmpty()) {
+                query.put("next_openid", nextOpenid);
             }
-            WeChatResponse resp = wechatPost("cgi-bin/user/getall", tokenQuery(configName), body, "listUserOpenids");
+            WeChatResponse resp = wechatGet(USER_GET_PATH, query, "listUserOpenids");
             resp.requireSuccess("listUserOpenids");
+            // 官方响应：{"total":N,"count":M,"data":{"openid":["OPENID1",...]},"next_openid":"…"}
+            // 字段名是 data.openid（不是 openid_list —— 那是 batchget 的形状）
             Object dataRaw = resp.raw().get("data");
             Object listRaw = null;
             if (dataRaw instanceof Map<?, ?> dataMap) {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> data = (Map<String, Object>) dataMap;
-                listRaw = data.get("openid_list");
+                listRaw = data.get("openid");
+                if (listRaw == null) {
+                    listRaw = data.get("openid_list");
+                }
             }
             if (!(listRaw instanceof List<?> list) || list.isEmpty()) {
                 break;
@@ -1025,7 +1040,65 @@ public class OfficialAccountService {
      * @return 服务端实例
      */
     public WeChatServer server(String configName) {
-        return new WeChatServer(properties, configName);
+        return new WeChatServer(properties, configName).withDispatcher(replyDispatcher());
+    }
+
+    /**
+     * 多条应答调度器（懒创建、进程内共享）：负责「1 条被动回复 + 最多 N 条客服消息」
+     * 的额度软限制与异步补发。
+     *
+     * @return 调度器
+     */
+    public AsyncReplyDispatcher replyDispatcher() {
+        AsyncReplyDispatcher current = replyDispatcher;
+        if (current != null) {
+            return current;
+        }
+        synchronized (this) {
+            if (replyDispatcher == null) {
+                replyDispatcher = new AsyncReplyDispatcher(
+                        (account, message) -> sendCustomerMessage(message, account),
+                        cacheStore, properties);
+            }
+            return replyDispatcher;
+        }
+    }
+
+    /**
+     * 查询某用户当前剩余的客服消息额度（软限制视角，非微信服务端真实余量）。
+     *
+     * @param configName 公众号配置名（null 用 default）
+     * @param openid     用户
+     * @return 剩余条数
+     */
+    public int remainingReplyQuota(String configName, String openid) {
+        return replyDispatcher().remaining(normalizeAccountName(configName), openid);
+    }
+
+    /**
+     * 重置某用户的客服消息额度为配置值（压测或业务重新计额度时用）。
+     *
+     * @param configName 公众号配置名（null 用 default）
+     * @param openid     用户
+     * @return 重置后的额度
+     */
+    public int resetReplyQuota(String configName, String openid) {
+        return replyDispatcher().reset(normalizeAccountName(configName), openid);
+    }
+
+    /**
+     * 记录该用户又消耗了一条客服消息额度（业务直接调 {@code sendCustomerMessage} 时手动记账用）。
+     *
+     * @param configName 公众号配置名
+     * @param openid     用户
+     * @param slots      条数
+     */
+    public void consumeReplyQuota(String configName, String openid, int slots) {
+        replyDispatcher().consume(normalizeAccountName(configName), openid, slots);
+    }
+
+    private static String normalizeAccountName(String configName) {
+        return (configName == null || configName.isEmpty()) ? "default" : configName;
     }
 
     // ==================== 令牌 ====================

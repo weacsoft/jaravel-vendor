@@ -22,8 +22,11 @@ import com.weacsoft.jaravel.vendor.redis.cache.RedisCachePublishableConfig;
  * 纯契约载体位于 redis-cache 模块），确保任何情况下都能执行
  * {@code artisan vendor:publish --tag=redis-cache}。
  */
-@org.springframework.context.annotation.Configuration(proxyBeanMethods = false)
-@org.springframework.boot.autoconfigure.condition.ConditionalOnClass(RedisCachePublishableConfig.class)
+// 本类在自动装配 imports 文件里注册，因此用 @AutoConfiguration（原先误用 @Configuration）。
+@org.springframework.boot.autoconfigure.AutoConfiguration
+// 类级守卫改用 FQCN 字符串形式，与其它可发布配置装配保持一致，且完全不触发类加载。
+@org.springframework.boot.autoconfigure.condition.ConditionalOnClass(
+        name = "com.weacsoft.jaravel.vendor.redis.cache.RedisCachePublishableConfig")
 public class RedisCachePublishAutoConfiguration {
     static {
         PublishableRegistry.register(new RedisCachePublishableConfig());

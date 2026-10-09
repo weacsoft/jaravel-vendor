@@ -2,8 +2,12 @@ package com.weacsoft.jaravel.vendor.wechat.kernel;
 
 import com.weacsoft.jaravel.vendor.wechat.WechatProperties;
 import com.weacsoft.jaravel.vendor.wechat.crypto.WxBizMsgCrypt;
+import com.weacsoft.jaravel.vendor.wechat.reply.AsyncReplyDispatcher;
+import com.weacsoft.jaravel.vendor.wechat.reply.ReplyPlan;
 import com.weacsoft.jaravel.vendor.wechat.server.ServerMessage;
 import com.weacsoft.jaravel.vendor.wechat.xml.XmlUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -44,6 +48,8 @@ import java.util.concurrent.ThreadLocalRandom;
  */
 public final class WechatKernel {
 
+    private static final Logger logger = LoggerFactory.getLogger(WechatKernel.class);
+
     /** 固定内置洋葱层（先于业务层，顺序固定） */
     private static final List<WechatMiddleware> BUILT_IN =
             List.of(VerifySignatureMiddleware.INSTANCE, DecryptParseMiddleware.INSTANCE);
@@ -53,6 +59,8 @@ public final class WechatKernel {
     private final WxBizMsgCrypt crypt;
     private final boolean safeMode;
     private final List<WechatMiddleware> handlers;
+    /** 多条应答调度器（可空；为空时多条回复只保留被动回复那条，其余记 warn 丢弃） */
+    private final AsyncReplyDispatcher dispatcher;
 
     /**
      * 构造指定公众号配置的洋葱内核。
@@ -76,18 +84,21 @@ public final class WechatKernel {
         this.crypt = c;
         this.safeMode = safe;
         this.handlers = Collections.emptyList();
+        this.dispatcher = null;
     }
 
     private WechatKernel(String configName,
                          WechatProperties.OfficialAccountConfig account,
                          WxBizMsgCrypt crypt,
                          boolean safeMode,
-                         List<WechatMiddleware> handlers) {
+                         List<WechatMiddleware> handlers,
+                         AsyncReplyDispatcher dispatcher) {
         this.configName = configName;
         this.account = account;
         this.crypt = crypt;
         this.safeMode = safeMode;
         this.handlers = handlers;
+        this.dispatcher = dispatcher;
     }
 
     /**
@@ -99,7 +110,27 @@ public final class WechatKernel {
     public WechatKernel middleware(WechatMiddleware mw) {
         List<WechatMiddleware> next = new ArrayList<>(handlers);
         next.add(mw);
-        return new WechatKernel(configName, account, crypt, safeMode, List.copyOf(next));
+        return new WechatKernel(configName, account, crypt, safeMode, List.copyOf(next), dispatcher);
+    }
+
+    /**
+     * 装配多条应答调度器（返回新内核，不修改本实例）。
+     * <p>
+     * 经 {@code OfficialAccountService.server(...).kernel()} 拿到的内核已自动带上共享调度器；
+     * 只有手工 {@code new WechatKernel(name, cfg)} 时才需要自行装配。
+     *
+     * @param dispatcher 调度器
+     * @return 新内核
+     */
+    public WechatKernel withDispatcher(AsyncReplyDispatcher dispatcher) {
+        return new WechatKernel(configName, account, crypt, safeMode, handlers, dispatcher);
+    }
+
+    /**
+     * @return 当前多条应答调度器（可能为 null）
+     */
+    public AsyncReplyDispatcher dispatcher() {
+        return dispatcher;
     }
 
     // ===== 应答入口 =====
@@ -143,11 +174,45 @@ public final class WechatKernel {
         if (resp.isEcho()) {
             return resp.echostr();
         }
+        if (resp.isMulti()) {
+            return handleMulti(req, resp);
+        }
         String replyXml = resp.toReplyXml(req.openid(), req.toOpenid());
         if (!safeMode) {
             return replyXml;
         }
         return buildSafeReply(replyXml);
+    }
+
+    /**
+     * 多条应答：第 1 条走被动回复（必要时可配成 0 条），其余交给调度器用客服消息异步补发。
+     *
+     * @param req  请求
+     * @param resp 多条应答
+     * @return 被动回复 XML（或加密包）；没有被动回复时为空串
+     */
+    private String handleMulti(WechatRequest req, WechatResponse resp) {
+        String openid = req.openid();
+        int slots = dispatcher == null
+                ? Integer.MAX_VALUE
+                : dispatcher.beginInteraction(configName, account, openid);
+        ReplyPlan plan = ReplyPlan.plan(account, resp.multiMessages(), slots);
+        String replyXml = plan.passiveReply() == null
+                ? ""
+                : WechatResponse.message(plan.passiveReply()).toReplyXml(openid, req.toOpenid());
+        if (dispatcher == null) {
+            if (!plan.customerMessages().isEmpty()) {
+                logger.warn("[wechat-kernel] 未装配 AsyncReplyDispatcher，{} 条客服消息补发被丢弃"
+                        + "（多条回复请用 officialAccountService.server(...) 获取已装配的内核，"
+                        + "或给内核 withDispatcher(...)）", plan.customerMessages().size());
+            }
+        } else {
+            dispatcher.dispatch(configName, openid, plan);
+        }
+        if (replyXml.isEmpty()) {
+            return "";
+        }
+        return safeMode ? buildSafeReply(replyXml) : replyXml;
     }
 
     /**

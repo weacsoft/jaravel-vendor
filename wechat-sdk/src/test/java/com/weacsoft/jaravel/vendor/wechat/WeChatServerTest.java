@@ -54,6 +54,15 @@ class WeChatServerTest {
         return q;
     }
 
+    /**
+     * 明文模式 POST 推送的合法 query：{@code signature = sha1(sort(token, timestamp, nonce))}
+     * （官方三参数算法，详见微信《消息加解密说明》「接入指引 · 明文模式」）。
+     */
+    private static Map<String, String> plainPushQuery() {
+        return query(new com.weacsoft.jaravel.vendor.wechat.crypto.WxBizMsgCrypt(TOKEN, null, APPID)
+                .signPlain("1407564400", "999"), "1407564400", "999", null);
+    }
+
     private static String textPush(String content) {
         return "<xml>" +
                 "<ToUserName><![CDATA[gh_oa]]></ToUserName>" +
@@ -69,12 +78,39 @@ class WeChatServerTest {
     void testHandleGetPlainVerifyAndEcho() {
         WeChatServer server = new WeChatServer(plainProps(), "default");
         assertEquals(WeChatServer.MODE_PLAIN, server.getMode());
-        // 签名 = sha1(sort(token,timestamp,nonce,echostr))
+        // 明文模式签名 = sha1(sort(token,timestamp,nonce))（官方三参数，echostr 不参与）
         com.weacsoft.jaravel.vendor.wechat.crypto.WxBizMsgCrypt crypt =
                 new com.weacsoft.jaravel.vendor.wechat.crypto.WxBizMsgCrypt(TOKEN, null, APPID);
-        String signature = crypt.sign("1407564400", "999", "ECHO123");
+        String signature = crypt.signPlain("1407564400", "999");
         assertEquals("ECHO123", server.handleGet(query(signature, "1407564400", "999", "ECHO123")),
                 "验签通过后应原样返回 echostr");
+    }
+
+    @Test
+    void testHandleGetPlainAcceptsOfficialThreeParamSignature() {
+        // 官方规则回归：echostr 不同不影响明文模式签名（三参数）
+        WeChatServer server = new WeChatServer(plainProps(), "default");
+        com.weacsoft.jaravel.vendor.wechat.crypto.WxBizMsgCrypt crypt =
+                new com.weacsoft.jaravel.vendor.wechat.crypto.WxBizMsgCrypt(TOKEN, null, APPID);
+        String signature = crypt.signPlain("1714037059", "486452656");
+        assertEquals("ANY_ECHO_VALUE",
+                server.handleGet(query(signature, "1714037059", "486452656", "ANY_ECHO_VALUE")),
+                "明文模式签名只由 token/timestamp/nonce 决定");
+    }
+
+    @Test
+    void testHandlePostPlainRequiresValidSignature() {
+        WeChatServer server = new WeChatServer(plainProps(), "default");
+        // 缺失签名 → 拒绝（query 里既无 signature 也无 timestamp/nonce）
+        Map<String, String> unsigned = new LinkedHashMap<>();
+        assertThrows(WechatCryptoException.class,
+                () -> server.handlePost(unsigned, textPush("hi"), (m, s) -> new Text("x")),
+                "明文模式 POST 必须校验 signature，缺失即拒绝");
+        // 错误签名 → 拒绝
+        assertThrows(WechatCryptoException.class,
+                () -> server.handlePost(query("bad", "1407564400", "999", null), textPush("hi"),
+                        (m, s) -> new Text("x")),
+                "明文模式 POST 签名不匹配必须拒绝");
     }
 
     @Test
@@ -88,7 +124,7 @@ class WeChatServerTest {
     @Test
     void testHandlePostPlainEchoReply() {
         WeChatServer server = new WeChatServer(plainProps(), "default");
-        String reply = server.handlePost(new LinkedHashMap<>(), textPush("你好"),
+        String reply = server.handlePost(plainPushQuery(), textPush("你好"),
                 (msg, srv) -> {
                     if (MessageParser.isText(msg)) {
                         return new Text("你说了: " + MessageParser.asText(msg).getContent());
@@ -105,21 +141,21 @@ class WeChatServerTest {
     @Test
     void testHandlePostNullResponderReturnsEmpty() {
         WeChatServer server = new WeChatServer(plainProps(), "default");
-        assertEquals("", server.handlePost(new LinkedHashMap<>(), textPush("hi"), null),
+        assertEquals("", server.handlePost(plainPushQuery(), textPush("hi"), null),
                 "无 responder 时按微信规范应答空串（不触发重试）");
     }
 
     @Test
     void testHandlePostResponderReturnsNullYieldsEmpty() {
         WeChatServer server = new WeChatServer(plainProps(), "default");
-        assertEquals("", server.handlePost(new LinkedHashMap<>(), textPush("hi"), (m, s) -> null),
+        assertEquals("", server.handlePost(plainPushQuery(), textPush("hi"), (m, s) -> null),
                 "responder 返回 null 时应答空串");
     }
 
     @Test
     void testHandlePostResponderExceptionYieldsEmpty() {
         WeChatServer server = new WeChatServer(plainProps(), "default");
-        String ok = server.handlePost(new LinkedHashMap<>(), textPush("hi"),
+        String ok = server.handlePost(plainPushQuery(), textPush("hi"),
                 (m, s) -> {
                     throw new IllegalStateException("业务异常");
                 });
@@ -129,7 +165,7 @@ class WeChatServerTest {
     @Test
     void testHandlePostImageReply() {
         WeChatServer server = new WeChatServer(plainProps(), "default");
-        String reply = server.handlePost(new LinkedHashMap<>(), textPush("发图"),
+        String reply = server.handlePost(plainPushQuery(), textPush("发图"),
                 (m, s) -> new com.weacsoft.jaravel.vendor.wechat.message.Image("MEDIA_ID_1"));
         assertTrue(reply.contains("MEDIA_ID_1"), "image 被动回复应携带 MediaId");
         assertTrue(reply.contains("image"));
@@ -140,7 +176,7 @@ class WeChatServerTest {
         WeChatServer server = new WeChatServer(plainProps(), "default");
         // WeChatCard 不支持被动回复（微信仅支持 text/image/voice/video/music/news）
         WechatCryptoException ex = assertThrows(WechatCryptoException.class,
-                () -> server.handlePost(new LinkedHashMap<>(), textPush("卡"),
+                () -> server.handlePost(plainPushQuery(), textPush("卡"),
                         (m, s) -> new com.weacsoft.jaravel.vendor.wechat.message.WeChatCard("CARD1")),
                 "不支持被动回复的消息类应明确报错");
         assertTrue(ex.getMessage().contains("WeChatCard"), "异常应指明消息类型");

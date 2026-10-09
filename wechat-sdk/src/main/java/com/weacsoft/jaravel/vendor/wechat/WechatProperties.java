@@ -215,6 +215,58 @@ public class WechatProperties {
          */
         private String messageMode = "plain";
 
+        /**
+         * 是否校验<b>明文模式</b> POST 推送的 {@code signature}（默认 {@code true}）。
+         * <p>
+         * 官方规则（《消息加解密说明》「接入指引 · 明文模式」）：
+         * {@code signature = sha1(sort(token, timestamp, nonce))}，三个参数，消息体不参与。
+         * 明文模式下这是判断「请求确实来自微信」的唯一手段，关闭等于允许任何人伪造推送，
+         * <b>仅建议本地调试/压测时临时关闭</b>。安全模式恒校验 {@code msg_signature}，不受本项影响。
+         */
+        private boolean verifyPostSignature = true;
+
+        // ==================== 回复额度软限制（一次问答拆成多条下发） ====================
+
+        /**
+         * 一次互动允许的<b>被动回复</b>条数，默认 1。
+         * <p>
+         * 微信协议本身只给一次被动回复机会（5 秒内返回一个 XML），所以本值只应是 1 或 0；
+         * 设 0 表示「全部改走客服消息」（适合首条是不支持被动回复的类型，如小程序卡片）。
+         */
+        private int passiveReplyLimit = 1;
+
+        /**
+         * 一次互动允许补发的<b>客服消息</b>条数，默认 5。
+         * <p>
+         * 对齐官方《客服消息介绍》下发规则：用户发送消息 → 客服接口 <b>5 条 / 48 小时</b>
+         * （点击菜单、关注、扫码是 3 条 / 1 分钟）。超过后微信返回
+         * {@code errcode=45047 out of response count limit}。
+         * 想压测真实上限就把这个值调大 —— SDK 侧只做<b>软限制</b>，硬限制由微信判。
+         */
+        private int customerServiceReplyLimit = 5;
+
+        /**
+         * 额度是否在<b>每次用户互动</b>时重置（默认 {@code true}）。
+         * <p>
+         * {@code true}：用户每发一条消息，客服消息额度重新按 {@code customerServiceReplyLimit} 计；
+         * {@code false}：48 小时窗口内<b>累计</b>消耗，不随新消息刷新（更贴近实测表现）。
+         */
+        private boolean replyQuotaResetPerInteraction = true;
+
+        /**
+         * 超出额度时的处理方式，默认 {@code drop}。
+         * <ul>
+         *   <li>{@code drop}：丢弃多余消息并记 warn（已发的照常到达，最安全）</li>
+         *   <li>{@code merge}：把多余的消息<b>合并成一条文本</b>客服消息下发</li>
+         * </ul>
+         */
+        private String replyOverflowPolicy = "drop";
+
+        /**
+         * 额度缓存有效期（秒），默认 48 小时 —— 与官方「客服接口 48 小时」窗口对齐。
+         */
+        private long replyQuotaWindowSeconds = 48 * 60 * 60L;
+
         /** OAuth 授权配置 */
         private OauthConfig oauth = new OauthConfig();
 
@@ -259,6 +311,57 @@ public class WechatProperties {
 
         public void setMessageMode(String messageMode) {
             this.messageMode = messageMode;
+        }
+
+        /**
+         * @return 是否校验明文模式 POST 推送签名（默认 true）
+         */
+        public boolean isVerifyPostSignature() {
+            return verifyPostSignature;
+        }
+
+        public void setVerifyPostSignature(boolean verifyPostSignature) {
+            this.verifyPostSignature = verifyPostSignature;
+        }
+
+        public int getPassiveReplyLimit() {
+            return passiveReplyLimit;
+        }
+
+        public void setPassiveReplyLimit(int passiveReplyLimit) {
+            this.passiveReplyLimit = passiveReplyLimit;
+        }
+
+        public int getCustomerServiceReplyLimit() {
+            return customerServiceReplyLimit;
+        }
+
+        public void setCustomerServiceReplyLimit(int customerServiceReplyLimit) {
+            this.customerServiceReplyLimit = customerServiceReplyLimit;
+        }
+
+        public boolean isReplyQuotaResetPerInteraction() {
+            return replyQuotaResetPerInteraction;
+        }
+
+        public void setReplyQuotaResetPerInteraction(boolean replyQuotaResetPerInteraction) {
+            this.replyQuotaResetPerInteraction = replyQuotaResetPerInteraction;
+        }
+
+        public String getReplyOverflowPolicy() {
+            return replyOverflowPolicy;
+        }
+
+        public void setReplyOverflowPolicy(String replyOverflowPolicy) {
+            this.replyOverflowPolicy = replyOverflowPolicy;
+        }
+
+        public long getReplyQuotaWindowSeconds() {
+            return replyQuotaWindowSeconds;
+        }
+
+        public void setReplyQuotaWindowSeconds(long replyQuotaWindowSeconds) {
+            this.replyQuotaWindowSeconds = replyQuotaWindowSeconds;
         }
 
         public OauthConfig getOauth() {

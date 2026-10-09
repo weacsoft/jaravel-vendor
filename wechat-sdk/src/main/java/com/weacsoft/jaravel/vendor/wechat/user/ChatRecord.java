@@ -43,7 +43,8 @@ public final class ChatRecord {
         if (raw.get("create_time") instanceof Number n) {
             createTime = n.longValue();
         }
-        boolean valid = Boolean.TRUE.equals(raw.get("valid"));
+        // 官方聊天记录接口的 valid 同样是 0/1 整数，不能按 Boolean 比较
+        boolean valid = truthy(raw.get("valid"));
         String msgType = str(raw.get("msgtype"));
         Map<String, Object> content = Map.of();
         Object contentRaw = raw.get("content");
@@ -101,6 +102,23 @@ public final class ChatRecord {
 
     private static String str(Object value) {
         return value instanceof String s ? s : (value != null ? String.valueOf(value) : null);
+    }
+
+    /**
+     * 微信 0/1 标志位的统一真值判断（官方 valid 是整数，不是 JSON 布尔）。
+     */
+    private static boolean truthy(Object value) {
+        if (value instanceof Boolean b) {
+            return b;
+        }
+        if (value instanceof Number n) {
+            return n.intValue() != 0;
+        }
+        if (value instanceof String s) {
+            String t = s.trim();
+            return "1".equals(t) || "true".equalsIgnoreCase(t);
+        }
+        return false;
     }
 
     @Override

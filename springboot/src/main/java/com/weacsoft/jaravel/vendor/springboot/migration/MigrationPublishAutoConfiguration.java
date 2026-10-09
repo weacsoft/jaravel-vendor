@@ -23,6 +23,10 @@ import com.weacsoft.jaravel.vendor.migration.autoconfigure.MigrationPublishableC
  * {@code MigrationPublishableConfig}（纯契约载体，含发布模板）保留在 migration 模块。
  */
 @org.springframework.boot.autoconfigure.AutoConfiguration
+// 类级守卫：migration 是 optional 依赖，静态块在类加载时就 new MigrationPublishableConfig()，
+// 缺 migration 时不守卫会直接 NoClassDefFoundError（FQCN 形式不触发类加载）。
+@org.springframework.boot.autoconfigure.condition.ConditionalOnClass(
+        name = "com.weacsoft.jaravel.vendor.migration.autoconfigure.MigrationPublishableConfig")
 public class MigrationPublishAutoConfiguration {
     static {
         PublishableRegistry.register(new MigrationPublishableConfig());
