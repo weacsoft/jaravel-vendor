@@ -56,8 +56,57 @@ public class TrustProxies implements Middleware {
      */
     private volatile IpMatcher cachedMatcher;
 
+    /**
+     * 全局信任代理匹配器：由本中间件在处理请求时发布，供
+     * {@link com.weacsoft.jaravel.vendor.http.controller.request.Request#ip()} /
+     * {@code fullUrl()} 判断「本次请求的直连来源是否可信」。
+     * <p>
+     * <b>未发布（未安装本中间件）时为 {@code null} → 一律不采信转发头</b>，
+     * 因此默认是安全行为：客户端无法通过伪造 {@code X-Forwarded-For} 冒充来源 IP。
+     */
+    private static volatile IpMatcher globalMatcher;
+
+    /**
+     * 判断某个地址是否为「已声明的受信任代理」。
+     * <p>
+     * 供 {@code Request.ip()} / {@code Request.fullUrl()} 使用；未配置任何受信任代理时恒为 false。
+     *
+     * @param remoteAddr 直连来源（或转发链中的某一跳）地址
+     * @return 受信任返回 true
+     */
+    public static boolean isTrustedRemote(String remoteAddr) {
+        IpMatcher matcher = globalMatcher;
+        return matcher != null && remoteAddr != null && !remoteAddr.isEmpty()
+                && matcher.matches(remoteAddr);
+    }
+
+    /**
+     * 从转发链中解析真实客户端地址：<b>从右往左</b>跳过受信任代理，取第一个不受信任的地址。
+     * <p>
+     * {@code X-Forwarded-For} 是「每经过一跳代理就追加」的链，越靠左越可能是客户端自己伪造的；
+     * 因此不能像旧实现那样直接取最左侧值。
+     *
+     * @param xForwardedFor 转发头原始值（可含多段，逗号分隔）
+     * @return 真实客户端地址；无法判定返回 null
+     */
+    public static String clientIpFromForwarded(String xForwardedFor) {
+        if (xForwardedFor == null || xForwardedFor.isEmpty()) {
+            return null;
+        }
+        String[] hops = xForwardedFor.split(",");
+        for (int i = hops.length - 1; i >= 0; i--) {
+            String candidate = hops[i].trim();
+            if (!candidate.isEmpty() && !isTrustedRemote(candidate)) {
+                return candidate;
+            }
+        }
+        return hops[0].trim();
+    }
+
     @Override
     public Response handle(Request request, NextFunction next, String... params) {
+        // 先发布匹配器：Request.ip()/fullUrl() 据此决定是否采信转发头
+        globalMatcher = getMatcher();
         if (isTrustedProxy(request)) {
             setTrustedHeaders(request);
         }
@@ -109,14 +158,16 @@ public class TrustProxies implements Middleware {
     protected void setTrustedHeaders(Request request) {
         String xForwardedFor = request.header(X_FORWARDED_FOR);
         if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
-            String[] ips = xForwardedFor.split(",");
-            String realIp = ips[0].trim();
-            request.setAttribute("real_ip", realIp);
+            // 从右往左解析（最左侧可能是客户端伪造的），而不是直接取 ips[0]
+            String realIp = clientIpFromForwarded(xForwardedFor);
+            if (realIp != null && !realIp.isEmpty()) {
+                request.setAttribute("real_ip", realIp);
+            }
         }
 
         String xRealIp = request.header(X_REAL_IP);
         if (xRealIp != null && !xRealIp.isEmpty()) {
-            request.setAttribute("real_ip", xRealIp);
+            request.setAttribute("real_ip", xRealIp.trim());
         }
 
         String xForwardedProto = request.header(X_FORWARDED_PROTO);

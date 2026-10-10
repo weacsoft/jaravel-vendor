@@ -5,6 +5,16 @@
 
 ## [Unreleased]（目标版本 0.1.3 · 开发中）
 
+### Fixed（修复 · 第七轮：受信任代理与 wire 请求态）
+
+- **受信任代理（审计 S3，严重）**：`Request.ip()` 原先<b>无条件</b>采信 `X-Forwarded-For` 并取<b>最左侧</b>值 —— 任何客户端自己塞一个 `X-Forwarded-For: 1.2.3.4` 就能冒充来源 IP（限流/审计/白名单全部失真）；`fullUrl()` 同样无条件采信 `X-Forwarded-Proto/Host`（可伪造协议与 Host，影响回调地址、跳转、Cookie 域）。现在：
+  - `TrustProxies` 中间件在处理请求时发布<b>全局受信任代理匹配器</b>，并提供 `isTrustedRemote(addr)`；
+  - `Request.ip()` / `fullUrl()` <b>仅当直连来源已被声明为受信任代理</b>时才采信转发头，否则一律使用 TCP 直连地址与请求自身的协议/Host；未安装 `TrustProxies` 时<b>恒不采信</b>（安全默认）；
+  - 转发链改为<b>从右往左</b>解析：跳过受信任代理、取第一个不受信任的地址（旧实现取最左侧，正是客户端可伪造的那一端）；`setTrustedHeaders` 同步修正。
+  - 新增 `TrustedProxyResolutionTest`（6 例：默认忽略转发头、非受信任来源忽略、受信任来源采信、伪造最左侧被拒、协议/Host 还原受控）；`http` 测试域补 Mockito。
+  - 行为变更提示：部署在反向代理后的应用需要挂 `TrustProxies`（并声明代理网段），否则 `ip()` 会返回代理地址。
+- **`wire` 请求态不再存实例字段（审计 S10，严重）**：`WireController.currentRequest` 原为**实例字段**，而控制器实例会被跨请求复用 → 并发请求互相覆盖，表现为「A 用户的 action 看到 B 用户的请求」（跨用户状态串读）。现改为请求级 `ThreadLocal` + `currentRequest()` 访问器，并在 `index()` / `update()` 的 `finally` 中与 `WireEffects`/`WIRE_LAYOUT_REPLACEMENTS` 一起清理；`isWireRequest()` 等内部读取点全部改用访问器。
+
 ### Added（新增 · 第六轮：JdbcExecutor 事务原语与数据库驱动的原子语义）
 
 - **`database`：新增 `JdbcExecutor.inTransaction(...)` 事务原语（用户要求）**。此前 `update`/`queryMapped` 等方法各自从 `DataSource` 取一次连接（连接池下可能是不同连接），因此「先查后改」在多实例并发下不是原子的，`SELECT ... FOR UPDATE` 也无法生效（行锁属于连接/事务）。现在提供：

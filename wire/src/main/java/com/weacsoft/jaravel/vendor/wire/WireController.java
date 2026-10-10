@@ -92,7 +92,24 @@ public abstract class WireController {
      * 当前请求实例,在 index()/update() 入口保存,供子类 action(如 save())通过
      * {@link #isWireRequest()} 判断本次请求是否为 wire 局部更新请求。
      */
-    protected Request currentRequest;
+    /**
+     * 请求级「当前请求」。
+     * <p>
+     * <b>为什么不能存实例字段</b>：控制器实例会被跨请求复用（Spring 单例 / 注册表复用），
+     * 把请求写进实例字段会让并发请求互相覆盖 —— 表现为「A 用户的 action 看到 B 用户的请求」，
+     * 即跨请求/跨用户状态串读（审计 S10）。这里改为请求级 ThreadLocal，并在入口的
+     * {@code finally} 中清理（与 WireEffects / WIRE_LAYOUT_REPLACEMENTS 同一处）。
+     */
+    private static final ThreadLocal<Request> CURRENT_REQUEST = new ThreadLocal<>();
+
+    /**
+     * 当前请求（请求级）。
+     *
+     * @return 本次请求对象；不在请求上下文中时为 {@code null}
+     */
+    protected Request currentRequest() {
+        return CURRENT_REQUEST.get();
+    }
 
     /**
      * 模板级布局替换注册表(请求级 ThreadLocal)。
@@ -361,7 +378,7 @@ public abstract class WireController {
      */
     public Response index(Request request) {
         try {
-            this.currentRequest = request;
+            CURRENT_REQUEST.set(request);
             Map<String, Object> data = new LinkedHashMap<>();
             // 1. 自动绑定:把 URL 查询参数按 @WireQuery 声明(含 name() 映射)赋到 public 字段。
             //    这是框架自己的「查询参数 → 字段」绑定,不等同于 fill()——fill() 是主动调用的
@@ -392,6 +409,7 @@ public abstract class WireController {
             } finally {
                 WireParentOverride.clear();
                 WIRE_LAYOUT_REPLACEMENTS.remove();
+                CURRENT_REQUEST.remove();
             }
         } catch (Exception e) {
             log.error("WireController.index 失败: " + e.getMessage(), e);
@@ -406,7 +424,7 @@ public abstract class WireController {
      */
     public Response update(Request request) {
         try {
-            this.currentRequest = request;
+            CURRENT_REQUEST.set(request);
             // 检测是否为 wire 请求（含 wire_body）
             String wireBody = null;
             try {
@@ -557,6 +575,7 @@ public abstract class WireController {
             // 异常与早退路径会把它们留给同线程的下一个请求 —— 例如残留的 redirect 会把
             // 另一个用户的浏览器跳到上一个用户指定的地址。这里无条件清空。
             WireEffects.clear();
+            CURRENT_REQUEST.remove();
         }
     }
 
@@ -730,8 +749,8 @@ public abstract class WireController {
             // @WireQuery 参数——page=2 时生成 ?page=2、page=1(默认值)时还原无参;
             // 搜索条件 searchKey/searchValue 非空时一并保留。
             // 前端收到 effects.url 后 history.pushState,不刷新页面。
-            if (currentRequest != null && params != null && params.get("page") != null) {
-                String basePath = inferBasePath(currentRequest);
+            if (currentRequest() != null && params != null && params.get("page") != null) {
+                String basePath = inferBasePath(currentRequest());
                 if (basePath == null) basePath = "/";
                 WireEffects.pushUrl(basePath);
             }
@@ -854,13 +873,14 @@ public abstract class WireController {
      * 判断当前请求是否为 wire 局部更新请求。
      * <p>
      * 基于 {@link #index(Request)} / {@link #update(Request)} 入口保存的
-     * {@link #currentRequest} 进行判断，供子类 action（如 save()）区分
+     * {@link #currentRequest()} 进行判断，供子类 action（如 save()）区分
      * 「对话框内 wire 提交」与「直接访问表单的传统提交」并分别处理。
      *
      * @return true=当前请求是 wire 局部更新（带 wire_body / X-Wire-Request 头）
      */
     protected boolean isWireRequest() {
-        return currentRequest != null && isWireRequest(currentRequest);
+        Request req = currentRequest();
+        return req != null && isWireRequest(req);
     }
 
     private boolean isWireRequest(Request request) {

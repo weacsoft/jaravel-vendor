@@ -769,8 +769,12 @@ public class Request {
     /**
      * 获取客户端 IP 地址，对齐 PHP Laravel 的 $request->ip()。
      * <p>
-     * 优先从 X-Forwarded-For 请求头获取（经过反向代理时），
-     * 否则使用 HttpServletRequest.getRemoteAddr()。
+     * <b>只有直连来源已被 {@code TrustProxies} 声明为受信任代理时</b>才采信
+     * {@code X-Forwarded-For} / {@code X-Real-IP}；否则一律返回 TCP 直连地址 ——
+     * 否则任何客户端都能靠伪造转发头冒充来源 IP（审计 S3）。
+     * <p>
+     * 转发链按<b>从右往左</b>解析：跳过受信任代理，取第一个不受信任的地址（最左侧值可能是
+     * 客户端自己塞进去的）。
      *
      * @return 客户端 IP 地址
      */
@@ -778,12 +782,20 @@ public class Request {
         if (request == null) {
             return "unknown";
         }
-        String xff = header("X-Forwarded-For");
-        if (xff != null && !xff.isEmpty()) {
-            return xff.split(",")[0].trim();
+        String remote = remoteAddr();
+        if (!com.weacsoft.jaravel.vendor.http.middleware.TrustProxies.isTrustedRemote(remote)) {
+            return remote;
         }
-        String remoteAddr = request.getRemoteAddr();
-        return remoteAddr != null ? remoteAddr : "unknown";
+        String forwarded = com.weacsoft.jaravel.vendor.http.middleware.TrustProxies
+                .clientIpFromForwarded(header("X-Forwarded-For"));
+        if (forwarded != null && !forwarded.isEmpty()) {
+            return forwarded;
+        }
+        String realIp = header("X-Real-IP");
+        if (realIp != null && !realIp.isBlank()) {
+            return realIp.trim();
+        }
+        return remote;
     }
 
     /**
@@ -828,8 +840,9 @@ public class Request {
     /**
      * 获取完整 URL（协议 + 主机 + URI + query），对齐 Laravel 的 $request->fullUrl()。
      * <p>
-     * 代理场景下优先采用 X-Forwarded-Proto / X-Forwarded-Host 头还原真实入口地址
-     * （与 {@link #ip()} 的代理意识一致）。
+     * 代理场景下，<b>仅当直连来源已被 {@code TrustProxies} 声明为受信任代理时</b>才采用
+     * {@code X-Forwarded-Proto} / {@code X-Forwarded-Host} 还原真实入口地址；
+     * 否则使用请求自身的协议与 Host（避免 Host 头注入与协议伪造，审计 S3）。
      *
      * @return 完整 URL（如 {@code https://example.com/weapp?from=mp}），request 不可用时返回空串
      */
@@ -837,11 +850,13 @@ public class Request {
         if (request == null) {
             return "";
         }
-        String scheme = firstHeaderValue(header("X-Forwarded-Proto"));
+        boolean trustForwarded = com.weacsoft.jaravel.vendor.http.middleware.TrustProxies
+                .isTrustedRemote(remoteAddr());
+        String scheme = trustForwarded ? firstHeaderValue(header("X-Forwarded-Proto")) : null;
         if (scheme == null || scheme.isEmpty()) {
             scheme = request.isSecure() ? "https" : "http";
         }
-        String host = firstHeaderValue(header("X-Forwarded-Host"));
+        String host = trustForwarded ? firstHeaderValue(header("X-Forwarded-Host")) : null;
         if (host == null || host.isEmpty()) {
             host = header("Host");
         }
