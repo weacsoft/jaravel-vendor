@@ -166,17 +166,18 @@ public final class ConnectionManager {
             throw new IllegalArgumentException("连接 [" + name + "] 的 GaarasonDataSource 不能为 null");
         }
         boolean first;
+        javax.sql.DataSource effectiveRaw = raw != null ? raw : extractRaw(dataSource);
         synchronized (CONNECTIONS) {
             first = CONNECTIONS.isEmpty();
             CONNECTIONS.put(name, dataSource);
-        }
-        javax.sql.DataSource effectiveRaw = raw != null ? raw : extractRaw(dataSource);
-        if (effectiveRaw != null) {
-            RAW_DATA_SOURCES.put(name, effectiveRaw);
-        }
-        // 第一个注册的连接在无显式默认声明时自动成为默认连接
-        if (first && !defaultExplicitlySet) {
-            defaultConnection = name;
+            if (effectiveRaw != null) {
+                RAW_DATA_SOURCES.put(name, effectiveRaw);
+            }
+            // 「第一个注册的连接在无显式默认声明时自动成为默认连接」的选举必须在锁内完成：
+            // 放到锁外会让并发注册线程都读到 first=true（或都读 false）而选错默认连接（审计 L10）
+            if (first && !defaultExplicitlySet) {
+                defaultConnection = name;
+            }
         }
     }
 

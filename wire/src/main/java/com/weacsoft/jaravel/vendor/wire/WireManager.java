@@ -233,15 +233,7 @@ public class WireManager {
             if (is == null) {
                 throw new RuntimeException("wire.js 未找到: " + WIRE_JS_CLASSPATH);
             }
-            byte[] bytes = new byte[is.available()];
-            int offset = 0;
-            int remaining = bytes.length;
-            while (remaining > 0) {
-                int read = is.read(bytes, offset, remaining);
-                if (read == -1) break;
-                offset += read;
-                remaining -= read;
-            }
+            byte[] bytes = is.readAllBytes();
             return new String(bytes, StandardCharsets.UTF_8);
         } catch (Exception e) {
             throw new RuntimeException("读取 wire.js 失败: " + WIRE_JS_CLASSPATH, e);

@@ -23,9 +23,12 @@ public class Jackson2JsonCodec implements JsonCodec {
 
     /**
      * 用已有的 ObjectMapper 构造（例如 Spring 容器中配置好的 Bean）。
+     * <p>
+     * <b>会复制而不是修改传入的 mapper</b>：它通常是 Spring 容器里的共享 Bean，
+     * 直接 {@code configure(...)} 会静默改变整个应用的序列化行为（审计 L9）。
      */
     public Jackson2JsonCodec(ObjectMapper mapper) {
-        this.mapper = mapper;
+        this.mapper = mapper == null ? new ObjectMapper() : mapper.copy();
         this.mapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
     }
 

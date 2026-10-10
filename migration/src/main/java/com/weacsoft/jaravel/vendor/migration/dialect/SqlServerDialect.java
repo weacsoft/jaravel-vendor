@@ -54,19 +54,29 @@ public class SqlServerDialect extends AbstractDialect {
     }
 
     /**
-     * 生成重命名表的 SQL，使用 {@code sp_rename} 存储过程。
+     * 生成 UPSERT（存在则更新、不存在则插入）的 SQL：SQL Server 走 {@code MERGE ... USING}。
      * <p>
-     * 形如：{@code sp_rename 'old_table', 'new_table'}
+     * 形如：{@code MERGE INTO t AS target USING (VALUES (?, ?)) AS source (c1, c2) ON ... WHEN MATCHED ...}
      *
-     * @param from 原表名（未加引号）
-     * @param to   新表名（未加引号）
-     * @return 完整的 RENAME SQL
+     * @param quotedTable     已加引号的表名
+     * @param quotedColumns   已加引号的列名数组
+     * @param quotedKeyColumn 已加引号的冲突判定列
+     * @return UPSERT SQL
      */
     @Override
     public String upsertSql(String quotedTable, String[] quotedColumns, String quotedKeyColumn) {
         return AbstractDialect.upsertMergeUsing(quotedTable, quotedColumns, quotedKeyColumn, "as");
     }
 
+    /**
+     * 生成重命名表的 SQL：使用 {@code sp_rename} 存储过程。
+     * <p>
+     * 形如：{@code sp_rename 'old_table', 'new_table'}
+     *
+     * @param from 原表名
+     * @param to   新表名
+     * @return RENAME SQL
+     */
     @Override
     public String renameTableSql(String from, String to) {
         return "sp_rename '" + from + "', '" + to + "'";

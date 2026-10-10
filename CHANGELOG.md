@@ -5,6 +5,14 @@
 
 ## [Unreleased]（目标版本 0.1.3 · 开发中）
 
+### Fixed（修复 · 第八轮：审计低危项小修）
+
+- **`json`：`Jackson2JsonCodec(ObjectMapper)` 不再修改调用方的 mapper（审计 L9）**：原构造器直接 `configure(FAIL_ON_EMPTY_BEANS,false)`，而传入的通常是 Spring 容器里的<b>共享 Bean</b>，会静默改变整个应用的序列化行为；现改为 `mapper.copy()` 后配置。
+- **`database`：`ConnectionManager` 默认连接选举移入锁内（审计 L10）**：原选举赋值在 `synchronized (CONNECTIONS)` 之外，并发注册时两个线程可能都读到 `first=true`（或都读 false）而选错默认连接；同时把 `RAW_DATA_SOURCES` 的写入一并纳入同一临界区（`defaultConnection` / `defaultExplicitlySet` 已是 volatile）。
+- **`migration`：`MigrationRepository.getLastBatchNumber()` 不再吞掉所有异常（审计 L8）**：原先 `catch (Exception) { return null; }` 会把权限/连接/语法等真实故障当成「首次运行、批次号 0」继续跑迁移并静默产出错误结果；现只对「表不存在」（按各库措辞识别，含 `no such table` / `invalid object name` / `ORA-00942` 等）返回 null，其余抛出。
+- **`migration`：`SqlServerDialect.upsertSql` 的 javadoc 归位（审计 L12）**：原先该方法上方挂的是 `renameTableSql` 的说明（「生成重命名表的 SQL … sp_rename」），现已分别补上正确的 UPSERT 与 RENAME 文档。
+- **`wire`：`getWireJsContent()` 改用 `readAllBytes()（审计 L6）`**：原先用 `new byte[is.available()]` 定长读取，而 `available()` 只是估计值（jar/压缩流下可能远小于实际长度），会把 `wire.js` 截断成语法错误的前端脚本且极难定位。
+
 ### Fixed（修复 · 第七轮：受信任代理与 wire 请求态）
 
 - **受信任代理（审计 S3，严重）**：`Request.ip()` 原先<b>无条件</b>采信 `X-Forwarded-For` 并取<b>最左侧</b>值 —— 任何客户端自己塞一个 `X-Forwarded-For: 1.2.3.4` 就能冒充来源 IP（限流/审计/白名单全部失真）；`fullUrl()` 同样无条件采信 `X-Forwarded-Proto/Host`（可伪造协议与 Host，影响回调地址、跳转、Cookie 域）。现在：

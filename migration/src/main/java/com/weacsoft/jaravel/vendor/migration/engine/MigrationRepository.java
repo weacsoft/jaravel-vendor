@@ -100,8 +100,36 @@ public class MigrationRepository {
         try {
             return jdbc.queryForObject("SELECT MAX(batch) FROM " + quote(table), Integer.class);
         } catch (Exception e) {
-            return null;
+            // 只有「迁移表尚不存在」才是正常的首次运行；其他故障（权限/连接/语法）必须暴露，
+            // 否则会被当成「批次号 0」继续跑迁移并静默产出错误结果（审计 L8）
+            if (isMissingTable(e)) {
+                return null;
+            }
+            throw new RuntimeException("读取迁移批次号失败: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * 判断异常链是否表示「表不存在」（各数据库的措辞不同）。
+     *
+     * @param error 异常
+     * @return 表不存在返回 true
+     */
+    private static boolean isMissingTable(Throwable error) {
+        for (Throwable current = error; current != null; current = current.getCause()) {
+            String message = current.getMessage();
+            if (message == null) {
+                continue;
+            }
+            String lower = message.toLowerCase();
+            if (lower.contains("doesn't exist") || lower.contains("does not exist")
+                    || lower.contains("no such table") || lower.contains("undefined table")
+                    || lower.contains("invalid object name") || lower.contains("ora-00942")
+                    || lower.contains("unknown table")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public String getTable() {
