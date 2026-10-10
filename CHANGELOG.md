@@ -5,6 +5,22 @@
 
 ## [Unreleased]（目标版本 0.1.3 · 开发中）
 
+### Fixed（修复 · 第九轮：审计剩余项 + 专家团第二轮新发现）
+
+- **L4（按审计原文）+ N2/N3（安全）**：`Storage.response()` 现按 `fs.visibility(path)` 决定缓存语义 —— 私有文件下发 `Cache-Control: private, no-store`（原先一律 `public, max-age=3600`，经 CDN/共享代理会缓存给他人）；内联展示与下载响应统一补 `X-Content-Type-Options: nosniff`（防 `.html`/`.svg` 上传后的同源存储型 XSS）；`Content-Disposition` 增加 CR/LF/引号清洗与 RFC 5987 `filename*`（中文名不再乱码，且无法注入响应头）。
+- **M1 CSRF（安全）**：令牌只接受请求头与请求体字段（改用 `Request.input()`，不再用会合并 query 的 `get()`）；移除同名 Cookie 兜底（否则「双提交」退化为「浏览器自动携带即通过」）；比较改 `MessageDigest.isEqual`（常量时间）；query 令牌由显式开关 `allowTokenInQuery()`（默认 false）控制。新增 `VerifyCsrfTokenTest`（8 例）—— 此前本仓库 <b>0 个 CSRF 测试</b>。
+- **M5 验证码一次性（安全）**：`CaptchaStore` 新增 `default putIfAbsent(...)`（不使用抽象方法，避免破坏第三方 SPI）；`MemoryCaptchaStore`（`compute` 原子）与 `CacheStoreCaptchaStore`（`CacheStore.add`）提供真原子实现；`AbstractCaptcha` 改为「先原子占用、成功才解密/比对」，占用即不释放（保持「失败也烧 nonce」）。新增 `CaptchaNonceAtomicityTest`（3 例：16 线程并发验证恰好 1 次通过、内存 store 并发占用唯一胜出、失败尝试烧 nonce）。
+- **M4/N1/N8 验证码加解密（安全）**：加密失败不再下发 `type.null` 凭证（显式抛错，附可操作提示）；`encryptionType=none` 首次使用 WARN（答案随 token 明文下发、可自造 token）；`properties==null` 不再静默降级为 none。
+- **L5 JWT 签发方（安全）**：`parse()` 现校验 `iss` —— 缺失或不匹配都拒绝（未配置 issuer 时跳过校验以兼容外部令牌）。新增 `JwtIssuerValidationTest`（4 例）。说明：框架**没有** `aud` 字段、签发端也从未写入 aud，故本轮不做受众校验（只加校验端会拒掉全部自签令牌）。
+- **M15/L7 wire 快照（安全）**：改为**先验签、后解析**（原先先把攻击者可控 base64 交给 JSON 解析器）；会话不可用时不再返回每次随机的 `fallback-key-<uuid>`（那会导致签名恒不通过、全量 403 且无日志），改为回退稳定的全局应用密钥，两者都不可用时抛明确异常。`WireRequest.getData()/getMergedData()` 标记 `@Deprecated`（绕过签名校验，审计 N5）。
+- **M6/N6 aether（安全）**：写分片前校验临时文件存在且长度等于声明大小（`prepare` 已 `setLength(size)`）—— 堵住「成品已落盘、`saveHeader` 失败 → 客户端重试末片 → 新建零填充文件覆盖正确成品」的数据损坏路径；锁表由「按 resourceId 的 ConcurrentHashMap」（header 不存在时条目在校验前创建且永不回收 → 匿名随机 resourceId 可致无界内存 DoS）改为**定长 256 桶分段锁**，内存 O(1) 且无需生命周期簿记。
+- **M20 BaseModel 共享元数据（安全）**：`patchShadowColumn` 改为「按 `EntityMember` 实例、受锁、只修补一次」，使查询热路径零写入（原先每次 `getModelMember()` 都对 gaarason 容器级共享的 `selectColumnList` 做 `removeIf`，启动后首批并发查询可能 CME）。**已知残余**：首次并发窗口仍在（仓库无模型注册表，无法在启动期单线程枚举所有实体），已在 javadoc 如实记录，不宣称已消除。
+- **M3 路由（安全）**：中间件解析顺序改为**父级在外、子级在内**（对齐 Laravel 洋葱模型；原先全局最内层，会让「根挂 `EncryptCookies`、组挂 `VerifyCsrfToken`」变成先验 CSRF 再解密 Cookie → 恒定 419）；静态资源路由由 `{path}`（只匹配单段，嵌套资源恒 404）改为 `{*path}`（capture-the-rest），并同步修正 Spring 谓词：URI 含 `{*` 时不再拼接尾斜杠变体（`/static/{*path}/` 违反 PathPattern「capture-the-rest 必须在末尾」语法，有启动失败风险）。新增 `RouterMiddlewareOrderTest`（5 例：三层顺序、enter/exit 洋葱序、两条静态路由使用 `{*path}`）。
+- **L2/L3 路径越界（安全）**：`resolve()` 增加**真实路径**归属校验（与 `root.toRealPath()` 比较，目标不存在时上溯到最近存在的祖先）—— 词法 `normalize` 挡不住「根内软链接指向外部」；`delete/copy/move` 统一拒绝「解析后等于根目录」的路径（`""`/`"."`/`"a/.."` 都会解析成根，原先 `delete("")` 会删掉整个磁盘根）。**残余 TOCTOU 已记录**（校验后仍以词法路径打开），不宣称「穿越已彻底修复」。
+- **L11 backUrl（正确性）**：组件渲染循环改用非破坏性 `WireEffects.getBackUrl()`，主流程保持单次 `drainBackUrl()`（原先渲染先 drain → `effects.backUrl` 退化为推断值，多组件时只有一个拿到 backUrl）。
+- **auth 装配（架构师建议）**：空守卫兜底只覆盖「默认驱动（`session`）缺实现」这一情形（auth 独立可用）；显式声明了无人支持的 driver（拼写错误/忘引模块）**仍然抛异常** —— 否则会静默变成「恒未登录」，让 `if (Auth.check())` 这类写法静默失去鉴权。
+- **未完成（已登记，下一轮）**：M19 迁移「文件存在但编译/实例化失败」的收窄严格化 + 命令非零退出（保留「目录缺失 → 回退 classpath」的合法路径）；N1 启动期密钥形态校验（RSA 单密钥给可读错误、默认 AES 密钥 ERROR）；M17 验证码 README 与三参 `verify` 脚枪；N4 refresh token 用后轮换；M16/N7 model-cache 类型契约与租户维度文档；`Storage.response` 的 visibility 行为级用例、aether `.part` 故障注入用例、LocalFilesystem 根目录用例、Spring 启动冒烟（`{*path}` 谓词）；版本号升 0.2.0 与逐条迁移映射。
+
 ### Fixed（修复 · 第八轮：审计低危项小修）
 
 - **`json`：`Jackson2JsonCodec(ObjectMapper)` 不再修改调用方的 mapper（审计 L9）**：原构造器直接 `configure(FAIL_ON_EMPTY_BEANS,false)`，而传入的通常是 Spring 容器里的<b>共享 Bean</b>，会静默改变整个应用的序列化行为；现改为 `mapper.copy()` 后配置。

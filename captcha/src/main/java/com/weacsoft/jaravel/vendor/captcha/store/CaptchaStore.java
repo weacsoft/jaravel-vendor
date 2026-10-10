@@ -40,4 +40,22 @@ public interface CaptchaStore {
      * @param captchaKey 验证码标识
      */
     void remove(String captchaKey);
+
+    /**
+     * 原子「仅当不存在（或已过期）时写入」——一次性占用（nonce 消费）的基础原语。
+     * <p>
+     * <b>为什么需要它</b>：旧实现用「先查 {@code get} 再写 {@code put}」判断 nonce 是否已消费，
+     * 并发下两个请求可同时通过检查，使「验证码一次性」保证失效（审计 M5）。
+     * <p>
+     * 默认实现返回 {@code false}，表示<b>该存储不支持原子语义</b>；调用方会据此退回
+     * 「先查后写」的兼容路径（并发窗口已知）。内置实现（内存 / CacheStore）均已覆盖本方法。
+     *
+     * @param captchaKey 验证码标识
+     * @param value      值
+     * @param ttlSeconds 过期秒数
+     * @return 实际写入返回 true；键已存在返回 false；不支持原子语义也返回 false
+     */
+    default boolean putIfAbsent(String captchaKey, String value, long ttlSeconds) {
+        return false;
+    }
 }

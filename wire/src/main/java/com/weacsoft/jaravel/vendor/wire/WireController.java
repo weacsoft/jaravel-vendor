@@ -1107,16 +1107,29 @@ public abstract class WireController {
         if (colon < 0) throw new TamperedSnapshotException("snapshot 格式无效");
         String expectedSig = signed.substring(0, colon);
         String base64 = signed.substring(colon + 1);
-        Map<String, Object> data = WireManager.decodeSnapshot(base64);
+        // 先验签、后解析（审计 L7）：旧实现先把攻击者可控的 base64 交给 decodeSnapshot 解析，
+        // 解析器（JSON 反序列化、超大负载）成了验签之前的攻击面。签名不过就绝不解析内容。
         String actualSig = hmac(base64, getOrCreateSessionKey(request));
         if (!MessageDigest.isEqual(
                 expectedSig.getBytes(StandardCharsets.UTF_8),
                 actualSig.getBytes(StandardCharsets.UTF_8))) {
             throw new TamperedSnapshotException("snapshot 签名验证失败");
         }
-        return data;
+        return WireManager.decodeSnapshot(base64);
     }
 
+    /**
+     * 取（或创建）本会话的 Wire 快照签名密钥。
+     * <p>
+     * <b>会话不可用时必须用「稳定」密钥</b>：旧实现在异常分支返回
+     * {@code "fallback-key-" + UUID.randomUUID()} —— 每次调用都是新值，导致「签发用的钥匙」与
+     * 「校验用的钥匙」必然不同，表现为<b>所有局部更新恒 403</b> 且错误被静默吞掉（审计 M15）。
+     * 现在优先回退到全局应用密钥（{@code jaravel.key}）；两者都没有时<b>明确抛错</b>，
+     * 让问题在首次请求就暴露，而不是伪装成「快照被篡改」。
+     *
+     * @param request 当前请求
+     * @return 签名密钥
+     */
     private String getOrCreateSessionKey(Request request) {
         try {
             String key = request.session(SESSION_KEY_NAME);
@@ -1126,7 +1139,24 @@ public abstract class WireController {
             }
             return key;
         } catch (Exception e) {
-            return "fallback-key-" + UUID.randomUUID().toString();
+            String stable = globalAppKey();
+            if (stable != null && !stable.isBlank()) {
+                return "wire-app-key:" + stable;
+            }
+            throw new TamperedSnapshotException("Wire 快照密钥不可用（无 Session 且未配置 jaravel.key）: "
+                    + e.getMessage());
+        }
+    }
+
+    /** 取全局应用密钥（core 的 AppKey）；不可用返回 null */
+    private static String globalAppKey() {
+        try {
+            com.weacsoft.jaravel.vendor.core.crypto.AppKey appKey =
+                    com.weacsoft.jaravel.vendor.core.SpringContext.beanOrNull(
+                            com.weacsoft.jaravel.vendor.core.crypto.AppKey.class);
+            return appKey == null ? null : appKey.getKey();
+        } catch (Throwable ignored) {
+            return null;
         }
     }
 
@@ -1271,8 +1301,10 @@ public abstract class WireController {
                         // 注入 data-wire-back-url:供前端 dialog 取消按钮读取,还原地址栏。
                         // 由 action(edit/add)通过 WireEffects.backUrl() 指定,
                         // 避免 dialog 模板写死返回 URL,与控制器逻辑彻底解耦。
-                        // 注意:drainBackUrl 是请求级一次性读取,这里调用后从 ThreadLocal 中取出。
-                        String backUrlAttr = WireEffects.drainBackUrl();
+                        // 注意:这里必须用「非破坏性 peek」而不是 drain —— 组件渲染可能发生在主流程
+                        // 读取 effects 之前，一旦在此 drain，主流程（第 529 行附近）就只能拿到 null
+                        // （审计 L11：backUrl 在响应里丢失）。取走留给主流程统一做。
+                        String backUrlAttr = WireEffects.getBackUrl();
                         if (backUrlAttr != null && !backUrlAttr.isEmpty()) {
                             html = injectDataAttr(html, "data-wire-back-url", backUrlAttr);
                         }

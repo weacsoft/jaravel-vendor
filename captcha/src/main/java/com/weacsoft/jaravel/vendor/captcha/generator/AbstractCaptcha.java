@@ -188,6 +188,12 @@ public abstract class AbstractCaptcha implements Captcha {
                 ? expireTime + "|" + nonce + "|" + answer
                 : expireTime + "|" + nonce + "|" + inputKey + "|" + answer;
         String captchaKey = crypto.encrypt(payload);
+        if (captchaKey == null || captchaKey.isEmpty()) {
+            // 绝不下发「永远校验不过」的凭证（旧行为会产出 "number.null" 且接口仍返回 200，
+            // 表现是用户永远验证失败且无任何日志）。加密失败必须显式失败（审计 M4）。
+            throw new IllegalStateException("验证码加密失败（encryptionType=" + encType
+                    + "）。请检查密钥配置：RSA 需 `公钥|私钥`（仅配私钥会解析失败），AES 需非默认密钥。");
+        }
 
         result.setCaptchaKey(captchaKey);
         // 合并凭证：type + "." + captchaKey。前端只需提交这一个 key 与用户输入即可校验，
@@ -273,8 +279,9 @@ public abstract class AbstractCaptcha implements Captcha {
         String inputKey = parts.length == 4 ? parts[2] : null;
         String answer = parts.length == 4 ? parts[3] : parts[2];
 
-        // 3. 防复用检查：nonce 已被消费则拒绝（验证码已被使用过）
-        if (isNonceConsumed(nonce)) {
+        // 3. 一次性占用（原子）：并发下只有一个线程能占用成功，失败即「已被使用」。
+        //    顺序固定为「过期检查（上一步）→ 原子占用 → 解密/比对」，避免占用记录被灌垃圾条目。
+        if (!claimNonce(nonce, expireTime)) {
             return VerifyResult.alreadyUsed();
         }
 
@@ -285,25 +292,67 @@ public abstract class AbstractCaptcha implements Captcha {
         if (inputCrypto.isEnabled() && userInput != null && !userInput.isEmpty()) {
             decryptedInput = inputCrypto.decrypt(userInput);
             if (decryptedInput == null) {
-                // 解密失败也消费 nonce，防止暴力尝试
-                consumeNonce(nonce, expireTime);
+                // nonce 已在第 3 步占用且不释放：解密失败同样烧掉 nonce，防止暴力尝试
                 return VerifyResult.fail();
             }
         }
 
-        // 5. 交由子类比对
+        // 5. 交由子类比对（nonce 已占用，成功或失败都不会被复用）
         boolean passed = doVerify(answer, decryptedInput);
-
-        // 6. 无论成功还是失败，都消费 nonce（一次性使用，防止反复尝试）
-        consumeNonce(nonce, expireTime);
-
         return passed ? VerifyResult.pass() : VerifyResult.fail();
+    }
+
+    /**
+     * 原子占用 nonce（「一次性使用」语义）。
+     * <p>
+     * 占用成功返回 true；已被占用返回 false。若存储不支持原子原语
+     * （{@link CaptchaStore#putIfAbsent} 的默认实现返回 false），退回旧的「先查后写」兼容路径
+     * （并发窗口已知，语义等价）。
+     * <p>
+     * <b>占用即不释放</b>：后续无论解密失败还是比对失败都不再消费/释放 —— 与旧实现
+     * 「失败同样烧 nonce」一致，这是防暴力尝试的关键。
+     *
+     * @param nonce      nonce 标识
+     * @param expireTime captchaKey 的过期时间戳（毫秒）
+     * @return 占用成功返回 true
+     */
+    private boolean claimNonce(String nonce, long expireTime) {
+        long ttlSeconds = Math.max(1, (expireTime - System.currentTimeMillis()) / 1000L);
+        if (store.putIfAbsent(NONCE_PREFIX + nonce, "1", ttlSeconds)) {
+            return true;
+        }
+        if (isNonceConsumed(nonce)) {
+            return false;
+        }
+        consumeNonce(nonce, expireTime);
+        return true;
     }
 
     // ==================== 防复用：通过 CaptchaStore 追踪已消费 nonce ====================
 
     /** nonce 在 store 中的 key 前缀 */
     private static final String NONCE_PREFIX = "consumed:";
+
+    /** 「未启用加密」是否已告警过（避免每请求刷日志） */
+    private static final java.util.concurrent.atomic.AtomicBoolean NONE_ENCRYPTION_WARNED =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(AbstractCaptcha.class);
+
+    /**
+     * 「未启用加密（none）」告警一次（审计 N1）。
+     * <p>
+     * 此时 token 内容就是 {@code expireTime|nonce|answer}：前端或攻击者 Base64 解码即得答案，
+     * 并可自行构造任意 token —— 验证码等于形同虚设。只应出现在本地演示环境。
+     */
+    private void warnNoneEncryptionOnce() {
+        if (NONE_ENCRYPTION_WARNED.compareAndSet(false, true)) {
+            log.warn("[captcha] 验证码未启用加密（encryptionType=none）：答案随 token 明文下发，"
+                    + "客户端可直接解出并自造 token。生产环境请配置 "
+                    + "jaravel.captcha.encryption-type=aes|rsa 并使用独立密钥");
+        }
+    }
 
     /**
      * 检查 nonce 是否已被消费。
@@ -357,6 +406,11 @@ public abstract class AbstractCaptcha implements Captcha {
     protected CaptchaCrypto createCrypto(CaptchaProperties props, String encryptionKey) {
         CaptchaProperties cryptoProps = this.properties != null ? this.properties : props;
         String type = cryptoProps != null ? cryptoProps.getEncryptionType() : "none";
+        // properties 为 null 时不能静默降级为 "none"（审计 N8）：那等于「装配缺失 → 明文下发答案」，
+        // 且调用方毫无察觉。这里显式告警一次，让问题可被发现。
+        if (type == null || "none".equalsIgnoreCase(type)) {
+            warnNoneEncryptionOnce();
+        }
         String key = encryptionKey != null ? encryptionKey
                 : (cryptoProps != null ? cryptoProps.getEncryptionKey() : null);
         return CaptchaCrypto.create(type, key);

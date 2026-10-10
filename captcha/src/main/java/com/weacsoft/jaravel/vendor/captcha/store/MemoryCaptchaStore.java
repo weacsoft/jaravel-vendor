@@ -67,6 +67,32 @@ public class MemoryCaptchaStore implements CaptchaStore {
         return entry.answer;
     }
 
+    /**
+     * 原子「仅当不存在（或已过期）时写入」（一次性占用的基础原语，审计 M5）。
+     * <p>
+     * 用 {@code ConcurrentHashMap.compute} 把「判断 + 写入」合成一个原子操作：
+     * 已存在且未过期时原样返回（等于未写入），否则写入新条目并标记成功。
+     * 这是「验证码只能通过一次」在内存存储下的正确实现。
+     *
+     * @param captchaKey 验证码标识
+     * @param answer     值
+     * @param ttlSeconds 过期秒数
+     * @return 实际写入返回 true；已存在返回 false
+     */
+    @Override
+    public boolean putIfAbsent(String captchaKey, String answer, long ttlSeconds) {
+        long expireTime = System.currentTimeMillis() + ttlSeconds * 1000L;
+        boolean[] written = {false};
+        store.compute(captchaKey, (key, existing) -> {
+            if (existing != null && !existing.isExpired()) {
+                return existing;
+            }
+            written[0] = true;
+            return new Entry(answer, expireTime);
+        });
+        return written[0];
+    }
+
     @Override
     public void remove(String captchaKey) {
         store.remove(captchaKey);

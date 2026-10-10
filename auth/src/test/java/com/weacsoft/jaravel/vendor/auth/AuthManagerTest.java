@@ -203,16 +203,16 @@ class AuthManagerTest {
     }
 
     @Test
-    void testUnknownDriverFallsBackToBuiltInNullGuard() {
-        // 语义变更（有意的）：auth 是「认证标准」，不应因为没引入具体守卫实现就崩。
-        // 遍历完所有驱动都没匹配时，回退到 auth 内置的空守卫（恒未登录），而不是抛异常 ——
-        // 这样「只依赖 auth、不依赖 session」的应用也能装配起来。
+    void testDefaultDriverFallsBackToBuiltInNullGuardWhenImplementationMissing() {
+        // 语义（有意）：auth 是「认证标准」，不应因为没引入具体守卫实现就崩。
+        // 默认驱动（session）没有驱动支持时回退到内置空守卫（恒未登录），
+        // 这样「只依赖 auth、不依赖 auth-session」的应用也能装配起来。
         AuthManager manager = new AuthManager();
         manager.registerProvider("users", new InMemoryProvider());
-        manager.registerGuard("web", "weird-driver", "users");
+        manager.registerGuard("web", "session", "users");
 
         AuthGuard guard = manager.guard("web");
-        assertNotNull(guard, "未知驱动应回退到内置空守卫而不是抛异常");
+        assertNotNull(guard, "默认驱动缺实现时应回退到内置空守卫而不是抛异常");
         assertFalse(guard.check(), "空守卫 check() 恒为 false");
         assertTrue(guard.guest());
         assertNull(guard.user(), "空守卫没有登录用户");
@@ -221,6 +221,18 @@ class AuthManagerTest {
             guard.login(new TestUser(1L));
             guard.logout();
         });
+    }
+
+    @Test
+    void testExplicitUnknownDriverFailsLoud() {
+        // 显式配置了一个没人支持的 driver（拼写错误/忘引模块）必须抛错：
+        // 静默回退成「恒未登录」会让 if (Auth.check()) {...} else {放行} 的写法静默失去鉴权
+        AuthManager manager = new AuthManager();
+        manager.registerProvider("users", new InMemoryProvider());
+        manager.registerGuard("web", "weird-driver", "users");
+
+        assertThrows(IllegalStateException.class, () -> manager.guard("web"),
+                "显式声明的未知 driver 必须大声失败，不得静默兜底");
     }
 
     @Test

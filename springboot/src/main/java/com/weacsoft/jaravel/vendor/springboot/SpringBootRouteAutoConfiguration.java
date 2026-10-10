@@ -500,7 +500,12 @@ public class SpringBootRouteAutoConfiguration {
         // 允许带尾斜杠的请求也命中同一条路由(如 /admin/admin/ 也能匹配 /admin/admin 路由),
         // 避免用户手动在 URL 末尾加 / 时返回 404。注意:不带尾斜杠的请求仍走 exact 路径,
         // 不受影响。
-        if (exactPath.length() > 1) {
+        //
+        // 例外：capture-the-rest 模式（如 /static/{*path}）**不能**再拼尾斜杠变体 ——
+        // PathPattern 语法要求 {*var} 必须是模式最后一个元素，拼成 "/static/{*path}/" 会解析失败，
+        // 轻则该谓词无效、重则应用启动失败（审计 M3）。{*path} 本身已匹配 "/static"、"/static/"
+        // 与任意多段路径，无需变体。
+        if (exactPath.length() > 1 && !exactPath.contains("{*")) {
             String slashPath = exactPath + "/";
             RequestPredicate slash = RequestPredicates.method(HttpMethod.valueOf(route.getMethod()))
                     .and(RequestPredicates.path(slashPath));

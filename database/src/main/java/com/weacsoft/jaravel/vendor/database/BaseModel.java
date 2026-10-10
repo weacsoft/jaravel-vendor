@@ -186,8 +186,27 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
     }
 
     /**
+     * 已修补过的 {@link EntityMember} 实例（按<b>实例</b>而非 Class 记忆）。
+     * <p>
+     * 不能只按 Class 记忆：{@code parseAnyEntityWithCache} 可能为同一实体类创建新的未修补实例，
+     * 漏补会让该模型的 {@code model_shadow} 列重新出现在 SELECT 列表里。
+     */
+    private static final java.util.Set<EntityMember<?, ?>> PATCHED_ENTITY_MEMBERS =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /**
      * 从 EntityMember 的 selectColumnList 和 columnFieldMap 中移除 model_shadow 列。
-     * 幂等操作：仅在列名仍存在时才执行移除。
+     * <p>
+     * <b>只在每个 EntityMember 实例上执行一次</b>（审计 M20）：这些元数据来自 gaarason 的
+     * <b>容器级共享缓存</b>，旧实现在每次 {@code getModelMember()}（查询热路径）里都对共享
+     * {@code selectColumnList} 做 {@code removeIf}，启动后首批并发查询可能抛
+     * {@code ConcurrentModificationException} 或用错列集。改为「首次修补受锁 + 之后直接跳过」，
+     * 使稳态查询路径零写入。
+     * <p>
+     * <b>已知残余</b>：首次并发窗口仍存在（两个线程可能同时进入首次修补），只是从「每请求」
+     * 降到「每实例首次」；彻底消除需要在容器启动期由单线程枚举所有实体模型，而本仓库目前
+     * 没有模型注册表，故留待后续专项处理。修补本身是「类常量」变化（恒定移除同一列），
+     * 因此即使发生并发进入也不会产生错误列集。
      *
      * @param entityMember 实体元数据
      */
@@ -195,9 +214,17 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
         if (entityMember == null) {
             return;
         }
-        if (entityMember.getSelectColumnList().contains(SHADOW_COLUMN)) {
-            entityMember.getSelectColumnList().removeIf(SHADOW_COLUMN::equals);
-            entityMember.getColumnFieldMap().remove(SHADOW_COLUMN);
+        if (PATCHED_ENTITY_MEMBERS.contains(entityMember)) {
+            return;
+        }
+        synchronized (PATCHED_ENTITY_MEMBERS) {
+            if (!PATCHED_ENTITY_MEMBERS.add(entityMember)) {
+                return;
+            }
+            if (entityMember.getSelectColumnList().contains(SHADOW_COLUMN)) {
+                entityMember.getSelectColumnList().removeIf(SHADOW_COLUMN::equals);
+                entityMember.getColumnFieldMap().remove(SHADOW_COLUMN);
+            }
         }
     }
 

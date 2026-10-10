@@ -97,7 +97,10 @@ public class VerifyCsrfToken implements Middleware {
             return false;
         }
 
-        return sessionToken.equals(requestToken);
+        // 常量时间比较（审计 M1）：equals 短路比较会泄露「前多少位猜对了」的时序信息
+        return java.security.MessageDigest.isEqual(
+                sessionToken.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                requestToken.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 
     protected String getSessionToken(Request request) {
@@ -109,27 +112,53 @@ public class VerifyCsrfToken implements Middleware {
         return token;
     }
 
+    /**
+     * 从请求中取 CSRF 令牌：<b>只接受请求头与请求体字段</b>。
+     * <p>
+     * 旧实现还接受 {@code request.get(...)}（会合并 query string）与 Cookie ——
+     * 前者让令牌可以随 URL 出现在日志/Referer/历史记录里（正是「令牌泄漏」的经典途径），
+     * 后者等于把「双提交」退化成「只要有 Cookie 就放行」，攻击者可自行设置 Cookie 绕过（审计 M1）。
+     * <p>
+     * 注意：这里的「请求体字段」用 {@link Request#input(String)}（body-only），
+     * 不能用 {@code get(...)}（它会把 query 一并算进去）。
+     *
+     * @param request 当前请求
+     * @return 令牌；缺失返回 {@code null}
+     */
     protected String getRequestToken(Request request) {
         String token = request.header(CSRF_TOKEN_HEADER_NAME);
         if (token != null && !token.isEmpty()) {
             return token;
         }
 
-        token = request.get(CSRF_TOKEN_INPUT_NAME);
+        token = request.input(CSRF_TOKEN_INPUT_NAME);
         if (token != null && !token.isEmpty()) {
             return token;
         }
 
-        jakarta.servlet.http.Cookie[] cookies = request.getCookieObjects();
-        if (cookies != null) {
-            for (jakarta.servlet.http.Cookie cookie : cookies) {
-                if (CSRF_TOKEN_COOKIE_NAME.equals(cookie.getName())) {
-                    return cookie.getValue();
-                }
+        // 兼容开关：默认拒绝 query 里的令牌（令牌进 URL 会泄漏到日志/Referer/浏览器历史），
+        // 仅当子类显式开启时才接受，供老页面迁移期临时兼容（审计 M1）。
+        if (allowTokenInQuery()) {
+            token = request.query(CSRF_TOKEN_INPUT_NAME);
+            if (token != null && !token.isEmpty()) {
+                return token;
             }
         }
 
         return null;
+    }
+
+    /**
+     * 是否允许从 query string 读取 CSRF 令牌。
+     * <p>
+     * <b>默认 {@code false}</b>：URL 里的令牌会随日志、Referer、浏览器历史泄漏，且是审计 M1
+     * 的原始问题。老页面若把 {@code _token} 拼在 URL 上，可临时覆盖本方法返回 {@code true}，
+     * 但迁移完成后必须改回默认值。
+     *
+     * @return 允许则返回 true
+     */
+    protected boolean allowTokenInQuery() {
+        return false;
     }
 
     protected void addCsrfTokenCookie(Request request, Response response) {

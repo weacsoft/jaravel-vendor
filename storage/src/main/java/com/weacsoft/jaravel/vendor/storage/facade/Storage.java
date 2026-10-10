@@ -416,7 +416,21 @@ public final class Storage {
         if (mime == null || mime.isEmpty()) {
             mime = "application/octet-stream";
         }
-        return ResponseBuilder.staticFile(fs.read(path), mime, 3600);
+        // 可见性决定缓存语义（审计 L4）：私有文件若按 public + max-age 下发，
+        // 经反向代理/共享缓存（或浏览器磁盘缓存）后任何访问者都能拿到副本。
+        byte[] data = fs.read(path);
+        String filename = filenameOf(path);
+        Visibility visibility = null;
+        try {
+            visibility = fs.visibility(path);
+        } catch (Exception e) {
+            // 取不到可见性时按私有处理（安全默认）
+            visibility = Visibility.PRIVATE;
+        }
+        if (visibility == Visibility.PUBLIC) {
+            return ResponseBuilder.staticFile(data, mime, 3600, filename);
+        }
+        return ResponseBuilder.inlineFile(data, mime, "private, no-store", filename);
     }
 
     /**

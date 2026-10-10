@@ -41,4 +41,15 @@ public class CacheStoreCaptchaStore implements CaptchaStore {
     public void remove(String captchaKey) {
         cacheStore.forget(KEY_PREFIX + captchaKey);
     }
+
+    /**
+     * 原子占用：委托给 {@link CacheStore#add}（「仅当键不存在时写入」）。
+     * <p>
+     * 若底层驱动实现了 {@code AtomicCacheDriver}（内存 / Redis / 数据库），
+     * 该操作是真原子；否则是尽力而为 —— 与 {@code CacheStore} 的契约一致。
+     */
+    @Override
+    public boolean putIfAbsent(String captchaKey, String value, long ttlSeconds) {
+        return cacheStore.add(KEY_PREFIX + captchaKey, value, ttlSeconds);
+    }
 }

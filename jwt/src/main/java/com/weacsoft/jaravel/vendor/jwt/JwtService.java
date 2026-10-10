@@ -4,6 +4,7 @@ import com.weacsoft.jaravel.vendor.cache.CacheStore;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jws;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 
@@ -87,10 +88,26 @@ public class JwtService {
         return generate(subject, Map.of("type", "refresh"), config.getRefreshTtl());
     }
 
-    /** 解析 token，返回 Claims。token 过期时抛出 {@link ExpiredJwtException} */
+    /**
+     * 解析 token，返回 Claims。token 过期时抛出 {@link ExpiredJwtException}。
+     * <p>
+     * 除库自带的签名与过期校验外，这里<b>额外校验签发方</b>（{@code iss}，审计 L5）：
+     * 签发时写入了 {@code iss}，但旧实现解析时完全不看它 —— 用同一密钥签发的<b>其它系统/租户</b>
+     * 的令牌会被本系统接受。校验失败抛 {@link JwtException}，与签名失败同一处理路径。
+     *
+     * @param token JWT
+     * @return Claims
+     */
     public Claims parse(String token) {
         Jws<Claims> jws = Jwts.parser().verifyWith(key).build().parseSignedClaims(token);
-        return jws.getPayload();
+        Claims claims = jws.getPayload();
+        String expectedIssuer = config.getIssuer();
+        String actualIssuer = claims.getIssuer();
+        if (expectedIssuer != null && !expectedIssuer.isBlank()
+                && !expectedIssuer.equals(actualIssuer)) {
+            throw new JwtException("JWT 签发方不匹配: 期望 " + expectedIssuer + "，实际 " + actualIssuer);
+        }
+        return claims;
     }
 
     /**

@@ -116,6 +116,22 @@ public class LocalFilesystem implements Filesystem {
         if (!resolved.startsWith(root)) {
             throw StorageException.invalidPath(path);
         }
+        // 词法 normalize 挡不住「根目录内的软链接指向外部」：这里再按<b>真实路径</b>校验一次。
+        // 目标尚不存在时，退化为校验「最近的已存在祖先」（它包含软链接解析结果），
+        // 从而拦住 `link-to-/etc/passwd` 这类逃逸（审计 L2）。
+        try {
+            Path realRoot = root.toRealPath();
+            Path existing = resolved;
+            while (existing != null && !Files.exists(existing)) {
+                existing = existing.getParent();
+            }
+            if (existing != null && !existing.toRealPath().startsWith(realRoot)) {
+                throw StorageException.invalidPath(path);
+            }
+        } catch (IOException e) {
+            // 真实路径不可解析（权限/竞态）时保守拒绝，而不是放行
+            throw StorageException.invalidPath(path);
+        }
         return resolved;
     }
 
@@ -250,6 +266,11 @@ public class LocalFilesystem implements Filesystem {
     @Override
     public boolean delete(String path) {
         Path file = resolve(path);
+        // delete("") / delete("/") 会被 resolve 解析为根目录本身：文件系统允许删除空目录，
+        // 于是「删一个空路径」会把整个磁盘根删掉（审计 L3）。与 deleteDirectory 一致地显式拒绝。
+        if (file.equals(root)) {
+            throw new StorageException("不允许删除磁盘根目录: " + path);
+        }
         try {
             return Files.deleteIfExists(file);
         } catch (IOException e) {
@@ -259,11 +280,14 @@ public class LocalFilesystem implements Filesystem {
 
     @Override
     public void copy(String from, String to) {
-        Path source = resolve(from);
+        Path source = requireNotRoot(resolve(from), from);
         if (!Files.exists(source)) {
             throw StorageException.notFound(from);
         }
         Path target = resolve(to);
+        if (target.equals(root)) {
+            throw new StorageException("不允许以磁盘根目录为目标: " + to);
+        }
         ensureParent(target);
         try {
             Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
@@ -272,13 +296,33 @@ public class LocalFilesystem implements Filesystem {
         }
     }
 
+    /**
+     * 拒绝「解析后等于根目录」的路径。
+     * <p>
+     * {@code ""} / {@code "/"} / {@code "."} / {@code "a/.."} 经 {@code resolve} 后都等于根目录，
+     * 若不加判定，删除/复制/移动这类写操作会作用到整个磁盘根（审计 L3）。
+     *
+     * @param resolved 解析后的绝对路径
+     * @param original 原始路径（用于错误信息）
+     * @return 原样返回 {@code resolved}（便于链式调用）
+     */
+    private Path requireNotRoot(Path resolved, String original) {
+        if (resolved.equals(root)) {
+            throw new StorageException("不允许对磁盘根目录执行该操作: " + original);
+        }
+        return resolved;
+    }
+
     @Override
     public void move(String from, String to) {
-        Path source = resolve(from);
+        Path source = requireNotRoot(resolve(from), from);
         if (!Files.exists(source)) {
             throw StorageException.notFound(from);
         }
         Path target = resolve(to);
+        if (target.equals(root)) {
+            throw new StorageException("不允许以磁盘根目录为目标: " + to);
+        }
         ensureParent(target);
         try {
             Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);

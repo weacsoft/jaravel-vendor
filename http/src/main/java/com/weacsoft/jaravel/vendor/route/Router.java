@@ -373,7 +373,11 @@ public class Router {
      */
     public StaticResourceRoute serveStatic(String urlPrefix, String location, int cacheMaxAge) {
         StaticResourceRoute route = new StaticResourceRoute(urlPrefix, location, cacheMaxAge);
-        RouteDefinition r = addRoute("GET", urlPrefix + "/{path}", route);
+        // 必须用 {*path}（capture-the-rest）而不是 {path}/{**}：
+        // - {path} 只匹配单段 → /static/css/app.css 恒 404；
+        // - /** 在 Spring PathPattern 下不产生 pathVariables → routeParam("path") 为 null → 也 404；
+        // {*path} 捕获「含前导 / 的剩余路径」，StaticResourceHandler.sanitizePath 会剥掉前导 /（审计 M3）。
+        RouteDefinition r = addRoute("GET", urlPrefix + "/{*path}", route);
         r.name("static:" + urlPrefix);
         return route;
     }
@@ -399,7 +403,8 @@ public class Router {
      */
     public StaticResourceRoute serveStatic(String urlPrefix, java.util.List<String> locations, int cacheMaxAge) {
         StaticResourceRoute route = new StaticResourceRoute(urlPrefix, locations, cacheMaxAge);
-        RouteDefinition r = addRoute("GET", urlPrefix + "/{path}", route);
+        // 同单目录版本：{*path} 才能匹配多段路径（见上一个重载的说明）
+        RouteDefinition r = addRoute("GET", urlPrefix + "/{*path}", route);
         r.name("static:" + urlPrefix);
         return route;
     }
@@ -699,7 +704,12 @@ public class Router {
 
     private List<Middleware> resolveAllMiddlewares() {
         List<Middleware> middlewares = new ArrayList<>();
-        // 解析本路由器的中间件规格（直接中间件 + 别名/类名表达式 + 类对象 + 类+参数）
+        // 顺序必须与 Laravel 的「洋葱」一致：父级（全局/根）在外、本路由器在内。
+        // 旧实现先加自身、后加父级，折叠后全局中间件反而最内层 —— 于是
+        // 「根挂 EncryptCookies、组挂 VerifyCsrfToken」会变成先验 CSRF 再解密 Cookie（审计 M3）。
+        if (parentRouter != null) {
+            middlewares.addAll(parentRouter.getAllMiddlewares());
+        }
         MiddlewareAliasRegistry registry = MiddlewareAliasRegistry.getGlobal();
         for (Object spec : middlewareSpecs) {
             if (spec instanceof Middleware) {
@@ -713,9 +723,6 @@ public class Router {
                 middlewares.add(registry.resolve((Class<?>) spec));
             }
         }
-        // 递归添加父路由器中间件
-        if (parentRouter != null)
-            middlewares.addAll(parentRouter.getAllMiddlewares());
         return middlewares;
     }
 

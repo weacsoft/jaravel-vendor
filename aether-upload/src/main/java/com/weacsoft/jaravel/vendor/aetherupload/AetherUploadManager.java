@@ -144,7 +144,34 @@ public class AetherUploadManager {
     private final StorageManager storageManager;
     private final Map<String, GroupRuntime> groups = new ConcurrentHashMap<>();
     /** resourceId -> 本地写锁 */
-    private final Map<String, Object> locks = new ConcurrentHashMap<>();
+    /**
+     * 分段锁桶数：按 resourceId 哈希取模映射到定长桶。
+     * <p>
+     * 旧实现用 {@code ConcurrentHashMap<String,Object>} 按 resourceId 建锁，并在「全部完成 / abort」
+     * 时 remove；但 <b>header 不存在时（匿名请求携带随机 resourceId）锁在校验之前就已创建且永不回收</b>，
+     * 形成无界内存增长（审计 N6，无需认证即可触发）。定长分段锁把内存固定为 O(桶数)，
+     * 且不需要任何生命周期簿记；代价只是极小概率两个上传共用一把锁（仅串行化写入，无正确性问题）。
+     */
+    private static final int LOCK_SEGMENTS = 256;
+
+    /** 定长分段锁（见 {@link #LOCK_SEGMENTS}） */
+    private final Object[] locks = new Object[LOCK_SEGMENTS];
+
+    {
+        for (int i = 0; i < LOCK_SEGMENTS; i++) {
+            locks[i] = new Object();
+        }
+    }
+
+    /**
+     * 取 resourceId 对应的分段锁。
+     *
+     * @param resourceId 资源 id（可为 null）
+     * @return 锁对象
+     */
+    private Object lockFor(String resourceId) {
+        return locks[Math.floorMod(resourceId == null ? 0 : resourceId.hashCode(), LOCK_SEGMENTS)];
+    }
 
     public AetherUploadManager(AetherUploadProperties properties, CacheManager cacheManager) {
         this(properties, cacheManager, null);
@@ -477,7 +504,7 @@ public class AetherUploadManager {
      */
     public UploadResult writeChunk(String groupName, String resourceId, int chunkIndex, byte[] data) {
         GroupRuntime g = group(groupName);
-        Object lock = locks.computeIfAbsent(resourceId, k -> new Object());
+        Object lock = lockFor(resourceId);
         synchronized (lock) {
             UploadHeader header = loadHeader(g, resourceId);
             if (header == null) {
@@ -500,6 +527,21 @@ public class AetherUploadManager {
                         + ", expected=" + expected + ", actual=" + (data == null ? 0 : data.length));
             }
 
+            // 写前确认「临时文件仍是本任务的那个、且长度符合预期」（审计 M6）：
+            // prepare 阶段已 setLength(size)，所以「成品落盘时被 move 走 / 被中断后重建」必然表现为
+            // 不存在或长度 ≠ size。若不校验，客户端重试末片会新建一个零填充文件、只写最后一片，
+            // 随后 allUploaded() 为真 → 用近乎全零的文件覆盖掉已正确的成品并标记 COMPLETED。
+            Path tempPath = Paths.get(header.getTempPath());
+            try {
+                if (!Files.exists(tempPath) || Files.size(tempPath) != header.getSize()) {
+                    long actual = Files.exists(tempPath) ? Files.size(tempPath) : -1L;
+                    throw UploadException.invalid("临时文件与任务不一致（可能已完成落盘或已被中断），"
+                            + "请重新 prepare: expected=" + header.getSize() + ", actual=" + actual);
+                }
+            } catch (IOException e) {
+                throw UploadException.io("校验临时文件失败", e);
+            }
+
             try (RandomAccessFile raf = new RandomAccessFile(header.getTempPath(), "rw")) {
                 raf.seek(offset);
                 raf.write(data);
@@ -515,8 +557,7 @@ public class AetherUploadManager {
 
             if (header.allUploaded()) {
                 finalizeUpload(g, header);
-                locks.remove(resourceId);
-            } else {
+                } else {
                 saveHeader(g, header);
             }
 
@@ -553,7 +594,7 @@ public class AetherUploadManager {
             return;
         }
         assertOwnership(header);
-        Object lock = locks.computeIfAbsent(resourceId, k -> new Object());
+        Object lock = lockFor(resourceId);
         synchronized (lock) {
             try {
                 Files.deleteIfExists(Paths.get(header.getTempPath()));
@@ -565,7 +606,6 @@ public class AetherUploadManager {
                 g.store.remove(idKey(g.name, header.getOwnerId(), header.getIdentifier()));
             }
         }
-        locks.remove(resourceId);
         dispatch(new UploadAbortedEvent(g.name, resourceId, header.getFilename(), header.getSize()));
     }
 

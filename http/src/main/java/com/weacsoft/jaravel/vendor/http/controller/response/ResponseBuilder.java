@@ -166,7 +166,9 @@ public class ResponseBuilder {
         return new AbstractResponse() {
             {
                 addHeader("Content-Type", "application/octet-stream");
-                addHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
+                addHeader("Content-Disposition", contentDisposition("attachment", filename));
+                // 下载同样禁止嗅探（审计 N3）：否则 .html/.svg 可能被当页面渲染
+                addHeader("X-Content-Type-Options", "nosniff");
             }
 
             @Override
@@ -184,6 +186,95 @@ public class ResponseBuilder {
                 return data;
             }
         };
+    }
+
+    /**
+     * 构造 {@code Content-Disposition} 头值（审计 L4）。
+     * <p>
+     * 两个要点：
+     * <ul>
+     *   <li><b>头注入防护</b>：去掉 CR/LF/引号/反斜杠，避免文件名把响应头截断或注入新头；</li>
+     *   <li><b>非 ASCII 文件名</b>：同时给出 ASCII 回退名与 RFC 5987 的 {@code filename*=UTF-8''...}，
+     *       否则中文文件名在各浏览器下会乱码或被截断。</li>
+     * </ul>
+     *
+     * @param disposition {@code attachment}（下载）或 {@code inline}（内联展示）
+     * @param filename    原始文件名（可含中文）
+     * @return 头值
+     */
+    public static String contentDisposition(String disposition, String filename) {
+        String safe = filename == null ? "" : filename.replaceAll("[\\r\\n\"\\\\]", "_").trim();
+        if (safe.isEmpty()) {
+            safe = "download";
+        }
+        String ascii = safe.replaceAll("[^\\x20-\\x7E]", "_");
+        String encoded;
+        try {
+            encoded = java.net.URLEncoder.encode(safe, java.nio.charset.StandardCharsets.UTF_8)
+                    .replace("+", "%20");
+        } catch (Exception e) {
+            encoded = ascii;
+        }
+        return disposition + "; filename=\"" + ascii + "\"; filename*=UTF-8''" + encoded;
+    }
+
+    /**
+     * 构建内联文件响应（可指定 Cache-Control 与文件名）。
+     * <p>
+     * 供「文件预览」使用：<b>私有文件必须配合 {@code private, no-store}</b>，
+     * 否则经反向代理/共享缓存时会被当成公共资源缓存，任何访问者都能拿到副本（审计 L4）。
+     *
+     * @param data         内容
+     * @param mimeType     MIME 类型
+     * @param cacheControl Cache-Control 头值（如 {@code public, max-age=3600} / {@code private, no-store}）
+     * @param filename     文件名（可含中文；空则不加 Content-Disposition）
+     * @return 响应
+     */
+    public static Response inlineFile(byte[] data, String mimeType, String cacheControl, String filename) {
+        return new AbstractResponse() {
+            {
+                addHeader("Content-Type", mimeType);
+                addHeader("Cache-Control", cacheControl);
+                addHeader("Content-Length", String.valueOf(data.length));
+                // 禁止内容嗅探（审计 N3）：内联渲染用户可上传的内容（.html/.svg 等）时，
+                // 若浏览器忽略 Content-Type 去嗅探，会变成同源存储型 XSS。
+                addHeader("X-Content-Type-Options", "nosniff");
+                if (filename != null && !filename.isBlank()) {
+                    addHeader("Content-Disposition", contentDisposition("inline", filename));
+                }
+            }
+
+            @Override
+            public int getStatus() {
+                return 200;
+            }
+
+            @Override
+            public String getContent() {
+                return null;
+            }
+
+            @Override
+            public byte[] getBytes() {
+                return data;
+            }
+        };
+    }
+
+    /**
+     * 构建静态资源响应（inline 展示 + 指定文件名）。
+     * <p>
+     * 供「文件预览」场景使用：浏览器内联展示的同时带上真实文件名，
+     * 用户「另存为」得到的是原名而不是随机串（审计 L4）。
+     *
+     * @param data        内容
+     * @param mimeType    MIME 类型
+     * @param cacheMaxAge 缓存秒数
+     * @param filename    文件名（可含中文；空则不加 Content-Disposition）
+     * @return 响应
+     */
+    public static Response staticFile(byte[] data, String mimeType, int cacheMaxAge, String filename) {
+        return inlineFile(data, mimeType, "public, max-age=" + cacheMaxAge, filename);
     }
 
     /**
