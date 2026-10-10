@@ -120,7 +120,7 @@ public class LocalFilesystem implements Filesystem {
         // 目标尚不存在时，退化为校验「最近的已存在祖先」（它包含软链接解析结果），
         // 从而拦住 `link-to-/etc/passwd` 这类逃逸（审计 L2）。
         try {
-            Path realRoot = root.toRealPath();
+            Path realRoot = realRoot();
             Path existing = resolved;
             while (existing != null && !Files.exists(existing)) {
                 existing = existing.getParent();
@@ -133,6 +133,31 @@ public class LocalFilesystem implements Filesystem {
             throw StorageException.invalidPath(path);
         }
         return resolved;
+    }
+
+    /** 磁盘根的真实路径缓存（`root` 构造后不变；避免每次路径解析都做一次 toRealPath，审计 R5/性能） */
+    private volatile Path realRootCache;
+
+    /**
+     * 取磁盘根的真实（canonical）路径。
+     * <p>
+     * <b>必须与 canonical 形式比较</b>：若 root 自身是软链接/junction，词法 root 与 real root 不同，
+     * 用词法值比较会把所有正常读写判成越界。
+     *
+     * @return 根的 canonical 路径（解析失败时退化为词法 root）
+     */
+    private Path realRoot() {
+        Path cached = realRootCache;
+        if (cached != null) {
+            return cached;
+        }
+        try {
+            cached = root.toRealPath();
+        } catch (IOException e) {
+            cached = root;
+        }
+        realRootCache = cached;
+        return cached;
     }
 
     /**

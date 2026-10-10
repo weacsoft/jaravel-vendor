@@ -361,6 +361,8 @@ public class MigrationScanner {
                     log.info("[migration] 从目录加载迁移类: {}", className);
                 }
             } catch (Throwable e) {
+                // 这里遍历的是目录/ZIP 下的「所有」class（不限于迁移），无法加载的非迁移类属正常，
+                // 故保持 debug；真实迁移的解析失败由 MigrationFileParser 记为硬失败并让命令非零退出。
                 log.debug("[migration] 跳过无法加载的类: {} - {}", className, e.getMessage());
             }
         }
@@ -438,6 +440,8 @@ public class MigrationScanner {
                     log.info("[migration] 从 ZIP 加载迁移类: {}", className);
                 }
             } catch (Throwable e) {
+                // 这里遍历的是目录/ZIP 下的「所有」class（不限于迁移），无法加载的非迁移类属正常，
+                // 故保持 debug；真实迁移的解析失败由 MigrationFileParser 记为硬失败并让命令非零退出。
                 log.debug("[migration] 跳过无法加载的类: {} - {}", className, e.getMessage());
             }
         }

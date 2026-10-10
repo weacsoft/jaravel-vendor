@@ -172,6 +172,33 @@ artisan 在各模块的 pom 中均为 `optional`。模块注册命令的方式�
 
 ---
 
+### 2.8 `starter` 聚合清单与依赖方向（0.2.0 起）
+
+`starter` 是「开箱装配」聚合包，当前聚合 **13 个** jaravel 模块（已按「契约 / 实现 / 存储」分层）：
+
+| 层 | 模块 | 说明 |
+|---|---|---|
+| 基础 | `core`、`http`、`springboot`、`event`、`artisan` | 内核、HTTP/路由、Spring 装配、事件、命令 |
+| 认证（契约） | `auth` | `AuthManager` + 契约 + `@RegisterGuard`；**不依赖** `session`，缺实现时回退内置空守卫 |
+| 认证（实现） | `auth-session` | 把 auth 标准落到 Session 存储（`SessionGuard` / `SessionGuardDriver`） |
+| 会话（存储） | `session` | `SessionStore` 契约 + `CookieSessionStore` + `@RegisterSessionStore`（依赖 `core` + `http`） |
+| 数据/资源 | `database`、`migration`、`cache`、`storage`、`schedule` | 数据源与查询、迁移、缓存、文件存储、定时任务 |
+
+**依赖方向（不可倒置）**：
+- `auth-session → auth + session`（实现依赖两侧契约）
+- `session → core + http`（**`auth` 不依赖 `session`**：只引 `auth` 的应用不会被拖入 Session 装配）
+- `session-redis → session`（存储实现，**不在 starter 内**，按需引入）
+
+> `auth` 默认守卫驱动为 `session`：若 `starter` 中排除了 `auth-session`，`AuthManager` 会回退到内置
+> 空守卫（`check()` 恒 false）并打印一次性 WARN；**显式声明了其它无人支持的 driver 则直接抛错**
+> （避免把配置错误静默变成「恒未登录」）。
+
+> **关于未跟踪文档 `Spring优化方案.md`**：其基线为 `master @ 1d5604d`（版本 0.1.3、starter 10 个模块、
+> 「不得增模块」），**已被后续架构演进取代，不构成约束**；模块与版本事实以本文件、`CHANGELOG.md`、
+> `pom.xml` 为准（该文件顶部已加失效横幅）。
+
+---
+
 ## 三、artisan 命令与数据库表要求
 
 > **重要**：以下要求**仅在使用对应功能时才需要满足**。

@@ -226,14 +226,50 @@ public class ModelCacheService {
      */
     private CacheStore resolveStore() {
         String storeName = properties.getStore();
+        CacheStore store;
         if (storeName == null || storeName.isEmpty()) {
-            return cacheManager.store();
+            store = cacheManager.store();
+        } else {
+            try {
+                store = cacheManager.store(storeName);
+            } catch (IllegalStateException e) {
+                log.debug("[model-cache] 缓存 store '{}' 未注册，回退到默认 store: {}", storeName, e.getMessage());
+                store = cacheManager.store();
+            }
         }
-        try {
-            return cacheManager.store(storeName);
-        } catch (IllegalStateException e) {
-            log.debug("[model-cache] 缓存 store '{}' 未注册，回退到默认 store: {}", storeName, e.getMessage());
-            return cacheManager.store();
+        warnIfNonInMemoryStore(store);
+        return store;
+    }
+
+    /** 「非内存 store」告警只打一次（进程级） */
+    private static final java.util.concurrent.atomic.AtomicBoolean NON_MEMORY_STORE_WARNED =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    /**
+     * 非内存（序列化）store 的两条已知限制告警（审计 M16/N7）。
+     * <p>
+     * 1. <b>类型契约</b>：{@code find/findAll/query} 命中后是<b>直接强转</b>，非内存 store 取回的
+     * 是 {@code LinkedHashMap}/{@code ArrayList}，调用方按实体类型遍历会得到
+     * {@code ClassCastException}（不是数据泄露，但会在使用点炸）。<br>
+     * 2. <b>租户维度</b>：缓存键为 {@code keyPrefix+modelPrefix+:v{版本}:{suffix}}，<b>不含租户/用户维度</b>，
+     * 而 {@code queryKey} 由调用方拼 —— 多租户共享同一 store 时会互相命中对方的行数据。
+     *
+     * @param store 已解析的 store
+     */
+    private void warnIfNonInMemoryStore(CacheStore store) {
+        if (store == null || NON_MEMORY_STORE_WARNED.get()) {
+            return;
+        }
+        String name = store.getClass().getSimpleName().toLowerCase();
+        boolean inMemory = name.contains("array") || name.contains("memory") || name.contains("simple");
+        if (inMemory) {
+            return;
+        }
+        if (NON_MEMORY_STORE_WARNED.compareAndSet(false, true)) {
+            log.warn("[model-cache] 当前缓存 store 为 {}（非内存）：①命中后返回的是基础类型"
+                    + "（LinkedHashMap/ArrayList），find/findAll 的类型契约不成立；②缓存键不含租户维度，"
+                    + "多租户共用一个 store 时会互相命中对方数据 —— 请让 queryKey 自含租户标识"
+                    + "（如 \"tenant:{id}:{条件}\"）或为每个租户使用独立 store。", store.getClass().getSimpleName());
         }
     }
 

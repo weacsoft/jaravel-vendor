@@ -25,7 +25,7 @@
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>wechat-sdk</artifactId>
-    <version>0.1.3</version>
+    <version>0.2.0</version>
 </dependency>
 ```
 

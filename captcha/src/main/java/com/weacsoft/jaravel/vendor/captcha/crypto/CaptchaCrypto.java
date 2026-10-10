@@ -155,6 +155,7 @@ public class CaptchaCrypto {
         if (type == null) type = "none";
         switch (type.toLowerCase()) {
             case "aes":
+                warnIfDefaultKey(key);
                 return new CaptchaCrypto(key);
             case "rsa":
                 if (key != null && key.contains("|")) {
@@ -167,6 +168,33 @@ public class CaptchaCrypto {
                 return new CaptchaCrypto(key, null);
             default:
                 return new CaptchaCrypto();
+        }
+    }
+
+    /** 「仍在使用出厂默认 AES 密钥」是否已告警过（避免刷日志） */
+    private static final java.util.concurrent.atomic.AtomicBoolean DEFAULT_KEY_WARNED =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    /**
+     * 仍在使用<b>源码中的公开常量</b>密钥时告警一次（审计 N1）。
+     * <p>
+     * 该密钥对任何人都可见，等于「没有密钥」：token 可被离线解开、答案可被直接读出，
+     * 甚至可自造 token。此处覆盖非 Spring 直连场景（{@code new NumberCaptcha(props)}），
+     * 使问题不依赖装配层也能被发现。
+     *
+     * @param key 实际使用的密钥
+     */
+    private static void warnIfDefaultKey(String key) {
+        if (DEFAULT_KEY_WARNED.get()) {
+            return;
+        }
+        if (key == null || key.isBlank()
+                || com.weacsoft.jaravel.vendor.captcha.CaptchaProperties.DEFAULT_ENCRYPTION_KEY.equals(key)) {
+            if (DEFAULT_KEY_WARNED.compareAndSet(false, true)) {
+                org.slf4j.LoggerFactory.getLogger(CaptchaCrypto.class).warn(
+                        "[captcha] 正在使用出厂默认 AES 密钥（源码中的公开常量）或空密钥："
+                                + "token 可被离线解开。请配置 jaravel.key 或 jaravel.captcha.encryption-key。");
+            }
         }
     }
 

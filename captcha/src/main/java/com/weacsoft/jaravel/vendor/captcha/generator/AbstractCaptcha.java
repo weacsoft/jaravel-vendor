@@ -221,6 +221,10 @@ public abstract class AbstractCaptcha implements Captcha {
 
     /**
      * 验证验证码（带运行时加密密钥）。
+     * <p>
+     * <b>注意参数顺序</b>：第三个参数是「加密密钥」，<b>不是</b>验证码类型。误写成
+     * {@code verify(type, captchaKey, userInput)} 时能编译通过，语义却完全不同。
+     * 常规场景请直接用 {@link #verify(String, String)}（两参）。
      *
      * @param captchaKey     验证码 key（自包含加密令牌）
      * @param userInput      用户输入（可能是加密的）
@@ -325,8 +329,19 @@ public abstract class AbstractCaptcha implements Captcha {
             return false;
         }
         consumeNonce(nonce, expireTime);
+        // 兼容路径必须可见（审计 F2）：存储不支持原子占用时，「一次性」会静默退回
+        // 「先查后写」，并发下两个请求可同时通过 —— 与 M5 的原始缺陷等价。
+        if (NON_ATOMIC_CLAIM_WARNED.compareAndSet(false, true)) {
+            log.warn("[captcha] 当前 CaptchaStore 未实现 putIfAbsent（不支持原子占用），"
+                    + "「验证码一次性」在并发下存在窗口，退回「先查后写」。"
+                    + "请使用 MemoryCaptchaStore 或实现了 AtomicCacheDriver 的 CacheStore（避免 file 驱动）。");
+        }
         return true;
     }
+
+    /** 「存储不支持原子占用」的告警只打一次 */
+    private static final java.util.concurrent.atomic.AtomicBoolean NON_ATOMIC_CLAIM_WARNED =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
 
     // ==================== 防复用：通过 CaptchaStore 追踪已消费 nonce ====================
 

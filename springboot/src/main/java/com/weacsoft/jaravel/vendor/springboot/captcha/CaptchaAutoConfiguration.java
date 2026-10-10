@@ -134,13 +134,67 @@ public class CaptchaAutoConfiguration {
         com.weacsoft.jaravel.vendor.captcha.CaptchaProperties coreProps = properties.toCoreProperties();
         com.weacsoft.jaravel.vendor.core.crypto.AppKey appKey =
                 (appKeyProvider != null) ? appKeyProvider.getIfAvailable() : null;
-        if (appKey != null) {
+        if (appKey == null) {
+            // 装配缺失时不再静默沿用「源码里公开的出厂默认密钥」（审计 N1）：那样任何人都能用
+            // 公开常量解开 token 拿到答案。这里给出 ERROR，让问题在启动时暴露。
+            org.slf4j.LoggerFactory.getLogger(CaptchaAutoConfiguration.class).error(
+                    "[captcha] 未找到全局应用密钥（jaravel.key / AppKey Bean），"
+                            + "验证码将沿用出厂默认密钥 —— 该密钥是源码中的公开常量，"
+                            + "token 可被离线解开。请配置 jaravel.key 或 jaravel.captcha.encryption-key。");
+        } else {
             String effective = appKey.resolve(
                     coreProps.getEncryptionKey(),
                     com.weacsoft.jaravel.vendor.captcha.CaptchaProperties.DEFAULT_ENCRYPTION_KEY);
             coreProps.setEncryptionKey(effective);
         }
+        validateEncryptionShape(coreProps, properties);
         return coreProps;
+    }
+
+    /**
+     * 启动期校验加密参数形态（审计 M4/N1），<b>打在解析后的有效配置上</b>
+     * （即已经过 {@code jaravel.key} 兜底的值，避免对已兜底的部署误报）。
+     * <p>
+     * 判定：<br>
+     * - <b>RSA</b>：必须含不空的私钥段（{@code 公钥|私钥}）。只给公钥时服务端无法解密用户输入，
+     *   表现为「所有验证永远失败」；只给私钥时旧实现会按公钥解析并在生成时抛异常（每请求 500）。<br>
+     * - <b>AES 及其它</b>：仍为出厂默认密钥（源码中的公开常量）或空 → 等价于没有密钥。
+     * <p>
+     * 处理方式分档（专家建议）：默认只 ERROR，不阻断启动（避免升级即 brick 既有部署）；
+     * 置 {@code jaravel.captcha.fail-fast-on-invalid-key=true} 时直接抛错中止启动。
+     *
+     * @param coreProps   解析后的核心层配置
+     * @param springProps SpringBoot 配置（提供 fail-fast 开关）
+     */
+    private static void validateEncryptionShape(
+            com.weacsoft.jaravel.vendor.captcha.CaptchaProperties coreProps,
+            CaptchaProperties springProps) {
+        String type = coreProps.getEncryptionType();
+        if (type == null || "none".equalsIgnoreCase(type)) {
+            return;
+        }
+        String key = coreProps.getEncryptionKey();
+        String problem = null;
+        if ("rsa".equalsIgnoreCase(type)) {
+            boolean hasPrivate = key != null && key.contains("|")
+                    && !key.substring(key.indexOf('|') + 1).isBlank();
+            if (!hasPrivate) {
+                problem = "RSA 需要 `公钥|私钥`（服务端必须用私钥解密用户输入；只给公钥会让所有验证永远失败）";
+            }
+        } else if (key == null || key.isBlank()
+                || com.weacsoft.jaravel.vendor.captcha.CaptchaProperties.DEFAULT_ENCRYPTION_KEY.equals(key)) {
+            problem = "仍在使用出厂默认密钥（源码中的公开常量）或空密钥，token 可被离线解开";
+        }
+        if (problem == null) {
+            return;
+        }
+        String message = "[captcha] 加密参数不可用（encryptionType=" + type + "）：" + problem
+                + "。请修正 jaravel.captcha.encryption-key 或 jaravel.key"
+                + "（本地演示可用 none，但答案会明文下发）。";
+        if (springProps != null && springProps.isFailFastOnInvalidKey()) {
+            throw new IllegalStateException(message);
+        }
+        org.slf4j.LoggerFactory.getLogger(CaptchaAutoConfiguration.class).error(message);
     }
 
     static {

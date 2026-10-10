@@ -68,7 +68,7 @@ JAR 插件系统核心库，提供动态加载/卸载 JAR 插件、三级 ClassL
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>plugin-jar-core</artifactId>
-    <version>0.1.3</version>
+    <version>0.2.0</version>
 </dependency>
 ```
 
@@ -533,7 +533,7 @@ manager.reloadPluginFromBytes("my-plugin", newJarBytes);
     <dependency>
         <groupId>io.github.lijialong1313</groupId>
         <artifactId>plugin-jar-core</artifactId>
-        <version>0.1.3</version>
+        <version>0.2.0</version>
         <scope>provided</scope>
     </dependency>
 </dependencies>
@@ -688,7 +688,7 @@ public interface MetadataPersistence {
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>plugin-jar-database</artifactId>
-    <version>0.1.3</version>
+    <version>0.2.0</version>
 </dependency>
 ```
 

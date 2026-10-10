@@ -3,7 +3,22 @@
 本项目所有显著变更都记录在此文件。
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，语义化版本基于 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]（目标版本 0.1.3 · 开发中）
+## [Unreleased]（目标版本 0.2.0 · 开发中）
+
+### Changed（变更 · 第十轮：版本 0.2.0 + 剩余 P0/P1 项 + 第三轮专家纠正）
+
+- **版本升至 0.2.0（破坏性）**：自 `484c396` 起本仓库含破坏性变更（`auth`/`session` 模块拆分、公开 FQN 迁移，且**未保留兼容壳**），继续以 `0.1.3` 发布会让下游按 semver 预期不设防（升级后部分模块新契约、部分旧 jar → 运行期不一致）。本轮用 `mvn versions:set` 将全部 36 个 pom 升到 **0.2.0**，并清扫文档中的 `<version>` 依赖片段与 README/CLUSTER 版本标记；**`wechat-sdk-demo` 同批升到 0.2.0**（专家指出的陷阱：demo 固定依赖 0.1.3 时会静默解析本地仓库旧产物，导致「测试全绿但实际验证的是旧字节码」）——升级后实测依赖树中 jaravel 构件全部为 0.2.0，demo 14 例全绿。
+- **N4 refresh token 轮换（可选增量 API，不改既有语义）**：新增 `JwtService.refreshPair(...)`，返回 `record TokenPair(access, refresh)`，用旧 refresh 换取**新令牌对**并把旧 refresh 拉黑；`refresh()` **语义保持原样** —— 现有协议只通过 `X-New-Token` 下发 access，**没有通道下发新 refresh**，若在此拉黑旧 refresh，客户端刷新一次后就永久无法刷新（功能性破坏，专家明确否决先前方案）。黑名单不可用（默认 `blacklistEnabled=false`）时打一次性 WARN，明确「轮换未生效」而不假装已轮换；收到**已在黑名单中的** refresh token 记 ERROR（凭证被盗重放的强信号）。
+- **M19 迁移解析失败（按专家意见收窄）**：`MigrationFileParser` 仅把「文件确实存在但编译/实例化/`up()` 失败」计入失败清单并 `log.error`；**目录缺失 / 目录内无 `.java` → 回退 classpath 仍视为合法成功**；目录内确有 `.java` 却编译失败时改 ERROR（仍允许回退，不打断「只带已编译类运行」的部署）；命令打印失败清单并 `return 1` 且**不生成模型**（缺列的 Model 比失败更危险）；**不新增 `--allow-parse-errors` 逃生口**（验收与安全专家均判既有行为更安全，与架构师的分歧按更安全一侧裁决）；删除无调用方的 `parseAllStrict`；`MigrationScanner` 中「跳过无法加载的类」恢复 `debug`（该循环遍历目录下所有 class，非迁移类加载失败属正常，避免日志放大）。
+- **N1 验证码密钥形态校验（分档 + 打在解析后配置上）**：校验作用于**经 `jaravel.key` 兜底后的有效配置**（避免对已兜底部署误报）；**RSA 必须 `公钥|私钥`**（只给公钥时服务端无法解密用户输入 → 所有验证永远失败；只给私钥旧实现按公钥解析 → 每请求 500）；AES 仍为出厂默认密钥（源码公开常量）或空 → 等价于无密钥；新增 `jaravel.captcha.fail-fast-on-invalid-key`（**默认 false**：直接 fail-fast 会让既有部署升级后无法启动；置 true 可中止启动）。核心 `CaptchaCrypto.create` 对默认/空 AES 密钥加一次性 WARN，覆盖非 Spring 直连场景。
+- **M17 验证码参数脚枪（撤销弃用，改语义护栏）**：三参 `verify(key, userInput, encryptionKey)` 是合法能力（多场景/多租户需要），**不弃用**；改为在 `CaptchaManager.verifyDetailed` 入口加护栏 —— 首参命中已注册类型名且不含 `.`（即旧 README 的 `verify(type, key, input)` 写法）时抛 `IllegalArgumentException`（附正确用法），不再静默返回 false。README 全量修正：`generate(type, key)` → `generate(type)`、`verify(type, key, input)` → `verify(captchaKey, userInput)`、删除 `verifyToken` 段与「token 可在有效期内重复使用」的错误表述（与「一次性」语义矛盾）。
+- **M20 修正（已落地代码里的新问题）**：`patchShadowColumn` 的登记从「变更之前」移到**变更完成之后**，使不变式「在集合中 ⇒ 已修补完成」成立（否则并发线程可能看到已登记却仍用含 `model_shadow` 的列集拼 SELECT）；`PATCHED_ENTITY_MEMBERS` 改用 `WeakHashMap` 承载（gaarason 可能为同一实体反复创建新 `EntityMember`，强引用 Set 会无界增长）。
+- **L2 性能修正**：`LocalFilesystem` 的 canonical 根路径改为**构造后缓存**（`realRoot()`），不再每次 `resolve()` 都做 `toRealPath()`（热路径 syscall 放大）。
+- **M16/N7**：`ModelCacheService` 解析到**非内存** store 时一次性 WARN —— ①`find/findAll/query` 命中后是直接强转，非内存 store 取回 `LinkedHashMap`/`ArrayList`，类型契约不成立；②缓存键不含租户维度，多租户共用 store 会互相命中对方数据（要求 `queryKey` 自含租户标识）。契约写入 javadoc。
+- **R9 验证补齐**：新增 `StaticRoutePathPatternTest`（springboot 测试域补 `spring-webflux` 测试依赖）：`{*path}` 匹配多段与 `/static` 前缀、**`/static/{*path}/` 确实解析失败**（证明「跳过尾斜杠变体」守卫的必要性）、旧 `{path}` 确实漏多段路径。
+- **`MODULES.md` 新增 §2.8**：starter 聚合清单（**13 个**模块）+ 依赖方向（`auth-session → auth + session`、`session → core + http`、`auth` 不依赖 `session`）+ 对未跟踪文档 `Spring优化方案.md` 的「已失效、以本文件为准」声明（该文件顶部亦已加失效横幅）。
+- **`wechat-sdk-demo`**：依赖升 0.2.0；`plainConfig()` 显式开启 `verifyPostSignature`（SDK 默认已改为 `false`，严格用例必须自行开启，否则测的是另一条语义）。
+- **未完成（登记）**：M16 的元素级类型转换（两位专家均建议延后：默认 store 为内存、多机场景尚未落地，且转换会引入「失败静默回源」新语义）；N4 的**新 refresh token 交付协议**（新增响应头 vs 业务 controller 返回，属产品/协议决策）；`DefaultAppKey.isTemporary()`（该文件被系统占用、写入失败，暂由装配层判断）；其余 P0 用例（aether `.part` 故障注入与锁长度、`Storage.response` visibility、`LocalFilesystem` 根目录/软链、M20 并发首查）。
 
 ### Fixed（修复 · 第九轮：审计剩余项 + 专家团第二轮新发现）
 

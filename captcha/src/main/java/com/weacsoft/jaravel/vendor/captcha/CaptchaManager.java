@@ -253,6 +253,15 @@ public class CaptchaManager {
         }
         int idx = key.indexOf('.');
         if (idx <= 0 || idx == key.length() - 1) {
+            // 语义护栏（审计 M17）：把「验证码类型」当作第一个参数传进来（旧 README 的
+            // verify(type, key, input) 写法）会落到这里 —— 旧实现静默返回 false，让排查者以为
+            // 「验证码总是不对」。这里直接给出可操作的错误。
+            if (captchas.containsKey(key)) {
+                throw new IllegalArgumentException(
+                        "参数顺序可能写反：第一个参数应是合并凭证（type.captchaKey，如 number.xxxx），"
+                                + "但收到的是验证码类型 '" + key + "'。"
+                                + "正确用法：verify(captchaKey, userInput) 或 verify(captchaKey, userInput, encryptionKey)");
+            }
             return VerifyResult.fail();
         }
         String type = key.substring(0, idx);

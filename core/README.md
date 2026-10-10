@@ -50,7 +50,7 @@ Spring 装配全部位于 `jaravel-springboot` / `jaravel-starter`；非 Spring 
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>core</artifactId>
-    <version>0.1.3</version>
+    <version>0.2.0</version>
 </dependency>
 ```
 

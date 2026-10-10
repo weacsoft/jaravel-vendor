@@ -192,7 +192,7 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
      * 漏补会让该模型的 {@code model_shadow} 列重新出现在 SELECT 列表里。
      */
     private static final java.util.Set<EntityMember<?, ?>> PATCHED_ENTITY_MEMBERS =
-            java.util.concurrent.ConcurrentHashMap.newKeySet();
+            java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
 
     /**
      * 从 EntityMember 的 selectColumnList 和 columnFieldMap 中移除 model_shadow 列。
@@ -218,13 +218,16 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
             return;
         }
         synchronized (PATCHED_ENTITY_MEMBERS) {
-            if (!PATCHED_ENTITY_MEMBERS.add(entityMember)) {
+            if (PATCHED_ENTITY_MEMBERS.contains(entityMember)) {
                 return;
             }
             if (entityMember.getSelectColumnList().contains(SHADOW_COLUMN)) {
                 entityMember.getSelectColumnList().removeIf(SHADOW_COLUMN::equals);
                 entityMember.getColumnFieldMap().remove(SHADOW_COLUMN);
             }
+            // 登记必须发生在「变更完成之后」：若先 add 再改，并发线程可能看到「已修补」却用着
+            // 尚未摘除 model_shadow 的列集去拼 SELECT（不变式应为「在集合中 ⇒ 已修补完成」）。
+            PATCHED_ENTITY_MEMBERS.add(entityMember);
         }
     }
 

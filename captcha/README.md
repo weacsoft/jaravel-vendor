@@ -54,7 +54,7 @@
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>captcha</artifactId>
-    <version>0.1.3</version>
+    <version>0.2.0</version>
 </dependency>
 ```
 
@@ -66,7 +66,7 @@
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>captcha</artifactId>
-    <version>0.1.3</version>
+    <version>0.2.0</version>
 </dependency>
 <!-- 无需引入 spring-boot，核心层可独立运行 -->
 ```
@@ -77,7 +77,7 @@
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>captcha</artifactId>
-    <version>0.1.3</version>
+    <version>0.2.0</version>
 </dependency>
 <!-- 引入 spring-boot-starter 即可触发自动装配 -->
 ```
@@ -90,12 +90,12 @@
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>captcha</artifactId>
-    <version>0.1.3</version>
+    <version>0.2.0</version>
 </dependency>
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>cache</artifactId>
-    <version>0.1.3</version>
+    <version>0.2.0</version>
 </dependency>
 ```
 
@@ -126,7 +126,7 @@ CaptchaManager manager = CaptchaManager.createDefault();
 
 // 2. 生成验证码（type + captchaKey）
 String captchaKey = java.util.UUID.randomUUID().toString();
-CaptchaResult result = manager.generate("number", captchaKey);
+CaptchaResult result = manager.generate("number");
 
 // 3. 将结果下发前端（JSON 序列化）
 //    result.getImageBase64() -> base64 图片
@@ -159,15 +159,17 @@ public class CaptchaController {
     @GetMapping("/generate")
     public CaptchaResult generate(@RequestParam String type) {
         String captchaKey = java.util.UUID.randomUUID().toString();
-        return captchaManager.generate(type, captchaKey);
+        return captchaManager.generate(type);
     }
 
-    // 验证
+    // 验证（重要：第一个参数是「合并凭证」，不是验证码类型！）
     @PostMapping("/verify")
-    public boolean verify(@RequestParam String type,
-                          @RequestParam String captchaKey,
+    public boolean verify(@RequestParam String captchaKey,
                           @RequestParam String userInput) {
-        return captchaManager.verify(type, captchaKey, userInput);
+        // 正确：verify(captchaKey, userInput)
+        // 切勿写成 verify(type, captchaKey, userInput) —— 三参重载的第三个参数是「加密密钥」，
+        // 那样等于用请求里的值当密钥去解密 token，攻击者可自带密钥构造任意 token 绕过验证码。
+        return captchaManager.verify(captchaKey, userInput);
     }
 }
 ```
@@ -202,7 +204,7 @@ manager.register(new SliderCaptcha(store, properties));
 manager.register(new RotateCaptcha(store, properties));
 manager.register(new ClickCaptcha(store, properties));
 
-CaptchaResult result = manager.generate("number", "my-key");
+CaptchaResult result = manager.generate("number");
 boolean ok = manager.verify(result.getKey(), "ABC23");
 ```
 
@@ -225,7 +227,7 @@ boolean ok = manager.verify(result.getKey(), "ABC23");
 | 图片 | `imageBase64`（带 `data:image/png;base64,` 前缀） |
 
 ```java
-CaptchaResult result = manager.generate("number", key);
+CaptchaResult result = manager.generate("number");
 // 前端展示 result.getImageBase64()，用户输入识别结果
 boolean ok = manager.verify(result.getKey(), "AB23");
 ```
@@ -243,7 +245,7 @@ boolean ok = manager.verify(result.getKey(), "AB23");
 | 图片 | `imageBase64`，内容如 `12 + 5 = ?` |
 
 ```java
-CaptchaResult result = manager.generate("arithmetic", key);
+CaptchaResult result = manager.generate("arithmetic");
 // 图片显示如 "12 + 5 = ?"，用户输入 "17"
 boolean ok = manager.verify(result.getKey(), "17");
 ```
@@ -265,7 +267,7 @@ boolean ok = manager.verify(result.getKey(), "17");
 | `extra.trajectoryEnabled` | 是否启用了轨迹验证（前端可据此决定提交格式） |
 
 ```java
-CaptchaResult result = manager.generate("slider", key);
+CaptchaResult result = manager.generate("slider");
 // 前端用 imageBase64 作背景，sliderImage 作滑块，gapY 固定纵坐标
 // 用户拖动后提交 JSON：
 // {"value": 123, "trajectory": [{"t":0,"v":0},{"t":50,"v":5},...]}
@@ -292,7 +294,7 @@ boolean ok2 = manager.verify(result.getKey(), "123");
 | 朝向标记 | 顶部居中向上箭头（白色杆 + 蓝色三角头部），便于用户判断正方向 |
 
 ```java
-CaptchaResult result = manager.generate("rotate", key);
+CaptchaResult result = manager.generate("rotate");
 // 前端展示旋转后的图片，用户拖动转回正方向并提交 JSON：
 // {"value": 90, "trajectory": [{"t":0,"v":0},{"t":50,"v":3},...]}
 boolean ok = manager.verify(result.getKey(),
@@ -321,7 +323,7 @@ boolean ok2 = manager.verify(result.getKey(), "90");
 
 ```java
 // 生成文字点选验证码
-CaptchaResult result = manager.generate("click", key);
+CaptchaResult result = manager.generate("click");
 // 前端展示 imageBase64，显示提示 "请依次点击：天、地、人"
 // 用户依次点击 3 个文字后提交 JSON：
 // {"clicks":[{"x":120,"y":80},{"x":200,"y":150},{"x":300,"y":100}]}
@@ -379,29 +381,26 @@ key = type + "." + captchaKey
 - `getCaptchaKey()` —— 内层自包含密文（无状态 token）；
 - `getKey()` —— 合并凭证 `type + "." + captchaKey`，前端应提交这个值。
 
-有状态验证通过 `CaptchaManager.verify(key, userInput)`（合并凭证两参）完成；无状态验证需通过 `Captcha` 实例的 `verifyToken(captchaKey, userInput)`（protected 方法，需子类暴露或反射）完成：
+验证统一通过 `CaptchaManager.verify(captchaKey, userInput)`（合并凭证两参）完成；验证码是**一次性**的 —— 无论验证成功还是失败，nonce 都会被消费，同一凭证无法再次提交：
 
 ```java
 import com.weacsoft.jaravel.vendor.captcha.*;
 
 CaptchaManager manager = CaptchaManager.createDefault();
-CaptchaResult result = manager.generate("number", "my-key");
+CaptchaResult result = manager.generate("number");
 
 // 前端同时拿到 imageBase64 与合并凭证 key
 String key = result.getKey();            // number.xxxx...
 String userInput = "AB23";
 
-// 有状态验证（推荐，一次性消费，验证后不可重复提交）：
-boolean ok1 = manager.verify(key, userInput);
-
-// 若要使用无状态 token 验证，需扩展 Captcha 暴露 verifyToken，
-// 或直接拿到 AbstractCaptcha 子类实例（protected 方法）：
-// boolean ok2 = ((AbstractCaptcha) manager.get("number")).verifyToken(result.getCaptchaKey(), userInput);
+// 验证（一次性消费：成功或失败后该凭证即失效，重复提交会得到「已被使用」）：
+boolean ok = manager.verify(key, userInput);
 ```
 
-> **有状态 vs 无状态**：
-> - 有状态（`verify`）：从 `CaptchaStore` 取出答案并一次性删除（同时消费 nonce），验证后不可重复使用，更安全。
-> - 无状态（`verifyToken`）：不依赖服务端存储，token 自带答案与过期时间，但 token 被截获后可在有效期内重复使用。
+> **一次性语义**：
+> - `verify(captchaKey, userInput)`：解密 token → **原子占用 nonce** → 比对答案；占用失败即「已被使用」。
+> - 并发提交同一凭证时，只有一个请求能通过（原子占用保证）；失败尝试同样烧掉 nonce，用于防暴力尝试。
+> - 因此不要再使用「三参 `verify(type, key, input)`」写法（第三个参数是**加密密钥**，语义完全不同）。
 
 ---
 
@@ -868,7 +867,7 @@ props.setBackgroundImagePath("captcha/backgrounds/scene1.jpg");
 // props.setBackgroundImageBase64(base64);
 
 SliderCaptcha slider = new SliderCaptcha(new MemoryCaptchaStore(), props);
-CaptchaResult result = slider.generate("my-key");  // 使用自定义背景图
+CaptchaResult result = slider.generate();  // 使用自定义背景图
 ```
 
 ### 10.4 base64 图片构造示例
@@ -983,7 +982,7 @@ props.setWatermarkOpacity(0.3f);
 props.setWatermarkScale(0.2f);
 
 NumberCaptcha captcha = new NumberCaptcha(new MemoryCaptchaStore(), props);
-CaptchaResult result = captcha.generate("my-key");  // 图片同时含文字水印与图片水印
+CaptchaResult result = captcha.generate();  // 图片同时含文字水印与图片水印
 ```
 
 ---
@@ -1168,7 +1167,7 @@ public class IdiomCaptcha extends AbstractCaptcha {
 CaptchaManager manager = CaptchaManager.createDefault();
 manager.register(new IdiomCaptcha(manager.getStore(), manager.getProperties()));
 
-CaptchaResult result = manager.generate("idiom", key);
+CaptchaResult result = manager.generate("idiom");
 boolean ok = manager.verify(result.getKey(), "一帆风顺");
 ```
 
@@ -1396,7 +1395,7 @@ public CaptchaResult generate(@RequestParam String type,
     // 注册对应类型的验证码（使用覆盖后的配置）
     // ... 或直接通过 Captcha 实例生成
     String key = UUID.randomUUID().toString();
-    return tempManager.generate(type, key);
+    return tempManager.generate(type);
 }
 ```
 

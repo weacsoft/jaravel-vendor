@@ -121,6 +121,15 @@ public class CaptchaProperties {
     /** 加密密钥 */
     private String encryptionKey = "jaravel-captcha-default-key";
 
+    /**
+     * 密钥形态不可用时是否直接中止启动（默认 {@code false}）。
+     * <p>
+     * 形态问题（RSA 缺私钥、仍在使用出厂默认密钥、未配置 {@code jaravel.key} 而使用随机临时密钥）
+     * 默认只打 ERROR —— 直接 fail-fast 会让既有部署在升级后无法启动，属破坏性变更；
+     * 对安全要求高的环境可打开本开关（审计 N1，专家建议分档）。
+     */
+    private boolean failFastOnInvalidKey = false;
+
     // 场景白名单
     /**
      * 命名场景白名单：场景名 → 差异化配置。
@@ -136,6 +145,9 @@ public class CaptchaProperties {
 
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
+
+    public boolean isFailFastOnInvalidKey() { return failFastOnInvalidKey; }
+    public void setFailFastOnInvalidKey(boolean failFastOnInvalidKey) { this.failFastOnInvalidKey = failFastOnInvalidKey; }
 
     public int getWidth() { return width; }
     public void setWidth(int width) { this.width = width; }

@@ -1141,10 +1141,40 @@ public abstract class WireController {
         } catch (Exception e) {
             String stable = globalAppKey();
             if (stable != null && !stable.isBlank()) {
-                return "wire-app-key:" + stable;
+                // 降级必须可见（审计 F1）：从「按会话绑定」降级为「进程级派生密钥」后，
+                // 任何会话中持有同一快照串的请求都能通过校验；旧实现静默降级、且异常会被
+                // 上层记成「snapshot 篡改」，把配置问题伪装成攻击。
+                if (SESSION_KEY_FALLBACK_WARNED.compareAndSet(false, true)) {
+                    log.error("[wire] 会话不可用，快照签名密钥降级为进程级派生密钥（不再按会话绑定）。"
+                            + "请注册可用的 SessionStore。原因: {}", e.getMessage());
+                }
+                return deriveSnapshotKey(stable);
             }
             throw new TamperedSnapshotException("Wire 快照密钥不可用（无 Session 且未配置 jaravel.key）: "
                     + e.getMessage());
+        }
+    }
+
+    /** 「会话不可用 → 降级」的告警只打一次 */
+    private static final java.util.concurrent.atomic.AtomicBoolean SESSION_KEY_FALLBACK_WARNED =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    /**
+     * 从全局应用密钥派生「快照签名专用」密钥（用途分离，审计 F1）。
+     * <p>
+     * 直接拿全局密钥当签名密钥会把「一把钥匙多处用」，派生后各用途互不影响。
+     *
+     * @param appKey 全局应用密钥
+     * @return 派生密钥
+     */
+    private static String deriveSnapshotKey(String appKey) {
+        try {
+            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] derived = digest.digest((appKey + "|wire-snapshot")
+                    .getBytes(StandardCharsets.UTF_8));
+            return "wire-derived:" + Base64.getEncoder().encodeToString(derived);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 不可用", e);
         }
     }
 

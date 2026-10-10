@@ -78,9 +78,23 @@ public class MakeModelFromMigrationCommand extends ArtisanCommand {
         info("解析迁移文件目录: " + migrationDir);
 
         Map<String, ParsedTable> tables = parser.parseAll(migrationDir);
+
+        // 解析失败必须可见且影响退出码（审计 M19）：旧实现静默跳过失败迁移，
+        // 调用方拿到「缺表」的结果却仍看到命令成功。这里打印失败清单并返回非 0。
+        List<String> parseFailures = parser.lastFailures();
+        if (!parseFailures.isEmpty()) {
+            error("有 " + parseFailures.size() + " 个迁移无法解析（对应的表会缺失）:");
+            parseFailures.forEach(f -> error("  - " + f));
+        }
+
         if (tables.isEmpty()) {
             error("未在迁移目录中找到任何表定义: " + migrationDir);
             error("请检查 jaravel.artisan.make.base-package 和 output-dir 配置");
+            return 1;
+        }
+
+        if (!parseFailures.isEmpty()) {
+            // 不生成模型：以不完整的结果生成会产出缺列的 Model（比失败更危险）
             return 1;
         }
 

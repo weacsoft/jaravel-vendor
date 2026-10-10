@@ -199,6 +199,12 @@ public class JwtService {
      * <p>
      * 校验 refresh token：签名有效、未过期、未在黑名单中、且声明 {@code type=refresh}。
      * 校验通过后签发新的 access token。
+     * <p>
+     * <b>本方法不做轮换</b>（语义保持不变）：现有协议只把 access token 通过
+     * {@code X-New-Token} 交回客户端，<b>没有任何通道下发新的 refresh token</b> ——
+     * 若在此拉黑旧 refresh，客户端刷新一次后就再也无法刷新（功能性破坏）。需要轮换请使用
+     * {@link #refreshPair(String)}。已知限制：同一 refresh token 在 {@code refreshTtl} 内可被重放，
+     * 除非启用黑名单并配合 {@link #refreshPair(String)}（审计 N4）。
      *
      * @param refreshToken refresh token
      * @return 新的 access token，校验失败返回 {@code null}
@@ -210,6 +216,10 @@ public class JwtService {
                 return null;
             }
             if (isBlacklisted(refreshToken)) {
+                // 重用检测：收到已失效的 refresh token 是「凭证被盗后重放」的强信号
+                org.slf4j.LoggerFactory.getLogger(JwtService.class).error(
+                        "[jwt] 收到已失效（黑名单中）的 refresh token —— 可能是凭证被盗后的重放，"
+                                + "建议撤销该 subject 的全部令牌");
                 return null;
             }
             return generate(claims.getSubject());
@@ -217,6 +227,59 @@ public class JwtService {
             return null;
         }
     }
+
+    /**
+     * 用 refresh token 换取<b>令牌对</b>（新 access + 新 refresh），并**旧 refresh 用后即失效**（审计 N4）。
+     * <p>
+     * 这是<b>可选的增量 API</b>：单次刷新即完成轮换，客户端拿到新的一组令牌，旧 refresh 被拉黑，
+     * 因此被盗的 refresh token 只能使用一次。轮换依赖黑名单：
+     * <ul>
+     *   <li>黑名单可用（{@code blacklistEnabled=true} 且有 CacheStore）→ 真正轮换；</li>
+     *   <li>不可用 → 打一次性 WARN 并仍返回令牌对，但<b>旧 refresh 依然有效</b>（不假装已轮换）。</li>
+     * </ul>
+     * 新 refresh token 的交付通道（新增响应头或由业务 controller 返回）属协议决策，
+     * 框架不擅自增加响应头 —— 需要时由调用方自行下发。
+     *
+     * @param refreshToken 旧 refresh token
+     * @return 令牌对；校验失败返回 {@code null}
+     */
+    public TokenPair refreshPair(String refreshToken) {
+        try {
+            Claims claims = parse(refreshToken);
+            if (!"refresh".equals(claims.get("type"))) {
+                return null;
+            }
+            if (isBlacklisted(refreshToken)) {
+                org.slf4j.LoggerFactory.getLogger(JwtService.class).error(
+                        "[jwt] 收到已失效（黑名单中）的 refresh token —— 可能是凭证被盗后的重放（refreshPair）");
+                return null;
+            }
+            if (config.isBlacklistEnabled() && blacklistStore != null) {
+                blacklist(refreshToken);
+            } else if (ROTATION_DISABLED_WARNED.compareAndSet(false, true)) {
+                org.slf4j.LoggerFactory.getLogger(JwtService.class).warn(
+                        "[jwt] refresh 轮换未生效（黑名单未启用/无 CacheStore）：旧 refresh token "
+                                + "在有效期内仍可重放。请启用 jaravel.jwt.blacklist-enabled 并使用共享 CacheStore。");
+            }
+            String subject = claims.getSubject();
+            return new TokenPair(generate(subject), generateRefreshToken(subject));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * 令牌对（access + refresh）。
+     *
+     * @param accessToken  新的 access token
+     * @param refreshToken 新的 refresh token
+     */
+    public record TokenPair(String accessToken, String refreshToken) {
+    }
+
+    /** refresh 轮换不可用的告警只打一次 */
+    private static final java.util.concurrent.atomic.AtomicBoolean ROTATION_DISABLED_WARNED =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
 
     // ==================== 宽限期 ====================
 

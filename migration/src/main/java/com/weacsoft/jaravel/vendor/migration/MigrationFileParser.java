@@ -53,6 +53,21 @@ public class MigrationFileParser {
     private static final Logger log = LoggerFactory.getLogger(MigrationFileParser.class);
 
     /**
+     * 最近一次解析中「确实存在但无法解析」的迁移（类名 + 原因）。
+     * <p>
+     * <b>只记录真正的失败</b>：目录不存在 / 目录内没有 {@code .java} 时回退 classpath 是
+     * <b>合法路径</b>（新检出、纯 classpath 部署），不计入失败（审计 M19 要求收窄范围）。
+     */
+    private final List<String> failures = new ArrayList<>();
+
+    /**
+     * @return 最近一次解析的失败清单（<b>只读快照</b>）；无失败返回空列表
+     */
+    public List<String> lastFailures() {
+        return List.copyOf(failures);
+    }
+
+    /**
      * 解析指定目录下所有迁移文件，返回表名到表定义的映射。
      * <p>
      * 若目录存在且包含 {@code .java} 文件，使用 DIRECTORY 模式编译；
@@ -62,6 +77,7 @@ public class MigrationFileParser {
      * @return 表名 → {@link ParsedTable} 映射（按表名排序），无迁移时返回空 Map
      */
     public Map<String, ParsedTable> parseAll(String migrationDir) {
+        failures.clear();
         MigrationScanner scanner = new MigrationScanner();
         try {
             loadMigrations(scanner, migrationDir);
@@ -111,7 +127,11 @@ public class MigrationFileParser {
                     scanner.compileFromDirectory(dir);
                     return;
                 } catch (Exception e) {
-                    log.warn("[migration-parser] 目录编译失败，回退到 classpath: {}", e.getMessage());
+                    // 目录里确有 .java 源文件却编译失败：classpath 回退仍可成功（合法部署形态：
+                    // 只带已编译类运行），但这次回退会让「模型来自旧 class」而不自知，必须显式可见
+                    // （审计 M19：只 log.warn 太安静）。默认不致命，以免打断 JRE-only 部署。
+                    log.error("[migration-parser] 目录编译失败（{} 个 .java 文件），已回退 classpath —— "
+                            + "生成的模型可能来自旧 class：{}", javaFiles.length, e.getMessage(), e);
                 }
             } else {
                 log.info("[migration-parser] 目录无 .java 文件，尝试 classpath 加载");
@@ -168,7 +188,12 @@ public class MigrationFileParser {
                 log.debug("[migration-parser] 解析迁移: {} ({} 张表)",
                     className, schema.getBlueprints().size());
             } catch (Exception e) {
-                log.warn("[migration-parser] 无法解析迁移 {}: {}", className, e.getMessage());
+                // 文件确实存在却解析失败（编译/实例化/up() 抛异常）→ 必须可见：
+                // 旧实现只 log.warn 后继续，静默产出「缺表」结果且调用方仍返回成功（审计 M19）。
+                failures.add(className + " (" + e.getClass().getSimpleName()
+                        + ": " + e.getMessage() + ")");
+                log.error("[migration-parser] 无法解析迁移 {}（该表将从结果中缺失）: {}",
+                        className, e.getMessage(), e);
             }
         }
 
