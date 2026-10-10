@@ -279,7 +279,9 @@ public class AetherUploadManager {
             if (existingId != null) {
                 UploadHeader header = loadHeader(g, existingId);
                 if (header != null && UploadHeader.STATUS_UPLOADING.equals(header.getStatus())
-                        && header.getSize() == size && Files.exists(Paths.get(header.getTempPath()))) {
+                        && header.getSize() == size
+                        && chunkSizeMatches(header, clientChunkSize)
+                        && Files.exists(Paths.get(header.getTempPath()))) {
                     dispatch(new UploadPreparedEvent(g.name, header.getResourceId(), header.getFilename(),
                             size, header.getTotalChunks(), header.getChunkSize(), true));
                     return new UploadResult(header, header.uploadedChunkList(), true);
@@ -346,6 +348,24 @@ public class AetherUploadManager {
 
         dispatch(new UploadPreparedEvent(g.name, resourceId, safeName, size, totalChunks, chunkSize, false));
         return new UploadResult(header, header.uploadedChunkList(), false);
+    }
+
+    /**
+     * 续传时客户端声明的分片大小是否与既有任务一致。
+     * <p>
+     * 官方前端按「服务端回显的 chunkSize」切分，正常情况下必然一致；但第三方前端若按自己的
+     * chunkSize 切分，续传后写分片会因「分片大小不符」被拒（契约脆弱点）。这里改为
+     * 「声明值不一致就不复用旧任务」，让客户端重新 prepare 并拿到服务端认可的分片大小。
+     *
+     * @param header          既有任务记录头
+     * @param clientChunkSize 客户端本次声明的分片大小（可空）
+     * @return 一致（或客户端未声明）返回 true
+     */
+    private static boolean chunkSizeMatches(UploadHeader header, Long clientChunkSize) {
+        if (clientChunkSize == null || clientChunkSize <= 0) {
+            return true;
+        }
+        return clientChunkSize == header.getChunkSize();
     }
 
     /**

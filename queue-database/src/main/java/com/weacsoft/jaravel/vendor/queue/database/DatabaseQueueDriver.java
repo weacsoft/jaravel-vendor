@@ -82,6 +82,9 @@ public class DatabaseQueueDriver implements QueueDriver {
     /** 抢占重试的基础退避毫秒（第 n 次退避 = n × 本值） */
     private static final long POP_RETRY_BACKOFF_MS = 10L;
 
+    /** 数据库产品名（懒探测并缓存；用于选择 SKIP LOCKED 方言，探测失败按不支持处理） */
+    private volatile String productName;
+
     /** 数据源（来自 database 模块 {@code ConnectionManager} 注册表或业务方显式传入） */
     private final DataSource dataSource;
 
@@ -238,6 +241,67 @@ public class DatabaseQueueDriver implements QueueDriver {
         long now = System.currentTimeMillis();
         long expired = now - (retryAfterSeconds * 1000);
 
+        // 优先走「方言感知的 SKIP LOCKED 抢占」：SELECT ... FOR UPDATE SKIP LOCKED 与 UPDATE
+        // 处于同一事务，候选行被锁住，其他实例直接跳过 —— 无竞争重试、无空转。
+        String claimSql = claimSqlFor(productName(), table);
+        if (claimSql != null) {
+            QueuedJob claimed = claimBySkipLocked(claimSql, queueName, now, expired);
+            if (claimed != null) {
+                return claimed;
+            }
+            // SKIP LOCKED 下返回 null 就是「确实没有可执行任务」，无需退避重试
+            return null;
+        }
+        return popOptimistic(queueName, now, expired);
+    }
+
+    /**
+     * SKIP LOCKED 抢占：同一事务内「锁定候选行 + 预约」。
+     *
+     * @param claimSql  方言特化的候选查询（含 FOR UPDATE SKIP LOCKED）
+     * @param queueName 队列名
+     * @param now       当前时间戳
+     * @param expired   预约过期阈值（早于此值的预约视为可抢占）
+     * @return 抢占到的任务；无候选返回 null
+     */
+    private QueuedJob claimBySkipLocked(String claimSql, String queueName, long now, long expired) {
+        try {
+            return jdbc.inTransaction(tx -> {
+                List<QueuedJob> jobs = tx.queryMapped(claimSql, rs -> {
+                    long id = rs.getLong("id");
+                    int attempts = rs.getInt("attempts");
+                    String payloadStr = rs.getString("payload");
+                    long availableAt = rs.getLong("available_at");
+                    long createdAt = rs.getLong("created_at");
+                    return new QueuedJob(id, queueName, payloadStr, attempts + 1, now, availableAt, createdAt);
+                }, queueName, now, expired);
+                if (jobs.isEmpty()) {
+                    return null;
+                }
+                QueuedJob job = jobs.get(0);
+                // 行已在事务内被锁定 → 这条 UPDATE 不会再与其它实例竞争
+                tx.update("UPDATE " + table + " SET reserved_at = ?, attempts = attempts + 1 WHERE id = ?",
+                        now, job.getId());
+                return job;
+            });
+        } catch (RuntimeException e) {
+            // 方言判断失误（例如实际不支持 SKIP LOCKED）时降级到乐观锁，避免整个消费停摆
+            logger.warn("[queue-db] SKIP LOCKED 抢占失败，降级为乐观锁路径: {}", e.getMessage());
+            return popOptimistic(queueName, now, expired);
+        }
+    }
+
+    /**
+     * 乐观锁抢占（降级路径）：可移植的 {@code id = (SELECT MIN(id) ...)} + 条件 UPDATE + 竞争退避重试。
+     * <p>
+     * 该路径在<b>任何</b>支持标准 SQL 的库上都正确（架构评审结论）；SKIP LOCKED 不可用时走这里。
+     *
+     * @param queueName 队列名
+     * @param now       当前时间戳
+     * @param expired   预约过期阈值
+     * @return 抢占到的任务；无候选或多次竞争失败返回 null
+     */
+    private QueuedJob popOptimistic(String queueName, long now, long expired) {
         // 可移植写法：用「id = (SELECT MIN(id) ...)」代替 LIMIT 1（Oracle / SQL Server 不支持 LIMIT）
         String selectSql = "SELECT id, queue, payload, attempts, "
                 + "COALESCE(reserved_at, 0) as reserved_at, available_at, created_at "
@@ -278,6 +342,75 @@ public class DatabaseQueueDriver implements QueueDriver {
             }
         }
         return null;
+    }
+
+    /**
+     * 按数据库产品名生成 SKIP LOCKED 抢占 SQL；<b>不支持的方言返回 {@code null}</b>（调用方降级）。
+     * <p>
+     * 各方言差异：
+     * <ul>
+     *   <li>{@code MySQL} / {@code MariaDB} / {@code PostgreSQL} / {@code H2}：
+     *       {@code ORDER BY id ASC LIMIT 1 FOR UPDATE SKIP LOCKED}</li>
+     *   <li>{@code Oracle}：{@code FETCH FIRST 1 ROWS ONLY FOR UPDATE SKIP LOCKED}（无 LIMIT）</li>
+     *   <li>{@code SQL Server}（含 Microsoft SQL Server）：用
+     *       {@code WITH (UPDLOCK, READPAST)} + {@code TOP 1}（它没有 SKIP LOCKED 关键字）</li>
+     *   <li>{@code SQLite}：无行级锁，返回 {@code null} 走乐观锁</li>
+     * </ul>
+     * 该方法是纯函数，便于用单测固定各方言输出（不需真实 Oracle/SQL Server 环境）。
+     *
+     * @param productName JDBC 数据库产品名（可空）
+     * @return 抢占 SQL；不支持返回 null
+     */
+    static String claimSqlFor(String productName) {
+        return claimSqlFor(productName, "jobs");
+    }
+
+    /**
+     * 按数据库产品名 + 表名生成抢占 SQL。
+     *
+     * @param productName JDBC 数据库产品名（可空）
+     * @param table       任务表名
+     * @return 抢占 SQL；不支持的方言返回 null
+     */
+    static String claimSqlFor(String productName, String table) {
+        String name = productName == null ? "" : productName.toLowerCase();
+        // 只有「确定支持」的方言才走 SKIP LOCKED；其余（SQLite/未知/第三方库）一律返回 null
+        // 交给乐观锁路径 —— 乐观锁在任何标准 SQL 库上都正确，宁可少一层优化也不要不可预期的报错。
+        boolean skipLockedCapable = name.contains("mysql") || name.contains("mariadb")
+                || name.contains("postgres") || name.contains("h2");
+        boolean oracle = name.contains("oracle");
+        boolean sqlServer = name.contains("sql server") || name.contains("microsoft");
+        if (!skipLockedCapable && !oracle && !sqlServer) {
+            return null;
+        }
+        String columns = "id, queue, payload, attempts, "
+                + "COALESCE(reserved_at, 0) as reserved_at, available_at, created_at";
+        String where = " WHERE queue = ? AND available_at <= ? "
+                + "AND (reserved_at IS NULL OR reserved_at < ?)";
+        if (sqlServer) {
+            // SQL Server 没有 SKIP LOCKED 关键字：UPDLOCK 取更新锁 + READPAST 跳过已锁行
+            return "SELECT TOP 1 " + columns + " FROM " + table
+                    + " WITH (UPDLOCK, READPAST)" + where + " ORDER BY id ASC";
+        }
+        String limit = oracle ? " FETCH FIRST 1 ROWS ONLY" : " LIMIT 1";
+        return "SELECT " + columns + " FROM " + table + where
+                + " ORDER BY id ASC" + limit + " FOR UPDATE SKIP LOCKED";
+    }
+
+    /** 懒探测数据库产品名（仅用于选择抢占方言；探测失败按不支持处理） */
+    private String productName() {
+        String cached = productName;
+        if (cached != null) {
+            return cached;
+        }
+        try (java.sql.Connection conn = dataSource.getConnection()) {
+            cached = conn.getMetaData().getDatabaseProductName();
+        } catch (Exception e) {
+            logger.debug("[queue-db] 探测数据库产品名失败，使用乐观锁路径: {}", e.getMessage());
+            cached = "";
+        }
+        productName = cached;
+        return cached;
     }
 
     @Override

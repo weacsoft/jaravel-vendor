@@ -17,7 +17,8 @@
   - `incrementAndGet`：**乐观 CAS + 时间预算**（读值→计算→`WHERE value = 读到的原值` 条件更新，失败重读重算），**保留原 `expires_at`**；预算内始终失败时**抛错而不是静默返回 0**（绝不静默丢一次自增）。实测发现 H2 MVStore 下 `FOR UPDATE` 不足以防丢更新，故改用与方言无关的 CAS；
   - 新增 `DatabaseCacheAtomicityTest`（7 例：并发 add 唯一胜出、并发 pull 唯一取到、并发自增不丢更新、过期为不存在、不覆盖已有值、自增保留 TTL、新键带 TTL）。
 - **`storage-database`：`put` 事务化**：「清旧分片 + 清旧元信息 + 写全部分片 + 写元信息」收进同一事务，原实现中途失败会留下「元信息已删、分片只写一半」的半截文件。
-- **未完成（已登记）**：`queue-database` 的 `pop` 尚未切到 `FOR UPDATE SKIP LOCKED` —— 当前「乐观锁 + 竞争退避重试」路径本身正确且安全（架构师评审结论），切换属性能优化，且需要方言矩阵测试（Oracle/SQL Server 在当前测试基建下无法覆盖）。
+- **`queue-database`：抢占切换为方言感知的 `SKIP LOCKED`（本轮完成，替代原先登记的「未完成」项）**：`pop` 优先走「`SELECT … FOR UPDATE SKIP LOCKED` + 同一事务内 UPDATE」的无竞争抢占（依赖上一项的 `JdbcExecutor.inTransaction`），候选行被锁住时其他实例直接跳过，不再有竞争重试与空转；按数据库产品名生成方言语句：MySQL/MariaDB/PostgreSQL/H2 用 `LIMIT 1 FOR UPDATE SKIP LOCKED`、Oracle 用 `FETCH FIRST 1 ROWS ONLY FOR UPDATE SKIP LOCKED`、SQL Server 用 `TOP 1 … WITH (UPDLOCK, READPAST)`；**SQLite 与未知方言返回 null 直接走乐观锁**（该路径在任何标准 SQL 库上都正确，宁可少一层优化也不要不可预期报错），方言判断失误时运行期也会降级并告警。新增 `DatabaseQueueClaimSqlTest`（6 例方言矩阵：各方言 SQL 形状 + 未知方言降级 + 自定义表名）；H2 上 8 线程 × 40 任务并发用例实测走 SKIP LOCKED（日志无降级告警）且无重复预约。
+- **`core/queue/QueueDriver` 补齐逐方法契约文档**（架构师评审指出「接口逐方法零 javadoc」正是「javadoc 说 SKIP LOCKED 而实现没有」这类文档漂移的根因）：明确 `push`/`pop`/`delete`/`release` 的语义、**投递保证为「至少一次」且消费方必须幂等**、`pop` 返回 null 只应表示「没有可执行任务」而不得混入抢占竞争失败、以及 `size()` 的口径（只统计就绪任务，不含延迟与预约中，驱动间可能略有差异）。
 
 ### Changed（变更 · 第五轮：auth/session 模块拆分 + 归属校验 + wechat 语义调整）
 

@@ -137,6 +137,22 @@ class AetherUploadManagerTest {
     }
 
     @Test
+    void 续传时分片大小不一致则不复用旧任务() {
+        // 匿名续传需显式开启（默认关闭，见上一个用例）
+        properties.getGroups().get("file").setAnonymousResumeEnabled(true);
+        byte[] content = randomBytes(1024 * 4);
+
+        UploadResult first = manager.prepare("file", "resume2.bin", content.length, null, "id-cs", 1024L);
+        manager.writeChunk("file", first.resourceId, 0, chunkOf(content, 0, 1024));
+
+        // 客户端改用不同分片大小：不得续传（否则后续写分片会因「分片大小不符」被拒）
+        UploadResult second = manager.prepare("file", "resume2.bin", content.length, null, "id-cs", 2048L);
+
+        assertFalse(second.resumed, "分片大小声明不一致时不应复用旧任务");
+        assertFalse(first.resourceId.equals(second.resourceId), "应新建任务并回显服务端认可的分片大小");
+    }
+
+    @Test
     void 重复上传同一分片不应重复计数() {
         byte[] content = randomBytes(1024 * 3);
         UploadResult prepared = manager.prepare("file", "dup.bin", content.length, null, null, null);
