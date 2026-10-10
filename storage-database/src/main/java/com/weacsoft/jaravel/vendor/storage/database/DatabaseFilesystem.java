@@ -190,9 +190,106 @@ public class DatabaseFilesystem implements Filesystem {
         return out.toByteArray();
     }
 
+    /**
+     * 流式读取（审计 M8/O1）：<b>按分片惰性读取</b>，内存占用 O(chunkSize) 而不是整个文件。
+     * <p>
+     * 旧实现是 {@code new ByteArrayInputStream(read(path))} —— 先把整个文件读进堆再包一层流，
+     * 配置 {@code disk: <数据库磁盘>} 时大文件下载会 OOM（与「流式」的名字完全相反）。
+     * <p>
+     * 实现方式：先取分片总数，再按需逐片查询（每片一条 SELECT），因此任何时刻只持有一个分片。
+     *
+     * @param path 相对路径
+     * @return 惰性输入流
+     */
     @Override
     public InputStream readStream(String path) {
-        return new ByteArrayInputStream(read(path));
+        String norm = normalize(path);
+        Long total = jdbc.queryForObject(
+                "SELECT size FROM " + filesTable + " WHERE disk = ? AND path = ?", Long.class, name, norm);
+        if (total == null) {
+            throw StorageException.notFound(norm);
+        }
+        final long totalSize = total;
+        final int chunkCount = (int) ((totalSize + chunkSize - 1) / chunkSize);
+        final boolean isBinary = binary;
+
+        return new InputStream() {
+
+            private int nextIndex = 0;
+            private byte[] current = new byte[0];
+            private int offset = 0;
+            private boolean exhausted = false;
+
+            private boolean ensure() {
+                while (offset >= current.length) {
+                    if (exhausted || nextIndex >= chunkCount) {
+                        return false;
+                    }
+                    byte[] chunk = readChunk(norm, nextIndex++, isBinary);
+                    if (chunk == null) {
+                        exhausted = true;
+                        return false;
+                    }
+                    current = chunk;
+                    offset = 0;
+                }
+                return true;
+            }
+
+            @Override
+            public int read() {
+                if (!ensure()) {
+                    return -1;
+                }
+                return current[offset++] & 0xFF;
+            }
+
+            @Override
+            public int read(byte[] target, int off, int len) {
+                if (len == 0) {
+                    return 0;
+                }
+                if (!ensure()) {
+                    return -1;
+                }
+                int available = Math.min(len, current.length - offset);
+                System.arraycopy(current, offset, target, off, available);
+                offset += available;
+                return available;
+            }
+
+            @Override
+            public int available() {
+                return current.length - offset;
+            }
+        };
+    }
+
+    /**
+     * 读取单个分片（O(chunkSize) 内存）。
+     *
+     * @param norm     规范化路径
+     * @param index    分片序号
+     * @param isBinary 是否二进制列
+     * @return 分片字节；不存在返回 null
+     */
+    private byte[] readChunk(String norm, int index, boolean isBinary) {
+        String col = contentColumn;
+        List<ChunkRow> rows = jdbc.queryMapped(
+                "SELECT chunk_index, " + col + " FROM " + chunksTable +
+                        " WHERE disk = ? AND path = ? AND chunk_index = ?",
+                rs -> new ChunkRow(rs.getInt("chunk_index"),
+                        isBinary ? rs.getBytes(col) : null,
+                        isBinary ? null : rs.getString(col)),
+                name, norm, index);
+        if (rows.isEmpty()) {
+            return null;
+        }
+        ChunkRow row = rows.get(0);
+        if (isBinary) {
+            return row.binary;
+        }
+        return row.text == null || row.text.isEmpty() ? new byte[0] : Base64.getDecoder().decode(row.text);
     }
 
     // ==================== 写入 ====================
@@ -231,33 +328,202 @@ public class DatabaseFilesystem implements Filesystem {
         });
     }
 
+    /**
+     * 流式写入（审计 M8/O1）：<b>边读边写分片</b>，内存占用 O(chunkSize) 而不是整个文件。
+     * <p>
+     * 旧实现 {@code input.readAllBytes()} 会把整个上传文件读进堆 —— 上传大文件时与「流式」的名字
+     * 相反地 OOM（{@code AetherUploadManager.moveToDisk} 的「内存占用恒定」注释因此不成立）。
+     * 全部分片在同一事务内写入，失败整体回滚，不留半截文件。
+     *
+     * @param path  相对路径
+     * @param input 输入流（不关闭，由调用方负责）
+     * @return 写入字节数
+     */
     @Override
     public long putStream(String path, InputStream input) {
+        String norm = normalize(path);
+        long now = System.currentTimeMillis();
+        boolean isBinary = binary;
+        String col = contentColumn;
+        int bufferSize = (int) Math.max(1, Math.min(chunkSize, Integer.MAX_VALUE - 8));
         try {
-            byte[] all = input.readAllBytes();
-            put(path, all);
-            return all.length;
-        } catch (IOException e) {
-            throw StorageException.writeFailed(path, e);
+            return jdbc.inTransaction(tx -> {
+                tx.update("DELETE FROM " + chunksTable + " WHERE disk = ? AND path = ?", name, norm);
+                tx.update("DELETE FROM " + filesTable + " WHERE disk = ? AND path = ?", name, norm);
+
+                long written = 0;
+                int index = 0;
+                byte[] buffer = new byte[bufferSize];
+                while (true) {
+                    int filled;
+                    try {
+                        filled = readFully(input, buffer, bufferSize);
+                    } catch (IOException e) {
+                        // 受检异常不能穿过 inTransaction（它只保证回滚并包装运行时异常）
+                        throw new java.io.UncheckedIOException(e);
+                    }
+                    if (filled <= 0) {
+                        break;
+                    }
+                    byte[] chunk = filled == bufferSize ? buffer.clone() : java.util.Arrays.copyOf(buffer, filled);
+                    Object chunkValue = isBinary ? chunk : Base64.getEncoder().encodeToString(chunk);
+                    tx.update("INSERT INTO " + chunksTable +
+                                    " (disk, path, chunk_index, " + col + ", size, created_at, updated_at)" +
+                                    " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            name, norm, index, chunkValue, filled, now, now);
+                    written += filled;
+                    index++;
+                }
+
+                tx.update("INSERT INTO " + filesTable +
+                                " (disk, path, visibility, mime_type, size, chunk_count, created_at, updated_at)" +
+                                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        name, norm, defaultVisibility.value(), MimeTypeGuesser.guess(norm),
+                        written, index, now, now);
+                return written;
+            });
+        } catch (java.io.UncheckedIOException e) {
+            throw StorageException.writeFailed(path, e.getCause());
         }
     }
 
-    @Override
-    public void append(String path, byte[] contents) {
-        String norm = normalize(path);
-        byte[] existing = exists(norm) ? read(norm) : new byte[0];
-        byte[] merged = new byte[existing.length + contents.length];
-        System.arraycopy(existing, 0, merged, 0, existing.length);
-        System.arraycopy(contents, 0, merged, existing.length, contents.length);
-        put(norm, merged);
+    /**
+     * 尽量读满缓冲区（{@code InputStream.read} 允许提前返回）。
+     *
+     * @param input  输入流
+     * @param buffer 缓冲区
+     * @param length 期望长度
+     * @return 实际读入字节数；流结束返回 -1
+     * @throws IOException 读取失败
+     */
+    private static int readFully(InputStream input, byte[] buffer, int length) throws IOException {
+        int total = 0;
+        while (total < length) {
+            int read = input.read(buffer, total, length - total);
+            if (read < 0) {
+                return total == 0 ? -1 : total;
+            }
+            total += read;
+        }
+        return total;
     }
 
+    /**
+     * 追加内容（审计 M8/O2）。
+     * <p>
+     * 旧实现是「{@code read} 全量 → 拼接 → {@code put} 全量」：既把整个文件读进堆（大文件 OOM），
+     * 又是**跨事务的读-改-写**（并发追加丢更新）。
+     * <p>
+     * 现在：只读<b>最后一个分片</b>（≤ chunkSize）与新增内容拼接后重写该分片及其后续分片，
+     * 内存 O(chunkSize + 追加长度)；元信息更新用<b>大小 CAS</b>（{@code WHERE size = 读到的旧值}），
+     * 更新 0 行说明期间被别人追加过 → 重读重试，因此并发追加不再丢更新。
+     *
+     * @param path     相对路径
+     * @param contents 追加内容
+     */
+    @Override
+    public void append(String path, byte[] contents) {
+        if (contents == null || contents.length == 0) {
+            return;
+        }
+        String norm = normalize(path);
+        long now = System.currentTimeMillis();
+        boolean isBinary = binary;
+        String col = contentColumn;
+
+        for (int attempt = 0; attempt < APPEND_MAX_ATTEMPTS; attempt++) {
+          synchronized (appendLockFor(norm)) {
+            Long oldSizeValue = jdbc.queryForObject(
+                    "SELECT size FROM " + filesTable + " WHERE disk = ? AND path = ?", Long.class, name, norm);
+            long oldSize = oldSizeValue == null ? 0L : oldSizeValue;
+            int oldChunkCount = (int) ((oldSize + chunkSize - 1) / chunkSize);
+            byte[] tail = oldChunkCount == 0 ? new byte[0] : readChunk(norm, oldChunkCount - 1, isBinary);
+            if (tail == null) {
+                tail = new byte[0];
+            }
+            byte[] merged = new byte[tail.length + contents.length];
+            System.arraycopy(tail, 0, merged, 0, tail.length);
+            System.arraycopy(contents, 0, merged, tail.length, contents.length);
+
+            long newSize = oldSize + contents.length;
+            int startIndex = Math.max(0, oldChunkCount - 1);
+            List<byte[]> newChunks = split(merged, chunkSize);
+            int newChunkCount = startIndex + newChunks.size();
+
+            Boolean committed = jdbc.inTransaction(tx -> {
+                if (oldSizeValue == null) {
+                    tx.update("INSERT INTO " + filesTable +
+                                    " (disk, path, visibility, mime_type, size, chunk_count, created_at, updated_at)" +
+                                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                            name, norm, defaultVisibility.value(), MimeTypeGuesser.guess(norm),
+                            newSize, newChunkCount, now, now);
+                } else {
+                    int updated = tx.update("UPDATE " + filesTable +
+                                    " SET size = ?, chunk_count = ?, updated_at = ?" +
+                                    " WHERE disk = ? AND path = ? AND size = ?",
+                            newSize, newChunkCount, now, name, norm, oldSize);
+                    if (updated == 0) {
+                        return false;   // 期间被并发追加/覆盖 → 重读重试
+                    }
+                }
+                tx.update("DELETE FROM " + chunksTable +
+                        " WHERE disk = ? AND path = ? AND chunk_index >= ?", name, norm, startIndex);
+                for (int i = 0; i < newChunks.size(); i++) {
+                    byte[] c = newChunks.get(i);
+                    Object chunkValue = isBinary ? c : Base64.getEncoder().encodeToString(c);
+                    tx.update("INSERT INTO " + chunksTable +
+                                    " (disk, path, chunk_index, " + col + ", size, created_at, updated_at)" +
+                                    " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            name, norm, startIndex + i, chunkValue, c.length, now, now);
+                }
+                return true;
+            });
+            if (Boolean.TRUE.equals(committed)) {
+                return;
+            }
+          }
+        }
+        throw new StorageException("追加失败：并发冲突重试 " + APPEND_MAX_ATTEMPTS + " 次仍未成功: " + path);
+    }
+
+    /**
+     * 按路径分段锁：把「读旧长度 → 重写末片 → 更新元信息」整段串行化（同一 JVM 内）。
+     * <p>
+     * 为何必须有它：{@code UPDATE ... WHERE size = 旧值} 的 CAS 在 MVCC 快照语义下仍可能
+     * 基于过期快照成功提交（H2 MVStore 实测：并发追加 8000 字节只留下 1900），因此同一进程内
+     * 必须用锁串行；CAS 保留用于<b>跨实例</b>冲突检测（失败即重读重试）。
+     */
+    private static final int APPEND_LOCK_SEGMENTS = 64;
+    private static final Object[] APPEND_LOCKS = new Object[APPEND_LOCK_SEGMENTS];
+
+    static {
+        for (int i = 0; i < APPEND_LOCK_SEGMENTS; i++) {
+            APPEND_LOCKS[i] = new Object();
+        }
+    }
+
+    private static Object appendLockFor(String norm) {
+        return APPEND_LOCKS[Math.floorMod(norm.hashCode(), APPEND_LOCK_SEGMENTS)];
+    }
+
+    /** 追加时的最大 CAS 重试次数（并发追加同一文件） */
+    private static final int APPEND_MAX_ATTEMPTS = 5;
+
+    /**
+     * 流式写出（审计 M8/O1）：逐分片写目标流，内存 O(chunkSize)。
+     *
+     * @param path   相对路径
+     * @param output 目标流（不关闭）
+     * @return 写出字节数
+     */
     @Override
     public long writeTo(String path, OutputStream output) {
-        byte[] data = read(path);
-        try {
-            output.write(data);
-            return data.length;
+        String norm = normalize(path);
+        if (!exists(norm)) {
+            throw StorageException.notFound(path);
+        }
+        try (InputStream in = readStream(norm)) {
+            return in.transferTo(output);
         } catch (IOException e) {
             throw StorageException.readFailed(path, e);
         }

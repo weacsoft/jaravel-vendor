@@ -49,6 +49,55 @@ public class AetherUploadProperties {
     /** 默认组名 */
     private String defaultGroup = "file";
 
+    /**
+     * 临时文件暂存（PHP {@code upload_tmp_dir} 风格）。
+     * <p>
+     * 分片上传需要把未完成的内容写到磁盘临时文件（{@code .part}）。默认<b>关闭</b>：临时目录沿用
+     * 各组自己的 {@code temp-dir}（相对运行目录）。开启后所有组的临时文件统一落到 {@link SpoolConfig#getDir()}，
+     * 便于把它指到缓存盘/独立数据盘，避免大文件临时数据写满应用目录或挤占系统盘。
+     */
+    private SpoolConfig spool = new SpoolConfig();
+
+    /**
+     * 临时文件暂存配置（{@code jaravel.aether-upload.spool.*}）。
+     */
+    public static class SpoolConfig {
+
+        /** 是否启用统一下的临时目录（默认关闭，保持既有行为） */
+        private boolean enabled = false;
+
+        /**
+         * 临时文件目录；为空时使用系统临时目录下的 {@code jaravel-aether-uploads}。
+         * <p>
+         * 相对路径按运行目录（{@code user.dir}）解析；建议配置为缓存盘上的绝对路径。
+         */
+        private String dir;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getDir() {
+            return dir;
+        }
+
+        public void setDir(String dir) {
+            this.dir = dir;
+        }
+    }
+
+    public SpoolConfig getSpool() {
+        return spool;
+    }
+
+    public void setSpool(SpoolConfig spool) {
+        this.spool = spool == null ? new SpoolConfig() : spool;
+    }
+
     /** 应用到所有上传端点的全局中间件别名 */
     private List<String> middleware = new ArrayList<>();
 

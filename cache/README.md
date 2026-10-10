@@ -67,7 +67,7 @@ TTL 单位统一为**秒**（对齐 Laravel），`ttl <= 0` 表示永不过期�
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>cache</artifactId>
-    <version>0.2.0</version>
+    <version>0.1.3</version>
 </dependency>
 ```
 

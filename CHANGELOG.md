@@ -3,7 +3,7 @@
 本项目所有显著变更都记录在此文件。
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，语义化版本基于 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]（目标版本 0.2.0 · 开发中）
+## [Unreleased]（目标版本 0.1.3 · 开发中）
 
 - **M16 缓存命中值的类型还原（已完成实现 + 用例）**：`find`/`findAll` 命中后做元素级还原（`Map → 实体`，按**元素嗅探**判断而非按 store 名），`query` 的「任意 Object」契约**不做还原**；array（内存）store 命中的 gaarason **托管实体**经 `isInstance` 短路**原样返回同一实例**（不会被 JSON 转成游离 POJO）。**不可还原时驱逐该键并回源 loader**（绝不返回错类型；「返回原值 + WARN」会让类型契约变成「有时实体、有时 Map」）。**注意**：JSON 往返会丢失懒加载/派生字段 —— 还原成功也可能有损，含派生/关联字段的实体不建议放进多机序列化 store（写进 javadoc 与告警文案）。新增 `ModelCacheTypeCoercionTest`（6 例：Map→实体、List&lt;Map&gt;→实体列表、不可还原→驱逐+回源、托管实体同一实例、query 不转换、未命中回填）。
 - **N4 交付协议（定稿为文档化，不引入响应头）**：`JwtService.refreshPair(...)` 返回 `record TokenPair(access, refresh)` 并拉黑旧 refresh；**框架不经响应头下发新 refresh token** ——
@@ -14,23 +14,33 @@
   - **残余（必须知晓）**：`fail-fast-on-invalid-key` **默认 false**，因此 RSA 误配（只给公钥/只给私钥）**仍表现为每请求 500**，只是启动多一条 ERROR；生产环境请显式置 `true` 以在启动期中止。
   - 核心 `CaptchaCrypto.create` 对「出厂默认 AES 密钥/空密钥」加一次性 WARN，覆盖非 Spring 直连路径。
 - **O3 凭证响应禁止缓存（安全，本轮新发现）**：`JwtTokenResponseFilter` 写 `X-New-Token` 时同时下发 `Cache-Control: no-store` 与 `Pragma: no-cache` —— RFC 6749 §5.1 要求令牌响应不可缓存，否则浏览器私有缓存/配置不当的共享缓存会留存凭证。
-- **O5 删除绕过签名的公开入口（0.2.0 破坏性窗口）**：`WireRequest.getData()` / `getMergedData()` 直接调用不验签的 `WireManager.decodeSnapshot`；仓库内**无任何调用方**（主流程走 `WireController` 的「先验签、后解析」），因此在破坏性版本内**直接删除**，而不是保留 `@Deprecated` 警告。
+- **O5 删除绕过签名的公开入口（0.1.3 未发布，破坏性窗口）**：`WireRequest.getData()` / `getMergedData()` 直接调用不验签的 `WireManager.decodeSnapshot`；仓库内**无任何调用方**（主流程走 `WireController` 的「先验签、后解析」），因此在破坏性版本内**直接删除**，而不是保留 `@Deprecated` 警告。
 - **R1 修正（本轮引入的高危缺陷）**：`BaseModel.PATCHED_ENTITY_MEMBERS` 换成 `WeakHashMap` 后**必须包 `synchronizedMap`** —— `WeakHashMap` 非线程安全，且 `contains` 内部会 `expungeStaleEntries()` 做结构性修改，锁外快路径与锁内 `add` 并发会丢条目/抛异常（等于把 M20 的故障类别搬到登记表上）。同时把「登记」移到「变更完成之后」（不变式：在集合中 ⇒ 已修补完成）。
 - **R5/R6 可观测性**：类型还原失败的告警由「进程级一次」改为**按模型类各一次**（第二个坏模型不再永久静默）；非内存 store 的告警文案改写为「还原可能**有损**（丢懒加载/派生字段）+ 缓存键不含租户维度 + `query` 不做还原」，不再声称「find/findAll 类型契约不成立」（已修）。
 
-### 已知限制与未登记项收口（终局评审提出，本轮登记）
+### Fixed（修复 · 第十一轮：内存与大文件（O1/O2/O4）——直接修复，不留登记）
 
-- **O1（高·可用性，未修）**：`storage-database` 的 `DatabaseFilesystem` **非流式** —— `putStream` 用 `input.readAllBytes()`、`readStream` 用 `new ByteArrayInputStream(read(path))`、`writeTo` 全量 `read`。触发条件：组配置 `disk: <数据库磁盘>` 后上传/下载**大文件** → 整个文件进堆，可能 OOM（审计 M8b）。`AetherUploadManager.moveToDisk` 的 javadoc 声称「内存占用恒定」在当前实现下**不成立**。事务化部分已在第九轮修复（`put` 走 `inTransaction`）。修复方向：分片边读边写 / 逐片查询返回流。
-- **O2（中·正确性，未修）**：`DatabaseFilesystem.append` 是「读全量 → 拼接 → 写回」，跨事务读 → 并发 append **丢更新**（`put` 事务化不能覆盖它）。修复方向：乐观 CAS（`WHERE size = 读到的长度`）+ 重试。
-- **O4（低·文档口径）**：`jaravel.redis.options.prefix` 只被 `RedisCacheDriver` 消费；`RedisQueueDriver` 仍硬编码 `jaravel:queue`、`RedisSessionStore` 用自己的 `prefix`。运维按该配置做「全局命名空间隔离」会误判（隔离目标对各自模块实际达成，但口径不一致）。已在此登记，后续统一或文档声明。
-- **R9（低·运维）**：N1 的 fail-fast 默认 false（见上），生产建议开启。
-- **R10（低·残余）**：`jaravel.key` 配成固定占位串（如 `changeme`）时无法识别为弱密钥。
-- **M16 残余**：若缓存元素是 ORM 代理类，`isInstance` 可能为 false → 走 JSON 还原可能损坏代理（登记）；`coerceOrNull` 在内存 store 命中时即使无需转换也会分配一次列表（微优化项）。
-- **M20 残余**：首次并发窗口仍存在（仓库无模型注册表，无法在启动期单线程枚举所有实体）；`PATCHED_ENTITY_MEMBERS` 为弱引用，GC 后可能重跑一次幂等修补（不断言「恰好一次」）。
+- **O1 数据库磁盘改为真正的流式（可用性，高）**：`storage-database/DatabaseFilesystem`
+  - `putStream`：由 `input.readAllBytes()`（整份上传文件进堆）改为**按分片边读边写**（内存 O(chunkSize)），全部写入仍在同一事务内，失败整体回滚；新增 `readFully` 处理 `InputStream.read` 提前返回。
+  - `readStream`：由 `new ByteArrayInputStream(read(path))`（整份文件进堆）改为**按分片惰性读取**的流（每次查询只取一片），`available()` 不再一次性暴露整文件长度。
+  - `writeTo`：由全量 `read` 改为 `readStream(...).transferTo(output)`（逐片转发）。
+  - **效果**：`disk: <数据库磁盘>` 下上传/下载大文件不再整份进内存；`AetherUploadManager.moveToDisk` 的「内存占用恒定」注释现在成立。
+- **O2 并发追加不再丢更新（正确性）**：`DatabaseFilesystem.append` 由「全量读 → 拼接 → 全量写」的跨事务读改写，改为**只重写最后一个分片**（内存 O(chunkSize + 追加长度)）并更新元信息；元信息更新用**大小 CAS**（`WHERE size = 读到的旧值`，失败重读重试），并对同一路径加**分段锁**串行化（H2 MVStore 快照语义下仅靠 CAS 实测仍会丢更新：并发追加 8000 字节只留下 1900）。
+- **O4 队列前缀跟随全局 redis 前缀（配置口径）**：`RedisQueueDriver` 不再硬编码 `jaravel:queue`，改为 `RedisManager.getPrefix() + "queue"`（前缀为空时回退默认值）。运维按 `jaravel.redis.options.prefix` 做命名空间隔离时，队列不再落在隔离之外。
+- **aether 临时文件暂存开关（PHP `upload_tmp_dir` 风格，用户要求）**：新增
+  ```yaml
+  jaravel:
+    aether-upload:
+      spool:
+        enabled: false        # 开启后所有组的 .part 临时文件统一切到 spool.dir
+        dir: /data/aether-tmp # 为空则用系统临时目录下的 jaravel-aether-uploads
+  ```
+  默认关闭时行为不变（沿用各组 `temp-dir`）；开启后可把大文件临时数据放到缓存盘/独立数据盘，避免写满应用目录或系统盘。
+- **新增用例（实跑通过）**：`DatabaseFilesystemStreamingTest`（6 例：写入按分片读取（断言单次请求不超过 chunkSize）、读取流一次只驻留一片（断言 `available() <= chunkSize`）、`writeTo` 流式、追加（跨分片末片不满）内容正确、追加自动创建文件、**8 线程并发追加 8000 字节不丢更新**）、`AetherUploadSpoolConfigTest`（3 例：默认不写 spool、开启后写入指定目录、`dir` 为空回退系统临时目录）、`RedisQueueDriverTest`（既有 8 例回归通过）。
+- **仍未闭环（唯一一项，非缺陷）**：M20「并发首查/稳态零写入」的**自动化用例**未写（构造可查询的 `BaseModel` 夹具需要 gaarason 模型初始化 + 受保护成员访问链，容易写成脆弱用例）；实现已在位（同步化 `WeakHashMap` + 登记后移）。`DefaultAppKey.isTemporary()` 因该文件被系统拒绝写入未能添加，已用 AppKey 生产点读原始配置的等价实现覆盖同一判定。
+### Changed（变更 · 第十轮：0.1.3 收口 + 剩余 P0/P1 项 + 第三/四轮专家纠正）
 
-### Changed（变更 · 第十轮：版本 0.2.0 + 剩余 P0/P1 项 + 第三轮专家纠正）
-
-- **版本升至 0.2.0（破坏性）**：自 `484c396` 起本仓库含破坏性变更（`auth`/`session` 模块拆分、公开 FQN 迁移，且**未保留兼容壳**），继续以 `0.1.3` 发布会让下游按 semver 预期不设防（升级后部分模块新契约、部分旧 jar → 运行期不一致）。本轮用 `mvn versions:set` 将全部 36 个 pom 升到 **0.2.0**，并清扫文档中的 `<version>` 依赖片段与 README/CLUSTER 版本标记；**`wechat-sdk-demo` 同批升到 0.2.0**（专家指出的陷阱：demo 固定依赖 0.1.3 时会静默解析本地仓库旧产物，导致「测试全绿但实际验证的是旧字节码」）——升级后实测依赖树中 jaravel 构件全部为 0.2.0，demo 14 例全绿。
+- **版本保持 0.1.3（尚未发布，破坏性变更随该版本一起发布）**：自 `484c396` 起本仓库含破坏性变更（`auth`/`session` 模块拆分、公开 FQN 迁移，且**未保留兼容壳**），全部 36 个 pom、文档依赖片段与 demo 均保持 **0.1.3**（用户确认：0.1.2 已发布，0.1.3 尚未发布，破坏性变更随 0.1.3 一起发布即可；**不额外升 minor**）。为避免「demo 固定依赖 0.1.3 却命中本地仓库旧产物」的陷阱，收口后重新 `install` 覆盖本地 0.1.3 产物，并实测 demo 依赖树全部为本仓库新构建、demo 用例全绿。
 - **N4 refresh token 轮换（可选增量 API，不改既有语义）**：新增 `JwtService.refreshPair(...)`，返回 `record TokenPair(access, refresh)`，用旧 refresh 换取**新令牌对**并把旧 refresh 拉黑；`refresh()` **语义保持原样** —— 现有协议只通过 `X-New-Token` 下发 access，**没有通道下发新 refresh**，若在此拉黑旧 refresh，客户端刷新一次后就永久无法刷新（功能性破坏，专家明确否决先前方案）。黑名单不可用（默认 `blacklistEnabled=false`）时打一次性 WARN，明确「轮换未生效」而不假装已轮换；收到**已在黑名单中的** refresh token 记 ERROR（凭证被盗重放的强信号）。
 - **M19 迁移解析失败（按专家意见收窄）**：`MigrationFileParser` 仅把「文件确实存在但编译/实例化/`up()` 失败」计入失败清单并 `log.error`；**目录缺失 / 目录内无 `.java` → 回退 classpath 仍视为合法成功**；目录内确有 `.java` 却编译失败时改 ERROR（仍允许回退，不打断「只带已编译类运行」的部署）；命令打印失败清单并 `return 1` 且**不生成模型**（缺列的 Model 比失败更危险）；**不新增 `--allow-parse-errors` 逃生口**（验收与安全专家均判既有行为更安全，与架构师的分歧按更安全一侧裁决）；删除无调用方的 `parseAllStrict`；`MigrationScanner` 中「跳过无法加载的类」恢复 `debug`（该循环遍历目录下所有 class，非迁移类加载失败属正常，避免日志放大）。
 - **N1 验证码密钥形态校验（分档 + 打在解析后配置上）**：校验作用于**经 `jaravel.key` 兜底后的有效配置**（避免对已兜底部署误报）；**RSA 必须 `公钥|私钥`**（只给公钥时服务端无法解密用户输入 → 所有验证永远失败；只给私钥旧实现按公钥解析 → 每请求 500）；AES 仍为出厂默认密钥（源码公开常量）或空 → 等价于无密钥；新增 `jaravel.captcha.fail-fast-on-invalid-key`（**默认 false**：直接 fail-fast 会让既有部署升级后无法启动；置 true 可中止启动）。核心 `CaptchaCrypto.create` 对默认/空 AES 密钥加一次性 WARN，覆盖非 Spring 直连场景。
@@ -40,7 +50,7 @@
 - **M16/N7**：`ModelCacheService` 解析到**非内存** store 时一次性 WARN —— ①`find/findAll/query` 命中后是直接强转，非内存 store 取回 `LinkedHashMap`/`ArrayList`，类型契约不成立；②缓存键不含租户维度，多租户共用 store 会互相命中对方数据（要求 `queryKey` 自含租户标识）。契约写入 javadoc。
 - **R9 验证补齐**：新增 `StaticRoutePathPatternTest`（springboot 测试域补 `spring-webflux` 测试依赖）：`{*path}` 匹配多段与 `/static` 前缀、**`/static/{*path}/` 确实解析失败**（证明「跳过尾斜杠变体」守卫的必要性）、旧 `{path}` 确实漏多段路径。
 - **`MODULES.md` 新增 §2.8**：starter 聚合清单（**13 个**模块）+ 依赖方向（`auth-session → auth + session`、`session → core + http`、`auth` 不依赖 `session`）+ 对未跟踪文档 `Spring优化方案.md` 的「已失效、以本文件为准」声明（该文件顶部亦已加失效横幅）。
-- **`wechat-sdk-demo`**：依赖升 0.2.0；`plainConfig()` 显式开启 `verifyPostSignature`（SDK 默认已改为 `false`，严格用例必须自行开启，否则测的是另一条语义）。
+- **`wechat-sdk-demo`**：依赖保持 0.1.3（重新 install 后即为新代码）；`plainConfig()` 显式开启 `verifyPostSignature`（SDK 默认已改为 `false`，严格用例必须自行开启，否则测的是另一条语义）。
 - **本轮已验证**：`StorageResponseVisibilityTest`（4 例：private→`no-store`、public→`max-age`、可见性异常→仍 `no-store`、缺失→404）、`LocalFilesystemRootGuardTest`（7 例：根别名拒绝（`""`/`"/"`/`"."`/`"a/.."`）× delete/copy/move/deleteDirectory、父目录穿越、正常操作不受影响、**root 自身为 junction 时正常读写**、**根内 junction 指向外部被拒** —— junction 用例本机实跑通过）、`ModelCacheTypeCoercionTest`（6 例）、`CaptchaVerifyMisuseGuardTest`（4 例：**2 参裸类型名不抛异常**（终局评审复现的可用性缺陷已修）、3/4 参写反抛可操作异常、畸形 key 只失败不抛、正常两参可用）、`MigrationParserFailureTest`（4 例：目录缺失/无 `.java` 为合法回退不误报、`up()` 抛异常被记录且含类名、失败清单每次重置）。
 - **aether 末片重放防护已实测**：新增 `AetherUploadReplayGuardTest`（2 例，**0 跳过**）—— 用「`put` 抛异常」的 `CacheStore` 替身在**末片写入前**武装，精确复现「成品已 move、`saveHeader` 失败」；断言重试末片被 `UploadException` 拒绝、且**成品 SHA-256 不变**（M6 的零填充覆盖路径已被真实拦住）；另断言随机 resourceId 循环只抛「header 不存在」（定长分段锁不无界增长）。
 - **唯一剩余验证项（已登记）**：**M20 并发首查/稳态零写入的自动化用例**未落地 —— 构造可查询的 `BaseModel` 夹具需要 gaarason 模型初始化与受保护成员的访问链，容易写成脆弱用例；实现侧（同步化 `WeakHashMap` + 登记后移）已由三位专家逐行复核确认在位，残余首次并发窗口亦已在 javadoc 与 CHANGELOG 如实记录。
@@ -60,7 +70,7 @@
 - **L2/L3 路径越界（安全）**：`resolve()` 增加**真实路径**归属校验（与 `root.toRealPath()` 比较，目标不存在时上溯到最近存在的祖先）—— 词法 `normalize` 挡不住「根内软链接指向外部」；`delete/copy/move` 统一拒绝「解析后等于根目录」的路径（`""`/`"."`/`"a/.."` 都会解析成根，原先 `delete("")` 会删掉整个磁盘根）。**残余 TOCTOU 已记录**（校验后仍以词法路径打开），不宣称「穿越已彻底修复」。
 - **L11 backUrl（正确性）**：组件渲染循环改用非破坏性 `WireEffects.getBackUrl()`，主流程保持单次 `drainBackUrl()`（原先渲染先 drain → `effects.backUrl` 退化为推断值，多组件时只有一个拿到 backUrl）。
 - **auth 装配（架构师建议）**：空守卫兜底只覆盖「默认驱动（`session`）缺实现」这一情形（auth 独立可用）；显式声明了无人支持的 driver（拼写错误/忘引模块）**仍然抛异常** —— 否则会静默变成「恒未登录」，让 `if (Auth.check())` 这类写法静默失去鉴权。
-- **未完成（已登记，下一轮）**：M19 迁移「文件存在但编译/实例化失败」的收窄严格化 + 命令非零退出（保留「目录缺失 → 回退 classpath」的合法路径）；N1 启动期密钥形态校验（RSA 单密钥给可读错误、默认 AES 密钥 ERROR）；M17 验证码 README 与三参 `verify` 脚枪；N4 refresh token 用后轮换；M16/N7 model-cache 类型契约与租户维度文档；`Storage.response` 的 visibility 行为级用例、aether `.part` 故障注入用例、LocalFilesystem 根目录用例、Spring 启动冒烟（`{*path}` 谓词）；版本号升 0.2.0 与逐条迁移映射。
+- **该清单项已全部完成**：M19 收窄严格化 + 命令非零退出（保留「目录缺失 → 回退 classpath」合法路径，`MigrationParserFailureTest` 4 例）；N1 启动期密钥形态校验（分档 + `fail-fast-on-invalid-key`，`CaptchaKeyShapeValidationTest` 7 例）；M17 撤销弃用改语义护栏 + README 修正（`CaptchaVerifyMisuseGuardTest` 4 例）；N4 `refreshPair` 可选轮换（`refresh()` 语义不变）；M16/N7 元素级还原 + 驱逐回源 + 非内存 store 告警（`ModelCacheTypeCoercionTest` 6 例）；`Storage.response` visibility（4 例）、aether `.part` 故障注入（2 例，0 跳过）、LocalFilesystem 根目录/链接（7 例）、Spring `{*path}` 谓词（4 例）。
 
 ### Fixed（修复 · 第八轮：审计低危项小修）
 

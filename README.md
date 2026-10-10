@@ -65,7 +65,7 @@ Java 版 Laravel 框架核心库，在 Spring Boot 3.2.12 基础上近乎 100% �
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>starter</artifactId>
-    <version>0.2.0</version>
+    <version>0.1.3</version>
 </dependency>
 ```
 
@@ -75,7 +75,7 @@ JWT 为可选模块，按需引入：
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>jwt</artifactId>
-    <version>0.2.0</version>
+    <version>0.1.3</version>
 </dependency>
 ```
 
@@ -86,19 +86,19 @@ JWT 为可选模块，按需引入：
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>plugin-jar-core</artifactId>
-    <version>0.2.0</version>
+    <version>0.1.3</version>
 </dependency>
 <!-- JAR 插件数据库持久化（可选，引入后自动从 JSON 文件切换为数据库持久化） -->
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>plugin-jar-database</artifactId>
-    <version>0.2.0</version>
+    <version>0.1.3</version>
 </dependency>
 <!-- Java 文件插件系统（可选，动态编译 .java 文件，轻量替代 JAR） -->
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>plugin-java-core</artifactId>
-    <version>0.2.0</version>
+    <version>0.1.3</version>
 </dependency>
 ```
 
@@ -376,7 +376,7 @@ jaravel:
 
 ## 版本
 
-当前版本：**0.2.0**（源码开发中，见 [CHANGELOG](CHANGELOG.md) 的 Unreleased 段）；Maven Central 上已发布的版本为 **0.1.2**。
+当前版本：**0.1.3**（源码开发中，见 [CHANGELOG](CHANGELOG.md) 的 Unreleased 段）；Maven Central 上已发布的版本为 **0.1.2**。
 
 ## 许可证
 

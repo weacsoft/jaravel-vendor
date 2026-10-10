@@ -342,7 +342,7 @@ public class AetherUploadManager {
 
         // 校验全部通过后再落盘：上限/溢出被拒时不会创建任何 .part（避免匿名预分配磁盘 DoS）
         String resourceId = UUID.randomUUID().toString().replace("-", "");
-        Path tempPath = resolveDir(g.config.getTempDir()).resolve(resourceId + ".part");
+        Path tempPath = resolveTempDir(g.config.getTempDir()).resolve(resourceId + ".part");
         try {
             Files.createDirectories(tempPath.getParent());
             // 预分配（稀疏文件），支持乱序分片写入
@@ -443,7 +443,7 @@ public class AetherUploadManager {
         if (now - last < TEMP_SWEEP_INTERVAL_MILLIS || !lastTempSweepAt.compareAndSet(last, now)) {
             return;
         }
-        Path dir = resolveDir(g.config.getTempDir());
+        Path dir = resolveTempDir(g.config.getTempDir());
         if (!Files.isDirectory(dir)) {
             return;
         }
@@ -809,6 +809,28 @@ public class AetherUploadManager {
             path = Paths.get(System.getProperty("user.dir")).resolve(path);
         }
         return path;
+    }
+
+    /**
+     * 解析临时目录（分片上传的 {@code .part} 落地位置）。
+     * <p>
+     * 默认沿用组配置的 {@code temp-dir}；当 {@code jaravel.aether-upload.spool.enabled=true} 时，
+     * 统一切换到 {@code spool.dir}（PHP {@code upload_tmp_dir} 风格），便于把大文件临时数据
+     * 放到缓存盘/独立数据盘，避免写满应用目录或系统盘。
+     *
+     * @param configuredTempDir 组配置的临时目录
+     * @return 实际使用的临时目录
+     */
+    private Path resolveTempDir(String configuredTempDir) {
+        AetherUploadProperties.SpoolConfig spool = properties.getSpool();
+        if (spool != null && spool.isEnabled()) {
+            String dir = spool.getDir();
+            if (dir == null || dir.isBlank()) {
+                dir = Paths.get(System.getProperty("java.io.tmpdir"), "jaravel-aether-uploads").toString();
+            }
+            return resolveDir(dir);
+        }
+        return resolveDir(configuredTempDir);
     }
 
     private void saveHeader(GroupRuntime g, UploadHeader header) {

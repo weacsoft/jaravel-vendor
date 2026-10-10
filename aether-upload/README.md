@@ -183,3 +183,13 @@ UploadResult p = AetherUpload.progress("file", resourceId);
 
 - **二进制（默认）**：`multipart/form-data`，分片放 `file` 字段；
 - **base64**：分片编码为 base64 放普通表单字段 `data`（支持 dataURL 前缀），用于规避中间安全软件对二进制流的拦截。后端两种模式始终同时接受，前端按组配置或本地选项选择。
+
+## 临时文件暂存（大文件）
+
+```yaml
+jaravel:
+  aether-upload:
+    spool:
+      enabled: false
+      dir: /data/aether-tmp
+```

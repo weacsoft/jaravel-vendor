@@ -170,7 +170,7 @@ public class WireRequest {
         return sections;
     }
 
-    // 已删除（0.2.0 破坏性窗口，审计 O5 / N5）：
+    // 已删除（0.1.3 尚未发布，破坏性窗口，审计 O5 / N5）：
     //   - getData()：直接调用 WireManager.decodeSnapshot，**不校验快照签名** ——
     //     任何能构造 base64 快照的调用方都能绕过完整性校验；
     //   - getMergedData()：在 getData() 之上合并 params，同样绕过签名。

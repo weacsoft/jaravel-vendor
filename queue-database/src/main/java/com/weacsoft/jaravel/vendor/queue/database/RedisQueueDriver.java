@@ -128,10 +128,20 @@ public class RedisQueueDriver implements QueueDriver {
         this.connectionName = connectionName;
         this.retryAfterSeconds = retryAfterSeconds;
         this.failedJobRetentionDays = failedJobRetentionDays;
-        this.prefix = DEFAULT_PREFIX;
-        logger.info("[queue-redis] 初始化: connection={}, retryAfter={}s, retention={}d",
+        // 前缀跟随全局配置 jaravel.redis.options.prefix（审计 O4）：运维按该配置做命名空间隔离时，
+        // 队列此前硬编码 "jaravel:queue" 会落在隔离之外（误判「已全局隔离」）。
+        String globalPrefix = null;
+        try {
+            globalPrefix = redisManager.getPrefix();
+        } catch (RuntimeException e) {
+            logger.debug("[queue-redis] 读取全局 redis 前缀失败，使用默认前缀: {}", e.getMessage());
+        }
+        this.prefix = (globalPrefix == null || globalPrefix.isBlank())
+                ? DEFAULT_PREFIX
+                : globalPrefix + "queue";
+        logger.info("[queue-redis] 初始化: connection={}, prefix={}, retryAfter={}s, retention={}d",
                 connectionName == null || connectionName.isEmpty() ? "default" : connectionName,
-                retryAfterSeconds, failedJobRetentionDays);
+                this.prefix, retryAfterSeconds, failedJobRetentionDays);
     }
 
     /** 获取 Redis 同步命令接口 */

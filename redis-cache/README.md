@@ -51,7 +51,7 @@ CacheManager（cache 模块，按配置按需创建 store）
 <dependency>
     <groupId>io.github.lijialong1313</groupId>
     <artifactId>redis-cache</artifactId>
-    <version>0.2.0</version>
+    <version>0.1.3</version>
 </dependency>
 ```
 
