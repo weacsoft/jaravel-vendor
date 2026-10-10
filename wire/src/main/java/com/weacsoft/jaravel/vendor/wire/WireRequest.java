@@ -170,35 +170,10 @@ public class WireRequest {
         return sections;
     }
 
-    /**
-     * 从 snapshot 解码出原始数据 Map。
-     * <p>
-     * <b>已弃用（安全）</b>：本方法直接调用 {@code WireManager.decodeSnapshot}，
-     * <b>不校验快照签名</b> —— 任何拿到（或自行构造）base64 快照的调用方都能绕过完整性校验
-     * （审计 N5 / M15）。框架主流程走的是 {@code WireController} 的「先验签、后解析」路径。
-     * 新代码请使用控制器提供的签名校验路径；本方法仅为兼容保留。
-     *
-     * @return 组件状态数据
-     * @deprecated 绕过快照签名校验，请改用带签名校验的路径
-     */
-    @Deprecated(since = "0.2.0", forRemoval = true)
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getData() {
-        return WireManager.decodeSnapshot(snapshot);
-    }
-
-    /**
-     * 将 params 合并到数据 Map 中（用于 wire:model 的属性更新）。
-     *
-     * @return 合并了 params 的数据 Map
-     * @deprecated 依赖同样绕过签名校验的 {@link #getData()}，请改用带签名校验的路径
-     */
-    @Deprecated(since = "0.2.0", forRemoval = true)
-    public Map<String, Object> getMergedData() {
-        Map<String, Object> data = new LinkedHashMap<>(getData());
-        if (params != null) {
-            data.putAll(params);
-        }
-        return data;
-    }
+    // 已删除（0.2.0 破坏性窗口，审计 O5 / N5）：
+    //   - getData()：直接调用 WireManager.decodeSnapshot，**不校验快照签名** ——
+    //     任何能构造 base64 快照的调用方都能绕过完整性校验；
+    //   - getMergedData()：在 getData() 之上合并 params，同样绕过签名。
+    // 两者在仓库内均无调用方（框架主流程走 WireController 的「先验签、后解析」路径），
+    // 因此按「不留绕过签名的公开入口」直接删除，而不是保留 @Deprecated 警告。
 }

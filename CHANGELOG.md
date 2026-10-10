@@ -5,6 +5,29 @@
 
 ## [Unreleased]（目标版本 0.2.0 · 开发中）
 
+- **M16 缓存命中值的类型还原（已完成实现 + 用例）**：`find`/`findAll` 命中后做元素级还原（`Map → 实体`，按**元素嗅探**判断而非按 store 名），`query` 的「任意 Object」契约**不做还原**；array（内存）store 命中的 gaarason **托管实体**经 `isInstance` 短路**原样返回同一实例**（不会被 JSON 转成游离 POJO）。**不可还原时驱逐该键并回源 loader**（绝不返回错类型；「返回原值 + WARN」会让类型契约变成「有时实体、有时 Map」）。**注意**：JSON 往返会丢失懒加载/派生字段 —— 还原成功也可能有损，含派生/关联字段的实体不建议放进多机序列化 store（写进 javadoc 与告警文案）。新增 `ModelCacheTypeCoercionTest`（6 例：Map→实体、List&lt;Map&gt;→实体列表、不可还原→驱逐+回源、托管实体同一实例、query 不转换、未命中回填）。
+- **N4 交付协议（定稿为文档化，不引入响应头）**：`JwtService.refreshPair(...)` 返回 `record TokenPair(access, refresh)` 并拉黑旧 refresh；**框架不经响应头下发新 refresh token** ——
+
+  由业务在自己的 refresh 端点返回它。理由（三位专家一致）：让框架级过滤器按配置下发长期凭证，等于替应用决定「凭证交付策略」（HttpOnly Cookie / body / 移动端安全存储），且任何能读响应头的脚本（含 XSS）都能取走 7 天期凭证；`refreshPair` 已是 public API，应用侧完全可控，零新增配置与长期兼容负担。
+- **N1 密钥形态校验补充与残余说明**：
+  - `jaravel.key` 未配置时在 **AppKey 生产点**（`CoreSpringConfiguration.appKey`）打一次 ERROR，列出**全部 4 个消费方**的影响（验证码校验、加密 Cookie 解密、JWT 验签、wire 快照签名）—— 临时随机密钥「每次启动都不同」，多实例/重启后这四类凭证全部失效；此前只在 captcha 局部可见。
+  - **残余（必须知晓）**：`fail-fast-on-invalid-key` **默认 false**，因此 RSA 误配（只给公钥/只给私钥）**仍表现为每请求 500**，只是启动多一条 ERROR；生产环境请显式置 `true` 以在启动期中止。
+  - 核心 `CaptchaCrypto.create` 对「出厂默认 AES 密钥/空密钥」加一次性 WARN，覆盖非 Spring 直连路径。
+- **O3 凭证响应禁止缓存（安全，本轮新发现）**：`JwtTokenResponseFilter` 写 `X-New-Token` 时同时下发 `Cache-Control: no-store` 与 `Pragma: no-cache` —— RFC 6749 §5.1 要求令牌响应不可缓存，否则浏览器私有缓存/配置不当的共享缓存会留存凭证。
+- **O5 删除绕过签名的公开入口（0.2.0 破坏性窗口）**：`WireRequest.getData()` / `getMergedData()` 直接调用不验签的 `WireManager.decodeSnapshot`；仓库内**无任何调用方**（主流程走 `WireController` 的「先验签、后解析」），因此在破坏性版本内**直接删除**，而不是保留 `@Deprecated` 警告。
+- **R1 修正（本轮引入的高危缺陷）**：`BaseModel.PATCHED_ENTITY_MEMBERS` 换成 `WeakHashMap` 后**必须包 `synchronizedMap`** —— `WeakHashMap` 非线程安全，且 `contains` 内部会 `expungeStaleEntries()` 做结构性修改，锁外快路径与锁内 `add` 并发会丢条目/抛异常（等于把 M20 的故障类别搬到登记表上）。同时把「登记」移到「变更完成之后」（不变式：在集合中 ⇒ 已修补完成）。
+- **R5/R6 可观测性**：类型还原失败的告警由「进程级一次」改为**按模型类各一次**（第二个坏模型不再永久静默）；非内存 store 的告警文案改写为「还原可能**有损**（丢懒加载/派生字段）+ 缓存键不含租户维度 + `query` 不做还原」，不再声称「find/findAll 类型契约不成立」（已修）。
+
+### 已知限制与未登记项收口（终局评审提出，本轮登记）
+
+- **O1（高·可用性，未修）**：`storage-database` 的 `DatabaseFilesystem` **非流式** —— `putStream` 用 `input.readAllBytes()`、`readStream` 用 `new ByteArrayInputStream(read(path))`、`writeTo` 全量 `read`。触发条件：组配置 `disk: <数据库磁盘>` 后上传/下载**大文件** → 整个文件进堆，可能 OOM（审计 M8b）。`AetherUploadManager.moveToDisk` 的 javadoc 声称「内存占用恒定」在当前实现下**不成立**。事务化部分已在第九轮修复（`put` 走 `inTransaction`）。修复方向：分片边读边写 / 逐片查询返回流。
+- **O2（中·正确性，未修）**：`DatabaseFilesystem.append` 是「读全量 → 拼接 → 写回」，跨事务读 → 并发 append **丢更新**（`put` 事务化不能覆盖它）。修复方向：乐观 CAS（`WHERE size = 读到的长度`）+ 重试。
+- **O4（低·文档口径）**：`jaravel.redis.options.prefix` 只被 `RedisCacheDriver` 消费；`RedisQueueDriver` 仍硬编码 `jaravel:queue`、`RedisSessionStore` 用自己的 `prefix`。运维按该配置做「全局命名空间隔离」会误判（隔离目标对各自模块实际达成，但口径不一致）。已在此登记，后续统一或文档声明。
+- **R9（低·运维）**：N1 的 fail-fast 默认 false（见上），生产建议开启。
+- **R10（低·残余）**：`jaravel.key` 配成固定占位串（如 `changeme`）时无法识别为弱密钥。
+- **M16 残余**：若缓存元素是 ORM 代理类，`isInstance` 可能为 false → 走 JSON 还原可能损坏代理（登记）；`coerceOrNull` 在内存 store 命中时即使无需转换也会分配一次列表（微优化项）。
+- **M20 残余**：首次并发窗口仍存在（仓库无模型注册表，无法在启动期单线程枚举所有实体）；`PATCHED_ENTITY_MEMBERS` 为弱引用，GC 后可能重跑一次幂等修补（不断言「恰好一次」）。
+
 ### Changed（变更 · 第十轮：版本 0.2.0 + 剩余 P0/P1 项 + 第三轮专家纠正）
 
 - **版本升至 0.2.0（破坏性）**：自 `484c396` 起本仓库含破坏性变更（`auth`/`session` 模块拆分、公开 FQN 迁移，且**未保留兼容壳**），继续以 `0.1.3` 发布会让下游按 semver 预期不设防（升级后部分模块新契约、部分旧 jar → 运行期不一致）。本轮用 `mvn versions:set` 将全部 36 个 pom 升到 **0.2.0**，并清扫文档中的 `<version>` 依赖片段与 README/CLUSTER 版本标记；**`wechat-sdk-demo` 同批升到 0.2.0**（专家指出的陷阱：demo 固定依赖 0.1.3 时会静默解析本地仓库旧产物，导致「测试全绿但实际验证的是旧字节码」）——升级后实测依赖树中 jaravel 构件全部为 0.2.0，demo 14 例全绿。
@@ -18,7 +41,9 @@
 - **R9 验证补齐**：新增 `StaticRoutePathPatternTest`（springboot 测试域补 `spring-webflux` 测试依赖）：`{*path}` 匹配多段与 `/static` 前缀、**`/static/{*path}/` 确实解析失败**（证明「跳过尾斜杠变体」守卫的必要性）、旧 `{path}` 确实漏多段路径。
 - **`MODULES.md` 新增 §2.8**：starter 聚合清单（**13 个**模块）+ 依赖方向（`auth-session → auth + session`、`session → core + http`、`auth` 不依赖 `session`）+ 对未跟踪文档 `Spring优化方案.md` 的「已失效、以本文件为准」声明（该文件顶部亦已加失效横幅）。
 - **`wechat-sdk-demo`**：依赖升 0.2.0；`plainConfig()` 显式开启 `verifyPostSignature`（SDK 默认已改为 `false`，严格用例必须自行开启，否则测的是另一条语义）。
-- **未完成（登记）**：M16 的元素级类型转换（两位专家均建议延后：默认 store 为内存、多机场景尚未落地，且转换会引入「失败静默回源」新语义）；N4 的**新 refresh token 交付协议**（新增响应头 vs 业务 controller 返回，属产品/协议决策）；`DefaultAppKey.isTemporary()`（该文件被系统占用、写入失败，暂由装配层判断）；其余 P0 用例（aether `.part` 故障注入与锁长度、`Storage.response` visibility、`LocalFilesystem` 根目录/软链、M20 并发首查）。
+- **本轮已验证**：`StorageResponseVisibilityTest`（4 例：private→`no-store`、public→`max-age`、可见性异常→仍 `no-store`、缺失→404）、`LocalFilesystemRootGuardTest`（7 例：根别名拒绝（`""`/`"/"`/`"."`/`"a/.."`）× delete/copy/move/deleteDirectory、父目录穿越、正常操作不受影响、**root 自身为 junction 时正常读写**、**根内 junction 指向外部被拒** —— junction 用例本机实跑通过）、`ModelCacheTypeCoercionTest`（6 例）、`CaptchaVerifyMisuseGuardTest`（4 例：**2 参裸类型名不抛异常**（终局评审复现的可用性缺陷已修）、3/4 参写反抛可操作异常、畸形 key 只失败不抛、正常两参可用）、`MigrationParserFailureTest`（4 例：目录缺失/无 `.java` 为合法回退不误报、`up()` 抛异常被记录且含类名、失败清单每次重置）。
+- **仍未实现的用例（已登记，非阻断）**：aether **`.part` 故障注入**（专家给出的注入手法：`CacheManager.addStore("throwing", stub)` 必须在 group 注册**之前**；stub 的 `put` 必须**抛异常**而不是返回 false，因为 `CacheUploadHeaderStore.put` 忽略布尔返回值；武装时机必须在**末片写入**前，否则到不了「成品已 move」状态；断言重试末片被拒 + **成品 SHA-256 不变**）；**M20 并发首查与稳态零写入**（不用 `size` 断言：`WeakHashMap` + GC 天然波动；断言列集实例身份与内容不变）。两者实现侧均已由三位专家逐行复核确认在位。
+- **`DefaultAppKey.isTemporary()`**：该文件被系统拒绝写入（`fchmod EPERM` / Access denied），未加标记方法；改由 AppKey 生产点读原始 `jaravel.key` 判定（架构师确认机制等价且无误报，并指出影响面覆盖 captcha/wire/cookie/jwt 四处）。
 
 ### Fixed（修复 · 第九轮：审计剩余项 + 专家团第二轮新发现）
 

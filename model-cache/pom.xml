@@ -25,6 +25,11 @@
             <groupId>io.github.lijialong1313</groupId>
             <artifactId>core</artifactId>
         </dependency>
+        <!-- 类型还原（M16）：Map → 实体 转换直接使用 json 模块，显式声明避免依赖传递 -->
+        <dependency>
+            <groupId>io.github.lijialong1313</groupId>
+            <artifactId>json</artifactId>
+        </dependency>
         <!-- Eloquent BaseModel（可选）：仅在业务 Model 继承 BaseModel 时需要，model-cache 核心不强依赖 -->
         <dependency>
             <groupId>io.github.lijialong1313</groupId>
@@ -45,6 +50,12 @@
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- 测试：缓存命中值的类型还原（Map → 实体）需要模拟 CacheStore 的命中内容与驱逐调用 -->
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

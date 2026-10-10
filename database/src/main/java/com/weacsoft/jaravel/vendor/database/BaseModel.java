@@ -192,7 +192,8 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
      * 漏补会让该模型的 {@code model_shadow} 列重新出现在 SELECT 列表里。
      */
     private static final java.util.Set<EntityMember<?, ?>> PATCHED_ENTITY_MEMBERS =
-            java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
+            java.util.Collections.newSetFromMap(
+                    java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>()));
 
     /**
      * 从 EntityMember 的 selectColumnList 和 columnFieldMap 中移除 model_shadow 列。
@@ -202,6 +203,10 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
      * {@code selectColumnList} 做 {@code removeIf}，启动后首批并发查询可能抛
      * {@code ConcurrentModificationException} 或用错列集。改为「首次修补受锁 + 之后直接跳过」，
      * 使稳态查询路径零写入。
+     * <p>
+     * <b>容器选择</b>：{@code WeakHashMap} 保证「gaarason 反复创建新实例」时登记表不会无界增长，但它
+     * <b>不是线程安全的</b>（{@code contains} 内部会 {@code expungeStaleEntries()} 做结构性修改），
+     * 因此必须包一层 {@code synchronizedMap}；否则会重演 M20 同类的并发故障（换成登记表本身被并发改）。
      * <p>
      * <b>已知残余</b>：首次并发窗口仍存在（两个线程可能同时进入首次修补），只是从「每请求」
      * 降到「每实例首次」；彻底消除需要在容器启动期由单线程枚举所有实体模型，而本仓库目前

@@ -253,14 +253,20 @@ public class CaptchaManager {
         }
         int idx = key.indexOf('.');
         if (idx <= 0 || idx == key.length() - 1) {
-            // 语义护栏（审计 M17）：把「验证码类型」当作第一个参数传进来（旧 README 的
-            // verify(type, key, input) 写法）会落到这里 —— 旧实现静默返回 false，让排查者以为
-            // 「验证码总是不对」。这里直接给出可操作的错误。
+            // 语义护栏（审计 M17），但**必须区分两条路径**（验收专家复现：护栏放在共享入口会让
+            // 攻击者可控的 2 参路径抛异常 → 未捕获即 HTTP 500，属可用性缺陷）：
+            //   - 3/4 参重载（额外参数非空）出现「首参是类型名」= 调用方把参数顺序写反（旧 README 写法）
+            //     → 抛 IllegalArgumentException（程序员错误，应当大声）；
+            //   - 2 参公开路径（额外参数均为 null）可能来自不可信输入 → 只记一次性 ERROR 并返回失败，
+            //     绝不抛异常。
             if (captchas.containsKey(key)) {
-                throw new IllegalArgumentException(
-                        "参数顺序可能写反：第一个参数应是合并凭证（type.captchaKey，如 number.xxxx），"
-                                + "但收到的是验证码类型 '" + key + "'。"
-                                + "正确用法：verify(captchaKey, userInput) 或 verify(captchaKey, userInput, encryptionKey)");
+                if (overrides != null || encryptionKey != null) {
+                    throw new IllegalArgumentException(
+                            "参数顺序可能写反：第一个参数应是合并凭证（type.captchaKey，如 number.xxxx），"
+                                    + "但收到的是验证码类型 '" + key + "'。"
+                                    + "正确用法：verify(captchaKey, userInput) 或 verify(captchaKey, userInput, encryptionKey)");
+                }
+                warnTypeAsKeyOnce(key);
             }
             return VerifyResult.fail();
         }
@@ -275,6 +281,27 @@ public class CaptchaManager {
             return ((AbstractCaptcha) captcha).verify(captchaKey, userInput, overrides, encryptionKey);
         }
         return captcha.verify(captchaKey, userInput) ? VerifyResult.pass() : VerifyResult.fail();
+    }
+
+    /** 「首参传成验证码类型」的告警只打一次（2 参路径来自不可信输入，不能抛异常，只能留痕） */
+    private static final java.util.concurrent.atomic.AtomicBoolean TYPE_AS_KEY_WARNED =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    /**
+     * 2 参公开路径收到「裸类型名」时告警一次（审计 M17 / 验收专家复现）。
+     * <p>
+     * 该输入可能来自攻击者（伪造 captchaKey），因此<b>不能抛异常</b>（会变成 500）；
+     * 但也必须留痕，否则「参数顺序写反」会重新变成静默失败。
+     *
+     * @param key 收到的键
+     */
+    private void warnTypeAsKeyOnce(String key) {
+        if (TYPE_AS_KEY_WARNED.compareAndSet(false, true)) {
+            org.slf4j.LoggerFactory.getLogger(CaptchaManager.class).error(
+                    "[captcha] 验证码校验的 key 是裸类型名 '{}'（缺少 '.' 与密文段）："
+                            + "很可能是参数顺序写反（应为 verify(captchaKey, userInput)），"
+                            + "或客户端伪造。本次按失败处理。", key);
+        }
     }
 
     /**

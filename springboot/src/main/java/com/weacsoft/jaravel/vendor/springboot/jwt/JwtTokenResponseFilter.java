@@ -55,6 +55,10 @@ public class JwtTokenResponseFilter extends OncePerRequestFilter {
                 String newToken = jwtGuard.token();
                 if (newToken != null && !newToken.isEmpty()) {
                     response.setHeader(jwtConfig.getGraceHeader(), newToken);
+                    // 写凭证的响应必须禁止缓存（RFC 6749 §5.1）：否则浏览器私有缓存/配置不当的
+                    // 共享缓存会留存 token（审计 O3）。对 access token 同样成立。
+                    response.setHeader("Cache-Control", "no-store");
+                    response.setHeader("Pragma", "no-cache");
                 }
             }
         } catch (Exception e) {

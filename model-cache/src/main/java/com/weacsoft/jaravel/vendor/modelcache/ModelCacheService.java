@@ -5,7 +5,9 @@ import com.weacsoft.jaravel.vendor.cache.CacheStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
 
 /**
@@ -69,7 +71,9 @@ public class ModelCacheService {
         CacheStore store = resolveStore();
         String key = buildKey(modelClass, "find:" + id);
         long ttl = getTtl(modelClass);
-        return rememberSkipNull(store, key, ttl, loader);
+        // 命中值可能是反序列化后的 LinkedHashMap（非内存 store）→ 按实体类型还原；
+        // 不可还原则驱逐并回源，绝不把错类型交给调用方（审计 M16）
+        return cachedOrReload(store, key, ttl, modelClass, loader);
     }
 
     /**
@@ -87,7 +91,7 @@ public class ModelCacheService {
         CacheStore store = resolveStore();
         String key = buildKey(modelClass, "query:" + queryKey);
         long ttl = getTtl(modelClass);
-        return rememberSkipNull(store, key, ttl, loader);
+        return cachedOrReloadList(store, key, ttl, modelClass, loader);
     }
 
     /**
@@ -105,7 +109,140 @@ public class ModelCacheService {
         CacheStore store = resolveStore();
         String key = buildKey(modelClass, "query:" + queryKey);
         long ttl = getTtl(modelClass);
+        // query 的契约是「任意 Object」（count / 标量 / 投影），**不做类型还原**（审计 M16）
         return rememberSkipNull(store, key, ttl, loader);
+    }
+
+    /**
+     * 读缓存命中并还原类型；<b>不可还原时驱逐该键并回源</b>（审计 M16）。
+     * <p>
+     * 为什么不「返回原值 + WARN」：那会把类型契约变成「有时实体、有时 LinkedHashMap」——
+     * 调用点仍会 CCE（只是延后），且按类型分派的逻辑（instanceof、序列化、权限判断）可能走错分支。
+     * 正确做法是驱逐该键 + 回源一次（退化为一次 DB 命中），保证返回的始终是声明类型。
+     * <p>
+     * 注意：array（内存）store 命中的是 gaarason <b>托管实体</b>，{@code isInstance} 短路会原样返回
+     * 同一实例，不会被 JSON 转换成游离 POJO；只有元素是 {@code Map} 时才转换（按元素嗅探，
+     * 不按 store 名判定）。转换后是游离对象，对象身份/懒加载语义与托管实体不同。
+     *
+     * @param store      store
+     * @param key        缓存键
+     * @param ttl        TTL
+     * @param modelClass 实体类型
+     * @param collection 期望是否为集合
+     * @param loader     回源加载器
+     * @param <T>        目标类型
+     * @return 声明类型的值（命中可还原 / 驱逐后回源）
+     */
+    @SuppressWarnings("unchecked")
+    private <T> T cachedOrReload(CacheStore store, String key, long ttl, Class<T> modelClass,
+                                 Supplier<T> loader) {
+        Object cached = store.get(key);
+        if (cached != null) {
+            T coerced = coerceOrNull(cached, modelClass, false);
+            if (coerced != null) {
+                return coerced;
+            }
+            store.forget(key);
+            warnCoerceFailureOnce(modelClass, null);
+        }
+        T value = loader.get();
+        if (value != null) {
+            store.put(key, value, ttl);
+        }
+        return value;
+    }
+
+    /**
+     * 集合版本：命中可还原返回还原后的列表，否则驱逐 + 回源。
+     *
+     * @param store       store
+     * @param key         缓存键
+     * @param ttl         TTL
+     * @param elementType 元素实体类型
+     * @param loader      回源加载器
+     * @param <T>         元素类型
+     * @return 声明元素类型的列表
+     */
+    @SuppressWarnings("unchecked")
+    private <T> List<T> cachedOrReloadList(CacheStore store, String key, long ttl, Class<T> elementType,
+                                           Supplier<List<T>> loader) {
+        Object cached = store.get(key);
+        if (cached != null) {
+            List<T> coerced = (List<T>) coerceOrNull(cached, elementType, true);
+            if (coerced != null) {
+                return coerced;
+            }
+            store.forget(key);
+            warnCoerceFailureOnce(elementType, null);
+        }
+        List<T> value = loader.get();
+        if (value != null) {
+            store.put(key, value, ttl);
+        }
+        return value;
+    }
+
+    /**
+     * 尝试把缓存值还原为声明类型。
+     *
+     * @param value      缓存值（可能是实体、Map、List&lt;Map&gt;）
+     * @param modelClass 实体类型
+     * @param collection 期望是否为集合
+     * @param <T>        目标类型
+     * @return 还原成功返回目标类型实例；<b>无法还原返回 {@code null}</b>（调用方据此驱逐 + 回源）
+     */
+    @SuppressWarnings("unchecked")
+    private <T> T coerceOrNull(Object value, Class<T> modelClass, boolean collection) {
+        if (value == null || modelClass == null) {
+            return null;
+        }
+        if (collection) {
+            if (!(value instanceof List<?> list)) {
+                return null;
+            }
+            List<Object> converted = new ArrayList<>(list.size());
+            boolean convertedAny = false;
+            for (Object element : list) {
+                if (element == null || modelClass.isInstance(element)) {
+                    converted.add(element);
+                    continue;
+                }
+                if (element instanceof Map<?, ?> map) {
+                    try {
+                        converted.add(com.weacsoft.jaravel.vendor.json.Json.convert(map, modelClass));
+                        convertedAny = true;
+                        continue;
+                    } catch (Exception e) {
+                        return null;   // 整份不可还原 → 交由调用方驱逐 + 回源（绝不半转换）
+                    }
+                }
+                return null;           // 含未知类型元素 → 不可还原
+            }
+            return convertedAny ? (T) converted : (T) value;
+        }
+        if (modelClass.isInstance(value)) {
+            return (T) value;
+        }
+        if (value instanceof Map<?, ?> map) {
+            try {
+                return com.weacsoft.jaravel.vendor.json.Json.convert(map, modelClass);
+            } catch (Exception e) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    /** 已告警过的模型类（**按模型记忆**：进程级单例会让第二个坏模型永久静默，架构评审 R5） */
+    private static final java.util.Set<Class<?>> COERCE_FAILURE_WARNED =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    private void warnCoerceFailureOnce(Class<?> modelClass, Exception cause) {
+        if (COERCE_FAILURE_WARNED.add(modelClass)) {
+            log.warn("[model-cache] 缓存命中值的类型还原失败（{}）：{}。"
+                    + "已驱逐该键并回源 loader（保证返回声明类型），请确认该 store 是否需要类型化序列化。",
+                    modelClass.getSimpleName(), cause == null ? "结构不匹配" : cause.getMessage());
+        }
     }
 
     /**
@@ -248,11 +385,14 @@ public class ModelCacheService {
     /**
      * 非内存（序列化）store 的两条已知限制告警（审计 M16/N7）。
      * <p>
-     * 1. <b>类型契约</b>：{@code find/findAll/query} 命中后是<b>直接强转</b>，非内存 store 取回的
-     * 是 {@code LinkedHashMap}/{@code ArrayList}，调用方按实体类型遍历会得到
-     * {@code ClassCastException}（不是数据泄露，但会在使用点炸）。<br>
+     * 1. <b>类型保真度</b>：{@code find}/{@code findAll} 命中后会做元素级还原（Map → 实体），
+     *    但 JSON 往返<b>会丢失</b>懒加载/派生字段/被 {@code @JsonIgnore} 的字段 —— 还原成功
+     *    也可能是有损的（比 CCE 更隐蔽：字段不全的实体）。含派生/关联字段的实体不建议放进
+     *    多机序列化 store。<br>
      * 2. <b>租户维度</b>：缓存键为 {@code keyPrefix+modelPrefix+:v{版本}:{suffix}}，<b>不含租户/用户维度</b>，
-     * 而 {@code queryKey} 由调用方拼 —— 多租户共享同一 store 时会互相命中对方的行数据。
+     *    而 {@code queryKey} 由调用方拼 —— 多租户共享同一 store 时会互相命中对方的行数据。
+     * <p>
+     * 另注：{@code query} 的返回值是「任意 Object」（count / 标量 / 投影），<b>不做类型还原</b>。
      *
      * @param store 已解析的 store
      */
@@ -266,10 +406,10 @@ public class ModelCacheService {
             return;
         }
         if (NON_MEMORY_STORE_WARNED.compareAndSet(false, true)) {
-            log.warn("[model-cache] 当前缓存 store 为 {}（非内存）：①命中后返回的是基础类型"
-                    + "（LinkedHashMap/ArrayList），find/findAll 的类型契约不成立；②缓存键不含租户维度，"
-                    + "多租户共用一个 store 时会互相命中对方数据 —— 请让 queryKey 自含租户标识"
-                    + "（如 \"tenant:{id}:{条件}\"）或为每个租户使用独立 store。", store.getClass().getSimpleName());
+            log.warn("[model-cache] 当前缓存 store 为 {}（非内存）：①命中后经 JSON 还原的实体可能"
+                    + "有损（丢失懒加载/派生字段）；②缓存键不含租户维度，多租户共用一个 store 时会"
+                    + "互相命中对方数据 —— 请让 queryKey 自含租户标识（如 \"tenant:{id}:{条件}\"）"
+                    + "或为每个租户使用独立 store；③query 的返回值不做类型还原。", store.getClass().getSimpleName());
         }
     }
 

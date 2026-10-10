@@ -166,7 +166,7 @@ public class CaptchaAutoConfiguration {
      * @param coreProps   解析后的核心层配置
      * @param springProps SpringBoot 配置（提供 fail-fast 开关）
      */
-    private static void validateEncryptionShape(
+    static void validateEncryptionShape(
             com.weacsoft.jaravel.vendor.captcha.CaptchaProperties coreProps,
             CaptchaProperties springProps) {
         String type = coreProps.getEncryptionType();
