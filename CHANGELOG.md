@@ -42,7 +42,8 @@
 - **`MODULES.md` 新增 §2.8**：starter 聚合清单（**13 个**模块）+ 依赖方向（`auth-session → auth + session`、`session → core + http`、`auth` 不依赖 `session`）+ 对未跟踪文档 `Spring优化方案.md` 的「已失效、以本文件为准」声明（该文件顶部亦已加失效横幅）。
 - **`wechat-sdk-demo`**：依赖升 0.2.0；`plainConfig()` 显式开启 `verifyPostSignature`（SDK 默认已改为 `false`，严格用例必须自行开启，否则测的是另一条语义）。
 - **本轮已验证**：`StorageResponseVisibilityTest`（4 例：private→`no-store`、public→`max-age`、可见性异常→仍 `no-store`、缺失→404）、`LocalFilesystemRootGuardTest`（7 例：根别名拒绝（`""`/`"/"`/`"."`/`"a/.."`）× delete/copy/move/deleteDirectory、父目录穿越、正常操作不受影响、**root 自身为 junction 时正常读写**、**根内 junction 指向外部被拒** —— junction 用例本机实跑通过）、`ModelCacheTypeCoercionTest`（6 例）、`CaptchaVerifyMisuseGuardTest`（4 例：**2 参裸类型名不抛异常**（终局评审复现的可用性缺陷已修）、3/4 参写反抛可操作异常、畸形 key 只失败不抛、正常两参可用）、`MigrationParserFailureTest`（4 例：目录缺失/无 `.java` 为合法回退不误报、`up()` 抛异常被记录且含类名、失败清单每次重置）。
-- **仍未实现的用例（已登记，非阻断）**：aether **`.part` 故障注入**（专家给出的注入手法：`CacheManager.addStore("throwing", stub)` 必须在 group 注册**之前**；stub 的 `put` 必须**抛异常**而不是返回 false，因为 `CacheUploadHeaderStore.put` 忽略布尔返回值；武装时机必须在**末片写入**前，否则到不了「成品已 move」状态；断言重试末片被拒 + **成品 SHA-256 不变**）；**M20 并发首查与稳态零写入**（不用 `size` 断言：`WeakHashMap` + GC 天然波动；断言列集实例身份与内容不变）。两者实现侧均已由三位专家逐行复核确认在位。
+- **aether 末片重放防护已实测**：新增 `AetherUploadReplayGuardTest`（2 例，**0 跳过**）—— 用「`put` 抛异常」的 `CacheStore` 替身在**末片写入前**武装，精确复现「成品已 move、`saveHeader` 失败」；断言重试末片被 `UploadException` 拒绝、且**成品 SHA-256 不变**（M6 的零填充覆盖路径已被真实拦住）；另断言随机 resourceId 循环只抛「header 不存在」（定长分段锁不无界增长）。
+- **唯一剩余验证项（已登记）**：**M20 并发首查/稳态零写入的自动化用例**未落地 —— 构造可查询的 `BaseModel` 夹具需要 gaarason 模型初始化与受保护成员的访问链，容易写成脆弱用例；实现侧（同步化 `WeakHashMap` + 登记后移）已由三位专家逐行复核确认在位，残余首次并发窗口亦已在 javadoc 与 CHANGELOG 如实记录。
 - **`DefaultAppKey.isTemporary()`**：该文件被系统拒绝写入（`fchmod EPERM` / Access denied），未加标记方法；改由 AppKey 生产点读原始 `jaravel.key` 判定（架构师确认机制等价且无误报，并指出影响面覆盖 captcha/wire/cookie/jwt 四处）。
 
 ### Fixed（修复 · 第九轮：审计剩余项 + 专家团第二轮新发现）
