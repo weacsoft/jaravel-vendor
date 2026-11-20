@@ -19,6 +19,11 @@ import org.springframework.context.annotation.Conditional;
  * <p>
  * 缺失这两个模块时：auth 仍可正常装配（登录态不具备存储后端，由 auth 内置的空守卫兜底），
  * 只是不会注册 {@code session} 驱动。
+ * <p>
+ * <b>本类只消费、不定义 {@link SessionStoreHolder}</b>：holder 的唯一声明点是
+ * {@code springboot.session.HttpSessionAutoConfiguration}。历史上两处都定义同名 bean，
+ * 同时装配会抛 {@code BeanDefinitionOverrideException} 直接启动失败；
+ * 按「同一个 bean 只留一个声明点」的原则，这里改为纯 {@code @Bean} 参数注入。
  */
 @AutoConfiguration
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
@@ -29,19 +34,11 @@ import org.springframework.context.annotation.Conditional;
 public class SessionGuardAutoConfiguration {
 
     /**
-     * 全局 Session 存储持有者（由 {@code session} 模块提供实现，未注册时回退到 CookieSessionStore）。
-     *
-     * @return Session 存储持有者
-     */
-    @Bean
-    @ConditionalOnMissingBean
-    public SessionStoreHolder sessionStoreHolder() {
-        return new SessionStoreHolder();
-    }
-
-    /**
      * Session 守卫驱动（工厂模式）：支持 {@code session} 驱动，实际存储由 {@code @RegisterSessionStore}
      * 或 {@code SessionStore} Bean 决定，都没有时回退到 {@code CookieSessionStore}（Servlet HttpSession）。
+     * <p>
+     * {@code holder} 由 {@code HttpSessionAutoConfiguration} 提供（若该配置因缺 {@code session}
+     * 模块未装配，本类也因类级 {@code @ConditionalOnClass} 不加载，不会出现注入失败）。
      *
      * @param holder Session 存储持有者
      * @return Session 守卫驱动

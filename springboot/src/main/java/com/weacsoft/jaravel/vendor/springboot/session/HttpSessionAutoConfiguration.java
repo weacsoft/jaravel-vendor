@@ -4,33 +4,44 @@ import com.weacsoft.jaravel.vendor.session.RegisterSessionStore;
 import com.weacsoft.jaravel.vendor.session.SessionStoreHolder;
 import com.weacsoft.jaravel.vendor.session.SessionStoreRegistrar;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 
 /**
- * http 模块的 Session 功能自动配置。
+ * Session 功能自动配置（<b>Session 存储的唯一装配点</b>）。
  * <p>
  * 负责注册全局 {@link SessionStoreHolder}（默认回退到 {@link com.weacsoft.jaravel.vendor.session.CookieSessionStore}）
  * 与扫描 {@link RegisterSessionStore} 注解的 {@link SessionStoreRegistrar}。
  * <p>
  * 该配置仅在 Servlet Web 应用下生效（Session 基于 {@code HttpSession}）。
- * auth 模块直接复用本配置提供的 {@link SessionStoreHolder}，不强引用具体 Session 实现——
- * 当项目仅引入 core + auth（无 http 的 Session 功能）时，auth 退化为使用原生 {@code HttpSession}。
+ * <p>
+ * <b>为何 {@code sessionStoreHolder} 只在这里定义</b>：{@code session} 是可选模块
+ * （springboot 对它是 {@code <optional>true</optional>}），本类的方法签名直接引用了
+ * {@link SessionStoreHolder} 等类型，因此必须用<b>类级</b>
+ * {@code @ConditionalOnClass} 守住——方法级条件保护不了「声明类自身的类加载」，
+ * 缺模块时内省会先抛 {@code NoClassDefFoundError}。
+ * <p>
+ * 历史上 {@code auth.SessionGuardAutoConfiguration} 曾重复定义同名 {@code sessionStoreHolder}，
+ * 两处同时装配会抛 {@code BeanDefinitionOverrideException} 直接启动失败。
+ * 职责重复的根因是「同一个 bean 有两个声明点」，已改为：<b>本类独占定义</b>，
+ * {@code SessionGuardAutoConfiguration} 只做 {@code @Bean} 参数注入消费。
  */
 @AutoConfiguration
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+@ConditionalOnClass(name = {
+        "com.weacsoft.jaravel.vendor.session.SessionStoreHolder",
+        "com.weacsoft.jaravel.vendor.session.SessionStoreRegistrar"
+})
 public class HttpSessionAutoConfiguration {
 
     /**
      * 全局 Session 存储持有者（默认回退 {@code CookieSessionStore}）。
      * <p>
-     * <b>必须 {@code @ConditionalOnMissingBean}</b>：同为可选模块的
-     * {@code auth.SessionGuardAutoConfiguration} 也会注册同名 {@code sessionStoreHolder}
-     * （当 auth-session / session 都在 classpath 且使用 session 守卫时）。两处都无条件注册会触发
-     * {@code BeanDefinitionOverrideException: Invalid bean definition with name 'sessionStoreHolder'}
-     * 直接启动失败。加此条件后由先装配者胜出，语义仍是「没有就回退默认」。
+     * 保留 {@code @ConditionalOnMissingBean} 是为了让业务方用 {@code @Bean}
+     * 自行提供 holder 时能覆盖默认实现（对齐「有则使用，无则回退默认」总原则）。
      *
      * @return Session 存储持有者
      */
