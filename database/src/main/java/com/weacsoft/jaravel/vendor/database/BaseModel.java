@@ -360,24 +360,19 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
 
     // ==================== 实例方法 ====================
 
-    /**
-     * 返回具备安全 count/aggregate 的查询构造器（兼容 SQLite 等驱动返回的 Integer 型 COUNT 结果）。
-     * <p>
-     * gaarason 的 {@code paginate()} 通过 {@code clone()} 复制当前 builder（保留运行时类型），
-     * 因此分页内部使用的 {@code count()} 同样为本类重写的安全版本，业务代码无需改动。
-     */
-    @Override
-    public QueryBuilder<T, K> newQuery() {
-        return JaravelQueryBuilder.wrap(super.newQuery());
-    }
-
-    /**
-     * 同上，用于不追加默认作用域的查询入口。
-     */
-    @Override
-    public QueryBuilder<T, K> newQueryWithoutApply() {
-        return JaravelQueryBuilder.wrap(super.newQueryWithoutApply());
-    }
+    // 说明（2026-11）：此前这里用 JaravelQueryBuilder.wrap() 重写 newQuery()，
+    // 用于绕过 gaarason 7.0.15 的 SQLite 分页缺陷 —— Aggregates.count() 把 COUNT()
+    // 结果直接强转 Long，而 SQLite 驱动返回 Integer，抛
+    // "class java.lang.Integer cannot be cast to class java.lang.Long"
+    // （上游 issue gaarason/database-all#64）。
+    //
+    // gaarason 7.1.3 已修复该缺陷：count(String) 改为
+    // `result instanceof Number ? ((Number) result).longValue() : Long.valueOf(result.toString())`，
+    // 对 Integer/Long/BigInteger 一视同仁。实测同一段 SQLite paginate 代码
+    // 在 7.0.15 复现原异常、在 7.1.3 正常返回。
+    //
+    // 因此兼容包装层（JaravelQueryBuilder + 反射字段拷贝）已整体移除，
+    // newQuery() 直接使用框架原生实现，少一次实例拷贝与反射开销。
 
     // ==================== 分页快捷方法 ====================
 
@@ -615,6 +610,73 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
 
     protected String getSoftDeleteColumnName() {
         return "deleted_at";
+    }
+
+    // ==================== gaarason 软删除扩展点（7.1.2+） ====================
+    //
+    // 背景（上游 issue gaarason/database-all#63）：
+    // 7.1.2 起 gaarason 提供了 `updateOrCreateAutoRestore` /
+    // `updateByPrimaryKeyOrCreateAutoRestore`，语义正是「命中已软删除记录时，
+    // 在同一条 SQL 里恢复并更新」。但它的判断全部走模型自身的扩展点：
+    //
+    //   isSoftDeleting()        —— 该模型是否启用软删除（AutoRestore 的总开关）
+    //   softDeletedColumnName() —— 软删除列名
+    //   isSoftDeleted(record)   —— 某条记录是否处于已删除状态
+    //
+    // gaarason 默认是「列名 is_deleted（布尔）+ 不启用软删除」，
+    // 与 Laravel/jaravel 的 `deleted_at IS NULL`（时间戳）语义不兼容。
+    // 不接上这三个点，AutoRestore 永远不触发，且**不报错**
+    // ——实测表现为 deleted_at 仍是旧值，只是普通 UPDATE，属于最难排查的一类失效。
+    //
+    // 此前 jaravel 用 TrashedScope（复刻 updateOrCreate 逻辑 + 额外一次 first 查询）
+    // 绕过该缺口；7.1.2+ 的官方扩展点到位后改为直接接入，语义更准也更省一次查询。
+
+    /**
+     * 该模型是否启用软删除。
+     * <p>
+     * <b>注意：这里覆盖的是 {@code isSoftDeleting()}，而不是 {@code softDeleting()}。</b>
+     * gaarason 的 {@code softDeleting()} 声明在<b>包私有</b>的 {@code ModelOfSoftDelete} 上，
+     * 跨包不可见、无法被 jaravel 真正覆盖——实测给它加 {@code @Override} 能编译通过
+     * （编译器把它当成新方法且不报错），但运行时 {@code isSoftDeleting()} 仍返回 {@code false}，
+     * AutoRestore 静默失效。{@code isSoftDeleting()} 在 public 的 {@code Model} 上重新声明，
+     * 才是可靠的扩展点。
+     *
+     * @return 恒为 {@code true}（jaravel 统一启用软删除，与 Laravel 的 SoftDeletes 一致）
+     */
+    @Override
+    public boolean isSoftDeleting() {
+        return true;
+    }
+
+    /**
+     * 软删除列名：jaravel 使用 {@code deleted_at}（时间戳），而非 gaarason 默认的
+     * {@code is_deleted}（布尔）。
+     * <p>
+     * 与 {@link #getSoftDeleteColumnName()} 保持同一来源，避免两套列名配置漂移。
+     *
+     * @return 软删除列名
+     */
+    @Override
+    public String softDeletedColumnName() {
+        return getSoftDeleteColumnName();
+    }
+
+    /**
+     * 判断给定记录是否处于「已软删除」状态：即软删除列不为 null。
+     * <p>
+     * gaarason 默认按布尔语义（{@code is_deleted == 1}）判断，对时间戳列不成立，
+     * 因此这里按 {@code deleted_at != null} 重写。
+     *
+     * @param record 待判断的记录
+     * @return 已软删除返回 {@code true}
+     */
+    @Override
+    public boolean isSoftDeleted(gaarason.database.contract.eloquent.Record<T, K> record) {
+        if (record == null) {
+            return false;
+        }
+        Object raw = record.toMap().get(getSoftDeleteColumnName());
+        return raw != null && !String.valueOf(raw).isBlank() && !"null".equals(String.valueOf(raw));
     }
 
     //只查询被删除的数据
