@@ -335,7 +335,10 @@ gaarason 原生的 `updateOrCreate` / `findOrCreate` / `findOrNew` 定义在 Mod
 
 由此带来的问题是：对一条**已被软删除**的记录再次 `updateOrCreate` 时，因默认作用域查不到该记录而误判为「不存在」，从而**重复 INSERT**（甚至触发唯一键冲突）。
 
-`BaseModel` 为此提供了软删除感知的入口方法，复刻 gaarason 的 updateOrCreate 逻辑但将条件查询所用 Builder 替换为对应软删除作用域，返回 gaarason `Record`，可继续链式调用 `restore()` / `save()` / `delete()`：
+> **gaarason 7.1.2 起已原生解决**：`Builder` 新增 `ModelOp`，直接提供 `updateOrCreate` / `findOrCreate` / `findOrNew` / `findByPrimaryKeyOrCreate` 等，并额外提供 `updateOrCreateAutoRestore`（命中已软删除记录时**在同一条 SQL 内恢复并更新**，省一次查询）。
+> jaravel 的 `TrashedScope` 因此改为**纯委托**：先按 `withTrash()` / `onlyTrash()` / `withoutTrash()` 选出对应作用域的 `Builder`，再把方法调用直接转交给该 `Builder` 上的官方实现。对外 API 与旧版**完全一致**，既有调用代码无需改动。
+
+`BaseModel` 提供软删除感知的入口方法，返回 gaarason `Record`，可继续链式调用 `restore()` / `save()` / `delete()`：
 
 | 入口方法 | 对齐 Laravel | 说明 |
 | --- | --- | --- |

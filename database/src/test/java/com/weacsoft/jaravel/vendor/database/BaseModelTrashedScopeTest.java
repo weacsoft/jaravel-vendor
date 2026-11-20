@@ -1,8 +1,6 @@
 package com.weacsoft.jaravel.vendor.database;
 
 import com.weacsoft.jaravel.vendor.core.lookup.GlobalLookup;
-
-import com.weacsoft.jaravel.vendor.core.SpringContext;
 import gaarason.database.annotation.Column;
 import gaarason.database.annotation.Primary;
 import gaarason.database.contract.eloquent.Record;
@@ -12,9 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.support.GenericApplicationContext;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -25,11 +21,26 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * {@link BaseModel.TrashedScope} 软删除感知写入操作单元测试。
+ * {@link BaseModel.TrashedScope} 软删除作用域与委托测试。
  * <p>
- * 覆盖核心诉求：{@code withTrash().updateOrCreate(condition, complement).restore()} 能够
- * 在<b>包含软删除</b>的范围内匹配记录（命中已删除记录时走 UPDATE 并可 restore，未命中时走 INSERT），
- * 以及 {@code onlyTrash()} 使用 {@code onlyTrashed()} 作用域。gaarason 查询链以 Mockito 模拟。
+ * <b>定位变化</b>：gaarason 7.1.2 起 {@code Builder} 自带 {@code ModelOp}
+ * （{@code updateOrCreate} / {@code findOrNew} / {@code findOrCreate} …），
+ * 因此 {@code TrashedScope} 不再<b>手写复刻</b>这些逻辑，而是：
+ * <ol>
+ *   <li>按 {@code withTrash()} / {@code onlyTrash()} / {@code withoutTrash()} 选出正确作用域的 builder；</li>
+ *   <li>把方法调用<b>直接转交</b>给该 builder 上的官方实现。</li>
+ * </ol>
+ * 于是本测试只需要锁定两件事：
+ * <ul>
+ *   <li><b>作用域正确</b>：{@code withTrash()} 必须走 {@code withTrashed()}，
+ *       {@code onlyTrash()} 必须走 {@code onlyTrashed()}，且都不应落到默认 {@code newQuery()}；</li>
+ *   <li><b>确实是委托</b>：调 {@code TrashedScope.updateOrCreate(...)} 时，
+ *       builder 上的同名方法被调用且结果被原样返回——不再有自己发查询、自己
+ *       {@code newRecord()} / {@code fillEntity()} 的第二套实现。</li>
+ * </ul>
+ * 旧版本断言的是「内部手工步骤」（{@code newRecord} + {@code getEntity} + {@code fillEntity} +
+ * {@code save} 的执行序列）。那些步骤现在由框架内部完成，从外部看已不可见，
+ * 断言它们只会把测试绑死在实现细节上，故改为断言委托契约。
  */
 class BaseModelTrashedScopeTest {
 
@@ -59,11 +70,11 @@ class BaseModelTrashedScopeTest {
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
-        // 用 spy 包装模型，使 gaarason 的 withTrashed()/onlyTrashed()/newQuery()/newRecord()/getEntityClass() 可打桩
+        // 用 spy 包装模型，使 gaarason 的 withTrashed()/onlyTrashed()/newQuery() 可打桩
         spyModel = spy(new TrashUser());
         doReturn(TrashUser.class).when(spyModel).getEntityClass();
 
-        // 将 spy 注册进 Spring 上下文：TrashedScope 内部通过 SpringContext.bean(getClass()) 取回该实例
+        // 将 spy 注册进 Spring 上下文：部分路径内部通过 SpringContext.bean(getClass()) 取回该实例
         GenericApplicationContext ctx = new GenericApplicationContext();
         ctx.getBeanFactory().registerSingleton("trashUser", spyModel);
         ctx.refresh();
@@ -76,19 +87,15 @@ class BaseModelTrashedScopeTest {
     }
 
     /**
-     * 构造一个 select(...).where(...).first() 返回指定 Record 的 QueryBuilder mock。
+     * 构造一个 {@link QueryBuilder} mock，用于验证作用域选择与委托。
      * <p>
-     * 注意必须 mock {@link QueryBuilder}（而非其父接口 {@link Builder}）：gaarason 的
-     * {@code withTrashed()}/{@code onlyTrashed()}/{@code newQuery()} 静态返回类型为 {@code QueryBuilder}，
-     * BaseModel 内部会隐式向 {@code QueryBuilder} 转换，若 mock 父接口会触发 ClassCastException。
+     * 注意必须 mock {@link QueryBuilder}（而非其父接口 {@code Builder}）：gaarason 的
+     * {@code withTrashed()}/{@code onlyTrashed()}/{@code newQuery()} 静态返回类型为
+     * {@code QueryBuilder}，BaseModel 内部会隐式转换，mock 父接口会触发 ClassCastException。
      */
     @SuppressWarnings({"unchecked", "rawtypes"})
-    private QueryBuilder<TrashUser, Long> builderReturning(Record<TrashUser, Long> first) {
-        QueryBuilder builder = mock(QueryBuilder.class);
-        when(builder.select(any(Class.class))).thenReturn(builder);
-        when(builder.where(any(TrashUser.class))).thenReturn(builder);
-        when(builder.first()).thenReturn(first);
-        return builder;
+    private QueryBuilder<TrashUser, Long> scopedBuilder() {
+        return mock(QueryBuilder.class);
     }
 
     private TrashUser condition() {
@@ -103,50 +110,85 @@ class BaseModelTrashedScopeTest {
         return c;
     }
 
+    /**
+     * {@code withTrash().updateOrCreate(...)} 必须委托给
+     * {@code withTrashed()} 那个 builder 的官方 {@code updateOrCreate}，并原样返回其结果。
+     * <p>
+     * 这同时覆盖了「作用域正确」与「确实是委托」两点：
+     * 若退回手写实现，builder 上的 {@code updateOrCreate} 不会被调用（测试失败）。
+     */
     @Test
     @SuppressWarnings("unchecked")
-    void withTrashUpdateOrCreateHitsSoftDeletedRecordThenUpdatesAndCanRestore() {
-        // 命中一条（已软删除的）记录：应使用 withTrashed() 作用域查询，命中后 fillEntity + save，并可继续 restore()
+    void withTrashUpdateOrCreateDelegatesToWithTrashedScope() {
+        QueryBuilder<TrashUser, Long> builder = scopedBuilder();
         Record<TrashUser, Long> hit = mock(Record.class);
-        doReturn(builderReturning(hit)).when(spyModel).withTrashed();
+        when(builder.updateOrCreate(any(), any())).thenReturn(hit);
+        doReturn(builder).when(spyModel).withTrashed();
 
         Record<TrashUser, Long> result = spyModel.withTrash().updateOrCreate(condition(), complement());
 
-        assertSame(hit, result, "命中时应返回查询到的记录");
-        verify(spyModel).withTrashed();              // 走的是包含软删除的作用域
-        verify(spyModel, never()).newQuery();        // 不应走默认(仅未删除)作用域
-        verify(hit).fillEntity(any(TrashUser.class)); // 用 complement 补全
-        verify(hit).save();                          // 执行更新
-        verify(spyModel, never()).newRecord();       // 命中则不新建
-
-        // 链式 restore()：Record.restore() 被调用（软删除恢复）
-        result.restore();
-        verify(hit).restore();
+        assertSame(hit, result, "应原样返回 builder 官方 updateOrCreate 的结果");
+        verify(spyModel).withTrashed();                 // 走包含软删除的作用域
+        verify(spyModel, never()).newQuery();           // 不应走默认（仅未删除）作用域
+        verify(builder, times(1)).updateOrCreate(any(), any()); // 委托给框架实现
+        verify(spyModel, never()).newRecord();          // 不再自己新建记录（旧实现的痕迹）
     }
 
+    /** {@code findOrNew} 同样委托，且不再自己 {@code newRecord()}。 */
     @Test
     @SuppressWarnings("unchecked")
-    void withTrashUpdateOrCreateCreatesWhenNotFound() {
-        // 未命中：应 newRecord + getEntity(condition) + fillEntity(complement) + save
-        doReturn(builderReturning(null)).when(spyModel).withTrashed();
-        Record<TrashUser, Long> created = mock(Record.class);
-        doReturn(created).when(spyModel).newRecord();
-
-        Record<TrashUser, Long> result = spyModel.withTrash().updateOrCreate(condition(), complement());
-
-        assertSame(created, result, "未命中时应返回新建记录");
-        verify(spyModel).newRecord();
-        verify(created).getEntity(any(TrashUser.class));
-        verify(created).fillEntity(any(TrashUser.class));
-        verify(created).save();
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void onlyTrashUsesOnlyTrashedScope() {
-        // onlyTrash() 应使用 onlyTrashed() 作用域
+    void findOrNewDelegatesToScopedBuilder() {
+        QueryBuilder<TrashUser, Long> builder = scopedBuilder();
         Record<TrashUser, Long> hit = mock(Record.class);
-        doReturn(builderReturning(hit)).when(spyModel).onlyTrashed();
+        when(builder.findOrNew(any())).thenReturn(hit);
+        doReturn(builder).when(spyModel).withTrashed();
+
+        Record<TrashUser, Long> result = spyModel.withTrash().findOrNew(condition());
+
+        assertSame(hit, result);
+        verify(builder).findOrNew(any());
+        verify(spyModel, never()).newRecord();
+    }
+
+    /** {@code findOrCreate} 委托给官方实现（「未命中是否 save」由框架负责）。 */
+    @Test
+    @SuppressWarnings("unchecked")
+    void findOrCreateDelegatesToScopedBuilder() {
+        QueryBuilder<TrashUser, Long> builder = scopedBuilder();
+        Record<TrashUser, Long> hit = mock(Record.class);
+        when(builder.findOrCreate(any())).thenReturn(hit);
+        doReturn(builder).when(spyModel).withTrashed();
+
+        Record<TrashUser, Long> result = spyModel.withTrash().findOrCreate(condition());
+
+        assertSame(hit, result);
+        verify(builder).findOrCreate(any());
+    }
+
+    /** 条件与补充分离的 {@code findOrCreate(condition, complement)} 也委托。 */
+    @Test
+    @SuppressWarnings("unchecked")
+    void findOrCreateWithComplementDelegatesToScopedBuilder() {
+        QueryBuilder<TrashUser, Long> builder = scopedBuilder();
+        Record<TrashUser, Long> hit = mock(Record.class);
+        when(builder.findOrCreate(any(), any())).thenReturn(hit);
+        doReturn(builder).when(spyModel).withTrashed();
+
+        Record<TrashUser, Long> result = spyModel.withTrash().findOrCreate(condition(), complement());
+
+        assertSame(hit, result);
+        verify(builder).findOrCreate(any(), any());
+    }
+
+    /** {@code first(condition)} 在正确作用域上拼接 where 后取首条。 */
+    @Test
+    @SuppressWarnings("unchecked")
+    void firstUsesScopedBuilderWhere() {
+        QueryBuilder<TrashUser, Long> builder = scopedBuilder();
+        Record<TrashUser, Long> hit = mock(Record.class);
+        when(builder.where(any(TrashUser.class))).thenReturn(builder);
+        when(builder.first()).thenReturn(hit);
+        doReturn(builder).when(spyModel).onlyTrashed();
 
         Record<TrashUser, Long> result = spyModel.onlyTrash().first(condition());
 
@@ -156,54 +198,42 @@ class BaseModelTrashedScopeTest {
         verify(spyModel, never()).newQuery();
     }
 
+    /** {@code onlyTrash()} 必须使用 {@code onlyTrashed()} 作用域。 */
+    @Test
+    @SuppressWarnings("unchecked")
+    void onlyTrashUsesOnlyTrashedScope() {
+        QueryBuilder<TrashUser, Long> builder = scopedBuilder();
+        doReturn(builder).when(spyModel).onlyTrashed();
+
+        assertSame(builder, spyModel.onlyTrash().query());
+
+        verify(spyModel).onlyTrashed();
+        verify(spyModel, never()).withTrashed();
+        verify(spyModel, never()).newQuery();
+    }
+
+    /** {@code withoutTrash()} 应使用默认 {@code newQuery()} 作用域（仅未删除）。 */
     @Test
     @SuppressWarnings("unchecked")
     void withoutTrashUsesDefaultNewQueryScope() {
-        // withoutTrash() 应使用默认 newQuery() 作用域（仅未删除）
-        doReturn(builderReturning(null)).when(spyModel).newQuery();
+        QueryBuilder<TrashUser, Long> builder = scopedBuilder();
+        doReturn(builder).when(spyModel).newQuery();
 
-        Record<TrashUser, Long> result = spyModel.withoutTrash().first(condition());
+        assertSame(builder, spyModel.withoutTrash().query());
 
-        assertSame(null, result);
         verify(spyModel).newQuery();
         verify(spyModel, never()).withTrashed();
         verify(spyModel, never()).onlyTrashed();
     }
 
-    @Test
-    @SuppressWarnings("unchecked")
-    void findOrCreateSavesOnlyWhenNotBound() {
-        // findOrNew 命中已存在记录（isHasBind=true）时，findOrCreate 不应再 save
-        Record<TrashUser, Long> hit = mock(Record.class);
-        when(hit.isHasBind()).thenReturn(true);
-        doReturn(builderReturning(hit)).when(spyModel).withTrashed();
-
-        Record<TrashUser, Long> result = spyModel.withTrash().findOrCreate(condition());
-
-        assertSame(hit, result);
-        assertTrue(hit.isHasBind());
-        verify(hit, never()).save();
-
-        // 未命中：findOrNew 返回未绑定的新记录，findOrCreate 应 save
-        doReturn(builderReturning(null)).when(spyModel).withTrashed();
-        Record<TrashUser, Long> fresh = mock(Record.class);
-        when(fresh.isHasBind()).thenReturn(false);
-        doReturn(fresh).when(spyModel).newRecord();
-
-        Record<TrashUser, Long> created = spyModel.withTrash().findOrCreate(condition());
-        assertSame(fresh, created);
-        assertFalse(fresh.isHasBind());
-        verify(fresh).save();
-    }
-
+    /** {@code query()} 返回对应作用域的 Builder。 */
     @Test
     @SuppressWarnings("unchecked")
     void queryReturnsScopedBuilder() {
-        // query() 应返回对应作用域的 Builder（withTrash -> withTrashed）
-        QueryBuilder<TrashUser, Long> b = builderReturning(null);
-        doReturn(b).when(spyModel).withTrashed();
+        QueryBuilder<TrashUser, Long> builder = scopedBuilder();
+        doReturn(builder).when(spyModel).withTrashed();
 
-        assertSame(b, spyModel.withTrash().query());
+        assertSame(builder, spyModel.withTrash().query());
         verify(spyModel, times(1)).withTrashed();
     }
 }

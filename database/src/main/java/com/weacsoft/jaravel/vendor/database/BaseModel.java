@@ -1103,96 +1103,64 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
         /**
          * 在当前软删除范围内「更新或创建」，对齐 Laravel {@code updateOrCreate($condition, $complement)}。
          * <p>
-         * 依据 {@code conditionEntity} 的非空字段作为匹配条件查询首条记录：
-         * <ul>
-         *   <li>命中：用 {@code complementEntity} 补全并 {@code save()}（执行 UPDATE），返回该记录；</li>
-         *   <li>未命中：以 {@code conditionEntity + complementEntity} 组合新建并 {@code save()}（执行 INSERT），返回新记录。</li>
-         * </ul>
-         * 与 gaarason 原生方法的差异仅在于：条件查询是在 {@link TrashScope} 指定的范围（如包含软删除）内进行。
+         * <b>已改为委托 gaarason 官方实现</b>：7.1.2 起 {@code Builder} 直接提供
+         * {@link gaarason.database.contract.builder.ModelOp#updateOrCreate(Object, Object)}，
+         * 行为与这里原先手写复刻的一致（在<b>当前 builder 的作用域内</b>匹配，命中则填充并
+         * {@code save()}，未命中则新建）。因此本方法不再自己发查询，只是把调用转给框架：
+         * <pre>
+         * self().withTrash().updateOrCreate(condition, complement).restore();
+         * </pre>
+         * 语义与旧版完全一致，但少了一份重复实现，且后续 gaarason 的修复会自动生效。
+         * <p>
+         * 若需要「命中已软删除记录时在同一条 SQL 内自动恢复」，用官方的
+         * {@code updateOrCreateAutoRestore}（本类已接入其软删除扩展点），
+         * 可省掉显式 {@code .restore()} 与额外一次查询。
          *
          * @param conditionEntity  匹配条件实体（非空字段参与 WHERE）
          * @param complementEntity 补充/更新用实体
          * @return 更新或创建后的记录，可继续 {@code .restore()} 等链式操作
          */
         public Record<T, K> updateOrCreate(T conditionEntity, T complementEntity) {
-            BaseModel<T, K> bean = (BaseModel<T, K>) SpringContext.bean(BaseModel.this.getClass());
-            Record<T, K> first = newScopedQuery(scope)
-                    .select(bean.getEntityClass())
-                    .where(conditionEntity)
-                    .first();
-            if (first != null) {
-                first.fillEntity(complementEntity);
-                first.save();
-                return first;
-            }
-            Record<T, K> theRecord = bean.newRecord();
-            theRecord.getEntity(conditionEntity);
-            theRecord.fillEntity(complementEntity);
-            theRecord.save();
-            return theRecord;
+            return newScopedQuery(scope).updateOrCreate(conditionEntity, complementEntity);
         }
 
         /**
          * 在当前软删除范围内「查询或新建」（不持久化），对齐 Laravel {@code firstOrNew}。
          * <p>
-         * 命中则返回已绑定数据的记录；未命中则返回一个以 {@code entity} 填充、尚未持久化的新记录
-         * （不写库，需自行 {@code save()}）。
+         * 委托 gaarason 官方 {@link gaarason.database.contract.builder.ModelOp#findOrNew(Object)}。
          *
          * @param entity 匹配条件实体
          * @return 已存在或新建（未持久化）的记录
          */
         public Record<T, K> findOrNew(T entity) {
-            BaseModel<T, K> bean = (BaseModel<T, K>) SpringContext.bean(BaseModel.this.getClass());
-            Record<T, K> first = newScopedQuery(scope)
-                    .select(bean.getEntityClass())
-                    .where(entity)
-                    .first();
-            if (first != null) {
-                return first;
-            }
-            Record<T, K> theRecord = bean.newRecord();
-            theRecord.getEntity(entity);
-            return theRecord;
+            return newScopedQuery(scope).findOrNew(entity);
         }
 
         /**
          * 在当前软删除范围内「查询或创建」，对齐 Laravel {@code firstOrCreate}。
          * <p>
-         * 命中则直接返回；未命中则以 {@code entity} 新建并持久化后返回。
+         * 委托 gaarason 官方 {@link gaarason.database.contract.builder.ModelOp#findOrCreate(Object)}。
          *
          * @param entity 匹配条件 / 新建用实体
          * @return 已存在或新建（已持久化）的记录
          */
         public Record<T, K> findOrCreate(T entity) {
-            Record<T, K> theRecord = findOrNew(entity);
-            if (!theRecord.isHasBind()) {
-                theRecord.save();
-            }
-            return theRecord;
+            return newScopedQuery(scope).findOrCreate(entity);
         }
 
         /**
          * 在当前软删除范围内「查询或创建」（条件与补充分离），对齐 Laravel
          * {@code firstOrCreate($condition, $complement)}。
+         * <p>
+         * 委托 gaarason 官方
+         * {@link gaarason.database.contract.builder.ModelOp#findOrCreate(Object, Object)}。
          *
          * @param conditionEntity  匹配条件实体
          * @param complementEntity 未命中时用于补全的实体
          * @return 已存在或新建（已持久化）的记录
          */
         public Record<T, K> findOrCreate(T conditionEntity, T complementEntity) {
-            BaseModel<T, K> bean = (BaseModel<T, K>) SpringContext.bean(BaseModel.this.getClass());
-            Record<T, K> first = newScopedQuery(scope)
-                    .select(bean.getEntityClass())
-                    .where(conditionEntity)
-                    .first();
-            if (first != null) {
-                return first;
-            }
-            Record<T, K> theRecord = bean.newRecord();
-            theRecord.getEntity(conditionEntity);
-            theRecord.fillEntity(complementEntity);
-            theRecord.save();
-            return theRecord;
+            return newScopedQuery(scope).findOrCreate(conditionEntity, complementEntity);
         }
 
         /**
@@ -1202,11 +1170,7 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
          * @return 首条匹配记录或 {@code null}
          */
         public Record<T, K> first(T conditionEntity) {
-            BaseModel<T, K> bean = (BaseModel<T, K>) SpringContext.bean(BaseModel.this.getClass());
-            return newScopedQuery(scope)
-                    .select(bean.getEntityClass())
-                    .where(conditionEntity)
-                    .first();
+            return newScopedQuery(scope).where(conditionEntity).first();
         }
 
         /**
