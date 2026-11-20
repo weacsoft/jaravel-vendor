@@ -4,6 +4,7 @@ import com.weacsoft.jaravel.vendor.session.RegisterSessionStore;
 import com.weacsoft.jaravel.vendor.session.SessionStoreHolder;
 import com.weacsoft.jaravel.vendor.session.SessionStoreRegistrar;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
@@ -22,7 +23,19 @@ import org.springframework.context.annotation.Bean;
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 public class HttpSessionAutoConfiguration {
 
+    /**
+     * 全局 Session 存储持有者（默认回退 {@code CookieSessionStore}）。
+     * <p>
+     * <b>必须 {@code @ConditionalOnMissingBean}</b>：同为可选模块的
+     * {@code auth.SessionGuardAutoConfiguration} 也会注册同名 {@code sessionStoreHolder}
+     * （当 auth-session / session 都在 classpath 且使用 session 守卫时）。两处都无条件注册会触发
+     * {@code BeanDefinitionOverrideException: Invalid bean definition with name 'sessionStoreHolder'}
+     * 直接启动失败。加此条件后由先装配者胜出，语义仍是「没有就回退默认」。
+     *
+     * @return Session 存储持有者
+     */
     @Bean
+    @ConditionalOnMissingBean
     public SessionStoreHolder sessionStoreHolder() {
         return new SessionStoreHolder();
     }
