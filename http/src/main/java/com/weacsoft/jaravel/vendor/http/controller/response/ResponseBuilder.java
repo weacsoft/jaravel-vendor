@@ -6,6 +6,7 @@ import com.weacsoft.jaravel.vendor.json.Json;
 import com.weacsoft.jaravel.vendor.utils.Maps;
 import jakarta.servlet.http.Cookie;
 
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -438,6 +439,151 @@ public class ResponseBuilder {
      */
     public static RawResponse raw() {
         return new RawResponse();
+    }
+
+    /**
+     * 流式响应：把内容边产边写，不整体缓冲（SSE / 大文件下载必需）。
+     * <p>
+     * 返回的是同时实现 {@link Response} 与 {@link StreamingResponse} 的对象，
+     * 因此<b>与普通响应共用同一套路由与错误处理</b>——同一个处理方法里
+     * 既可以 {@code return ResponseBuilder.error(400, "...")}，
+     * 也可以 {@code return ResponseBuilder.stream(200, writer)}。
+     * <p>
+     * 为什么需要它：普通 {@link Response} 只有 {@code getContent()}/{@code getBytes()}，
+     * 适配层会把整个响应体先读进内存再交给容器。对 LLM 的逐 token 输出，这意味着
+     * 生成结束前客户端收不到任何内容（表现为「卡住」），且长响应会占用大量堆内存。
+     *
+     * <pre>
+     * return ResponseBuilder.stream(200, output -&gt; {
+     *     byte[] buf = new byte[4096];
+     *     int n;
+     *     while ((n = upstream.read(buf)) != -1) {
+     *         output.write(buf, 0, n);
+     *         output.flush();     // 逐块 flush：流式真正生效的关键
+     *     }
+     * });
+     * </pre>
+     *
+     * @param status  HTTP 状态码
+     * @param contentType 响应的 Content-Type，如 {@code text/event-stream}；为 null 时按
+     *                     {@code application/octet-stream} 处理
+     * @param writer 实际写出逻辑
+     * @return 可流式响应的 {@link Response}
+     */
+    public static Response stream(int status, String contentType, StreamingResponse writer) {
+        return new StreamResponse(status, contentType, writer);
+    }
+
+    /**
+     * 流式响应（默认 200 + {@code application/octet-stream}）。
+     *
+     * @param writer 实际写出逻辑
+     * @return 可流式响应的 {@link Response}
+     */
+    public static Response stream(StreamingResponse writer) {
+        return stream(200, "application/octet-stream", writer);
+    }
+
+    /**
+     * SSE 流式响应（{@code text/event-stream}），并自动关闭代理缓冲。
+     * <p>
+     * 反向代理（nginx）默认会缓冲响应，这会让 SSE 退化成「一次性到达」。
+     * 这里自动带上 {@code X-Accel-Buffering: no} 与 {@code Cache-Control: no-cache}。
+     *
+     * @param writer 实际写出逻辑
+     * @return 可流式响应的 {@link Response}
+     */
+    public static Response sse(StreamingResponse writer) {
+        return new StreamResponse(200, "text/event-stream", writer)
+                .header("Cache-Control", "no-cache")
+                .header("X-Accel-Buffering", "no");
+    }
+
+    /**
+     * 流式响应实现：同时是 {@link Response} 与 {@link StreamingResponse}。
+     * <p>
+     * 适配层只认 {@code Response}，检测到 {@link StreamingResponse} 之后才走流式分支，
+     * 因此这个类对「不认识流式」的调用方仍然是一个合法的 {@code Response}
+     * （{@code getContent()} 返回 {@code null}，{@code getBytes()} 返回 {@code null}）。
+     */
+    public static class StreamResponse implements Response, StreamingResponse {
+
+        private final int status;
+        private final Map<String, List<String>> headers = new LinkedHashMap<>();
+        private final List<Cookie> cookies = new ArrayList<>();
+        private final StreamingResponse writer;
+
+        /**
+         * @param status      HTTP 状态码
+         * @param contentType Content-Type，null 时用 application/octet-stream
+         * @param writer      写出逻辑
+         */
+        public StreamResponse(int status, String contentType, StreamingResponse writer) {
+            this.status = status;
+            this.writer = writer;
+            headers.put("Content-Type", new ArrayList<>(List.of(
+                    contentType != null ? contentType : "application/octet-stream")));
+        }
+
+        /** 追加响应头（链式） */
+        public StreamResponse header(String name, String value) {
+            headers.computeIfAbsent(name, k -> new ArrayList<>()).add(value);
+            return this;
+        }
+
+        /** 追加 Cookie（链式） */
+        public StreamResponse cookie(Cookie cookie) {
+            cookies.add(cookie);
+            return this;
+        }
+
+        @Override
+        public int getStatus() {
+            return status;
+        }
+
+        @Override
+        public Map<String, List<String>> getHeaders() {
+            Map<String, List<String>> copy = new LinkedHashMap<>();
+            headers.forEach((k, v) -> copy.put(k, new ArrayList<>(v)));
+            return copy;
+        }
+
+        @Override
+        public void addHeader(String name, String value) {
+            headers.computeIfAbsent(name, k -> new ArrayList<>()).add(value);
+        }
+
+        @Override
+        public Cookie[] getCookies() {
+            return cookies.toArray(new Cookie[0]);
+        }
+
+        @Override
+        public void addCookie(Cookie cookie) {
+            cookies.add(cookie);
+        }
+
+        @Override
+        public void addCookie(String name, String value) {
+            cookies.add(new Cookie(name, value));
+        }
+
+        /**
+         * 流式响应没有整体内容：返回 {@code null} 让适配层明确知道「不要走缓冲路径」。
+         * <p>
+         * 这与 {@link Response#getContent()} 的普通语义一致——{@code null} 表示无内容，
+         * 旧代码即便不认识流式也不会误读到半个 body。
+         */
+        @Override
+        public String getContent() {
+            return null;
+        }
+
+        @Override
+        public void writeTo(OutputStream outputStream) throws Exception {
+            writer.writeTo(outputStream);
+        }
     }
 
     /**

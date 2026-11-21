@@ -261,10 +261,17 @@ public class RequestFactory {
     }
 
     private static void handleJsonRequest(ServerRequest base, Request request) {
-        String body = null;
         try {
-            body = base.body(String.class);
-            if (body == null || body.trim().isEmpty()) {
+            // 先取原始字节并缓存，再从字节解析 JSON。
+            // 这样即使后续还要原样转发 body（代理场景），也有原始内容可用；
+            // 顺序不能反过来——body(byte[].class) 之后再 body(String.class) 会读到空。
+            byte[] raw = base.body(byte[].class);
+            if (raw == null || raw.length == 0) {
+                return;
+            }
+            request.setRawBody(raw);
+            String body = new String(raw, java.nio.charset.StandardCharsets.UTF_8);
+            if (body.trim().isEmpty()) {
                 return;
             }
             Map<String, Object> obj = Json.parseToMap(body);

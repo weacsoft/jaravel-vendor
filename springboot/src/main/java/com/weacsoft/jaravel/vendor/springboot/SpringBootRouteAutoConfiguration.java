@@ -575,6 +575,12 @@ public class SpringBootRouteAutoConfiguration {
 
         String content = response.getContent();
         if (content == null) {
+            // 流式响应：实现 StreamingResponse 的 Response 走「边产边写」分支。
+            // 见 StreamingResponse 的说明：整体缓冲会让 LLM 的逐 token 输出
+            // 在客户端表现为「卡住」，且长响应会吃满堆内存。
+            if (StreamingServerResponse.isStreaming(response)) {
+                return StreamingServerResponse.of(response);
+            }
             byte[] bytes = response.getBytes();
             if (bytes != null) {
                 return builder.body(bytes);
@@ -583,4 +589,5 @@ public class SpringBootRouteAutoConfiguration {
         }
         return builder.body(content);
     }
+
 }

@@ -21,6 +21,20 @@ public class Request {
     private final List<Cookie> newCookies = new ArrayList<>();
     private final Map<String, Object> session = new LinkedHashMap<>();
     private final Map<String, Object> attributes = new LinkedHashMap<>();
+
+    /**
+     * 原始请求体字节缓存。
+     * <p>
+     * <b>为什么需要</b>：{@code RequestFactory} 解析 JSON/form 时会把 servlet 的
+     * 输入流读掉（{@code getReader()} 或 {@code getInputStream()}），之后任何再读
+     * body 的地方都会拿到空内容。这对「原样透传请求」的代理场景是致命的——
+     * 反向代理必须把客户端提交的 body 原封不动转发给上游，而不是自己重新序列化
+     * （重新序列化会丢字段、改顺序、改变数字精度）。
+     * <p>
+     * 因此解析时顺手把原始字节留一份，供 {@link #rawBody()} 取用。
+     * 未解析过 body 的请求（如 GET）该值为 {@code null}。
+     */
+    private byte[] rawBody;
     @Setter
     private Map<String, Object> routeParams = new LinkedHashMap<>();
     @Getter
@@ -706,6 +720,27 @@ public class Request {
 
     // ---- 属性（Attributes，对齐 Laravel $request->attributes） ----
     // 用于中间件间传递数据，独立于 input/query/header 等
+
+    /**
+     * 原始请求体字节（解析 JSON/form 时缓存）。
+     * <p>
+     * 供「原样转发」场景使用：代理必须转发客户端提交的<b>原始字节</b>，
+     * 而不是用 {@link #input()} 重新序列化（会丢字段、改顺序、改变数字精度）。
+     *
+     * @return 原始字节；未解析过 body 时返回 {@code null}
+     */
+    public byte[] rawBody() {
+        return rawBody == null ? null : rawBody.clone();
+    }
+
+    /**
+     * 缓存原始请求体字节。
+     *
+     * @param rawBody 原始字节
+     */
+    public void setRawBody(byte[] rawBody) {
+        this.rawBody = rawBody == null ? null : rawBody.clone();
+    }
 
     public void setAttribute(String key, Object value) {
         attributes.put(key, value);
