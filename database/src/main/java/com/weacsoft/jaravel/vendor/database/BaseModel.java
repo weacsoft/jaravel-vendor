@@ -632,20 +632,51 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
     // 绕过该缺口；7.1.2+ 的官方扩展点到位后改为直接接入，语义更准也更省一次查询。
 
     /**
-     * 该模型是否启用软删除。
+     * 该模型是否启用软删除 —— <b>这是整个软删除作用域的总开关</b>。
      * <p>
-     * <b>注意：这里覆盖的是 {@code isSoftDeleting()}，而不是 {@code softDeleting()}。</b>
-     * gaarason 的 {@code softDeleting()} 声明在<b>包私有</b>的 {@code ModelOfSoftDelete} 上，
-     * 跨包不可见、无法被 jaravel 真正覆盖——实测给它加 {@code @Override} 能编译通过
-     * （编译器把它当成新方法且不报错），但运行时 {@code isSoftDeleting()} 仍返回 {@code false}，
-     * AutoRestore 静默失效。{@code isSoftDeleting()} 在 public 的 {@code Model} 上重新声明，
-     * 才是可靠的扩展点。
+     * gaarason 的 {@code newQuery()} 逻辑是：
+     * <pre>
+     * B builder = theBuilder();
+     * if (softDeleting()) {          // ← 就是看这里
+     *     scopeSoftDelete(builder);  //    附加 "deleted_at IS NULL"
+     * }
+     * return builder;
+     * </pre>
+     * 默认实现返回 {@code false}，所以<b>不覆盖本方法，软删除过滤整体不生效</b>——
+     * {@code newQuery()} 查出来的永远是全部数据（含已删除），而 {@code scopeSoftDelete}
+     * 里写的 {@code whereNull(deleted_at)} 一行都不会执行。这种失效不报错，
+     * 只是「删掉的数据又出现了」，极难察觉。
+     * <p>
+     * 本方法声明在<b>包私有</b>的 {@code ModelOfSoftDelete} 上、修饰符为 {@code protected}。
+     * 实测确认两点：
+     * <ol>
+     *   <li>跨包继承并覆盖 {@code protected} 方法是<b>合法且虚分派生效</b>的
+     *       （Java 的 protected 语义允许子类覆盖，与父类是否包私有无关）；</li>
+     *   <li>{@code @Override} 注解也能通过编译 —— 它校验的是「父类链上存在可覆盖方法」。</li>
+     * </ol>
+     * 因此这里是可靠的接管点，与 {@link #isSoftDeleting()}（同为 true，
+     * 供 AutoRestore 系列使用）配套，两者必须保持一致。
      *
      * @return 恒为 {@code true}（jaravel 统一启用软删除，与 Laravel 的 SoftDeletes 一致）
      */
     @Override
-    public boolean isSoftDeleting() {
+    protected boolean softDeleting() {
         return true;
+    }
+
+    /**
+     * 该模型是否启用软删除（public 版本，供 AutoRestore 系列读取）。
+     * <p>
+     * 与 {@link #softDeleting()} 保持同源：gaarason 内部走 protected 的
+     * {@code softDeleting()} 决定作用域，而 {@code updateOrCreateAutoRestore}
+     * 一类的公开 API 走本方法。两者若不一致，会出现「查询过滤了软删除、
+     * 但自动恢复不触发」这类割裂行为。
+     *
+     * @return 恒为 {@code true}
+     */
+    @Override
+    public boolean isSoftDeleting() {
+        return softDeleting();
     }
 
     /**
