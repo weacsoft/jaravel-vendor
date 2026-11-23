@@ -49,7 +49,7 @@ public class ScheduleAutoConfiguration {
     }
 
     /**
-     * 定时任务注册器（P3：core 纯扫描器；扫描由下方 SmartInitializingSingleton 触发，
+     * 定时任务注册器（core 纯扫描器；扫描由下方 SmartInitializingSingleton 触发，
      * 保持原「所有单例就绪后扫描」时序）。
      */
     @Bean
@@ -73,7 +73,7 @@ public class ScheduleAutoConfiguration {
     }
 
     /**
-     * 锁提供者注册器（P3：core 纯扫描器，@RegisterLockProvider 由 scan() 触发）。
+     * 锁提供者注册器（core 纯扫描器，@RegisterLockProvider 由 scan() 触发）。
      */
     @Bean
     @ConditionalOnMissingBean

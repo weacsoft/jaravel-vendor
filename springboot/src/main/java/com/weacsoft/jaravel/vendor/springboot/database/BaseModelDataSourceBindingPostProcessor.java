@@ -10,7 +10,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 
 /**
- * 为所有 {@link BaseModel} Bean 绑定 {@code GaarasonDataSource}（D2 承接类）。
+ * 为所有 {@link BaseModel} Bean 绑定 {@code GaarasonDataSource}。
  * <p>
  * 此前 {@code BaseModel} 的数据源字段上直接标注 {@code @Autowired @Lazy}（Spring 字段注入）；
  *  database 模块零 Spring，该字段改为纯 Java setter 注入，

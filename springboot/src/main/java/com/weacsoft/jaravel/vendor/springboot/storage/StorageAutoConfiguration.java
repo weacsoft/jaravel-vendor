@@ -84,7 +84,7 @@ public class StorageAutoConfiguration {
 
     /**
      * 磁盘注册器：收集驱动、按配置注册磁盘、扫描 {@code @RegisterDisk} 注解
-     * （P3：core 纯扫描器；扫描由下方 SmartInitializingSingleton 触发，
+     * （core 纯扫描器；扫描由下方 SmartInitializingSingleton 触发，
      * 保持原「所有单例就绪后扫描」时序）。
      *
      * @param manager    存储管理器

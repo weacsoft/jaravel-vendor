@@ -161,7 +161,7 @@ public class ArtisanAutoConfiguration {
      * 将命令实例注册到 {@link ArtisanApplication}。
      * <p>
      * 命令实例不进入 Spring 容器，对齐 @RegisterGuard / @RegisterDisk 等模式。
-     * P3：{@link CommandRegistrar} 为 core 纯扫描器（零 Spring），
+     * {@link CommandRegistrar} 为 core 纯扫描器（零 Spring），
      * 扫描时机由下方 SmartInitializingSingleton 触发（保持原「所有单例就绪后扫描」时序）。
      */
     @Bean

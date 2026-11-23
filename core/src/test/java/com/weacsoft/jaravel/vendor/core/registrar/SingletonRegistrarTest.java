@@ -92,7 +92,7 @@ class SingletonRegistrarTest {
         }
     }
 
-    /** 收集最终生效实例的测试注册器（P3：纯扫描器，构造不再需要容器）。 */
+    /** 收集最终生效实例的测试注册器（纯扫描器，构造不再需要容器）。 */
     static class ThingRegistrar extends SingletonRegistrar<RegisterThing, Thing> {
 
         Thing applied;

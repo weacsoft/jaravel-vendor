@@ -71,7 +71,7 @@ public class AuthRegistrar implements SmartInitializingSingleton, ApplicationCon
 
     @Override
     public void afterSingletonsInstantiated() {
-        // P3：AnnotationScanner 改为零 Spring 的 BeanLookup SPI，
+        // AnnotationScanner 改为零 Spring 的 BeanLookup SPI，
         // Spring 宿主经 ContextBeanProvider 适配器接入（保留代理解包与合并注解语义）。
         AnnotationScanner scanner = new AnnotationScanner(new ContextBeanProvider(applicationContext));
 

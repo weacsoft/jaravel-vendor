@@ -125,7 +125,7 @@ public class CacheAutoConfiguration {
 
     /**
      * 注册 {@link CacheStoreRegistrar}，负责扫描 {@link RegisterCacheStore @RegisterCacheStore}
-     * 注解方法并注册到 {@link CacheManager}（P3：core 纯扫描器；扫描由下方
+     * 注解方法并注册到 {@link CacheManager}（core 纯扫描器；扫描由下方
      * SmartInitializingSingleton 触发，保持原「所有单例就绪后扫描」时序）。
      */
     @Bean

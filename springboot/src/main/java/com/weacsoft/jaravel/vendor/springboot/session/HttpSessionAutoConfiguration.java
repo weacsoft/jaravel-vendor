@@ -52,7 +52,7 @@ public class HttpSessionAutoConfiguration {
     }
 
     /**
-     * P3：{@link SessionStoreRegistrar} 为 core 纯扫描器（零 Spring），
+     * {@link SessionStoreRegistrar} 为 core 纯扫描器（零 Spring），
      * 扫描时机由下方 SmartInitializingSingleton 触发（保持原「所有单例就绪后扫描」时序）。
      */
     @Bean

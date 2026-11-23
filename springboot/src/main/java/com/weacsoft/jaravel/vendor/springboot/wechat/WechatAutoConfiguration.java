@@ -218,7 +218,7 @@ public class WechatAutoConfiguration {
      * 公众号命名配置声明注册器：扫描 {@code @RegisterWechatOfficialAccount} 方法，
      * 将返回的 {@link WechatProperties.OfficialAccountConfig} 回填到共享配置（声明 &gt; yml）。
      * <p>
-     * P3：core 纯扫描器；扫描由下方 SmartInitializingSingleton 触发（保持原时序）。
+     * core 纯扫描器；扫描由下方 SmartInitializingSingleton 触发（保持原时序）。
      *
      * @param properties 微信配置属性（回填目标）
      * @return 注册器实例
@@ -242,7 +242,7 @@ public class WechatAutoConfiguration {
      * 小程序命名配置声明注册器：扫描 {@code @RegisterWechatMiniApp} 方法，
      * 将返回的 {@link WechatProperties.MiniAppConfig} 回填到共享配置（声明 &gt; yml）。
      * <p>
-     * P3：core 纯扫描器；扫描由下方 SmartInitializingSingleton 触发（保持原时序）。
+     * core 纯扫描器；扫描由下方 SmartInitializingSingleton 触发（保持原时序）。
      *
      * @param properties 微信配置属性（回填目标）
      * @return 注册器实例
