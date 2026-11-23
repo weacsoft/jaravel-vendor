@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-11-23T07:29:29Z",
-  "updated_at": "2026-11-23T18:42:04Z",
+  "updated_at": "2026-11-23T18:47:02Z",
   "files": {
     ".dsh-tmp/test-prepush.sh": {
       "role": "observe",
@@ -89,9 +89,9 @@
     },
     "CHANGELOG.md": {
       "role": "index",
-      "sha256": "ff401b6ebc6b618dcf8a212fa2ec66095b75f892fef09d2cbe201bf8a3e5e3fa",
-      "size": 92807,
-      "normalized_sha256": "add82b150aac8ea267c498e67dbc6cd74caf7e87ca905d7f8feff407478510e4"
+      "sha256": "8d55d499938607e5f1999de32ebfabc09c43fcf6ebbad2bca8f9602fe0694b01",
+      "size": 92801,
+      "normalized_sha256": "a28d73f0f4c2d1cd738f1898f2521bb05693cacc8db74fc3d2def4b647558381"
     },
     "CLUSTER.md": {
       "role": "index",
