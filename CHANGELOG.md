@@ -58,7 +58,7 @@
 - **回复额度记账改为原子操作**：`AsyncReplyDispatcher` 的额度扣减加锁，避免并发下超发；异步执行器不可用时由独立线程补发，不再占用请求线程。
 - **其它**：`Application.singleton()` 原子化；`ConfigRepository` 使用并发容器；`Str.snake` 的正则元字符转义；`Request` 的类型化访问器统一转换；`Content-Type` 匹配忽略大小写；`EncryptCookies` 加密失败时下发失效 Cookie；分页渲染不再空转；`ConvertEmptyStringsToNull` 与 `TrimStrings` 不再重复拷贝参数表；`ResponseBuilder` 缓存响应头。
 - **WebFlux 的 multipart 解析失败不再被吞掉**：`RequestFactory` 在 WebFlux 分支解析 multipart 失败时记录错误日志并抛出异常，与 MVC 分支的行为一致 —— 原先只打印堆栈，调用方收到的是空文件而非失败原因。
-- **上传文件的落盘结果不再静默丢失**：`FluxMultipartFile.transferTo` 原为空方法体，调用方以为写入成功，实际没有产生任何文件；现按传入路径写文件，未提供目标路径或写入失败时抛出异常。
+- **上传文件的写入结果不再静默丢失**：`FluxMultipartFile.transferTo` 原为空方法体，调用方以为写入成功，实际没有产生任何文件；现按传入路径写文件，未提供目标路径或写入失败时抛出异常。
 - **静态资源的目录基准不再依赖进程工作目录**：`StaticResourceHandler` 在构造时解析出绝对基准目录并做二次越界检查；路径清洗改为按路径段判定 `..`（原先按子串判定，会误拒 `a..b` 这类合法名称）。
 - **控制器重名注册给出提示**：`ControllerRegistry` 在同名控制器被覆盖时记录告警并指出先后两个类，避免引用方按简单类名取到非预期的实现。
 - **插件执行器释放已加载的类字节**：`JarBytesExecutor.close()` 清空缓存的类字节，使插件卸载后字节数组可以被回收。
@@ -82,7 +82,7 @@
 - **`MODULES.md` 新增 §2.8**：starter 聚合清单（**13 个**模块）+ 依赖方向（`auth-session → auth + session`、`session → core + http`、`auth` 不依赖 `session`）+ 对未跟踪文档 `Spring优化方案.md` 的「已失效、以本文件为准」声明（该文件顶部亦已加失效横幅）。
 - **`wechat-sdk-demo`**：依赖保持 0.1.3（重新 install 后即为新代码）；`plainConfig()` 显式开启 `verifyPostSignature`（SDK 默认已改为 `false`，严格用例必须自行开启，否则测的是另一条语义）。
 - **已验证用例**：`StorageResponseVisibilityTest`（4 例：private→`no-store`、public→`max-age`、可见性异常→仍 `no-store`、缺失→404）、`LocalFilesystemRootGuardTest`（7 例：根别名拒绝（`""`/`"/"`/`"."`/`"a/.."`）× delete/copy/move/deleteDirectory、父目录穿越、正常操作不受影响、**root 自身为 junction 时正常读写**、**根内 junction 指向外部被拒** —— junction 用例本机实跑通过）、`ModelCacheTypeCoercionTest`（6 例）、`CaptchaVerifyMisuseGuardTest`（4 例：**2 参裸类型名不抛异常**、3/4 参写反抛可操作异常、畸形 key 只失败不抛、正常两参可用）、`MigrationParserFailureTest`（4 例：目录缺失/无 `.java` 为合法回退不误报、`up()` 抛异常被记录且含类名、失败清单每次重置）。
-- **aether 末片重放防护**：新增 `AetherUploadReplayGuardTest`（2 例，**0 跳过**）—— 用「`put` 抛异常」的 `CacheStore` 替身在**末片写入前**武装，精确重现「成品已 move、`saveHeader` 失败」；断言重试末片被 `UploadException` 拒绝、且**成品 SHA-256 不变**（M6 的零填充覆盖路径已被真实拦住）；另断言随机 resourceId 循环只抛「header 不存在」（定长分段锁不无界增长）。
+- **aether 末片重放防护**：新增 `AetherUploadReplayGuardTest`（2 例，**0 跳过**）—— 用「`put` 抛异常」的 `CacheStore` 替身在**末片写入前**武装，精确重现「成品已 move、`saveHeader` 失败」；断言重试末片被 `UploadException` 拒绝、且**成品 SHA-256 不变**（零填充覆盖路径已被真实拦住）；另断言随机 resourceId 循环只抛「header 不存在」（定长分段锁不无界增长）。
 
 ### Fixed（修复：安全与正确性）
 
