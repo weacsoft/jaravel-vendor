@@ -67,6 +67,34 @@ class ResponseBuilderTest {
     }
 
     @Test
+    void testRedirectRejectsNonHttpProtocol() {
+        // 目标协议由字符串自身决定，未经校验会变成脚本执行入口
+        assertThrows(IllegalArgumentException.class,
+                () -> ResponseBuilder.redirect("javascript:alert(1)"));
+        assertThrows(IllegalArgumentException.class,
+                () -> ResponseBuilder.redirect("data:text/html,<script>1</script>"));
+    }
+
+    @Test
+    void testRedirectRejectsProtocolRelativeUrl() {
+        // 协议相对写法会被浏览器当作站外地址，等价于一次开放重定向
+        assertThrows(IllegalArgumentException.class,
+                () -> ResponseBuilder.redirect("//evil.example.com"));
+    }
+
+    @Test
+    void testRedirectRejectsHeaderInjection() {
+        assertThrows(IllegalArgumentException.class,
+                () -> ResponseBuilder.redirect("/home\r\nX-Injected: 1"));
+    }
+
+    @Test
+    void testRedirectRejectsEmptyUrl() {
+        assertThrows(IllegalArgumentException.class, () -> ResponseBuilder.redirect(""));
+        assertThrows(IllegalArgumentException.class, () -> ResponseBuilder.redirect(null));
+    }
+
+    @Test
     void testUnauthorized() {
         Response r = ResponseBuilder.unauthorized("token expired");
         assertEquals(401, r.getStatus());

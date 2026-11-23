@@ -179,6 +179,41 @@ class RouterTest {
         assertEquals(3, routes.size(), "应收集根路由与分组路由");
     }
 
+    @Test
+    void testGetAllRoutesKeepsGlobalRegistrationOrder() {
+        // 直接注册与分组注册混用时，全量路由必须按注册先后排列，
+        // 否则下游按列表顺序逐条匹配时（如 Spring 适配层的 RouterFunctions）
+        // 同路径会优先命中分组内的路由，与注册顺序不符。
+        Router router = new Router();
+        router.get("/first", NOOP);
+        router.group(Map.of(Route.Group.PREFIX, "g"), r -> r.get("/second", NOOP));
+        router.get("/third", NOOP);
+
+        List<RouteDefinition> routes = router.getAllRoutes();
+        assertEquals(3, routes.size());
+        assertEquals("/first", routes.get(0).getUri());
+        assertEquals("/second", routes.get(1).getUri());
+        assertEquals("/third", routes.get(2).getUri());
+    }
+
+    @Test
+    void testGetAllRoutesKeepsOrderAcrossNestedGroups() {
+        Router router = new Router();
+        router.group(Map.of(Route.Group.PREFIX, "api"), api -> {
+            api.get("/a", NOOP);
+            api.group(Map.of(Route.Group.PREFIX, "v1"), v1 -> v1.get("/b", NOOP));
+            api.get("/c", NOOP);
+        });
+        router.get("/after", NOOP);
+
+        List<RouteDefinition> routes = router.getAllRoutes();
+        assertEquals(4, routes.size());
+        assertEquals("/a", routes.get(0).getUri());
+        assertEquals("/b", routes.get(1).getUri());
+        assertEquals("/c", routes.get(2).getUri());
+        assertEquals("/after", routes.get(3).getUri());
+    }
+
     // ========== 别名中间件测试 ==========
 
     @Test

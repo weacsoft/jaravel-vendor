@@ -494,10 +494,25 @@ public class ResponseBuilder {
         };
     }
 
+    /**
+     * 创建 302 重定向响应。
+     * <p>
+     * 目标地址在写入 {@code Location} 头之前会经 {@link RedirectPolicy#validate(String)} 校验：
+     * 拒绝控制字符（含 {@code CR}/{@code LF}）、反斜杠、协议相对写法（{@code //host}）
+     * 以及 {@code http}/{@code https} 之外的协议。校验不通过时抛出
+     * {@link IllegalArgumentException}，由调用方决定如何处理。
+     * <p>
+     * 相对路径（以 {@code /} 开头）与正常的 http(s) 绝对地址均放行。
+     *
+     * @param url 重定向目标地址
+     * @return 302 响应
+     * @throws IllegalArgumentException 地址不合法时抛出
+     */
     public static Response redirect(String url) {
+        String target = RedirectPolicy.validate(url);
         return new AbstractResponse() {
             {
-                addHeader("Location", url);
+                addHeader("Location", target);
             }
 
             @Override

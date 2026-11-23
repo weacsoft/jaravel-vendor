@@ -206,7 +206,7 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
      * <p>
      * <b>容器选择</b>：{@code WeakHashMap} 保证「gaarason 反复创建新实例」时登记表不会无界增长，但它
      * <b>不是线程安全的</b>（{@code contains} 内部会 {@code expungeStaleEntries()} 做结构性修改），
-     * 因此必须包一层 {@code synchronizedMap}；否则会重演 M20 同类的并发故障（换成登记表本身被并发改）。
+     * 因此必须包一层 {@code synchronizedMap}；否则会重演同类的并发故障（换成登记表本身被并发改）。
      * <p>
      * <b>已知残余</b>：首次并发窗口仍存在（两个线程可能同时进入首次修补），只是从「每请求」
      * 降到「每实例首次」；彻底消除需要在容器启动期由单线程枚举所有实体模型，而本仓库目前

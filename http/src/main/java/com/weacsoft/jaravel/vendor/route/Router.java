@@ -502,6 +502,18 @@ public class Router {
         RouteCache.clear();
     }
 
+    /**
+     * 收集本路由器及其所有分组下的全部路由。
+     * <p>
+     * 结果按<b>全局注册顺序</b>排列：路由在创建时分配单调递增的序号，
+     * 因此「先注册的路由」一定排在「后注册的路由」之前，与直接注册和分组注册混用时的直觉一致。
+     * <p>
+     * 早期实现先递归所有分组再追加本路由器的路由，分组内路由恒排在直接路由之前；
+     * 下游按列表顺序逐条匹配时（例如 Spring 适配层的 {@code RouterFunctions}），
+     * 同路径会优先命中分组内的路由，与注册顺序不符。
+     *
+     * @return 不可变的全量路由列表（按注册顺序）
+     */
     public List<RouteDefinition> getAllRoutes() {
         RouteCache.Entry entry = RouteCache.of(this);
         List<RouteDefinition> cached = entry.allRoutes;
@@ -509,6 +521,7 @@ public class Router {
             List<RouteDefinition> all = new ArrayList<>();
             routers.forEach(router -> all.addAll(router.getAllRoutes()));
             all.addAll(this.routes);
+            all.sort(java.util.Comparator.comparingLong(RouteDefinition::getRegistrationOrder));
             cached = java.util.Collections.unmodifiableList(all);
             entry.allRoutes = cached;
         }

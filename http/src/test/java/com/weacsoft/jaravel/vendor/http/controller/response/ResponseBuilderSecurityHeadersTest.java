@@ -13,9 +13,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 文件响应头安全回归测试。
  * <p>
  * <ul>
- *   <li><b>N3</b>：内联展示/下载用户可上传的内容必须带 {@code X-Content-Type-Options: nosniff}，
+ *   <li><b>内容类型嗅探防护</b>：内联展示/下载用户可上传的内容必须带 {@code X-Content-Type-Options: nosniff}，
  *       否则浏览器嗅探内容类型后可能把 {@code .html}/{@code .svg} 当页面渲染 → 同源存储型 XSS；</li>
- *   <li><b>L4</b>：私有文件不得按 {@code public, max-age} 下发（会被 CDN/共享代理缓存给他人）；</li>
+ *   <li><b>私有文件的缓存语义</b>：私有文件不得按 {@code public, max-age} 下发（会被 CDN/共享代理缓存给他人）；</li>
  *   <li>文件名需做头注入清洗并同时给出 RFC 5987 的 {@code filename*}（中文名否则乱码）。</li>
  * </ul>
  */

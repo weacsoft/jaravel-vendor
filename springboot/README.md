@@ -668,6 +668,7 @@ returnValue == null？
 | 关闭响应自动装配 | 排除 `ResponseAutoConfiguration` | `@SpringBootApplication(exclude = ResponseAutoConfiguration.class)` |
 | 关闭路由自动装配 | 排除 `SpringBootRouteAutoConfiguration` | 同上 |
 | URL 自动解码开关 | `application.yml` 配置 `jaravel.http.url-decode-auto` | 控制是否对请求 URL 自动解码，默认 `true`（开启自动解码），设为 `false` 可关闭。由 `http` 模块读取，`springboot` 模块桥接时生效 |
+| 对外基础地址 | `application.yml` 配置 `jaravel.http.base-url` | 固定框架生成绝对地址所依据的协议与主机（如 `https://example.com`），默认空（按请求自身推算）。由 `http` 模块读取，`springboot` 模块在 `baseRouter()` 创建时同步生效 |
 
 ### 排除自动装配示例
 

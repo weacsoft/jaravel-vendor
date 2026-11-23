@@ -28,6 +28,21 @@ import static com.weacsoft.jaravel.vendor.route.RouteService.*;
  */
 public class RouteDefinition {
     /**
+     * 全局注册序号分配器：每创建一条路由分配一个单调递增的序号。
+     * <p>
+     * 路由分组的回调先执行、组路由器后挂载，因此「创建顺序」才是真正的注册顺序；
+     * 用全局序号把不同层级的路由统一编序后，
+     * {@link Router#getAllRoutes()} 才能按注册先后返回全部路由。
+     */
+    private static final java.util.concurrent.atomic.AtomicLong REGISTRATION_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicLong();
+
+    /**
+     * 本路由的全局注册序号（创建时分配，跨路由器层级单调递增）。
+     */
+    private final long registrationOrder;
+
+    /**
      * 中间件规格列表，元素类型为：
      * <ul>
      *   <li>{@link Middleware} — 直接中间件实例</li>
@@ -60,9 +75,17 @@ public class RouteDefinition {
     // 因此通过 RouteCache 统一缓存。任何结构性写操作调用 RouteCache.clear() 整体失效。
 
     RouteDefinition(String method, String uri, Controllers.Runner action) {
+        this.registrationOrder = REGISTRATION_SEQUENCE.incrementAndGet();
         setMethod(method);
         setUri(uri);
         setAction(action);
+    }
+
+    /**
+     * @return 本路由的全局注册序号（越小越先注册）
+     */
+    long getRegistrationOrder() {
+        return registrationOrder;
     }
 
     public void setMethod(String method) {

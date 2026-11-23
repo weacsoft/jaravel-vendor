@@ -520,6 +520,16 @@ public abstract class WireController {
             if (redirectUrl == null || redirectUrl.isEmpty()) {
                 redirectUrl = getRedirectUrl(request);
             }
+            // 重定向地址做结构校验：拒绝 javascript:/data: 等可执行协议、协议相对写法与控制字符。
+            // 校验不通过时按「不跳转」处理并记录告警，不让异常冒泡到整页错误响应。
+            if (redirectUrl != null && !redirectUrl.isEmpty()) {
+                try {
+                    redirectUrl = com.weacsoft.jaravel.vendor.http.controller.response.RedirectPolicy.validate(redirectUrl);
+                } catch (IllegalArgumentException e) {
+                    log.warn("忽略非法的重定向地址: " + e.getMessage());
+                    redirectUrl = null;
+                }
+            }
             // 计算 URL 变更(pushState):action 中通过 WireEffects.pushUrl 指定,
             // 前端仅用 history.pushState 改变地址栏(如点击「修改」后 URL 变深链),不刷新页面。
             String pushUrl = WireEffects.drainPushUrl();
@@ -621,6 +631,16 @@ public abstract class WireController {
         String redirectUrl = WireEffects.drainRedirect();
         if (redirectUrl == null || redirectUrl.isEmpty()) {
             redirectUrl = getRedirectUrl(request);
+        }
+        // 重定向地址做结构校验：拒绝 javascript:/data: 等可执行协议、协议相对写法与控制字符。
+        // 校验不通过时不发起跳转并记录告警。
+        if (redirectUrl != null && !redirectUrl.isEmpty()) {
+            try {
+                redirectUrl = com.weacsoft.jaravel.vendor.http.controller.response.RedirectPolicy.validate(redirectUrl);
+            } catch (IllegalArgumentException e) {
+                log.warn("忽略非法的重定向地址: " + e.getMessage());
+                redirectUrl = null;
+            }
         }
         if (redirectUrl != null && !redirectUrl.isEmpty()) {
             return ResponseBuilder.redirect(redirectUrl);

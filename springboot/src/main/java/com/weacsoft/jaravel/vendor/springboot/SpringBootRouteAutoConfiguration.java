@@ -90,6 +90,7 @@ public class SpringBootRouteAutoConfiguration {
     @ConditionalOnMissingBean
     public Router baseRouter(HttpProperties httpProperties) {
         RequestFactory.setUrlDecodeAuto(httpProperties.isUrlDecodeAuto());
+        com.weacsoft.jaravel.vendor.http.HttpBaseUrl.set(httpProperties.getBaseUrl());
         Router router = new Router();
         return router;
     }
@@ -98,7 +99,9 @@ public class SpringBootRouteAutoConfiguration {
      * HTTP 配置属性 bean，绑定 {@code jaravel.http.*} 配置。
      * <p>
      * 在 {@code baseRouter} bean 创建时将 {@code url-decode-auto} 配置同步到 {@link RequestFactory}，
-     * 控制是否对请求参数自动进行 URL 解码。
+     * 控制是否对请求参数自动进行 URL 解码；将 {@code base-url} 配置同步到
+     * {@link com.weacsoft.jaravel.vendor.http.HttpBaseUrl}，使框架生成的绝对地址固定为对外基础地址，
+     * 不再取自请求的 {@code Host} 头。
      */
     @Bean
     @ConfigurationProperties(prefix = "jaravel.http")

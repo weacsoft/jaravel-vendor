@@ -1280,6 +1280,34 @@ jaravel:
 
 > 当应用自带反向代理或网关已完成 URL 解码时，可将此选项设为 `false` 以避免二次解码导致的数据失真。
 
+### 对外基础地址（jaravel.http.base-url）
+
+框架在生成绝对地址时（`Request.fullUrl()`，OAuth 的 `redirect_uri` 与授权完成后的回跳地址均基于它），默认取自请求自身的协议与 `Host` 头。未声明受信任代理时，`Host` 头由客户端决定，直接采信会使框架生成的地址随请求头变化。配置对外基础地址后，这类地址一律以配置值为准：
+
+| 配置项 | 默认值 | 说明 |
+| --- | --- | --- |
+| `jaravel.http.base-url` | 空 | 应用对外基础地址，如 `https://example.com`。为空时 `Request.fullUrl()` 按请求自身推算（与未配置时的行为一致） |
+
+```yaml
+jaravel:
+  http:
+    base-url: https://example.com   # 建议在生产环境显式配置
+```
+
+### 重定向目标校验（RedirectPolicy）
+
+`ResponseBuilder.redirect(url)` 在写入 `Location` 响应头前，先由 `RedirectPolicy.validate(url)` 做结构校验，校验不通过时抛出 `IllegalArgumentException`：
+
+| 情形 | 处理 |
+| --- | --- |
+| 地址为 null 或空白 | 拒绝 |
+| 地址含控制字符（含 `CR`/`LF`） | 拒绝（防止响应头注入） |
+| 地址含反斜杠 | 拒绝（浏览器把 `\` 当作 `/`，`/\evil.example` 等价于协议相对写法） |
+| 地址以 `//` 开头 | 拒绝（协议相对写法，等价于一次开放重定向） |
+| 地址带非 `http`/`https` 协议 | 拒绝（`javascript:`、`data:` 等会被浏览器当作脚本或文档执行） |
+
+以 `/` 开头的相对路径与 `http(s)` 绝对地址正常放行。该校验只判断地址结构，不判断目标主机是否属于本站；目标主机由应用自身决定，需要固定时通过 `jaravel.http.base-url` 配置。
+
 ---
 
 ## 10. 使用注意

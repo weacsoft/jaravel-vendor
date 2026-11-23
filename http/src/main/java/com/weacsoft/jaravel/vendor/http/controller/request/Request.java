@@ -890,9 +890,16 @@ public class Request {
     /**
      * 获取完整 URL（协议 + 主机 + URI + query），对齐 Laravel 的 $request->fullUrl()。
      * <p>
-     * 代理场景下，<b>仅当直连来源已被 {@code TrustProxies} 声明为受信任代理时</b>才采用
-     * {@code X-Forwarded-Proto} / {@code X-Forwarded-Host} 还原真实入口地址；
-     * 否则使用请求自身的协议与 Host（避免 Host 头注入与协议伪造）。
+     * 主机与协议的取值顺序：
+     * <ol>
+     *   <li>配置了应用对外基础地址（{@code jaravel.http.base-url}）→ 直接使用该地址，
+     *       不再取自请求头；</li>
+     *   <li>代理场景下，<b>仅当直连来源已被 {@code TrustProxies} 声明为受信任代理时</b>
+     *       才采用 {@code X-Forwarded-Proto} / {@code X-Forwarded-Host} 还原真实入口地址；</li>
+     *   <li>否则使用请求自身的协议与 Host。</li>
+     * </ol>
+     * 未配置基础地址且未声明受信任代理时，{@code Host} 头会被原样采信，
+     * 因此该地址不宜直接用作跨站跳转目标；对外暴露的绝对地址应通过基础地址固定。
      *
      * @return 完整 URL（如 {@code https://example.com/weapp?from=mp}），request 不可用时返回空串
      */
@@ -900,22 +907,39 @@ public class Request {
         if (request == null) {
             return "";
         }
-        boolean trustForwarded = com.weacsoft.jaravel.vendor.http.middleware.TrustProxies
-                .isTrustedRemote(remoteAddr());
-        String scheme = trustForwarded ? firstHeaderValue(header("X-Forwarded-Proto")) : null;
-        if (scheme == null || scheme.isEmpty()) {
-            scheme = request.isSecure() ? "https" : "http";
-        }
-        String host = trustForwarded ? firstHeaderValue(header("X-Forwarded-Host")) : null;
-        if (host == null || host.isEmpty()) {
-            host = header("Host");
-        }
-        if (host == null || host.isEmpty()) {
-            host = request.getServerName();
-            int port = request.getServerPort();
-            if (port != 80 && port != 443) {
-                host = host + ":" + port;
+        String base = com.weacsoft.jaravel.vendor.http.HttpBaseUrl.current();
+        String scheme;
+        String host;
+        if (base != null && !base.isEmpty()) {
+            int schemeEnd = base.indexOf("://");
+            scheme = schemeEnd > 0 ? base.substring(0, schemeEnd) : "http";
+            String authority = schemeEnd > 0 ? base.substring(schemeEnd + 3) : base;
+            int slash = authority.indexOf('/');
+            host = slash >= 0 ? authority.substring(0, slash) : authority;
+            if (host.isEmpty()) {
+                host = null;
             }
+        } else {
+            boolean trustForwarded = com.weacsoft.jaravel.vendor.http.middleware.TrustProxies
+                    .isTrustedRemote(remoteAddr());
+            scheme = trustForwarded ? firstHeaderValue(header("X-Forwarded-Proto")) : null;
+            if (scheme == null || scheme.isEmpty()) {
+                scheme = request.isSecure() ? "https" : "http";
+            }
+            host = trustForwarded ? firstHeaderValue(header("X-Forwarded-Host")) : null;
+            if (host == null || host.isEmpty()) {
+                host = header("Host");
+            }
+            if (host == null || host.isEmpty()) {
+                host = request.getServerName();
+                int port = request.getServerPort();
+                if (port != 80 && port != 443) {
+                    host = host + ":" + port;
+                }
+            }
+        }
+        if (host == null || host.isEmpty()) {
+            return "";
         }
         String url = scheme + "://" + host + (uri().isEmpty() ? "/" : uri());
         String qs = request.getQueryString();

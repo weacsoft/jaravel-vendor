@@ -17,7 +17,7 @@
   - 核心 `CaptchaCrypto.create` 对「出厂默认 AES 密钥/空密钥」加一次性 WARN，覆盖非 Spring 直连路径。
 - **凭证响应禁止缓存（安全）**：`JwtTokenResponseFilter` 写 `X-New-Token` 时同时下发 `Cache-Control: no-store` 与 `Pragma: no-cache` —— RFC 6749 §5.1 要求令牌响应不可缓存，否则浏览器私有缓存/配置不当的共享缓存会留存凭证。
 - **删除绕过签名的公开入口**：`WireRequest.getData()` / `getMergedData()` 直接调用不验签的 `WireManager.decodeSnapshot`；仓库内**无任何调用方**（主流程走 `WireController` 的「先验签、后解析」），因此直接删除，不保留 `@Deprecated` 警告。
-- **共享元数据登记的并发修正**：`BaseModel.PATCHED_ENTITY_MEMBERS` 换成 `WeakHashMap` 后**必须包 `synchronizedMap`** —— `WeakHashMap` 非线程安全，且 `contains` 内部会 `expungeStaleEntries()` 做结构性修改，锁外快路径与锁内 `add` 并发会丢条目/抛异常（等于把 M20 的故障类别搬到登记表上）。同时把「登记」移到「变更完成之后」（不变式：在集合中 ⇒ 已修补完成）。
+- **共享元数据登记的并发修正**：`BaseModel.PATCHED_ENTITY_MEMBERS` 换成 `WeakHashMap` 后**必须包 `synchronizedMap`** —— `WeakHashMap` 非线程安全，且 `contains` 内部会 `expungeStaleEntries()` 做结构性修改，锁外快路径与锁内 `add` 并发会丢条目/抛异常（同一类并发故障会出现在登记表上）。同时把「登记」移到「变更完成之后」（不变式：在集合中 ⇒ 已修补完成）。
 - **类型还原失败的可观测性**：类型还原失败的告警由「进程级一次」改为**按模型类各一次**（第二个坏模型不再永久静默）；非内存 store 的告警文案改写为「还原可能**有损**（丢懒加载/派生字段）+ 缓存键不含租户维度 + `query` 不做还原」。
 
 ### Fixed（修复：内存与大文件）
@@ -57,6 +57,16 @@
 - **OAuth 回调强制校验 state**：`WeChatOAuthMiddleware` 在预期 state 缺失或不匹配时拒绝回调。
 - **回复额度记账改为原子操作**：`AsyncReplyDispatcher` 的额度扣减加锁，避免并发下超发；异步执行器不可用时由独立线程补发，不再占用请求线程。
 - **其它**：`Application.singleton()` 原子化；`ConfigRepository` 使用并发容器；`Str.snake` 的正则元字符转义；`Request` 的类型化访问器统一转换；`Content-Type` 匹配忽略大小写；`EncryptCookies` 加密失败时下发失效 Cookie；分页渲染不再空转；`ConvertEmptyStringsToNull` 与 `TrimStrings` 不再重复拷贝参数表；`ResponseBuilder` 缓存响应头。
+- **WebFlux 的 multipart 解析失败不再被吞掉**：`RequestFactory` 在 WebFlux 分支解析 multipart 失败时记录错误日志并抛出异常，与 MVC 分支的行为一致 —— 原先只打印堆栈，调用方收到的是空文件而非失败原因。
+- **上传文件的落盘结果不再静默丢失**：`FluxMultipartFile.transferTo` 原为空方法体，调用方以为写入成功，实际没有产生任何文件；现按传入路径写文件，未提供目标路径或写入失败时抛出异常。
+- **静态资源的目录基准不再依赖进程工作目录**：`StaticResourceHandler` 在构造时解析出绝对基准目录并做二次越界检查；路径清洗改为按路径段判定 `..`（原先按子串判定，会误拒 `a..b` 这类合法名称）。
+- **控制器重名注册给出提示**：`ControllerRegistry` 在同名控制器被覆盖时记录告警并指出先后两个类，避免引用方按简单类名取到非预期的实现。
+- **插件执行器释放已加载的类字节**：`JarBytesExecutor.close()` 清空缓存的类字节，使插件卸载后字节数组可以被回收。
+- **定时任务的 cron 表达式只解析一次**：`ScheduleRunner` 预先解析并缓存 cron 表达式，不再每分钟重复解析。
+- **分布式锁退化为同步锁时给出提示**：`LockProviderManager` 在回退到同步锁时记录告警，说明多节点部署下该锁不具备互斥能力。
+- **路由列表按注册顺序排列**：`Router.getAllRoutes()` 按全局注册顺序输出路由，不再把分组内的路由统一提前。原先分组路由恒排在直接路由之前，而下游（Spring 适配层按列表顺序逐条注册 `RouterFunctions`）以首个匹配为准，同路径会命中分组内的路由，与注册顺序不符。
+- **重定向目标在写入前做结构校验**：新增 `RedirectPolicy`，`ResponseBuilder.redirect(url)` 在写入 `Location` 头前校验目标地址 —— 拒绝空地址、含控制字符的地址（含 `CR`/`LF`，可致响应头注入）、含反斜杠的地址（浏览器把 `\` 当作 `/`）、协议相对写法（`//host`，等价于开放重定向）与 `http`/`https` 以外的协议（`javascript:`、`data:` 等）。`WireController` 的两处跳转在校验不通过时按「不跳转」处理并记录告警，不让异常冒泡为整页错误。
+- **新增对外基础地址配置**：新增 `jaravel.http.base-url`，配置后框架生成绝对地址（`Request.fullUrl()`，OAuth 的 `redirect_uri` 与回跳地址均基于它）以该值为准，不再取自请求的 `Host` 头。原先在未声明受信任代理时 `Host` 头由客户端决定，框架生成的地址会随请求头变化。未配置时行为与原先一致。
 
 ### Changed（变更：0.1.3 版本定稿与高优先级项）
 
@@ -67,7 +77,7 @@
 - **验证码参数误用防护（撤销弃用，改语义护栏）**：三参 `verify(key, userInput, encryptionKey)` 是合法能力（多场景/多租户需要），**不弃用**；改为在 `CaptchaManager.verifyDetailed` 入口加护栏 —— 首参命中已注册类型名且不含 `.`（即旧 README 的 `verify(type, key, input)` 写法）时抛 `IllegalArgumentException`（附正确用法），不再静默返回 false。README 全量修正：`generate(type, key)` → `generate(type)`、`verify(type, key, input)` → `verify(captchaKey, userInput)`、删除 `verifyToken` 段与「token 可在有效期内重复使用」的错误表述（与「一次性」语义矛盾）。
 - **影子列登记的并发修正**：`patchShadowColumn` 的登记从「变更之前」移到**变更完成之后**，使不变式「在集合中 ⇒ 已修补完成」成立（否则并发线程可能看到已登记却仍用含 `model_shadow` 的列集拼 SELECT）；`PATCHED_ENTITY_MEMBERS` 改用 `WeakHashMap` 承载（gaarason 可能为同一实体反复创建新 `EntityMember`，强引用 Set 会无界增长）。
 - **存储路径解析的性能修正**：`LocalFilesystem` 的 canonical 根路径改为**构造后缓存**（`realRoot()`），不再每次 `resolve()` 都做 `toRealPath()`（热路径 syscall 放大）。
-- **M16/N7**：`ModelCacheService` 解析到**非内存** store 时一次性 WARN —— ①`find/findAll/query` 命中后是直接强转，非内存 store 取回 `LinkedHashMap`/`ArrayList`，类型契约不成立；②缓存键不含租户维度，多租户共用 store 会互相命中对方数据（要求 `queryKey` 自含租户标识）。契约写入 javadoc。
+- **`ModelCacheService` 的非内存 store 一次性告警**：`ModelCacheService` 解析到**非内存** store 时一次性 WARN —— ①`find/findAll/query` 命中后是直接强转，非内存 store 取回 `LinkedHashMap`/`ArrayList`，类型契约不成立；②缓存键不含租户维度，多租户共用 store 会互相命中对方数据（要求 `queryKey` 自含租户标识）。契约写入 javadoc。
 - **静态资源路径匹配的验证补齐**：新增 `StaticRoutePathPatternTest`（springboot 测试域补 `spring-webflux` 测试依赖）：`{*path}` 匹配多段与 `/static` 前缀、**`/static/{*path}/` 确实解析失败**（证明「跳过尾斜杠变体」守卫的必要性）、旧 `{path}` 确实漏多段路径。
 - **`MODULES.md` 新增 §2.8**：starter 聚合清单（**13 个**模块）+ 依赖方向（`auth-session → auth + session`、`session → core + http`、`auth` 不依赖 `session`）+ 对未跟踪文档 `Spring优化方案.md` 的「已失效、以本文件为准」声明（该文件顶部亦已加失效横幅）。
 - **`wechat-sdk-demo`**：依赖保持 0.1.3（重新 install 后即为新代码）；`plainConfig()` 显式开启 `verifyPostSignature`（SDK 默认已改为 `false`，严格用例必须自行开启，否则测的是另一条语义）。
@@ -88,7 +98,7 @@
 - **存储路径越界防护（安全）**：`resolve()` 增加**真实路径**归属校验（与 `root.toRealPath()` 比较，目标不存在时上溯到最近存在的祖先）—— 词法 `normalize` 挡不住「根内软链接指向外部」；`delete/copy/move` 统一拒绝「解析后等于根目录」的路径（`""`/`"."`/`"a/.."` 都会解析成根，原先 `delete("")` 会删掉整个磁盘根）。**已知限制：仍存在 TOCTOU**（校验后仍以词法路径打开）。
 - **backUrl 的传递（正确性）**：组件渲染循环改用非破坏性 `WireEffects.getBackUrl()`，主流程保持单次 `drainBackUrl()`（原先渲染先 drain → `effects.backUrl` 退化为推断值，多组件时只有一个拿到 backUrl）。
 - **auth 装配**：空守卫回退只覆盖「默认驱动（`session`）缺实现」这一情形（auth 独立可用）；显式声明了无人支持的 driver（拼写错误/忘引模块）**仍然抛异常** —— 否则会静默变成「恒未登录」，让 `if (Auth.check())` 这类写法静默失去鉴权。
-- **本清单项已全部完成**：M19 收窄严格化 + 命令非零退出（保留「目录缺失 → 回退 classpath」合法路径，`MigrationParserFailureTest` 4 例）；N1 启动期密钥形态校验（分档 + `fail-fast-on-invalid-key`，`CaptchaKeyShapeValidationTest` 7 例）；M17 撤销弃用改语义护栏 + README 修正（`CaptchaVerifyMisuseGuardTest` 4 例）；N4 `refreshPair` 可选轮换（`refresh()` 语义不变）；M16/N7 元素级还原 + 驱逐回源 + 非内存 store 告警（`ModelCacheTypeCoercionTest` 6 例）；`Storage.response` visibility（4 例）、aether `.part` 故障注入（2 例，0 跳过）、LocalFilesystem 根目录/链接（7 例）、Spring `{*path}` 谓词（4 例）。
+- **本组修复项均已完成**：迁移解析收窄 + 命令非零退出（保留「目录缺失 → 回退 classpath」合法路径，`MigrationParserFailureTest` 4 例）；启动期密钥形态校验（分档 + `fail-fast-on-invalid-key`，`CaptchaKeyShapeValidationTest` 7 例）；验证码参数误用改语义护栏 + README 修正（`CaptchaVerifyMisuseGuardTest` 4 例）；`refreshPair` 可选轮换（`refresh()` 语义不变）；模型缓存元素级还原 + 驱逐回源 + 非内存 store 告警（`ModelCacheTypeCoercionTest` 6 例）；`Storage.response` visibility（4 例）、aether `.part` 故障注入（2 例，0 跳过）、LocalFilesystem 根目录/链接（7 例）、Spring `{*path}` 谓词（4 例）。
 
 ### Fixed（修复：低危项）
 
