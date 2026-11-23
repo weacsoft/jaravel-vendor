@@ -150,11 +150,20 @@ public abstract class AbstractDialect implements Dialect {
     }
 
     /**
-     * SQL Server / Oracle 变体：{@code MERGE ... USING (SELECT ...) s ON (t.key = s.key)
+     * SQL Server / Oracle 变体：{@code MERGE INTO ... USING (SELECT ...) s ON (t.key = s.key)
      * WHEN MATCHED THEN UPDATE SET t.c = s.c WHEN NOT MATCHED THEN INSERT ...}
+     * <p>
+     * 两家的写法差异全部体现在本方法的参数上：
+     * <ul>
+     *   <li><b>Oracle</b>：{@code MERGE} 后<b>必须</b>跟 {@code INTO}；表别名<b>不能</b>用 {@code AS}
+     *       关键字（{@code FROM t AS a} 在 Oracle 上报 ORA-00933），只能写 {@code FROM t a}；
+     *       取值来源用 {@code FROM DUAL} 虚表，且 {@code SELECT} 里的列别名同样不能带 {@code AS}。</li>
+     *   <li><b>SQL Server</b>：{@code INTO} 可写可不写，但表别名允许 {@code AS}；
+     *       {@code MERGE} 语句<b>必须</b>以分号结束，否则报 10713 错误。</li>
+     * </ul>
      *
-     * @param sourceAliasStyle "as"（SQL Server：{@code SELECT ? AS c ... }，无 FROM）
-     *                         或 "dual"（Oracle：{@code SELECT ? c ... FROM DUAL}）
+     * @param sourceAliasStyle "as"（SQL Server：{@code SELECT ? AS c ... }，无 FROM，语句以分号结束）
+     *                         或 "dual"（Oracle：{@code SELECT ? c ... FROM DUAL}，别名不带 AS）
      */
     public static String upsertMergeUsing(String quotedTable, String[] quotedColumns,
                                           String quotedKeyColumn, String sourceAliasStyle) {
@@ -181,14 +190,21 @@ public abstract class AbstractDialect implements Dialect {
             }
         }
         String usingFrom = oracle ? " FROM DUAL" : "";
+        // Oracle 的表别名不允许 AS 关键字；SQL Server 两种写法都接受，统一写成不带 AS 的形式。
+        String targetAlias = oracle ? " t " : " AS t ";
+        String sourceAlias = oracle ? " s " : " AS s ";
         StringBuilder sb = new StringBuilder();
-        sb.append("MERGE ").append(quotedTable).append(" AS t ")   // H2 兼容；SQL Server / Oracle 均接受
-                .append("USING (SELECT ").append(select).append(usingFrom).append(") AS s ")
+        sb.append("MERGE INTO ").append(quotedTable).append(targetAlias)
+                .append("USING (SELECT ").append(select).append(usingFrom).append(")").append(sourceAlias)
                 .append("ON (t.").append(quotedKeyColumn).append(" = s.").append(quotedKeyColumn).append(") ");
         if (updateSet.length() > 0) {
             sb.append("WHEN MATCHED THEN UPDATE SET ").append(updateSet).append(" ");
         }
         sb.append("WHEN NOT MATCHED THEN INSERT (").append(insertCols).append(") VALUES (").append(insertVals).append(")");
+        // SQL Server 要求 MERGE 语句以分号结束，缺失时报 10713 错误。
+        if (!oracle) {
+            sb.append(';');
+        }
         return sb.toString();
     }
 

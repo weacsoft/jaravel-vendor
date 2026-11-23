@@ -3,6 +3,7 @@ package com.weacsoft.jaravel.vendor.migration.dialect;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -51,17 +52,29 @@ class DialectUpsertTest {
     void sqlServerUsesMergeUsingAs() {
         Dialect d = DialectFactory.create("microsoft sql server");
         String sql = d.upsertSql("[t]", new String[]{"[key]", "[value]"}, "[key]");
-        assertTrue(sql.startsWith("MERGE [t] AS t USING (SELECT ? AS [key], ? AS [value]) AS s "), sql);
+        assertTrue(sql.startsWith("MERGE INTO [t] AS t USING (SELECT ? AS [key], ? AS [value]) AS s "), sql);
         assertTrue(sql.contains("WHEN MATCHED THEN UPDATE SET t.[value] = s.[value]"), sql);
-        assertTrue(sql.endsWith("WHEN NOT MATCHED THEN INSERT ([key], [value]) VALUES (s.[key], s.[value])"), sql);
+        assertTrue(sql.endsWith("WHEN NOT MATCHED THEN INSERT ([key], [value]) VALUES (s.[key], s.[value]);"),
+                "SQL Server 的 MERGE 语句必须以分号结束，否则报 10713 错误：" + sql);
     }
 
     @Test
     void oracleUsesMergeUsingDual() {
         Dialect d = DialectFactory.create("oracle");
         String sql = d.upsertSql("\"t\"", new String[]{"\"key\"", "\"value\""}, "\"key\"");
-        assertTrue(sql.startsWith("MERGE \"t\" AS t USING (SELECT ? \"key\", ? \"value\" FROM DUAL) AS s "), sql);
+        // Oracle 的 MERGE 必须带 INTO，且表别名不允许使用 AS 关键字（FROM t AS a 会报 ORA-00933）
+        assertTrue(sql.startsWith("MERGE INTO \"t\" t USING (SELECT ? \"key\", ? \"value\" FROM DUAL) s "), sql);
         assertTrue(sql.contains("WHEN MATCHED THEN UPDATE SET t.\"value\" = s.\"value\""), sql);
+        assertFalse(sql.contains(" AS "), "Oracle 的表别名不得使用 AS 关键字：" + sql);
+    }
+
+    @Test
+    void oracleMergeDoesNotUseAsAliasOrSemicolon() {
+        Dialect d = DialectFactory.create("oracle");
+        String sql = d.upsertSql("\"t\"", new String[]{"\"key\"", "\"value\""}, "\"key\"");
+        assertFalse(sql.contains("AS"), "Oracle 语句中不应出现 AS 关键字：" + sql);
+        assertFalse(sql.endsWith(";"), "Oracle 的 MERGE 语句不需要分号结束：" + sql);
+        assertTrue(sql.startsWith("MERGE INTO "), "Oracle 的 MERGE 必须带 INTO：" + sql);
     }
 
     @Test

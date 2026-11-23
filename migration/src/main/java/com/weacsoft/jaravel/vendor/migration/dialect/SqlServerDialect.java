@@ -56,7 +56,9 @@ public class SqlServerDialect extends AbstractDialect {
     /**
      * 生成 UPSERT（存在则更新、不存在则插入）的 SQL：SQL Server 走 {@code MERGE ... USING}。
      * <p>
-     * 形如：{@code MERGE INTO t AS target USING (VALUES (?, ?)) AS source (c1, c2) ON ... WHEN MATCHED ...}
+     * 形如：{@code MERGE INTO t AS t USING (SELECT ? AS c1, ? AS c2) AS s ON ... WHEN MATCHED ...;}
+     * <p>
+     * SQL Server 要求 {@code MERGE} 语句以分号结束，缺失时执行报 10713 错误。
      *
      * @param quotedTable     已加引号的表名
      * @param quotedColumns   已加引号的列名数组
