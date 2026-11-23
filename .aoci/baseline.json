@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-11-23T07:29:29Z",
-  "updated_at": "2026-11-23T16:14:15Z",
+  "updated_at": "2026-11-23T16:19:15Z",
   "files": {
     ".dsh-tmp/test-prepush.sh": {
       "role": "observe",
@@ -287,9 +287,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "358c9a66d689c0752f6b386e7ffb254e0c36e8a9446527e00f2d3a7d1d920e31",
-      "size": 122108,
-      "normalized_sha256": "358c9a66d689c0752f6b386e7ffb254e0c36e8a9446527e00f2d3a7d1d920e31"
+      "sha256": "159e055b0e6a2088ba51b9806e0c6c24d56ebd31baac36bff1aff8842750dc85",
+      "size": 135141,
+      "normalized_sha256": "159e055b0e6a2088ba51b9806e0c6c24d56ebd31baac36bff1aff8842750dc85"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1415,9 +1415,9 @@
     },
     "event/src/main/java/com/weacsoft/jaravel/vendor/event/EventDispatcher.java": {
       "role": "index",
-      "sha256": "21d1d08fa546eaac3cd3d9dd110b75ece46c85863209ad385f5ffd6ccb087aab",
-      "size": 9481,
-      "normalized_sha256": "6a01a032a47fab4c7fdf95d9e592d87ac4da9851aaa48a74d59273b5cca2efac"
+      "sha256": "c8282e8c945ffa4510e554ee6f984d124d6eb6358794ec6d9b57719fee54d002",
+      "size": 11272,
+      "normalized_sha256": "666901c23d0159e7f867c0f00c8699554d9f2c070ad1f4c84f4b92e4e81ede01"
     },
     "event/src/main/java/com/weacsoft/jaravel/vendor/event/Listener.java": {
       "role": "index",
@@ -1439,9 +1439,9 @@
     },
     "event/src/main/java/com/weacsoft/jaravel/vendor/event/QueueManager.java": {
       "role": "index",
-      "sha256": "57bdb2da780c024d838b2844278254b978fdb7cd6c6954f82ecc56dfd6238cac",
-      "size": 8727,
-      "normalized_sha256": "19928cd8265081e977e148801d845b00928c99ec20a6ea42341819ea34098857"
+      "sha256": "8709c78ea715bfdecc92b66ef6dfac3c89d68d9727caa2ae698bac4e947a271b",
+      "size": 9749,
+      "normalized_sha256": "2383ff473d5553ba1f6fcadd664d06665e87ba1621bfb5bddefc761cfb17860c"
     },
     "event/src/main/java/com/weacsoft/jaravel/vendor/event/QueuePublishableConfig.java": {
       "role": "index",
@@ -1469,9 +1469,9 @@
     },
     "http/README.md": {
       "role": "index",
-      "sha256": "93f425e297a6fc7959111a92a850e046a7a6e5f20376a253ef7248865c8e3c83",
-      "size": 84359,
-      "normalized_sha256": "a5649ac21cd7cd50e854a34d16556e712b938503d9fa7df8460e582bcc51279f"
+      "sha256": "54574a19b736129da5d85e476c899a7a83f5fb8cc5db7f4c59cfa908cd418c4d",
+      "size": 86229,
+      "normalized_sha256": "0c9a1a9a120e7cabe94d4756d60bad80bfbd750cf344284bfb2812c69eacdbbe"
     },
     "http/pom.xml": {
       "role": "index",
@@ -1493,9 +1493,9 @@
     },
     "http/src/main/java/com/weacsoft/jaravel/vendor/http/controller/ControllerRegistry.java": {
       "role": "index",
-      "sha256": "6eee7308843accab0c03859f1c9dce4ff10da877193ba56504671c568d82b215",
-      "size": 9919,
-      "normalized_sha256": "763a7d5f60bc7af136b1e87292c94edd992e8b1473ed5f9c4389de17dd8334a2"
+      "sha256": "a9dc19ae9020d82cb5dfa75eaa49099eb013bf9c60e6a2d53c9615c129c73552",
+      "size": 10626,
+      "normalized_sha256": "46670dec184d12d823f55fdb5070350e54a331542ffa2a4f74606df7628ddb46"
     },
     "http/src/main/java/com/weacsoft/jaravel/vendor/http/controller/Controllers.java": {
       "role": "index",
@@ -1505,27 +1505,27 @@
     },
     "http/src/main/java/com/weacsoft/jaravel/vendor/http/controller/request/Request.java": {
       "role": "index",
-      "sha256": "403194e4a0bb01b7921a98dc2284b940a0a98610a732b919915b0070f9a86795",
-      "size": 37013,
-      "normalized_sha256": "d40d56588da28f6b5aa6b503b5c451c299ae14f34d0656ac1c7add62a17a837e"
+      "sha256": "74e0b172860ecdac59266264508fcfc078ed94add8e71f64686a49aa376cbc25",
+      "size": 38052,
+      "normalized_sha256": "a2cf78a61bce7569d685248da3d217ba2560c910b91e5284f2b6dc2ab635c305"
     },
     "http/src/main/java/com/weacsoft/jaravel/vendor/http/controller/request/RequestFactory.java": {
       "role": "index",
-      "sha256": "3508edbcbae73bc22c265c8636f44b269d6439ee5af33dbec621cd3ef424c877",
-      "size": 12818,
-      "normalized_sha256": "f0e5e549d42d60ceb294e126c72f2fe74ebcb50286ac22fa1d667c5edf5078f9"
+      "sha256": "5fd5c76271e2499211bb6025bdd7b98a35062499a487659ccaebae6383fd5091",
+      "size": 13186,
+      "normalized_sha256": "91426c240e313a24f418289d67c14737aa4e7d0a8d15c1341d0e46a8c25a32d4"
     },
     "http/src/main/java/com/weacsoft/jaravel/vendor/http/controller/response/Response.java": {
       "role": "index",
-      "sha256": "a14d641480d3c835f25f0a0d5f51e5216f6428f575b0650009962f747126ca9b",
-      "size": 988,
-      "normalized_sha256": "762f3847736b92e3343e99bd180c8944baf1114c6aa33e15be3d69e51a6e9fa9"
+      "sha256": "696f70c87447e5d2c668d3ff508cbabf5b39d5529eadfa6443ead0d414a9fe86",
+      "size": 1486,
+      "normalized_sha256": "51526083dbd7490c3a14f78b6839ab8b21cd0effbd4482b8cff7af705f3b224b"
     },
     "http/src/main/java/com/weacsoft/jaravel/vendor/http/controller/response/ResponseBuilder.java": {
       "role": "index",
-      "sha256": "ddff77f48303a6d91ce927f64512c7945ed9fdd00e98a00ac5281aca1a6b1b7e",
-      "size": 25074,
-      "normalized_sha256": "eba2f2f41887e20a2deaffe138c7f2ed5cc23938ad43335e2ea39b4da6d0a568"
+      "sha256": "054e89787466b2f5e0e92138002e8c391fad1daea77907ba6f91592d652c8279",
+      "size": 32285,
+      "normalized_sha256": "9e9710dcfadb68674b715b2e36a064d9e5f7e02e8ae46f64af8be1f19460258b"
     },
     "http/src/main/java/com/weacsoft/jaravel/vendor/http/controller/response/StreamingResponse.java": {
       "role": "index",
@@ -1541,15 +1541,15 @@
     },
     "http/src/main/java/com/weacsoft/jaravel/vendor/http/middleware/ConvertEmptyStringsToNull.java": {
       "role": "index",
-      "sha256": "1e6396bd66c894e7e695f6910244031a839f634db13053c2d4e26798df3591ec",
-      "size": 2496,
-      "normalized_sha256": "2f2d60c2cfc92cf58279b4955c47da9419125d174dff6ea3452cfe589cd4a17c"
+      "sha256": "6ac1207101b9a47cd8fd9b892dbeb2eb8f4b20ae42ae296c23285f91a86fd92a",
+      "size": 2919,
+      "normalized_sha256": "4234a426262c407085586d9ff3e35d2fb4da94e2957a1c9bf53b1b8044aa6dca"
     },
     "http/src/main/java/com/weacsoft/jaravel/vendor/http/middleware/EncryptCookies.java": {
       "role": "index",
-      "sha256": "1e0077a0461832bcef80e24195c77f8eed43f99f38341a9bf12f4d3938a1eea0",
-      "size": 19844,
-      "normalized_sha256": "d04c3709a96403fcf8ec401aa513cf42cd8b88e18e37edd04f7415dc49fb7990"
+      "sha256": "d0d17485700e3c62477376e93fb106a3e84fe95d0a74b867dfda965b352cd078",
+      "size": 19992,
+      "normalized_sha256": "67b172533df30fcdca9cb34359780d33c58b3731360c25c055d77b31d27c5a2c"
     },
     "http/src/main/java/com/weacsoft/jaravel/vendor/http/middleware/Middleware.java": {
       "role": "index",
@@ -1565,27 +1565,27 @@
     },
     "http/src/main/java/com/weacsoft/jaravel/vendor/http/middleware/TrimStrings.java": {
       "role": "index",
-      "sha256": "d5b38e020057084eba3087174a0257a14ebdc60f8170ba289ae907a9c0fcea71",
-      "size": 3111,
-      "normalized_sha256": "841fd7e8867a3b3298f5a7636a96968b18abe8031be1c8764d47b3774c6b27bf"
+      "sha256": "f4ab7e541461b06245e06b043a1500986ddfcdac364249fe3ebf0a8318acaedb",
+      "size": 3969,
+      "normalized_sha256": "d023f198dd9b973ab7bc624f5b2ebe924aa15974fbb0eedf33832bdbbea276af"
     },
     "http/src/main/java/com/weacsoft/jaravel/vendor/http/middleware/TrustProxies.java": {
       "role": "index",
-      "sha256": "f471ab63410b3a4575a6243e9eb4240dd3f350836a1919477219fc39e48e9142",
-      "size": 7739,
-      "normalized_sha256": "eca173136d187bc34d2e8eab1095b3fd26958b9a0f3e914151f0f25cd39f1482"
+      "sha256": "88011b2e962f8a0581fd7059da1dd690a3bb18b2478c234d59063073070c7f2d",
+      "size": 8608,
+      "normalized_sha256": "b4007e96a2fe20bf5d6ca1951435cfec9461856a0e41693e6ecb693dfc738358"
     },
     "http/src/main/java/com/weacsoft/jaravel/vendor/http/middleware/VerifyCsrfToken.java": {
       "role": "index",
-      "sha256": "df1233c184565011f603c34419a76cdc249c5a56affce9f897c1141d53b8168f",
-      "size": 10152,
-      "normalized_sha256": "3f3b6f2989fee6a82cf45e165f6eacb5c2a976ec25aedb231b52fbba5362ab7d"
+      "sha256": "28f5d731e4afb00fa5babffcdadb5758abc6ec9684fbd523881fa3eb0c44ae78",
+      "size": 10074,
+      "normalized_sha256": "b139aa140aa86db36d1f275f26af8f5cbff30e26af2782223e5931475e1bd4a7"
     },
     "http/src/main/java/com/weacsoft/jaravel/vendor/http/upload/UploadFile.java": {
       "role": "index",
-      "sha256": "317c1dc4fd0448e94a939825bfe76145255e59e6515e10b8089331faac1cc1e0",
-      "size": 4251,
-      "normalized_sha256": "13b59f17ec3f3bd90381462fa7126d7ed1865e17364d64f4b220b5baf0686802"
+      "sha256": "14a169beaa0f6c537fbe3eecb62909095d61c98bc01df29349111688156c91fa",
+      "size": 7046,
+      "normalized_sha256": "c53b6389712b4b309a603989c56a56b2b6a772b8c010d228333cbf1ed27b9b26"
     },
     "http/src/main/java/com/weacsoft/jaravel/vendor/route/Route.java": {
       "role": "index",
@@ -1595,9 +1595,9 @@
     },
     "http/src/main/java/com/weacsoft/jaravel/vendor/route/RouteCache.java": {
       "role": "index",
-      "sha256": "24e730ecb48bd90268230c1a30173e413540a884e844e7d25e386eabfa951795",
+      "sha256": "739f78be21977022e72c88718a24ad73d01564674b439db8cbb3af1b665aae4b",
       "size": 5789,
-      "normalized_sha256": "3f98eeca33eb3d0929c16df37e2b796c7870955104a3643380a7dd7bd3e28860"
+      "normalized_sha256": "63d5fd853f8039293d9ccc1252059898c865321893d5756e8766e54f520b78ba"
     },
     "http/src/main/java/com/weacsoft/jaravel/vendor/route/RouteDefinition.java": {
       "role": "index",
@@ -1619,9 +1619,9 @@
     },
     "http/src/main/java/com/weacsoft/jaravel/vendor/route/Router.java": {
       "role": "index",
-      "sha256": "cdbfc2962b25d01aadab9a628755ae6987aa050e2c47994881b87cc091d5ca79",
-      "size": 31642,
-      "normalized_sha256": "587d7d13f0c17701a344bea4064062ad50a1092bac47975e0468232d3a10af90"
+      "sha256": "9abd7e2bc002a40279f4011df97a23a50e47801d3bafce505b4e548e4218c483",
+      "size": 31612,
+      "normalized_sha256": "59466cf2d0eeef01d891620801de9fa1264bece413b0683399bec3fd9ed10b72"
     },
     "http/src/main/java/com/weacsoft/jaravel/vendor/route/artisan/HttpRouteArtisanAutoConfiguration.java": {
       "role": "index",
@@ -1631,9 +1631,9 @@
     },
     "http/src/main/java/com/weacsoft/jaravel/vendor/route/artisan/RouteCacheCommand.java": {
       "role": "index",
-      "sha256": "7374cf83cbe192d4a4300899f1b15abea6fd3c53ad7c1620d12c0c734bfd770e",
+      "sha256": "68ff9e34b67556a0221bbfd964122ab1bd6044ef6fe42e5ba7f18af08ae0c475",
       "size": 1591,
-      "normalized_sha256": "784da509ad94af885732f9f2d8e95c43b6879812a9c873a1502db54b575abb06"
+      "normalized_sha256": "a41264d995bfe9c81a672b142612a5ae285a0a5261326d8abf0c581a721bb50b"
     },
     "http/src/main/java/com/weacsoft/jaravel/vendor/route/artisan/RouteClearCommand.java": {
       "role": "index",
@@ -1643,9 +1643,9 @@
     },
     "http/src/main/java/com/weacsoft/jaravel/vendor/route/staticresource/StaticResourceHandler.java": {
       "role": "index",
-      "sha256": "9f30a799c7ffda7abac23ce9381588b3e7fd7564dc3c73a887ed5b0ab6b2a4b6",
-      "size": 9276,
-      "normalized_sha256": "cd0f2d13ca2478e940baa4de38cd9d02690698e9a6b071cd4a36ee056b48b483"
+      "sha256": "f6f845c2e5fdde01cab0860339865eaaab2cdf9d274a364e70ee144aed358b81",
+      "size": 14129,
+      "normalized_sha256": "bc45e9e5bfa52bded725989acdaf0c0fe22696a5cf9b1d9d4743b72c84a38527"
     },
     "http/src/main/java/com/weacsoft/jaravel/vendor/route/staticresource/StaticResourceProperties.java": {
       "role": "index",
@@ -1655,9 +1655,9 @@
     },
     "http/src/main/java/com/weacsoft/jaravel/vendor/route/staticresource/StaticResourceRoute.java": {
       "role": "index",
-      "sha256": "7b9af8cfc5081b3492b70c22e08fb1eaa0b8c9334263288f79615c53242f6ffe",
-      "size": 4330,
-      "normalized_sha256": "a78d7a311f5c8d01b8d9269738545d17d9269ae971cac83b4bd9fe70ed3dcf5a"
+      "sha256": "34f5f6c591e3abce4b98717b0f0ef72536e8bebd2224d12035433cd22d31d38e",
+      "size": 4480,
+      "normalized_sha256": "4f82a45ae434a7b8165e77d84929d35c53597941f7f49a5aab0e7209c01c2bb7"
     },
     "http/src/test/java/com/weacsoft/jaravel/vendor/http/controller/request/RequestTest.java": {
       "role": "index",
@@ -1667,9 +1667,9 @@
     },
     "http/src/test/java/com/weacsoft/jaravel/vendor/http/controller/response/ResponseBuilderSecurityHeadersTest.java": {
       "role": "index",
-      "sha256": "59ba88ff48ad6e0b8b1cd99e33694c73be54b8db1eea2efdec15c5f0e632cb2b",
-      "size": 3300,
-      "normalized_sha256": "56ced5f7d5e65960d9fbff99fed11d802e328db7ae7103a2558cb0784df25c6b"
+      "sha256": "5bd0a13b4b9dd4fef0734149f9901ca0e21e0343b3d305d0b54fcc29589dab0c",
+      "size": 3280,
+      "normalized_sha256": "059dc26f3c9712d09bbe8f167516548f0ff3e49e3970813a69febe825c4d64c3"
     },
     "http/src/test/java/com/weacsoft/jaravel/vendor/http/controller/response/ResponseBuilderTest.java": {
       "role": "index",
@@ -1679,9 +1679,9 @@
     },
     "http/src/test/java/com/weacsoft/jaravel/vendor/http/middleware/EncryptCookiesTest.java": {
       "role": "index",
-      "sha256": "d18f99d59008455202fbeba5ed288478678e6c0746daeb9445cb36c10330d16e",
+      "sha256": "d772d4b4b055ead30351576d74a79057db15b5a7a9e5a3272b47a3bb79b41b97",
       "size": 12876,
-      "normalized_sha256": "570d6a6a77fbe0a658fd81fc711caa6d3ef5dcce18fbb1532578077d77d04d7f"
+      "normalized_sha256": "199c7a5766cd695d3a8eac8736b3514e538031c3969f608a35ec2f062a4b4df4"
     },
     "http/src/test/java/com/weacsoft/jaravel/vendor/http/middleware/MiddlewareAliasRegistryTest.java": {
       "role": "index",
