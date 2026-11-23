@@ -5,7 +5,7 @@
 
 ## [Unreleased]
 
-## [0.1.3] - 2026-11-23
+## [0.1.3] - 2026-11-24
 
 - **缓存命中值的类型还原**：`find`/`findAll` 命中后做元素级还原（`Map → 实体`，按**元素嗅探**判断而非按 store 名），`query` 的「任意 Object」契约**不做还原**；array（内存）store 命中的 gaarason **托管实体**经 `isInstance` 短路**原样返回同一实例**（不会被 JSON 转成游离 POJO）。**不可还原时驱逐该键并回源 loader**（不返回类型不符的值；「返回原值 + WARN」会让类型契约变成「有时实体、有时 Map」）。**注意**：JSON 往返会丢失懒加载/派生字段 —— 还原成功也可能有损，含派生/关联字段的实体不建议放进多机序列化 store（写进 javadoc 与告警文案）。新增 `ModelCacheTypeCoercionTest`（6 例：Map→实体、List&lt;Map&gt;→实体列表、不可还原→驱逐+回源、托管实体同一实例、query 不转换、未命中回填）。
 - **refresh token 的交付协议（文档化，不引入响应头）**：`JwtService.refreshPair(...)` 返回 `record TokenPair(access, refresh)` 并将旧 refresh 加入黑名单；**框架不经响应头下发新 refresh token** ——
