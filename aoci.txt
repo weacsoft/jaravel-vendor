@@ -1,7 +1,7 @@
 #AOCI-ROOT-MANIFEST: 1
 #Format-Version: cognition-volumes/v1
 #Locale: zh-CN
-#Project: jaravel-vendor
-#Global-Invariants: -
+#Project: jaravel-vendor 是基于 Java 17 与 Spring Boot 3.2 的 Laravel 风格后端框架：提供路由与中间件、请求响应、数据库迁移、缓存、队列、事件、认证与 JWT、文件存储、Wire 组件式前端、微信 SDK、插件热加载等模块，由零 Spring 依赖的核心层与可选的 springboot 装配层组成。
+#Global-Invariants: ① 核心模块(core/utils/http/json/auth 等)零 Spring 依赖，Spring 装配只放 springboot 模块；② 可选模块必须类级 @ConditionalOnClass 保护，缺依赖时不得抛 NoClassDefFoundError；③ 声明式注册(@RegisterGuard/@RegisterDisk/@RegisterSchedule/@RegisterWechat*)优先于 yml，且不注册为 Spring Bean；④ 表结构由 database 与 migration 模块统一管理，改动须同步驱动内建表定义与迁移文件；⑤ Wire 快照先验签再解码，签名密钥派生自 jaravel.key，禁止随机回退；⑥ JWT、微信、Redis 等凭据只从环境变量读取，禁止硬编码；⑦ 插件跨模块调用走 Application 代理与 ClassLoader 隔离，租户前缀不可绕过。
 #Volume: id=meta kind=meta path=aoci.meta.txt format=meta-v1 depends=- state=enabled
 #Volume: id=code kind=code path=aoci.code.txt format=object-fras-v2 depends=meta state=enabled
