@@ -13,8 +13,8 @@ import com.weacsoft.jaravel.vendor.springboot.condition.OnDriverInUseCondition;
  * 因此本条件<b>不认缺省</b>。此前使用 {@code @ConditionalOnProperty(..., havingValue = "redis")}，
  * 现统一到 vendor 模块组的 {@link OnDriverInUseCondition} 原则：<b>安装 ≠ 启用，用上了才注册</b>。
  *
- * <h3>P3 解耦说明</h3>
- * P3 前位于 queue-database 模块（{@code vendor.queue.database}）；基类
+ * <h3>解耦说明</h3>
+ * 原先位于 queue-database 模块（{@code vendor.queue.database}）；基类
  * {@link OnDriverInUseCondition} 是纯 Spring Condition 已迁入 springboot，
  * 本类随之迁入以消除循环依赖（queue-database 不能依赖 springboot）。语义不变。
  *

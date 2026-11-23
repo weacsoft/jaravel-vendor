@@ -25,8 +25,8 @@ import org.slf4j.LoggerFactory;
  *   <li>无驱动：退化为 sync 同步模式（由 event 模块的内存队列承接）</li>
  * </ol>
  *
- * <h3>P3 解耦说明</h3>
- * P3 前位于 core 模块（{@code core.queue}）；因回退解析需要容器「按类型枚举 Bean」
+ * <h3>解耦说明</h3>
+ * 原先位于 core 模块（{@code core.queue}）；因回退解析需要容器「按类型枚举 Bean」
  * 能力，随队列装配一并迁入 springboot，与 {@code QueueDatabaseAutoConfiguration} 同包，
  * 使 {@code core.queue} 只保留纯契约（QueuedJob / QueueDriver / QueueDriverHolder / RegisterQueueDriver）。
  */

@@ -9,7 +9,7 @@ import com.weacsoft.jaravel.vendor.core.lookup.GlobalLookup;
  * 供 {@link Facade} 门面静态解析 Bean，模仿 Laravel 的 Facade 机制：
  * 门面是一个静态代理，背后真正干活的是宿主容器中解析出的实例。
  * <p>
- * <h3>P3 解耦说明</h3>
+ * <h3>解耦说明</h3>
  * 本类不再依赖 {@code ApplicationContext}：所有操作统一委托给
  * {@link GlobalLookup} 安装的 {@link GlobalBeanProvider}。
  * <ul>
@@ -18,7 +18,7 @@ import com.weacsoft.jaravel.vendor.core.lookup.GlobalLookup;
  *   <li>非 Spring 宿主（纯 JVM / 测试 / 嵌入式网关）安装一个 Map 版提供者即可使用全部能力；</li>
  *   <li>类名与包名保持不变，是已对外发布的 stable API（多个 publish 模板代码引用本 FQCN）。</li>
  * </ul>
- * 行为契约与 P3 前一致：未初始化时强依赖路径抛 {@code IllegalStateException}，
+ * 行为契约保持一致：未初始化时强依赖路径抛 {@code IllegalStateException}，
  * 空安全路径（{@code beanOrNull}）返回 {@code null} 让调用方降级。
  */
 public final class SpringContext {

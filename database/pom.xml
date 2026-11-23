@@ -44,7 +44,7 @@
             <artifactId>druid</artifactId>
         </dependency>
 
-        <!-- D2（Spring 解耦）：原 spring-boot-starter-jdbc / spring-boot-starter-aop 编译依赖已移除——
+        <!-- Spring 解耦：原 spring-boot-starter-jdbc / spring-boot-starter-aop 编译依赖已移除——
              本模块源码零 Spring import。Spring 宿主侧装配（DatabaseAutoConfiguration /
              EloquentUserProviderAutoConfiguration / ModelShadowPatcher / EloquentUserProviderDriver /
              BaseModel 数据源绑定 BPP）位于 jaravel-springboot 模块 vendor.springboot.database 包；

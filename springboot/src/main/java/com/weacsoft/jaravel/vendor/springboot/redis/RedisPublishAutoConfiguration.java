@@ -15,7 +15,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
  * 该条件<b>没有</b> {@code matchIfMissing = true}，即<b>默认不成立</b>——
  * 只有当工程里已经写好了 {@code jaravel.redis.connections.*} 才会装配。
  * <p>
- * 这是本次审计中最典型的死循环：开发者引入 redis 依赖的第一件事，
+ * 这是最典型的死循环：开发者引入 redis 依赖的第一件事，
  * 就是执行 {@code artisan vendor:publish --tag=redis} 生成 {@code RedisConfig.java}
  * 来<b>声明连接</b>；可在连接声明出来之前，条件不成立，发布配置声明根本不存在，
  * 于是「要先配好连接，才能拿到用于配连接的模板」。

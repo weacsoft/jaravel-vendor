@@ -14,7 +14,7 @@ import java.sql.ResultSet;
  * 与 {@code selectColumnList}，使得 {@code model_shadow} 列被 SELECT。
  * <p>
  * <b>SELECT 列表问题</b>已由 jaravel-springboot 的 {@code springboot.database.ModelShadowPatcher}
- * （，原 database.autoconfigure 包）在容器就绪后统一修复（从 selectColumnList 和
+ * （原 database.autoconfigure 包）在容器就绪后统一修复（从 selectColumnList 和
  * columnFieldMap 中移除 model_shadow）。
  * <p>
  * 本转换器仍需保留，用于处理以下场景：

@@ -13,7 +13,7 @@ package com.weacsoft.jaravel.vendor.core.queue;
  *     failed-job-retention-days: 7    # 失败任务保留天数
  * </pre>
  * <p>
- * <h3>P3 解耦说明</h3>
+ * <h3>解耦说明</h3>
  * 本类为纯 POJO（移除 {@code @ConfigurationProperties} 注解）；
  * Spring 宿主的属性绑定由 springboot 模块的队列自动装配以
  * {@code @Bean @ConfigurationProperties(prefix = "jaravel.queue")} 方式完成，

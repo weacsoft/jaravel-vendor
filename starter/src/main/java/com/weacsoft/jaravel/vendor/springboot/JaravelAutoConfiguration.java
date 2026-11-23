@@ -24,7 +24,7 @@ import java.util.List;
  * 配置来源优先级：运行时覆盖 &gt; 代码级配置({@link ConfigDefinition})
  * &gt; Spring Environment(application.yml)。
  * <p>
- * <h3>P3 解耦说明（Spring 解耦）</h3>
+ * <h3>解耦说明（Spring 解耦）</h3>
  * core 模块已零 Spring 依赖：
  * <ul>
  *   <li>{@code ConfigRepository} 改为纯类，外部配置层经 {@code environment::getProperty}
@@ -32,7 +32,7 @@ import java.util.List;
  *   <li>{@code ConfigDefinitionRegistrar} / {@code ProviderRegistry} 改为纯类，
  *       原「所有单例 Bean 初始化完成后」的 SmartInitializingSingleton 时序，
  *       现由本类的 SmartInitializingSingleton Bean 显式触发 {@code boot()}（行为不变）；</li>
- *   <li>P3 前的 {@code SpringContext}（ApplicationContextAware 持有器）Bean 已移除：
+ *   <li>原先的 {@code SpringContext}（ApplicationContextAware 持有器）Bean 已移除：
  *       core 静态门面改由 jaravel-springboot 的 {@code CoreSpringConfiguration} 安装的
  *       {@code GlobalBeanProvider}（{@code ContextBeanProvider}）驱动，
  *       对外静态 API（{@code SpringContext.bean/beanOrNull/registerSingleton}）与行为完全一致。</li>
@@ -65,7 +65,7 @@ public class JaravelAutoConfiguration {
     }
 
     /**
-     * 代码级配置加载触发：保持 P3 前「所有单例 Bean 初始化完成后」的原始时序。
+     * 代码级配置加载触发：保持「所有单例 Bean 初始化完成后」的原始时序。
      */
     @Bean
     public SmartInitializingSingleton configDefinitionBoot(ConfigDefinitionRegistrar registrar) {
@@ -82,7 +82,7 @@ public class JaravelAutoConfiguration {
     }
 
     /**
-     * 服务提供者引导触发：保持 P3 前「所有单例 Bean 初始化完成后」的原始时序。
+     * 服务提供者引导触发：保持「所有单例 Bean 初始化完成后」的原始时序。
      */
     @Bean
     public SmartInitializingSingleton providerRegistryBoot(ProviderRegistry registry) {

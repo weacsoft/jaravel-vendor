@@ -149,7 +149,7 @@ public class AetherUploadManager {
      * <p>
      * 旧实现用 {@code ConcurrentHashMap<String,Object>} 按 resourceId 建锁，并在「全部完成 / abort」
      * 时 remove；但 <b>header 不存在时（匿名请求携带随机 resourceId）锁在校验之前就已创建且永不回收</b>，
-     * 形成无界内存增长（，无需认证即可触发）。定长分段锁把内存固定为 O(桶数)，
+     * 形成无界内存增长（无需认证即可触发）。定长分段锁把内存固定为 O(桶数)，
      * 且不需要任何生命周期簿记；代价只是极小概率两个上传共用同一把锁（仅串行化写入，无正确性问题）。
      */
     private static final int LOCK_SEGMENTS = 256;

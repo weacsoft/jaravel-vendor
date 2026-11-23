@@ -18,9 +18,9 @@ import org.springframework.context.annotation.Bean;
  *   <li><b>安装全局 Bean 提供者</b>：创建 {@link ContextBeanProvider} 并
  *       {@code GlobalLookup.install(...)}，此后 core 的
  *       {@code SpringContext / Facade / Application.make / 注册器扫描(需宿主触发)}
- *       均可解析容器 Bean（替代 P3 前 {@code SpringContext} 直持 {@code ApplicationContext} 的方式）。</li>
+ *       均可解析容器 Bean（替代 {@code SpringContext} 直持 {@code ApplicationContext} 的方式）。</li>
  *   <li><b>全局应用密钥</b>：{@link AppKey}（{@code jaravel.key}，缺失时
- *       {@link DefaultAppKey} 随机生成并告警），继承自 P3 前的 core {@code CoreAutoConfiguration}。</li>
+ *       {@link DefaultAppKey} 随机生成并告警），继承自 core {@code CoreAutoConfiguration}。</li>
  * </ul>
  * <p>
  * 两阶段引导（{@code ProviderRegistry}）与代码级配置（{@code ConfigDefinitionRegistrar}）
@@ -51,7 +51,7 @@ public class CoreSpringConfiguration {
     }
 
     /**
-     * 全局应用密钥 Bean（继承 P3 前 core CoreAutoConfiguration 的语义）。
+     * 全局应用密钥 Bean（继承 core CoreAutoConfiguration 的语义）。
      * <p>
      * 使用 {@code @ConditionalOnMissingBean} 允许用户自行提供 {@link AppKey} 实现
      * （例如从 KMS / 环境变量读取）。

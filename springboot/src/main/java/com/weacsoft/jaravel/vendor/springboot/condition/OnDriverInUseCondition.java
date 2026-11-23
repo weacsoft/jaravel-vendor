@@ -36,8 +36,8 @@ import java.util.Set;
  * </ul>
  * 任意一处的值等于 {@code driverName}（忽略大小写）即判定为「被用上」。
  *
- * <h3>P3 解耦说明</h3>
- * P3 前位于 core 模块（{@code core.condition}）；本类是纯 Spring {@link Condition}，
+ * <h3>解耦说明</h3>
+ * 原先位于 core 模块（{@code core.condition}）；本类是纯 Spring {@link Condition}，
  * 为让 core 零 Spring 依赖，整体迁入 springboot。所有子类均在 springboot 或
  * 以 springboot 为唯一定制层的模块中（queue-database 的两个 condition 随之迁入
  * {@code vendor.springboot.queuedatabase}）。语义与判定逻辑逐字保持不变。

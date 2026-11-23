@@ -86,7 +86,7 @@ public class QueueDatabaseAutoConfiguration {
      * <p>
      *  {@link QueueProperties} 为纯 POJO（保留在 core，FQCN 稳定，
      * publish 模板代码引用不受影响），经此 {@code @Bean @ConfigurationProperties} 完成绑定，
-     * 字段与默认值与 P3 前 {@code @EnableConfigurationProperties} 方式完全一致。
+     * 字段与默认值与原先的 {@code @EnableConfigurationProperties} 方式完全一致。
      *
      * @return 队列全局配置
      */

@@ -16,9 +16,9 @@ import java.util.List;
 
 /**
  * 基于 {@link ApplicationContext} 的 {@link GlobalBeanProvider} 适配器
- * （P3 核心交付：Spring 宿主与零 Spring core 之间的桥）。
+ * （Spring 宿主与零 Spring core 之间的桥）。
  * <p>
- * <h3>行为契约（与 P3 前的 SpringContext 直连容器完全一致）</h3>
+ * <h3>行为契约（与 SpringContext 直连容器完全一致）</h3>
  * <ul>
  *   <li>按名 / 按类型解析 Bean — 委托容器（含别名、作用域、AOP 代理）。</li>
  *   <li>{@link #targetClass(Object)} — {@code AopUtils.getTargetClass} 解包 CGLIB / JDK 代理，

@@ -23,7 +23,7 @@
             <groupId>io.github.lijialong1313</groupId>
             <artifactId>event</artifactId>
         </dependency>
-        <!-- D3（Spring 解耦终收，经用户确认执行）：原 spring-jdbc + spring-context 编译依赖已移除——
+        <!-- Spring 解耦：原 spring-jdbc + spring-context 编译依赖已移除——
              · DatabaseQueueDispatcher / DatabaseQueueWorker 改经 core.lookup.BeanLookup SPI 解析监听器 bean
              · Spring 宿主接线（DatabaseQueueDriver 装配 / ContextBeanProvider 适配）位于 springboot 模块
                vendor.springboot.queuedatabase，运行期 Spring 依赖由宿主提供 -->

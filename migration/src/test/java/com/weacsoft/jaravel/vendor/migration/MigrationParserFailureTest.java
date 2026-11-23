@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 迁移解析失败的可见性（，按两位专家意见收窄范围）。
+ * 迁移解析失败的可见性（按评审意见收窄范围）。
  * <p>
  * 关键不变量：
  * <ol>

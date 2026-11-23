@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * <b>P3 验收冒烟：非 Spring 宿主可用性</b>（{@code Spring优化方案.md} §5.4 新增门禁）。
+ * <b>验收冒烟：非 Spring 宿主可用性</b>（{@code Spring优化方案.md} §5.4 新增门禁）。
  * <p>
  * 本类<b>不 import 任何 Spring 类型</b>（编译期即证明 core 链路零 Spring）：
  * 手动安装一个 Map 版 {@link GlobalBeanProvider}，验证

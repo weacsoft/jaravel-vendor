@@ -89,7 +89,7 @@ class AetherUploadChunkLimitTest {
 
     @Test
     void tinyClientChunkSizeIsBoundedByMaxChunksInsteadOfRejected() {
-        // 客户端声明 1 字节分片（等价于审计里的 size=1e8&chunkSize=1 场景，只是规模更小）：
+        // 客户端声明 1 字节分片（等价于 size=1e8&chunkSize=1 场景，只是规模更小）：
         // 默认不设下限（保持兼容），由 max-chunks 反推最小分片 → 分片数被钳到上限内
         UploadResult result = manager.prepare("file", "a.bin", 10_000_000L,
                 "application/octet-stream", "id-clamp", 1L);
@@ -102,7 +102,7 @@ class AetherUploadChunkLimitTest {
     @Test
     void hugeSizeIsRejectedBeforeCreatingAnyFile() throws IOException {
         long before = countPartFiles();
-        // Long.MAX_VALUE/2 用 int 收窄会变成负数（等价于审计里的 8e9 溢出）：
+        // Long.MAX_VALUE/2 用 int 收窄会变成负数（等价于 8e9 溢出）：
         // 修复后必须在创建任何临时文件之前拒绝
         assertThrows(UploadException.class,
                 () -> manager.prepare("file", "huge.bin", Long.MAX_VALUE / 2,

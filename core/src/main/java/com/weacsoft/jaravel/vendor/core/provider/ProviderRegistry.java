@@ -12,7 +12,7 @@ import java.util.List;
  * 先统一执行 {@code register()}，再统一执行 {@code boot()}，
  * 模仿 Laravel 的两阶段引导。
  * <p>
- * <h3>P3 解耦说明</h3>
+ * <h3>解耦说明</h3>
  * 引导时机由宿主控制：Spring 宿主在 Bean 就绪后（{@code SmartInitializingSingleton} 包装）
  * 调用 {@link #boot()}；非 Spring 宿自主动调用。
  *
