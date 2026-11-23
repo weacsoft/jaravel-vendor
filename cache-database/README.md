@@ -51,7 +51,7 @@ com.weacsoft.jaravel.vendor.cache.database
 | 项 | 说明 |
 | --- | --- |
 | 构造 | `DatabaseCacheDriver(DataSource)` / `DatabaseCacheDriver(DataSource, String table)` |
-| `createTable()` | 创建 `jaravel_cache` 表（`CREATE TABLE IF NOT EXISTS`；SQL Server 走 `sys.tables` 预检），自动适配 MySQL / PostgreSQL / SQLite / H2 / SQL Server 方言 |
+| `createTable()` | 创建 `jaravel_cache` 表（经迁移模块 `Schema.createIfAbsent`：方言感知的存在性检查后再生成建表语句，不手写 `CREATE TABLE IF NOT EXISTS`），自动适配 MySQL / PostgreSQL / SQLite / H2 / SQL Server 方言 |
 | `put/get/exists/remove/removeAll/allKeys` | 标准缓存操作；TTL 单位**秒**（`<= 0` 永不过期）；命中过期记录时返回未命中并**异步删除** |
 | `put` 语义 | 各方言 upsert（MySQL `ON DUPLICATE KEY UPDATE` / PG 与 SQLite `ON CONFLICT` / H2 `MERGE ... KEY` / SQL Server `MERGE ... USING`） |
 

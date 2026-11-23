@@ -502,7 +502,7 @@ driver2.removeAll();         // 清空所有 .cache 文件
 
 | 方法签名 | 说明 |
 | --- | --- |
-| `boolean createTable()` | 创建缓存表（IF NOT EXISTS），由 `artisan cache:table` 命令调用。自动适配各方言，返回 true 表示建表成功或表已存在 |
+| `boolean createTable()` | 创建缓存表（经迁移模块 `Schema.createIfAbsent`，表已存在时跳过），由 `artisan cache:table` 命令调用。自动适配各方言，返回 true 表示建表成功或表已存在 |
 | `String getTable()` | 获取当前表名 |
 
 > **重要**：`DatabaseCacheDriver` **不会在构造时自动建表**。使用 database 缓存驱动前，必须先执行 `artisan cache:table` 命令或手动调用 `createTable()` 方法创建缓存表。
@@ -726,7 +726,7 @@ Object value = Cache.store("database").get("user:1");
 java -jar app.jar artisan cache:table
 ```
 
-该命令按需创建 `DatabaseCacheDriver` 实例并调用 `createTable()` 创建缓存表（`CREATE TABLE IF NOT EXISTS`），自动适配 MySQL / PostgreSQL / SQLite / H2 / SQL Server 方言。表名由 `jaravel.cache.database-table` 或 `stores.database.table` 配置决定，默认为 `jaravel_cache`。
+该命令按需创建 `DatabaseCacheDriver` 实例并调用 `createTable()` 创建缓存表（经迁移模块 `Schema.createIfAbsent`：方言感知的存在性检查后再生成建表语句），自动适配 MySQL / PostgreSQL / SQLite / H2 / SQL Server 方言。表名由 `jaravel.cache.database-table` 或 `stores.database.table` 配置决定，默认为 `jaravel_cache`。
 
 > 命令类位于 `cache-database` 模块（`vendor.cache.database.artisan.CacheTableCommand`），由 `springboot` 模块的 `CacheArtisanAutoConfiguration` 在引入 `artisan` 模块时按 `@RegisterCommand` 扫描注册；未声明 database 驱动时不装配。
 

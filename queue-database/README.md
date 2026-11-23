@@ -174,7 +174,7 @@ jaravel:
 
 ### 数据库表结构
 
-需通过 `artisan queue:table` 命令创建（`CREATE TABLE IF NOT EXISTS`），对齐 Laravel `jobs` / `failed_jobs` 表：
+需通过 `artisan queue:table` 命令生成迁移文件后执行 `artisan migrate` 创建（建表经迁移模块 `Schema.createIfAbsent`：方言感知的存在性检查后再生成建表语句），对齐 Laravel `jobs` / `failed_jobs` 表：
 
 ```sql
 CREATE TABLE jobs (
@@ -207,7 +207,7 @@ CREATE TABLE failed_jobs (
 java -jar app.jar artisan queue:table
 ```
 
-该命令调用 `DatabaseQueueDriver.createTable()` 创建任务表和失败任务表（`CREATE TABLE IF NOT EXISTS`），并创建队列索引。也可手动调用 `createTable()` 方法：
+该命令调用 `DatabaseQueueDriver.createTable()` 创建任务表和失败任务表（经迁移模块 `Schema.createIfAbsent`：方言感知的存在性检查后再生成建表语句，不手写 `CREATE TABLE IF NOT EXISTS`），并创建队列索引。也可手动调用 `createTable()` 方法：
 
 ```java
 @Autowired
