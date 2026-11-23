@@ -334,7 +334,7 @@ ModelCache（门面，静态 API）
 | 开启方式 | 直接使用 | `@CachableModel` 注解手动开启 |
 | 依赖关系 | 基础 | 依赖 cache 模块 |
 
-`model-cache` 复用 `cache` 模块的 `CacheStore.remember` / `put` / `get` / `forget` / `increment` 等原语，不重新实现存储。`store` 配置项指向 `CacheManager` 中已注册的 store 名称；为空时使用 cache 模块默认 store（由 `jaravel.cache.default-store` 决定），非空时按名称解析并在未注册时回退到默认 store。因此切换 array / file / database / redis 只需改一行配置。
+`model-cache` 复用 `cache` 模块的 `CacheStore.remember` / `put` / `get` / `forget` / `increment` 等原语，不重新实现存储。`store` 配置项指向 `CacheManager` 中已注册的 store 名称；为空时使用 cache 模块默认 store（由 `jaravel.cache.default-store` 决定），非空时按名称解析并在未注册时回退到默认 store。因此切换 array / file / database / redis 只需修改一行配置。
 
 ---
 

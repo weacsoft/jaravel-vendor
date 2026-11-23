@@ -28,7 +28,7 @@ import java.util.Map;
  *         header-store: memory        # 记录头存储：memory / cache（默认 store）/ 任意 cache store 名（如 redis）
  *         temp-dir: temp              # 分片临时目录（默认运行目录 temp 下）
  *         save-dir: uploads           # 上传完成后的保存目录（配置 disk 时为磁盘内相对子目录）
- *         disk:                       # 落盘磁盘名（需引入 storage 模块）；为空则直接写本地 save-dir
+ *         disk:                       # 存储磁盘名（需引入 storage 模块）；为空则直接写本地 save-dir
  *         header-ttl-seconds: 86400   # 未完成上传记录头的过期秒数
  *         allow-client-chunk-size: true # 是否允许前端在 prepare 时自定义分片大小
  *         middleware: []              # 该组专属中间件别名
@@ -181,10 +181,10 @@ public class AetherUploadProperties {
         private String saveDir = "uploads";
 
         /**
-         * 落盘使用的 storage 磁盘名（需引入 storage 模块）。
+         * 存储使用的 storage 磁盘名（需引入 storage 模块）。
          * <p>
          * 为空时（默认）直接写本地文件系统的 {@code save-dir}，不依赖 storage 模块；
-         * 配置后，上传完成的文件会通过 {@code Storage.disk(disk)} 落盘，
+         * 配置后，上传完成的文件会通过 {@code Storage.disk(disk)} 写入，
          * {@code save-dir} 则作为磁盘内的相对子目录，从而支持 S3/OSS 等任意驱动。
          */
         private String disk;

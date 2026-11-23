@@ -33,7 +33,7 @@ import java.util.Map;
  *   <li>{@code eventData}：事件数据（序列化为 JSON 对象）</li>
  * </ul>
  *
- * <h3>D3（Spring 解耦终收）</h3>
+ * <h3>Spring 解耦</h3>
  * 监听器 bean 名解析改经 {@link BeanLookup} SPI（core 纯接口，
  * Spring 宿主由 {@code ContextBeanProvider} 适配 {@code ApplicationContext}），
  * 本类不再直接依赖 Spring。

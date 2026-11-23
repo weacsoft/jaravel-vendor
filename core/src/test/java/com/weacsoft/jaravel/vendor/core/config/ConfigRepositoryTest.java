@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * {@link ConfigRepository} 多层配置优先级与类型转换单元测试（零 Spring，P3 起外部配置层为函数注入）。
+ * {@link ConfigRepository} 多层配置优先级与类型转换单元测试（零 Spring，外部配置层为函数注入）。
  */
 class ConfigRepositoryTest {
 

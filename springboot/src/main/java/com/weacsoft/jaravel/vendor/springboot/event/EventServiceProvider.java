@@ -23,7 +23,7 @@ import org.springframework.beans.factory.annotation.Autowired;
  * {@link #dispatcher} 由 Spring 容器自动注入，{@code com.weacsoft.jaravel.vendor.core.provider.ProviderRegistry}
  * 会在所有单例就绪后调用 {@link #register()}，此时调度器已就绪，可安全注册监听器。
  * <p>
- * Spring 装配收口于 springboot 模块（event 核心模块零 Spring 依赖）：本基类含 {@code @Autowired} 字段，随装配同迁。
+ * Spring 装配集中于 springboot 模块（event 核心模块零 Spring 依赖）：本基类含 {@code @Autowired} 字段，随装配同迁。
  */
 public abstract class EventServiceProvider extends ServiceProvider {
 

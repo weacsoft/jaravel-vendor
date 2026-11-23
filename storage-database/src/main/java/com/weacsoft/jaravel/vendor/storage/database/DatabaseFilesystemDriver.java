@@ -98,7 +98,7 @@ public class DatabaseFilesystemDriver implements FilesystemDriver {
     }
 
     /**
-     * 解析数据源；缺失时给出可操作的错误提示，而不是让应用在启动期莫名失败。
+     * 解析数据源；缺失时给出可操作的错误提示，而不是让应用在启动期以原因不明的形式失败。
      *
      * @param alias 磁盘配置里可选的 connection / datasource 连接别名
      * @return 数据源

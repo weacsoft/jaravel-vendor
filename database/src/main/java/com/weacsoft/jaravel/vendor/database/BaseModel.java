@@ -101,7 +101,7 @@ import java.util.Set;
 public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
 
     /**
-     * 数据源（D2 起为纯 Java setter 注入；Spring 宿主由 jaravel-springboot 的
+     * 数据源（为纯 Java setter 注入；Spring 宿主由 jaravel-springboot 的
      * {@code BaseModelDataSourceBindingPostProcessor} 自动绑定，承接原 {@code @Autowired @Lazy} 语义），
      * 非数据库字段，需排除 ORM 映射与 JSON 序列化
      */
@@ -130,7 +130,7 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
      * {@code inDatabase=false} 时会被跳过，导致父类字段（{@code inDatabase=true}）
      * 仍然被加入 SELECT 列表。此问题通过<b>双保险</b>修复：
      * <ol>
-     *   <li>{@code springboot.database.ModelShadowPatcher}（D2 起位于 jaravel-springboot）
+     *   <li>{@code springboot.database.ModelShadowPatcher}（位于 jaravel-springboot）
      *       在 Spring 容器就绪后统一移除（同时修补 ModelMember 和 parseAnyEntityWithCache 两个来源）</li>
      *   <li>{@link #getModelMember()} 在每次调用时进行幂等修补，
      *       确保 parseAnyEntityWithCache 新建的 EntityMember 也被处理</li>
@@ -198,7 +198,7 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
     /**
      * 从 EntityMember 的 selectColumnList 和 columnFieldMap 中移除 model_shadow 列。
      * <p>
-     * <b>只在每个 EntityMember 实例上执行一次</b>（审计 M20）：这些元数据来自 gaarason 的
+     * <b>只在每个 EntityMember 实例上执行一次</b>：这些元数据来自 gaarason 的
      * <b>容器级共享缓存</b>，旧实现在每次 {@code getModelMember()}（查询热路径）里都对共享
      * {@code selectColumnList} 做 {@code removeIf}，启动后首批并发查询可能抛
      * {@code ConcurrentModificationException} 或用错列集。改为「首次修补受锁 + 之后直接跳过」，
@@ -368,8 +368,8 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
     //
     // gaarason 7.1.3 已修复该缺陷：count(String) 改为
     // `result instanceof Number ? ((Number) result).longValue() : Long.valueOf(result.toString())`，
-    // 对 Integer/Long/BigInteger 一视同仁。实测同一段 SQLite paginate 代码
-    // 在 7.0.15 复现原异常、在 7.1.3 正常返回。
+    // 对 Integer/Long/BigInteger 一视同仁。验证同一段 SQLite paginate 代码
+    // 在 7.0.15 重现原异常、在 7.1.3 正常返回。
     //
     // 因此兼容包装层（JaravelQueryBuilder + 反射字段拷贝）已整体移除，
     // newQuery() 直接使用框架原生实现，少一次实例拷贝与反射开销。
@@ -626,7 +626,7 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
     // gaarason 默认是「列名 is_deleted（布尔）+ 不启用软删除」，
     // 与 Laravel/jaravel 的 `deleted_at IS NULL`（时间戳）语义不兼容。
     // 不接上这三个点，AutoRestore 永远不触发，且**不报错**
-    // ——实测表现为 deleted_at 仍是旧值，只是普通 UPDATE，属于最难排查的一类失效。
+    // ——验证表现为 deleted_at 仍是旧值，只是普通 UPDATE，属于最难排查的一类失效。
     //
     // 此前 jaravel 用 TrashedScope（复刻 updateOrCreate 逻辑 + 额外一次 first 查询）
     // 绕过该缺口；7.1.2+ 的官方扩展点到位后改为直接接入，语义更准也更省一次查询。
@@ -648,7 +648,7 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
      * 只是「删掉的数据又出现了」，极难察觉。
      * <p>
      * 本方法声明在<b>包私有</b>的 {@code ModelOfSoftDelete} 上、修饰符为 {@code protected}。
-     * 实测确认两点：
+     * 验证确认两点：
      * <ol>
      *   <li>跨包继承并覆盖 {@code protected} 方法是<b>合法且虚分派生效</b>的
      *       （Java 的 protected 语义允许子类覆盖，与父类是否包私有无关）；</li>
@@ -1039,7 +1039,7 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
             if (targetType == Date.class) {
                 return java.sql.Timestamp.valueOf(parseDateTime(str));
             }
-            // 兜底：尝试 valueOf(String) 或单参 String 构造函数
+            // 回退：尝试 valueOf(String) 或单参 String 构造函数
             try {
                 Method valueOf = targetType.getMethod("valueOf", String.class);
                 return valueOf.invoke(null, str);

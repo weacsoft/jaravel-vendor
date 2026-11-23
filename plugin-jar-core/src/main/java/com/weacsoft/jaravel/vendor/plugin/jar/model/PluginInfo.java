@@ -45,7 +45,7 @@ public class PluginInfo {
     private Set<RouteInfo> availableRoutes = new HashSet<>();
     /** 错误信息（启用失败时记录） */
     private String errorMessage;
-    /** 是否磁盘持久化：true 表示 JAR 已落盘可自动恢复，false 表示仅内存 */
+    /** 是否磁盘持久化：true 表示 JAR 已写入可自动恢复，false 表示仅内存 */
     private boolean persisted;
 
     public PluginInfo() {

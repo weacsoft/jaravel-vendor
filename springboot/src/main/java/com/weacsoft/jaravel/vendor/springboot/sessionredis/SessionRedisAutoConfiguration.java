@@ -47,13 +47,13 @@ import org.springframework.context.annotation.Conditional;
  * 这样，项目即使引入了 {@code jaravel-session-redis} 依赖，只要没有选用 redis 驱动，
  * 就<b>不会创建任何 Bean、不会连接 Redis</b>，在没有 Redis 的环境下也能正常启动。
  * <p>
- * 此外还叠加了 {@code @ConditionalOnBean(RedisManager.class)} 作为兜底：
+ * 此外还叠加了 {@code @ConditionalOnBean(RedisManager.class)} 作为回退：
  * 即便误开了开关，只要 redis 模块本身没装配出 {@code RedisManager}，也不会因注入失败而中断启动。
  *
  * <p>如需使用其他 Session 存储，在应用的 {@code config/SessionConfig.java}
  * 中注册自定义 {@code @RegisterSessionStore} 即可覆盖本实现（用 {@code override = true} 显式提升优先级）。</p>
  * <p>
- * Spring 装配收口于 springboot 模块（session-redis 核心模块零 Spring 依赖）。
+ * Spring 装配集中于 springboot 模块（session-redis 核心模块零 Spring 依赖）。
  */
 @AutoConfiguration
 @AutoConfigureAfter({com.weacsoft.jaravel.vendor.springboot.redis.RedisAutoConfiguration.class, HttpSessionAutoConfiguration.class})

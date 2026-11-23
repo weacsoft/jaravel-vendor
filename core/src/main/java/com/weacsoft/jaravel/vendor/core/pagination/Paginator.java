@@ -4,11 +4,14 @@ import com.weacsoft.jaravel.vendor.core.view.Htmlable;
 import com.weacsoft.jaravel.vendor.core.view.HtmlString;
 import com.weacsoft.jaravel.vendor.core.view.View;
 import com.weacsoft.jaravel.vendor.core.view.ViewProvider;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeSet;
 
 /**
  * Laravel 风格分页器（core 标准层）。
@@ -31,7 +34,7 @@ import java.util.Map;
  */
 public class Paginator<T> implements Iterable<T>, Htmlable {
 
-    private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(Paginator.class.getName());
+    private static final Logger logger = LoggerFactory.getLogger(Paginator.class);
 
     /** 默认视图提供者（由模板引擎注入）；为 null 时 links 降级空串。 */
     private static volatile ViewProvider defaultViewProvider = null;
@@ -255,14 +258,19 @@ public class Paginator<T> implements Iterable<T>, Htmlable {
         long windowStart = Math.max(1, (long) currentPage - onEachSide);
         long windowEnd = Math.min(last, (long) currentPage + onEachSide);
 
+        // 需要输出的页码只有三类：首页、末页、当前页两侧窗口。
+        // 直接按集合求并集生成，避免遍历 1..last 造成与总页数成正比的空转。
+        java.util.TreeSet<Long> pages = new TreeSet<>();
+        pages.add(1L);
+        pages.add(last);
+        for (long page = windowStart; page <= windowEnd; page++) {
+            pages.add(page);
+        }
+
         long previous = 0;
-        for (long page = 1; page <= last; page++) {
-            boolean inWindow = page >= windowStart && page <= windowEnd;
-            boolean isEdge = page == 1 || page == last;
-            if (!inWindow && !isEdge) {
-                continue;
-            }
-            if (previous != 0 && page - previous > 1) {
+        for (Long page : pages) {
+            long value = page;
+            if (previous != 0 && value - previous > 1) {
                 Map<String, Object> sep = new LinkedHashMap<>();
                 sep.put("type", "separator");
                 sep.put("page", 0);
@@ -272,11 +280,11 @@ public class Paginator<T> implements Iterable<T>, Htmlable {
             }
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("type", "page");
-            item.put("page", (int) page);
+            item.put("page", (int) value);
             item.put("url", null); // 由调用方填充
-            item.put("active", page == currentPage);
+            item.put("active", value == currentPage);
             result.add(item);
-            previous = page;
+            previous = value;
         }
         return result;
     }
@@ -322,7 +330,7 @@ public class Paginator<T> implements Iterable<T>, Htmlable {
         try {
             return HtmlString.raw(view.render(viewName, data));
         } catch (Exception e) {
-            logger.warning("分页模板渲染失败 [" + viewName + "]: " + e.getMessage());
+            logger.warn("分页模板渲染失败 [{}]: {}", viewName, e.getMessage());
             return HtmlString.raw("");
         }
     }

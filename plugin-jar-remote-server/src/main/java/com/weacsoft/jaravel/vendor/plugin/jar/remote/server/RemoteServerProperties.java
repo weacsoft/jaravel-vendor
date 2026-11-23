@@ -16,6 +16,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *         node-id: "node-root"       # 本节点 ID（树形拓扑中唯一标识）
  *         relay-enabled: true         # 启用中继转发（本地无插件时转发给子节点）
  *         max-hops: 5                # 请求最大跳数（防环）
+ *         # 访问控制（留空表示不限制，仅拒绝 wait/notify/notifyAll）
+ *         allowed-bean-names: []      # 允许调用的 Bean 名（可用 pluginId#beanName 区分插件）
+ *         allowed-methods: []         # 允许调用的方法名
  * </pre>
  * <p>
  * TCP 模式通过 {@code enabled=true} 自动启动。
@@ -43,6 +46,12 @@ public class RemoteServerProperties {
     /** 请求最大跳数（防环，默认 5） */
     private int maxHops = 5;
 
+    /** 允许远程调用的 Bean 名（空表示不限制） */
+    private java.util.List<String> allowedBeanNames = new java.util.ArrayList<>();
+
+    /** 允许远程调用的方法名（空表示不限制） */
+    private java.util.List<String> allowedMethods = new java.util.ArrayList<>();
+
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
     public int getPort() { return port; }
@@ -55,4 +64,12 @@ public class RemoteServerProperties {
     public void setRelayEnabled(boolean relayEnabled) { this.relayEnabled = relayEnabled; }
     public int getMaxHops() { return maxHops; }
     public void setMaxHops(int maxHops) { this.maxHops = maxHops; }
+    public java.util.List<String> getAllowedBeanNames() { return allowedBeanNames; }
+    public void setAllowedBeanNames(java.util.List<String> allowedBeanNames) {
+        this.allowedBeanNames = allowedBeanNames == null ? new java.util.ArrayList<>() : allowedBeanNames;
+    }
+    public java.util.List<String> getAllowedMethods() { return allowedMethods; }
+    public void setAllowedMethods(java.util.List<String> allowedMethods) {
+        this.allowedMethods = allowedMethods == null ? new java.util.ArrayList<>() : allowedMethods;
+    }
 }

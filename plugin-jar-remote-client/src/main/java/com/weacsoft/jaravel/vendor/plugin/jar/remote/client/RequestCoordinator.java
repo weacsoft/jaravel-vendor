@@ -46,7 +46,7 @@ public class RequestCoordinator {
     private static final Logger log = LoggerFactory.getLogger(RequestCoordinator.class);
 
     private final SubServerRegistry registry;
-    private final RemoteTransport transport;
+    private volatile RemoteTransport transport;
     private final BeanResolver localBeanResolver;
     private volatile int roundRobinIndex = 0;
 
@@ -71,6 +71,21 @@ public class RequestCoordinator {
         this.registry = registry;
         this.transport = transport;
         this.localBeanResolver = localBeanResolver;
+    }
+
+    /**
+     * 替换传输层。
+     * <p>
+     * 供 {@link RemoteExecutionDispatcher#setTransport} 在切换传输模式时同步协调器，
+     * 避免协调器继续使用旧传输层发送请求。
+     *
+     * @param transport 新的传输层
+     */
+    public void setTransport(RemoteTransport transport) {
+        if (transport == null) {
+            throw new IllegalArgumentException("传输层不能为空");
+        }
+        this.transport = transport;
     }
 
     /**

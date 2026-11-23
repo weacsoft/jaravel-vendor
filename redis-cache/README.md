@@ -2,7 +2,7 @@
 
 > Jaravel-Vendor 的 Redis 缓存驱动模块（**零 Spring 依赖**），对齐 Laravel `Illuminate\Cache\RedisStore`。提供 `RedisCacheDriverFactory` 驱动工厂（实现 `CacheDriverFactory`，按需创建），由 `CacheManager` 在配置了 `redis` store 时按需创建 `RedisCacheDriver` 实例。底层通过 `redis` 模块的 `RedisManager` 获取指定命名连接的 Redis 命令接口，所有缓存键值以 JSON 序列化存储，TTL 通过 Redis `SETEX`/`EXPIRE` 实现。包名统一为 `com.weacsoft.jaravel.vendor.redis.cache`。
 >
-> Spring 自动装配收口于 **springboot** 模块（`vendor.springboot.rediscache` 包）：`RedisCacheAutoConfiguration` / `RedisCacheProperties` / `OnRedisCacheStoreCondition` / `RedisCachePublishAutoConfiguration`。本模块保留纯 Java 的 `RedisCacheDriver` / `RedisCacheDriverFactory` 与 `RedisCachePublishableConfig`。
+> Spring 自动装配位于 **springboot** 模块（`vendor.springboot.rediscache` 包）：`RedisCacheAutoConfiguration` / `RedisCacheProperties` / `OnRedisCacheStoreCondition` / `RedisCachePublishAutoConfiguration`。本模块保留纯 Java 的 `RedisCacheDriver` / `RedisCacheDriverFactory` 与 `RedisCachePublishableConfig`。
 
 ---
 
@@ -214,7 +214,7 @@ Redis 缓存自动装配。当 `RedisManager` 存在时，创建 `RedisCacheDriv
 | `@AutoConfigureAfter(RedisAutoConfiguration.class)` | 在 Redis 配置之后装配 |
 | `@ConditionalOnClass({RedisCacheDriver, CacheDriverFactory, RedisManager})` | 类路径存在相关类 |
 | `@Conditional(OnRedisCacheStoreCondition.class)` | **配置里确实声明了 `driver: redis` 的缓存 store**（安装 ≠ 启用） |
-| `@ConditionalOnBean(RedisManager.class)` | 容器中存在 `RedisManager` bean（兜底保护） |
+| `@ConditionalOnBean(RedisManager.class)` | 容器中存在 `RedisManager` bean（回退保护） |
 
 > **装配原则：用上了才注册。** 仅把 `jaravel-redis-cache` 放进 classpath **不会**触发装配，
 > 必须在 `jaravel.cache.stores.*.driver` 中显式选用 `redis`。

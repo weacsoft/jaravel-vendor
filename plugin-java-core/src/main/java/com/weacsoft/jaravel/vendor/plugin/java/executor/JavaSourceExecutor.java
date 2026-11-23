@@ -24,7 +24,7 @@ import java.util.regex.Pattern;
  * 提供一站式「源码字符串 → 编译 → 加载 → 反射调用」能力。
  * <ul>
  *   <li>{@code inMemory=true}（默认）：纯内存编译，使用 {@link DynamicJavaCompiler}（MemoryJavaFileManager）
- *       + {@link DynamicClassLoader}，全程不落盘（无临时文件 I/O）</li>
+ *       + {@link DynamicClassLoader}，全程不写入（无临时文件 I/O）</li>
  *   <li>{@code inMemory=false}：文件编译，将源码写入临时目录，用标准 {@code javac} 编译为 .class 文件，
  *       再通过 {@link URLClassLoader} 加载，保留传统的文件方式</li>
  * </ul>
@@ -60,7 +60,7 @@ public final class JavaSourceExecutor {
     // ==================== 入口方法 ====================
 
     /**
-     * 编译并执行 Java 源码（纯内存，不落盘）。
+     * 编译并执行 Java 源码（纯内存，不写入）。
      *
      * @param sourceCode Java 源代码字符串
      * @return 执行结果 Map
@@ -73,7 +73,7 @@ public final class JavaSourceExecutor {
      * 编译并执行 Java 源码。
      *
      * @param sourceCode Java 源代码字符串
-     * @param inMemory   true=纯内存编译（不落盘），false=文件编译（落盘到临时目录）
+     * @param inMemory   true=纯内存编译（不写入），false=文件编译（写入到临时目录）
      * @return 执行结果 Map，包含以下字段：
      *         <ul>
      *           <li>success: 是否成功</li>
@@ -98,7 +98,7 @@ public final class JavaSourceExecutor {
     // ==================== 纯内存编译 ====================
 
     /**
-     * 纯内存编译执行（不落盘）。
+     * 纯内存编译执行（不写入）。
      * 底层使用 DynamicJavaCompiler（MemoryJavaFileManager）+ DynamicClassLoader。
      */
     private static Map<String, Object> compileAndRunInMemory(String sourceCode) {
@@ -161,7 +161,7 @@ public final class JavaSourceExecutor {
     // ==================== 文件编译 ====================
 
     /**
-     * 文件编译执行（落盘到临时目录）。
+     * 文件编译执行（写入到临时目录）。
      * 将源码写入临时 .java 文件，用标准 javac 编译为 .class 文件，再通过 URLClassLoader 加载。
      */
     private static Map<String, Object> compileAndRunToFile(String sourceCode) {

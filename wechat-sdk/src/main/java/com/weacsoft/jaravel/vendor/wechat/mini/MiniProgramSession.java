@@ -34,7 +34,7 @@ public final class MiniProgramSession {
      * <p>
      * 官方成功响应：{@code {openid, session_key, unionid?}}。
      * {@code errcode/errmsg}（失败）形态由服务层在调用前抛出 {@code WechatApiException}，
-     * 不会走到本方法；此处仍做防御性必填校验。
+     * 不会走到本方法；此处仍做必填校验。
      *
      * @param raw 原始响应（应已剥离 errcode/errmsg）
      * @return 会话对象

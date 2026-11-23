@@ -43,7 +43,7 @@ public class CaptchaResult {
     /**
      * 加密类型（下发前端用于加密用户输入，仅 AES 模式有意义）。
      * <p>
-     * 当服务端启用了应用密钥兜底（{@code jaravel.key}）时，
+     * 当服务端启用了应用密钥回退（{@code jaravel.key}）时，
      * 该值可能与业务静态配置不同，前端应优先使用本字段而非硬编码的默认值。
      */
     private String encType;

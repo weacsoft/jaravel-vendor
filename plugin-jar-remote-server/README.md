@@ -42,7 +42,11 @@ jaravel:
         enabled: true              # 启用 TCP 服务端
         port: 9700                 # TCP 监听端口
         auth-token: "my-secret"    # 认证令牌
+        allowed-bean-names: []     # 允许远程调用的 Bean 名（留空表示不限制）
+        allowed-methods: []        # 允许远程调用的方法名（留空表示不限制）
 ```
+
+`allowed-bean-names` 与 `allowed-methods` 用于限制远程可调用的范围：两个列表都留空时不施加限制；填写后，只有名单内的 Bean 或方法可以被远程调用，其余调用在解析到目标 Bean 后、调用前被拒绝。`wait`、`notify`、`notifyAll` 始终不在允许范围内。
 
 ### 独立使用（无热加载）
 

@@ -66,7 +66,7 @@ public class CaptchaPublishableConfig implements PublishableConfig {
                 + " * 启用的验证码类型；也可传入自定义 {@link com.weacsoft.jaravel.vendor.captcha.generator.Captcha}\n"
                 + " * 实现，做到各类型相互独立、可插拔。\n"
                 + " *\n"
-                + " * <h3>应用密钥兜底</h3>\n"
+                + " * <h3>应用密钥回退</h3>\n"
                 + " * 若 {@code jaravel.captcha.encryption-key} 未显式配置（等于出厂默认值），\n"
                 + " * 框架会自动回退到全局 {@code jaravel.key}（见 core 模块 {@code AppKey}）。\n"
                 + " */\n"

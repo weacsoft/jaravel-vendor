@@ -43,7 +43,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li><b>断点/断线续传</b>：记录头存储分片位图；前端携带 identifier 重新 prepare 即可拿到已传分片列表继续上传</li>
  *   <li><b>多组配置</b>：不同组独立的记录头存储（内存 / cache / redis）、目录、限制</li>
  *   <li><b>事件</b>：prepare / chunk / completed / failed / aborted 全生命周期事件</li>
- *   <li><b>同步上传</b>：小文件单请求直接落盘</li>
+ *   <li><b>同步上传</b>：小文件单请求直接写入</li>
  * </ul>
  * 线程安全：同一 resourceId 的写入通过本地锁串行化。多实例部署请配置 redis 记录头，
  * 并保证同一 resourceId 的请求路由到同一节点（或共享磁盘）。
@@ -55,13 +55,13 @@ public class AetherUploadManager {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final DateTimeFormatter SUB_DIR = DateTimeFormatter.ofPattern("yyyyMM");
 
-    /** 默认分片大小（1MB）：组未配置或配置非法时兜底 */
+    /** 默认分片大小（1MB）：组未配置或配置非法时回退 */
     private static final long DEFAULT_CHUNK_SIZE = 1024 * 1024L;
 
     /** 默认分片数上限：位图约 12.5KB，同时约束 uploadedChunkList 的响应体规模 */
     private static final long DEFAULT_MAX_CHUNKS = 100_000L;
 
-    /** 单分片大小兜底上限（10MB）：约束自适应放大与客户端声明值 */
+    /** 单分片大小回退上限（10MB）：约束自适应放大与客户端声明值 */
     private static final long MAX_CHUNK_SIZE_LIMIT = 10 * 1024 * 1024L;
 
     /** 分片临时目录机会式清理的最小间隔（10 分钟），避免每次 prepare 都扫目录 */
@@ -149,8 +149,8 @@ public class AetherUploadManager {
      * <p>
      * 旧实现用 {@code ConcurrentHashMap<String,Object>} 按 resourceId 建锁，并在「全部完成 / abort」
      * 时 remove；但 <b>header 不存在时（匿名请求携带随机 resourceId）锁在校验之前就已创建且永不回收</b>，
-     * 形成无界内存增长（审计 N6，无需认证即可触发）。定长分段锁把内存固定为 O(桶数)，
-     * 且不需要任何生命周期簿记；代价只是极小概率两个上传共用一把锁（仅串行化写入，无正确性问题）。
+     * 形成无界内存增长（，无需认证即可触发）。定长分段锁把内存固定为 O(桶数)，
+     * 且不需要任何生命周期簿记；代价只是极小概率两个上传共用同一把锁（仅串行化写入，无正确性问题）。
      */
     private static final int LOCK_SEGMENTS = 256;
 
@@ -180,7 +180,7 @@ public class AetherUploadManager {
     /**
      * @param properties     模块配置
      * @param cacheManager   缓存管理器（记录头存储），可为 null
-     * @param storageManager 存储管理器，可为 null；为 null 时组配置的 disk 失效并降级为本地目录落盘
+     * @param storageManager 存储管理器，可为 null；为 null 时组配置的 disk 失效并降级为本地目录写入
      */
     public AetherUploadManager(AetherUploadProperties properties, CacheManager cacheManager,
                                StorageManager storageManager) {
@@ -340,7 +340,7 @@ public class AetherUploadManager {
         }
         int totalChunks = (int) totalChunksLong;
 
-        // 校验全部通过后再落盘：上限/溢出被拒时不会创建任何 .part（避免匿名预分配磁盘 DoS）
+        // 校验全部通过后再写入：上限/溢出被拒时不会创建任何 .part（避免匿名预分配磁盘 DoS）
         String resourceId = UUID.randomUUID().toString().replace("-", "");
         Path tempPath = resolveTempDir(g.config.getTempDir()).resolve(resourceId + ".part");
         try {
@@ -494,7 +494,7 @@ public class AetherUploadManager {
     /**
      * 写入一个分片，对齐 AetherUpload 的 uploading（追加子资源）。
      * <p>
-     * 全部分片写入完成后自动合并落盘并分发 {@link UploadCompletedEvent}。
+     * 全部分片写入完成后自动合并写入并分发 {@link UploadCompletedEvent}。
      *
      * @param groupName  组名
      * @param resourceId 资源 id
@@ -527,15 +527,15 @@ public class AetherUploadManager {
                         + ", expected=" + expected + ", actual=" + (data == null ? 0 : data.length));
             }
 
-            // 写前确认「临时文件仍是本任务的那个、且长度符合预期」（审计 M6）：
-            // prepare 阶段已 setLength(size)，所以「成品落盘时被 move 走 / 被中断后重建」必然表现为
+            // 写前确认「临时文件仍是本任务的那个、且长度符合预期」：
+            // prepare 阶段已 setLength(size)，所以「成品写入时被 move 走 / 被中断后重建」必然表现为
             // 不存在或长度 ≠ size。若不校验，客户端重试末片会新建一个零填充文件、只写最后一片，
             // 随后 allUploaded() 为真 → 用近乎全零的文件覆盖掉已正确的成品并标记 COMPLETED。
             Path tempPath = Paths.get(header.getTempPath());
             try {
                 if (!Files.exists(tempPath) || Files.size(tempPath) != header.getSize()) {
                     long actual = Files.exists(tempPath) ? Files.size(tempPath) : -1L;
-                    throw UploadException.invalid("临时文件与任务不一致（可能已完成落盘或已被中断），"
+                    throw UploadException.invalid("临时文件与任务不一致（可能已完成写入或已被中断），"
                             + "请重新 prepare: expected=" + header.getSize() + ", actual=" + actual);
                 }
             } catch (IOException e) {
@@ -612,7 +612,7 @@ public class AetherUploadManager {
     // ========== 同步上传 ==========
 
     /**
-     * 同步上传：单请求整文件直接落盘（小文件场景），完成后分发 {@link UploadCompletedEvent}。
+     * 同步上传：单请求整文件直接写入（小文件场景），完成后分发 {@link UploadCompletedEvent}。
      *
      * @param groupName 组名
      * @param filename  文件名
@@ -755,7 +755,7 @@ public class AetherUploadManager {
 
     /**
      * 解析组配置的 storage 磁盘；未配置 disk 或未引入 storage 模块时返回 {@code null}
-     * （此时落盘降级为直接写本地 {@code save-dir}）。
+     * （此时写入降级为直接写本地 {@code save-dir}）。
      *
      * @param g 组运行时
      * @return 磁盘实例或 null
@@ -783,7 +783,7 @@ public class AetherUploadManager {
      * 本地磁盘走 {@code Files.move}（同分区为原子 rename，零拷贝）；
      * 远程磁盘（S3/OSS 等）走流式 {@code putStream}，内存占用恒定，支持任意大小文件。
      *
-     * @return 落盘后的定位信息（本地磁盘为绝对路径，远程磁盘为 {@code disk://name/path}）
+     * @return 写入后的定位信息（本地磁盘为绝对路径，远程磁盘为 {@code disk://name/path}）
      */
     private String moveToDisk(GroupRuntime g, Filesystem disk, UploadHeader header) throws IOException {
         String relative = diskRelativePath(g, header.getResourceId(), header.getFilename());

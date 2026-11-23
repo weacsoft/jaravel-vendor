@@ -35,7 +35,7 @@ public class CacheArtisanAutoConfiguration {
      * 注册 {@code cache:table} 命令。
      *
      * @param properties  缓存配置（用于获取表名）
-     * @param makeProps   artisan 代码生成配置（决定迁移文件落盘目录与包名，与 vendor:publish 一致）
+     * @param makeProps   artisan 代码生成配置（决定迁移文件写入目录与包名，与 vendor:publish 一致）
      * @return 缓存建表命令
      */
     @RegisterCommand("生成缓存表迁移文件")

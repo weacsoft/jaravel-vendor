@@ -67,7 +67,7 @@ com.weacsoft.jaravel.vendor.cache.database
 
 - `support("database")` 为 true；
 - `create(config)` 读取 `table` / `connection` 配置：`connection` 别名经 `ConnectionManager.rawDataSource(alias)` 解析；
-- 最终解析不到数据源时抛出带操作建议的 `IllegalStateException`（提示 `@RegisterConnection` 或改用 `array` / `file` 驱动），而不是在启动期莫名失败。
+- 最终解析不到数据源时抛出带操作建议的 `IllegalStateException`（提示 `@RegisterConnection` 或改用 `array` / `file` 驱动），而不是在启动期以原因不明的形式失败。
 
 ### CacheTableCommand（artisan）
 

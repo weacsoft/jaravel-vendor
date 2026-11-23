@@ -202,7 +202,7 @@ public final class WechatKernel {
                 : WechatResponse.message(plan.passiveReply()).toReplyXml(openid, req.toOpenid());
         if (dispatcher == null) {
             if (!plan.customerMessages().isEmpty()) {
-                logger.warn("[wechat-kernel] 未装配 AsyncReplyDispatcher，{} 条客服消息补发被丢弃"
+                logger.error("[wechat-kernel] 未装配 AsyncReplyDispatcher，{} 条客服消息补发被丢弃"
                         + "（多条回复请用 officialAccountService.server(...) 获取已装配的内核，"
                         + "或给内核 withDispatcher(...)）", plan.customerMessages().size());
             }

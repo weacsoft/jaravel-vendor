@@ -238,9 +238,9 @@ class WireControllerApiTest {
     @Test
     void resolveComponentTemplate_falls_back_to_global_then_name() {
         SampleController c = newController();
-        // 未注册 → 兜底:组件名即模板名
+        // 未注册 → 回退:组件名即模板名
         assertEquals("some.template", c.pubResolveComponentTemplate("some.template"));
-        // toast 等全局命名组件在 WireManager 中注册后也可解析(此处未注册 → 兜底同名)
+        // toast 等全局命名组件在 WireManager 中注册后也可解析(此处未注册 → 回退同名)
         assertEquals("toast", c.pubResolveComponentTemplate("toast"));
     }
 

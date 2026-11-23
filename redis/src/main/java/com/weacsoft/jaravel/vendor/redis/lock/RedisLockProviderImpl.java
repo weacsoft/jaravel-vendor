@@ -79,7 +79,7 @@ public class RedisLockProviderImpl implements RedisLockProvider {
     public void unlock(String key) {
         String token = ownedTokens.get(key);
         if (token == null) {
-            // 本实例没加过这把锁（或已释放）：绝不能 DEL —— 那会删掉别人的锁
+            // 本实例没加过该锁（或已释放）：绝不能 DEL —— 那会删掉别人的锁
             logger.debug("[redis-lock] 跳过解锁（本实例未持有该锁）: key={}", key);
             return;
         }

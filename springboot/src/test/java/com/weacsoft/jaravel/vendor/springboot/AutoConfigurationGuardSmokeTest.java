@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * 自动装配「启动冒烟」测试：守卫必须让缺 optional 模块的应用<b>照常启动</b>。
  * <p>
- * 背景（实测过的事故）：{@code springboot} 模块里有若干自动配置类直接引用了
+ * 背景（验证过的事故）：{@code springboot} 模块里有若干自动配置类直接引用了
  * optional 依赖（auth / database / jblade / migration / schedule）里的类型。
  * 由于 {@code @ConditionalOnClass} 挂在<b>方法</b>上保护不了「声明类自身的类加载」，
  * 一旦这些模块不在 classpath，Spring 内省配置类时就会抛

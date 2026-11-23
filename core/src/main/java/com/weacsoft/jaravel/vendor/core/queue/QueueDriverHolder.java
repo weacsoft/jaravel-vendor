@@ -14,7 +14,7 @@ import java.util.List;
  * <h3>无驱动时的行为</h3>
  * 若最终没有任何驱动（sync 模式），调用写操作会抛出
  * {@link IllegalStateException} 提示改用同步分发；读操作返回空值，
- * 保证 {@code queue:failed} 等命令不会因空指针崩溃。
+ * 保证 {@code queue:failed} 等命令不会因空指针抛出异常。
  */
 public class QueueDriverHolder implements QueueDriver {
 

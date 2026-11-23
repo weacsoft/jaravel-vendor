@@ -99,7 +99,7 @@ public class CaptchaAutoConfiguration {
      * 未配置任何场景时该 Bean 仍会创建，此时任何 scene 都不会命中，一律使用全局配置。
      *
      * <b>注意</b>：这里必须使用与 {@link #captchaManager} 完全一致的「已解析」核心配置
-     * （即经过 {@code AppKey} 全局密钥兜底处理后的配置）。场景配置由
+     * （即经过 {@code AppKey} 全局密钥回退处理后的配置）。场景配置由
      * {@code globalProperties.copy()} 派生，若基准配置未经解析，场景副本就会带上
      * 模块出厂默认密钥，与管理器实际使用的全局密钥不一致。
      *
@@ -116,9 +116,9 @@ public class CaptchaAutoConfiguration {
     }
 
     /**
-     * 将 SpringBoot 配置转换为核心层配置，并完成全局应用密钥兜底。
+     * 将 SpringBoot 配置转换为核心层配置，并完成全局应用密钥回退。
      * <p>
-     * 应用密钥兜底：模块自身未显式配置 {@code encryption-key}（等于出厂默认值）时，
+     * 应用密钥回退：模块自身未显式配置 {@code encryption-key}（等于出厂默认值）时，
      * 回退到全局 {@code jaravel.key}，避免每个模块各自维护弱默认密钥。
      * <p>
      * 该方法被 {@link #captchaManager} 与 {@link #captchaSceneRegistry} 共用，
@@ -135,7 +135,7 @@ public class CaptchaAutoConfiguration {
         com.weacsoft.jaravel.vendor.core.crypto.AppKey appKey =
                 (appKeyProvider != null) ? appKeyProvider.getIfAvailable() : null;
         if (appKey == null) {
-            // 装配缺失时不再静默沿用「源码里公开的出厂默认密钥」（审计 N1）：那样任何人都能用
+            // 装配缺失时不再静默沿用「源码里公开的出厂默认密钥」：那样任何人都能用
             // 公开常量解开 token 拿到答案。这里给出 ERROR，让问题在启动时暴露。
             org.slf4j.LoggerFactory.getLogger(CaptchaAutoConfiguration.class).error(
                     "[captcha] 未找到全局应用密钥（jaravel.key / AppKey Bean），"
@@ -152,15 +152,15 @@ public class CaptchaAutoConfiguration {
     }
 
     /**
-     * 启动期校验加密参数形态（审计 M4/N1），<b>打在解析后的有效配置上</b>
-     * （即已经过 {@code jaravel.key} 兜底的值，避免对已兜底的部署误报）。
+     * 启动期校验加密参数形态，<b>打在解析后的有效配置上</b>
+     * （即已经过 {@code jaravel.key} 回退的值，避免对已回退的部署误报）。
      * <p>
      * 判定：<br>
      * - <b>RSA</b>：必须含不空的私钥段（{@code 公钥|私钥}）。只给公钥时服务端无法解密用户输入，
      *   表现为「所有验证永远失败」；只给私钥时旧实现会按公钥解析并在生成时抛异常（每请求 500）。<br>
      * - <b>AES 及其它</b>：仍为出厂默认密钥（源码中的公开常量）或空 → 等价于没有密钥。
      * <p>
-     * 处理方式分档（专家建议）：默认只 ERROR，不阻断启动（避免升级即 brick 既有部署）；
+     * 处理方式分档：默认只 ERROR，不阻断启动（避免升级后既有部署无法启动）；
      * 置 {@code jaravel.captcha.fail-fast-on-invalid-key=true} 时直接抛错中止启动。
      *
      * @param coreProps   解析后的核心层配置

@@ -6,12 +6,12 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
- * 验证码密钥形态校验的启动期行为（审计 N1 / M4）。
+ * 验证码密钥形态校验的启动期行为。
  * <p>
- * 校验打在**解析后的有效配置**上（已经过 {@code jaravel.key} 兜底），分两档处理：
- * 默认只 ERROR 不阻断启动（避免库升级即 brick 既有部署）；显式开启 fail-fast 时中止启动。
+ * 校验打在**解析后的有效配置**上（已经过 {@code jaravel.key} 回退），分两档处理：
+ * 默认只 ERROR 不阻断启动（避免库升级后既有部署无法启动）；显式开启 fail-fast 时中止启动。
  * <p>
- * 关键判定（专家共识）：
+ * 关键判定：
  * <ul>
  *   <li><b>RSA 必须 `公钥|私钥`</b>：验证码校验需要服务端用私钥解密用户输入，
  *       只给公钥会让所有验证永远失败；只给私钥则旧实现按公钥解析 → 每请求 500；</li>

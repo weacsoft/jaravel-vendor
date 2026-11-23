@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * {@link UploadFile} 上传落盘助手测试（http 模块承担 MultipartFile 处理，
+ * {@link UploadFile} 上传写入助手测试（http 模块承担 MultipartFile 处理，
  * 写入目标通过 {@link UploadFile.Target} 解耦，不依赖 storage）。
  */
 class UploadFileTest {
@@ -173,5 +173,62 @@ class UploadFileTest {
         assertEquals(1, sink.paths.size());
         assertEquals("dir/x.txt", sink.paths.get(0));
         assertArrayEquals(data, sink.contents.get(0));
+    }
+
+    /** 流式写入目标：捕获 (path, 内容流) 调用序列并读出全部内容 */
+    private static final class RecordingStreamTarget implements UploadFile.StreamTarget {
+        final List<String> paths = new ArrayList<>();
+        final List<byte[]> contents = new ArrayList<>();
+
+        @Override
+        public void store(String path, InputStream contents) throws IOException {
+            this.paths.add(path);
+            this.contents.add(contents.readAllBytes());
+        }
+    }
+
+    @Test
+    void storeStreamWritesContentWithoutMaterializingBytes() throws IOException {
+        RecordingStreamTarget target = new RecordingStreamTarget();
+        byte[] data = "流式内容".getBytes(StandardCharsets.UTF_8);
+
+        String path = UploadFile.storeStream(new FakeMultipartFile("v.mp4", data), "videos", target);
+
+        assertEquals("videos/v.mp4", path);
+        assertEquals(1, target.paths.size());
+        assertArrayEquals(data, target.contents.get(0));
+    }
+
+    @Test
+    void storeAsStreamUsesGivenName() throws IOException {
+        RecordingStreamTarget target = new RecordingStreamTarget();
+        byte[] data = "abc".getBytes(StandardCharsets.UTF_8);
+
+        String path = UploadFile.storeAsStream(new FakeMultipartFile("原始名.bin", data), "reports", "a.pdf", target);
+
+        assertEquals("reports/a.pdf", path);
+        assertArrayEquals(data, target.contents.get(0));
+    }
+
+    @Test
+    void storeStreamBlankDirAndBlankNameFallBack() throws IOException {
+        RecordingStreamTarget target = new RecordingStreamTarget();
+
+        String path = UploadFile.storeAsStream(new FakeMultipartFile(null, new byte[1]), "  ", "  ", target);
+
+        assertEquals("file", path);
+    }
+
+    @Test
+    void storeStreamNullFileThrows() {
+        assertThrows(IllegalArgumentException.class,
+                () -> UploadFile.storeStream(null, "dir", (path, in) -> {
+                }));
+    }
+
+    @Test
+    void storeStreamNullTargetThrows() {
+        assertThrows(IllegalArgumentException.class,
+                () -> UploadFile.storeStream(new FakeMultipartFile("a", new byte[1]), "dir", null));
     }
 }

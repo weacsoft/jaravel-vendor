@@ -83,13 +83,15 @@ public class StaticResourceRoute implements Controllers.Runner {
 
         // 按顺序在多个目录中查找
         for (StaticResourceHandler handler : handlers) {
-            StaticResourceHandler.ResourceResult result = handler.load(relativePath);
-            if (result != null) {
+            StaticResourceHandler.ResourceSource source = handler.open(relativePath);
+            if (source != null) {
                 log.debug("[static] 命中: {} -> {}{}", relativePath, handler.getLocation(), relativePath);
-                return ResponseBuilder.staticFile(
-                        result.getContent(),
-                        result.getMimeType(),
-                        result.getCacheMaxAge()
+                // 流式返回：内容按块写出，不在堆内存中保留完整副本
+                return ResponseBuilder.staticFileStream(
+                        source.getMimeType(),
+                        source.getCacheMaxAge(),
+                        source.getContentLength(),
+                        source::openStream
                 );
             }
         }

@@ -16,13 +16,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * JWT 签发方（{@code iss}）校验回归测试（审计 L5）。
+ * JWT 签发方（{@code iss}）校验回归测试。
  * <p>
- * 修复前：签发时写入 {@code iss}，但解析时完全不校验 —— 用同一把密钥签发的<b>其它系统</b>
+ * 修复前：签发时写入 {@code iss}，但解析时完全不校验 —— 用同一份密钥签发的<b>其它系统</b>
  * 令牌会被本系统接受（多应用共用密钥时是真实越权面）。
  * <p>
  * 注：框架<b>没有</b> {@code aud}（受众）字段、签发端也从未写入 aud，
- * 因此本轮只做 iss 校验；aud 必须「配置 + 签发 + 校验」同批上线，否则会拒掉全部自签令牌。
+ * 因此当前只做 iss 校验；aud 必须「配置 + 签发 + 校验」同批上线，否则会拒掉全部自签令牌。
  */
 class JwtIssuerValidationTest {
 
@@ -32,7 +32,7 @@ class JwtIssuerValidationTest {
         return new JwtService(new JwtConfig().setSecret(SECRET).setIssuer(issuer));
     }
 
-    /** 手工构造一个「不带 iss」的令牌（同一把密钥），模拟第三方系统签发 */
+    /** 手工构造一个「不带 iss」的令牌（同一份密钥），模拟第三方系统签发 */
     private static String tokenWithoutIssuer() {
         SecretKey key = Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8));
         return Jwts.builder()

@@ -8,8 +8,8 @@ import com.weacsoft.jaravel.vendor.core.publish.PublishableConfig;
  * <p>
  * 发布后在业务工程生成 {@code config/WechatSdkConfig.java}——
  * 一份<b>声明式</b>配置（{@code @RegisterWechatOfficialAccount}/{@code @RegisterWechatMiniApp}），
- * 符合 jaravel-vendor「声明 &gt; yml &gt; 兜底默认」的三层优先级约定：
- * 本文件中的声明拥有最高优先级，yml 作为回退，运行时 setter 为兜底。
+ * 符合 jaravel-vendor「声明 &gt; yml &gt; 回退默认」的三层优先级约定：
+ * 本文件中的声明拥有最高优先级，yml 作为回退，运行时 setter 为回退。
  */
 public class WechatPublishableConfig implements PublishableConfig {
 
@@ -45,16 +45,16 @@ public class WechatPublishableConfig implements PublishableConfig {
                  * 框架启动时（所有单例 Bean 就绪后）扫描本类上的
                  * {@code @RegisterWechatOfficialAccount} / {@code @RegisterWechatMiniApp} 方法，
                  * 把返回的配置对象回填到共享 {@code WechatProperties}——
-                 * <b>声明 &gt; yml &gt; 兜底默认</b>（jaravel-vendor 三层优先级约定）。
+                 * <b>声明 &gt; yml &gt; 回退默认</b>（jaravel-vendor 三层优先级约定）。
                  *
                  * <h3>三层优先级</h3>
                  * <ol>
                  *   <li><b>本文件声明</b>（最高）：启动扫描后直接生效</li>
                  *   <li><b>yml</b>：{@code jaravel.wechat.*}（见下方配置项说明）</li>
-                 *   <li><b>兜底默认</b>：内置缺省值（enabled=true、token-mode=legacy、message-mode=plain…）</li>
+                 *   <li><b>回退默认</b>：内置缺省值（enabled=true、token-mode=legacy、message-mode=plain…）</li>
                  * </ol>
                  *
-                 * <h3>yml 兜底配置项（application.yml）</h3>
+                 * <h3>yml 回退配置项（application.yml）</h3>
                  * <pre>
                  * jaravel:
                  *   wechat:

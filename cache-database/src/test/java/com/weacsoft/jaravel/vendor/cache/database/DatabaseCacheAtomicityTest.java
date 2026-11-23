@@ -92,7 +92,7 @@ class DatabaseCacheAtomicityTest {
                 winners.incrementAndGet();
             }
         });
-        assertEquals(1, winners.get(), "并发 add 只能有一个成功（靠主键唯一约束 + 事务兜底）");
+        assertEquals(1, winners.get(), "并发 add 只能有一个成功（靠主键唯一约束 + 事务回退）");
     }
 
     @Test

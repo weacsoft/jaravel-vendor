@@ -79,7 +79,7 @@ public class DatabaseCacheDriverFactory implements CacheDriverFactory {
     }
 
     /**
-     * 解析数据源；缺失时给出可操作的错误提示，而不是让应用在启动期莫名失败。
+     * 解析数据源；缺失时给出可操作的错误提示，而不是让应用在启动期以原因不明的形式失败。
      *
      * @param connection store 配置里可选的 {@code connection} 连接别名
      * @return 数据源

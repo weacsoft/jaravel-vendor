@@ -58,18 +58,18 @@ public class RedisQueueDriver implements QueueDriver {
      * 索引值分隔符：索引里存 {@code queue<US>member}（JSON 内不含控制字符，安全）。
      * <p>
      * 历史实现只存队列名，于是 {@code delete/release} 必须 {@code ZRANGE 0 -1} 遍历整个预约 ZSET
-     * 并逐条反序列化（O(N) 热路径）；索引里带上成员后，删除/释放变成 O(1)，也不再依赖扫描兜底。
+     * 并逐条反序列化（O(N) 热路径）；索引里带上成员后，删除/释放变成 O(1)，也不再依赖扫描回退。
      */
     private static final char INDEX_SEPARATOR = '\u0001';
 
-    /** 到期延迟任务 → 就绪队列：ZREM+LPUSH 在同一脚本内，避免「已 ZREM 未 LPUSH」时崩溃丢任务 */
+    /** 到期延迟任务 → 就绪队列：ZREM+LPUSH 在同一脚本内，避免「已 ZREM 未 LPUSH」时异常导致任务丢失 */
     private static final String MIGRATE_DUE_SCRIPT =
             "local members = redis.call('ZRANGEBYSCORE', KEYS[1], 0, ARGV[1]) "
             + "for i, m in ipairs(members) do "
             + "  if redis.call('ZREM', KEYS[1], m) > 0 then redis.call('LPUSH', KEYS[2], m) end "
             + "end return #members";
 
-    /** 原子领取：RPOP 就绪队列 + ZADD 预约集合，避免「已 RPOP 未 ZADD」时崩溃导致任务彻底丢失 */
+    /** 原子领取：RPOP 就绪队列 + ZADD 预约集合，避免「已 RPOP 未 ZADD」时异常导致任务彻底丢失 */
     private static final String CLAIM_SCRIPT =
             "local m = redis.call('RPOP', KEYS[1]) "
             + "if not m then return false end "
@@ -128,7 +128,7 @@ public class RedisQueueDriver implements QueueDriver {
         this.connectionName = connectionName;
         this.retryAfterSeconds = retryAfterSeconds;
         this.failedJobRetentionDays = failedJobRetentionDays;
-        // 前缀跟随全局配置 jaravel.redis.options.prefix（审计 O4）：运维按该配置做命名空间隔离时，
+        // 前缀跟随全局配置 jaravel.redis.options.prefix：运维按该配置做命名空间隔离时，
         // 队列此前硬编码 "jaravel:queue" 会落在隔离之外（误判「已全局隔离」）。
         String globalPrefix = null;
         try {
@@ -191,7 +191,7 @@ public class RedisQueueDriver implements QueueDriver {
         long availableAt = delayMs > 0 ? now + delayMs : now;
         String json = serializeJob(id, queueName, payload, 0, 0L, availableAt, now);
         RedisCommands<String, String> cmd = cmd();
-        // 先写索引再入队：若中途崩溃，最坏留下一条无害的孤儿索引；
+        // 先写索引再入队：若中途异常退出，最坏留下一条无害的孤儿索引；
         // 反过来「已入队但没有索引」会让 delete/release 定位不到队列 → 任务被重放。
         cmd.hset(indexKey(), Long.toString(id), indexValue(queueName, json));
         if (delayMs > 0) {
@@ -211,11 +211,11 @@ public class RedisQueueDriver implements QueueDriver {
         String delayed = delayedKey(queueName);
         String reserved = reservedKey(queueName);
 
-        // 1. 迁移到期延迟任务到就绪队列（Lua：ZREM+LPUSH 原子，崩在中间不丢任务）
+        // 1. 迁移到期延迟任务到就绪队列（Lua：ZREM+LPUSH 原子，中断在中间不丢任务）
         cmd.eval(MIGRATE_DUE_SCRIPT, io.lettuce.core.ScriptOutputType.INTEGER,
                 new String[]{delayed, ready}, Long.toString(now));
 
-        // 2. 迁移超时预约任务到就绪队列（worker 崩溃 / 超时未确认）
+        // 2. 迁移超时预约任务到就绪队列（worker 异常退出 / 超时未确认）
         cmd.eval(MIGRATE_DUE_SCRIPT, io.lettuce.core.ScriptOutputType.INTEGER,
                 new String[]{reserved, ready}, Long.toString(now));
 
@@ -241,7 +241,7 @@ public class RedisQueueDriver implements QueueDriver {
         long reservedAt = deadline;
 
         // 更新 attempts / reservedAt 后原子替换预约成员并刷新索引。
-        // 若进程在这之前崩溃：原始成员仍留在预约集合（脚本已保证）→ 超时后被迁移回就绪队列，
+        // 若进程在此之前异常退出：原始成员仍留在预约集合（脚本已保证）→ 超时后被迁移回就绪队列，
         // 语义是「至少一次」而不是「丢失」。
         String updated = serializeJob(id, queueName, payload, attempts, reservedAt, availableAt, createdAt);
         cmd.eval(RE_RESERVE_SCRIPT, io.lettuce.core.ScriptOutputType.INTEGER,
@@ -303,7 +303,7 @@ public class RedisQueueDriver implements QueueDriver {
                 asLong(job.get("id")), queue, asString(job.get("payload")),
                 (int) asLong(job.get("attempts")), 0L, availableAt, asLong(job.get("createdAt")));
         RedisCommands<String, String> cmd = cmd();
-        // 原子释放：ZREM + 入队 + 刷新索引在一个脚本内完成（崩在中间不丢任务）
+        // 原子释放：ZREM + 入队 + 刷新索引在一个脚本内完成（中断在中间不丢任务）
         cmd.eval(RELEASE_SCRIPT, io.lettuce.core.ScriptOutputType.INTEGER,
                 new String[]{reservedKey(queue), readyKey(queue), delayedKey(queue), indexKey()},
                 member, updated, Long.toString(availableAt), delayMs > 0 ? "1" : "0",
@@ -462,7 +462,7 @@ public class RedisQueueDriver implements QueueDriver {
      * 构造索引值：{@code queue<US>member}。
      * <p>
      * 带上成员后，{@code delete/release} 无需遍历预约 ZSET（原实现是 O(N) 反序列化热路径），
-     * 也不再需要「扫描兜底」。
+     * 也不再需要「扫描回退」。
      *
      * @param queue  队列名
      * @param member 任务成员 JSON

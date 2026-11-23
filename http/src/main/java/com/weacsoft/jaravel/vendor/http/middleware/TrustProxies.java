@@ -6,6 +6,8 @@ import com.weacsoft.jaravel.vendor.utils.net.IpMatcher;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 信任代理中间件，对齐 Laravel 的 {@code TrustProxies}。
@@ -57,27 +59,41 @@ public class TrustProxies implements Middleware {
     private volatile IpMatcher cachedMatcher;
 
     /**
-     * 全局信任代理匹配器：由本中间件在处理请求时发布，供
+     * 已发布的受信任代理匹配器：中间件实现类 -&gt; 该实例的 IP 匹配器。
+     * <p>
+     * 由本中间件在处理请求时发布，供
      * {@link com.weacsoft.jaravel.vendor.http.controller.request.Request#ip()} /
      * {@code fullUrl()} 判断「本次请求的直连来源是否可信」。
      * <p>
-     * <b>未发布（未安装本中间件）时为 {@code null} → 一律不采信转发头</b>，
+     * <b>未发布（未安装本中间件）时无任何匹配器 → 一律不采信转发头</b>，
      * 因此默认是安全行为：客户端无法通过伪造 {@code X-Forwarded-For} 冒充来源 IP。
+     * <p>
+     * 按实现类分别保存而非保存单个全局匹配器，避免同一进程内存在多个
+     * {@code TrustProxies} 子类时后写入者覆盖先写入者的信任列表。
      */
-    private static volatile IpMatcher globalMatcher;
+    private static final Map<Class<?>, IpMatcher> PUBLISHED_MATCHERS = new ConcurrentHashMap<>();
 
     /**
      * 判断某个地址是否为「已声明的受信任代理」。
      * <p>
      * 供 {@code Request.ip()} / {@code Request.fullUrl()} 使用；未配置任何受信任代理时恒为 false。
+     * <p>
+     * 同一进程内存在多个 {@code TrustProxies} 实现时，只要其中任一实现声明该地址受信任，
+     * 即视为受信任；每个实现各自声明的信任列表都完整生效。
      *
      * @param remoteAddr 直连来源（或转发链中的某一跳）地址
      * @return 受信任返回 true
      */
     public static boolean isTrustedRemote(String remoteAddr) {
-        IpMatcher matcher = globalMatcher;
-        return matcher != null && remoteAddr != null && !remoteAddr.isEmpty()
-                && matcher.matches(remoteAddr);
+        if (remoteAddr == null || remoteAddr.isEmpty()) {
+            return false;
+        }
+        for (IpMatcher matcher : PUBLISHED_MATCHERS.values()) {
+            if (matcher != null && matcher.matches(remoteAddr)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -106,7 +122,8 @@ public class TrustProxies implements Middleware {
     @Override
     public Response handle(Request request, NextFunction next, String... params) {
         // 先发布匹配器：Request.ip()/fullUrl() 据此决定是否采信转发头
-        globalMatcher = getMatcher();
+        // 按实现类分别发布，避免同进程多个子类互相覆盖信任列表
+        PUBLISHED_MATCHERS.put(getClass(), getMatcher());
         if (isTrustedProxy(request)) {
             setTrustedHeaders(request);
         }

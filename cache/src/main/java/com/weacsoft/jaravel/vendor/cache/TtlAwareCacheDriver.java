@@ -14,7 +14,7 @@ import java.util.OptionalLong;
  * 数据库读 expires_at，而外部自定义驱动可能完全没有过期概念），把它做成显式能力，
  * {@code CacheDriver} 就能保持冻结，第三方实现不会被强制承担这一语义。
  * <p>
- * <b>实现约定</b>（务必三态分明，不要用单一哨兵值混淆）：
+ * <b>实现约定</b>（三态必须分明，不要用单一哨兵值混淆）：
  * <ul>
  *   <li>{@link OptionalLong#empty()}：键<b>不存在</b>，或该驱动无法确定剩余 TTL；</li>
  *   <li>{@code OptionalLong.of(0)}：键存在且<b>永不过期</b>；</li>

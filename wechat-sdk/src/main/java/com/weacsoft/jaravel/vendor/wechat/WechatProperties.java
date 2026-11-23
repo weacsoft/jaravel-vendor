@@ -260,7 +260,7 @@ public class WechatProperties {
          * 额度是否在<b>每次用户互动</b>时重置（默认 {@code true}）。
          * <p>
          * {@code true}：用户每发一条消息，客服消息额度重新按 {@code customerServiceReplyLimit} 计；
-         * {@code false}：48 小时窗口内<b>累计</b>消耗，不随新消息刷新（更贴近实测表现）。
+         * {@code false}：48 小时窗口内<b>累计</b>消耗，不随新消息刷新（更贴近实际表现）。
          */
         private boolean replyQuotaResetPerInteraction = true;
 

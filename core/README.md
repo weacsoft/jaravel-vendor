@@ -11,13 +11,13 @@
 - [3. 类总览](#3-类总览)
 - [4. Application / App —— 应用容器（替代 Facade）](#4-application--app--应用容器替代-facade)
 - [5. Facade —— 门面基类（传统方式）](#5-facade--门面基类传统方式)
-- [6. SpringContext —— 全局 Bean 访问门面（P3 起零 Spring）](#6-springcontext--全局-bean-访问门面)
+- [6. SpringContext —— 全局 Bean 访问门面（零 Spring）](#6-springcontext--全局-bean-访问门面)
 - [7. 配置体系（Config / ConfigRepository / ConfigDefinition / ConfigDefinitionRegistrar）](#7-配置体系config--configrepository--configdefinition--configdefinitionregistrar)
 - [8. 服务提供者（ServiceProvider / ProviderRegistry）](#8-服务提供者serviceprovider--providerregistry)
 - [9. 工具类（Str / Arr）](#9-工具类str--arr)
 - [10. 校验体系（FormRequest / Validator / Rule / Rules）](#10-校验体系formrequest--validator--rule--rules)
 - [11. 异常类（ValidationException / UnauthorizedException）](#11-异常类validationexception--unauthorizedexception)
-- [12. OnDriverInUseCondition —— 驱动按需装配条件（P3 起位于 jaravel-springboot）](#12-ondriverinusecondition--驱动按需装配条件)
+- [12. OnDriverInUseCondition —— 驱动按需装配条件（位于 jaravel-springboot）](#12-ondriverinusecondition--驱动按需装配条件位于-jaravel-springboot)
 - [13. 视图与分页标准层（view / pagination）](#13-视图与分页标准层view--pagination)
 
 ---
@@ -29,14 +29,14 @@
 | Laravel 特性 | core 对应实现 | 说明 |
 | --- | --- | --- |
 | `app()` 应用容器 | `Application` + `App` | 继承式服务定位器，替代 Facade 静态代理 |
-| Facade 门面 | `Facade` + `SpringContext` + `core.lookup` SPI | 静态代理（传统方式，推荐改用 `App.app()`）；P3 起与宿主容器解耦 |
+| Facade 门面 | `Facade` + `SpringContext` + `core.lookup` SPI | 静态代理（传统方式，推荐改用 `App.app()`）；与宿主容器解耦 |
 | `config()` 配置仓库 | `Config` / `ConfigRepository` | 三层配置来源，支持点号取值 |
 | `config/*.php` 代码级配置 | `ConfigDefinition` / `ConfigDefinitionRegistrar` | 以 Java 接口形式定义配置数组 |
 | Service Provider | `ServiceProvider` / `ProviderRegistry` | 两阶段引导（register → boot） |
 | `Str::` / `Arr::` | `Str` / `Arr` | 字符串与数组/集合工具 |
 | Form Request / Validation | `FormRequest` / `Validator` / `Rule` / `Rules` | Laravel 风格校验器与规则集 |
 
-本模块不依赖 Servlet、Web 等运行时环境。**P3 起本模块零 Spring 依赖**：
+本模块不依赖 Servlet、Web 等运行时环境，且零 Spring 依赖：
 Spring 装配全部位于 `jaravel-springboot` / `jaravel-starter`；非 Spring 宿主经
 `core.lookup` SPI（`GlobalLookup.install(provider)`）安装一个 Bean 提供者后即可使用全部能力。
 
@@ -63,10 +63,10 @@ Spring 装配全部位于 `jaravel-springboot` / `jaravel-starter`；非 Spring 
 | `org.slf4j:slf4j-api` | 日志门面 |
 
 
-> **P3（Spring 解耦）**：`org.springframework:spring-context` 依赖已整体移除
-> （此前用于 `ApplicationContext` 注入与 Bean 解析，现由 `core.lookup` SPI 抽象）。
+> 不含 `org.springframework:spring-context` 依赖
+> （`ApplicationContext` 注入与 Bean 解析由 `core.lookup` SPI 抽象）。
 > 运行环境要求：JDK 17+。Spring Boot 3.2.12 应用请同时引入
-> `jaravel-springboot`（或 `jaravel-starter`）获得原有 Spring 装配能力。
+> `jaravel-springboot`（或 `jaravel-starter`）获得 Spring 装配能力。
 
 ---
 
@@ -79,7 +79,7 @@ com.weacsoft.jaravel.vendor.core
 ├── Facade                        // 门面基类（传统静态代理，推荐改用 App.app()）
 ├── SpringContext                 // 全局 Bean 访问门面（纯 Java，委托已安装的 GlobalBeanProvider）
 ├── lookup
-│   ├── BeanLookup                 // Bean 查询 SPI（P3 新增）
+│   ├── BeanLookup                 // Bean 查询 SPI
 │   ├── GlobalBeanProvider         // 宿主 Bean 提供者 SPI（BeanLookup + registerSingleton）
 │   └── GlobalLookup               // SPI 安装点（install / uninstall / getIfInstalled）
 ├── config
@@ -240,7 +240,7 @@ public class MyAppConfig extends AppConfig {
 
 `com.weacsoft.jaravel.vendor.core.Facade`
 
-模仿 Laravel 的 Facade 机制：门面是一个静态代理，背后真正干活的是 Spring 容器里解析出的实例。本类是 `final` 工具类，不可实例化，提供静态方法供各具体门面在静态方法中解析被代理 Bean。
+模仿 Laravel 的 Facade 机制：门面是一个静态代理，Spring 容器里解析出的实例是实际执行对象。本类是 `final` 工具类，不可实例化，提供静态方法供各具体门面在静态方法中解析被代理 Bean。
 
 ### 方法文档
 
@@ -284,18 +284,18 @@ if (Auth.check()) {
 
 `com.weacsoft.jaravel.vendor.core.SpringContext`
 
-**P3 起为纯 Java 静态门面（零 Spring 依赖）**：所有操作统一委托给
+**纯 Java 静态门面（零 Spring 依赖）**：所有操作统一委托给
 `core.lookup` SPI 安装的 `GlobalBeanProvider`。
 Spring 宿主由 `jaravel-springboot` 的 `CoreSpringConfiguration` 自动安装基于
-`ApplicationContext` 的适配器（含「注册前先销毁同名单例」的更新语义，行为与 P3 前一致）；
+`ApplicationContext` 的适配器（含「注册前先销毁同名单例」的更新语义）；
 非 Spring 宿主手动安装一个 Map 版提供者即可：
 
 ```java
 GlobalLookup.install(new MyMapBasedProvider()); // 安装 Bean 提供者
 ```
 
-> `SpringContext` 类名/包名保持已发布的 stable FQCN（多个 publish 模板代码引用它），
-> 但 `get()`（直接返回 `ApplicationContext`）已随 Spring 解耦移除——静态 Bean 访问
+> `SpringContext` 类名/包名为已发布的 stable FQCN（多个 publish 模板代码引用它）；
+> 无直接返回 `ApplicationContext` 的 `get()` 方法——静态 Bean 访问
 > 一律走 `bean(...)` / `beanOrNull(...)`。
 
 ### 方法文档
@@ -374,7 +374,7 @@ if (Config.has("app.timezone")) { /* ... */ }
 
 1. **运行时覆盖**（`set` 内存写入）—— 最高
 2. **代码级配置**（`ConfigDefinition`，对齐 Laravel 的 `config/*.php`）
-3. **外部配置源**（最低；Spring 宿主为 `application.yml` 等 `Environment` 属性，P3 起经 `Function<String,Object>` 函数注入）
+3. **外部配置源**（最低；Spring 宿主为 `application.yml` 等 `Environment` 属性，经 `Function<String,Object>` 函数注入）
 
 | 方法签名 | 说明 |
 | --- | --- |
@@ -450,14 +450,14 @@ public class Database implements ConfigDefinition {
 // Config.get("database.connections.sqlite.driver") -> "sqlite"
 ```
 
-### 6.4 ConfigDefinitionRegistrar —— 代码级配置注册器（P3 起纯类）
+### 6.4 ConfigDefinitionRegistrar —— 代码级配置注册器（纯类）
 
 `com.weacsoft.jaravel.vendor.core.config.ConfigDefinitionRegistrar`
 
-**P3 起为纯类（零 Spring）**：构造器接收 `ConfigRepository`；宿主把已收集的
+**纯类（零 Spring）**：构造器接收 `ConfigRepository`；宿主把已收集的
 `ConfigDefinition` 列表通过 `setDefinitions(List)` 注入（Spring 宿主由
 `jaravel-starter` 的 `JaravelAutoConfiguration` 收集，并在「所有单例初始化完成」
-时机显式调用 `boot()`——与 P3 前的 `SmartInitializingSingleton` 时序一致），
+时机显式调用 `boot()`），
 逐个注册到 `ConfigRepository`，对齐 Laravel 在引导阶段加载 `config/*.php` 的行为。
 
 | 方法签名 | 说明 |
@@ -496,14 +496,13 @@ public class AppServiceProvider extends ServiceProvider {
 }
 ```
 
-### 7.2 ProviderRegistry —— 服务提供者注册器（P3 起纯类）
+### 7.2 ProviderRegistry —— 服务提供者注册器（纯类）
 
 `com.weacsoft.jaravel.vendor.core.provider.ProviderRegistry`
 
-**P3 起为纯类（零 Spring）**：构造器接收 `ServiceProvider` 列表
+**纯类（零 Spring）**：构造器接收 `ServiceProvider` 列表
 （Spring 宿主由 `jaravel-starter` 的 `JaravelAutoConfiguration` 收集），
-宿主在「所有单例初始化完成」时机显式调用 `boot()`
-（与 P3 前的 `SmartInitializingSingleton` 时序一致），
+宿主在「所有单例初始化完成」时机显式调用 `boot()`，
 先统一执行 `register()`，再统一执行 `boot()`，模仿 Laravel 的两阶段引导。
 
 | 方法签名 | 说明 |
@@ -636,7 +635,7 @@ Rule evenRule = (field, value, params, data) ->
 | 常量 | 说明 |
 | --- | --- |
 | `REQUIRED` | 必填（非 null 且非空串/空集合/空 Map） |
-| `NULLABLE` | 可为 null（仅占位，校验恒通过） |
+| `NULLABLE` | 可为 null（仅占位，校验始终通过） |
 | `STRING` | 必须为字符串 |
 | `INTEGER` | 必须为整数（`Number` 或可解析为 `Long`） |
 | `NUMERIC` | 必须为数字（可解析为 `Double`） |
@@ -795,25 +794,24 @@ try {
 
 ---
 
-## 12. OnDriverInUseCondition —— 驱动按需装配条件（P3 起位于 jaravel-springboot）
+## 12. OnDriverInUseCondition —— 驱动按需装配条件（位于 jaravel-springboot）
 
 `com.weacsoft.jaravel.vendor.springboot.condition.OnDriverInUseCondition`
 
-> **P3 迁移说明**：该类实现 `spring-context` 的 `Condition` 接口，属 Spring 条件装配设施，
-> 随 Spring 解耦**整体移至 `jaravel-springboot` 模块**（原 FQCN
-> `...vendor.core.condition.OnDriverInUseCondition` 为内部类，无对外兼容影响）。
+> 该类实现 `spring-context` 的 `Condition` 接口，属 Spring 条件装配设施，
+> 位于 `jaravel-springboot` 模块。
 > 各驱动子类（`OnRedisSessionDriverCondition` / `OnJwtGuardDriverCondition` /
-> `OnDatabaseCacheStoreCondition` 等）仍位于各自 springboot 子包，基类引用已更新。
+> `OnDatabaseCacheStoreCondition` 等）位于各自 springboot 子包。
 
 整个 vendor 模块组的**统一装配原则**：**安装 ≠ 启用**。
 
 对齐 Laravel 的心智模型——把依赖放进 classpath 只表示"这个驱动可用"，
 不表示"要启用它"。凡是需要**外部资源**的驱动型模块（redis 缓存、redis session、
 database 缓存、redis/database 队列……），只有在用户**显式选用**时才注册与配置；
-否则完全静默：不创建任何 Bean、不连接任何外部服务、不影响应用启动。
+未选用时不创建任何 Bean、不连接任何外部服务、不影响应用启动。
 
 > **典型反例**：项目引入了 `session-redis` 依赖但 `jaravel.session.driver` 配的是
-> `file`。若 session-redis 仍自动装配并连接 Redis，就会导致无 Redis 环境启动失败。
+> `file`；若依赖在场即自动装配并连接 Redis，无 Redis 环境会启动失败。
 
 ### 与 Spring 条件注解的分工
 
@@ -834,9 +832,9 @@ database 缓存、redis/database 队列……），只有在用户**显式选用
 1. **覆盖开关**（`enableKey`）—— `true` 强制启用，`false` 强制关闭；
 2. **单值配置键**（`singleKeys`）—— 如 `jaravel.session.driver`；
 3. **映射式配置键**（`mapKeyPrefix` + `mapKeySuffix`）—— 如 `jaravel.cache.stores.*.driver`；
-4. **兜底默认驱动**（`matchIfAbsent`）—— 仅兜底默认驱动调用；当本模块的任意驱动键都未被用户显式配置时命中。
+4. **回退默认驱动**（`matchIfAbsent`）—— 仅回退默认驱动调用；当本模块的任意驱动键都未被用户显式配置时命中。
 
-任意一处（含兜底）命中即判定为"被用上"。
+任意一处（含回退默认）命中即判定为"被使用"。
 
 ### 构造器
 
@@ -848,10 +846,10 @@ database 缓存、redis/database 队列……），只有在用户**显式选用
 | 方法签名 | 说明 |
 | --- | --- |
 | `protected OnDriverInUseCondition enableKey(String key)` | 设置覆盖开关键，优先级最高，返回 `this` 便于链式调用 |
-| `protected OnDriverInUseCondition matchIfAbsent()` | 标记为兜底默认驱动：用户完全未显式配置本模块任何驱动键时即命中（如 `session` 守卫、`local` 磁盘）；非默认驱动（如 `jwt` / `database` / `redis`）**不调用**，严格按需 |
+| `protected OnDriverInUseCondition matchIfAbsent()` | 标记为回退默认驱动：用户完全未显式配置本模块任何驱动键时即命中（如 `session` 守卫、`local` 磁盘）；非默认驱动（如 `jwt` / `database` / `redis`）**不调用**，仅显式选用时装配 |
 
-> 本类只实现 `spring-context` 的 `Condition` 接口，**不引入 `spring-boot-autoconfigure`**
->（P3 起位于 jaravel-springboot，core 模块保持零 Spring 依赖）。
+> 本类只实现 `spring-context` 的 `Condition` 接口，**不引入 `spring-boot-autoconfigure`**；
+> 位于 jaravel-springboot 模块。
 
 ### 使用示例
 
@@ -864,26 +862,26 @@ public class OnRedisSessionDriverCondition extends OnDriverInUseCondition {
 }
 ```
 
-**兜底默认驱动**（认缺省，用户没写任何 driver 也装配）：
+**回退默认驱动**（接受缺省值，用户未写任何 driver 也装配）：
 
 ```java
 // session 守卫：写了 guards 但没写 driver 时回退到 session，或完全没写 guards 时也装配
 public class OnSessionGuardDriverCondition extends OnDriverInUseCondition {
     public OnSessionGuardDriverCondition() {
         super("session", "jaravel.auth.guards.", ".driver");
-        matchIfAbsent();   // 兜底默认，认缺省
+        matchIfAbsent();   // 未匹配时回退到默认值
     }
 }
 ```
 
-**严格按需驱动**（不认缺省，只有显式选用才装配）：
+**严格按需驱动**（不接受缺省值，只有显式选用才装配）：
 
 ```java
 // jwt 守卫：仅当显式 jaravel.auth.guards.*.driver=jwt 才装配，缺省回退 session 而非 jwt
 public class OnJwtGuardDriverCondition extends OnDriverInUseCondition {
     public OnJwtGuardDriverCondition() {
         super("jwt", "jaravel.auth.guards.", ".driver");
-        // 不调用 matchIfAbsent —— jwt 不在兜底列表
+        // 不调用 matchIfAbsent —— jwt 不在回退列表
     }
 }
 ```
@@ -903,7 +901,7 @@ public class OnRedisQueueDriverCondition extends OnDriverInUseCondition {
 @AutoConfiguration
 @ConditionalOnClass({RedisSessionStore.class, RedisManager.class})
 @Conditional(OnRedisSessionDriverCondition.class)   // 用上了才装配
-@ConditionalOnBean(RedisManager.class)              // 兜底保护
+@ConditionalOnBean(RedisManager.class)              // 回退保护
 public class SessionRedisAutoConfiguration { ... }
 ```
 
@@ -920,7 +918,7 @@ public class SessionRedisAutoConfiguration { ... }
 
 ---
 
-## 13. 视图与分页标准层（view / pagination）（view / pagination）
+## 13. 视图与分页标准层（view / pagination）
 
 为使「使用 `database` 模块的 ORM/分页不必依赖具体模板引擎」，core 定义了**视图渲染契约**与
 **Laravel 风格分页器**的标准层。模板引擎（如 `jblade`）作为实现方接入，框架其余部分只依赖以下抽象。
@@ -956,4 +954,4 @@ public class SessionRedisAutoConfiguration { ... }
 Paginator.setDefaultViewProvider(() -> viewManager.defaultView());
 ```
 
-未引入任何模板引擎时，`Paginator.links()` 安全降级为空串，不影响分页数据本身的使用。
+未引入任何模板引擎时，`Paginator.links()` 返回空串，不影响分页数据本身的使用。

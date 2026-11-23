@@ -118,7 +118,7 @@ public final class ConnectionManager {
     }
 
     /**
-     * 兜底创建一个 gaarason 容器，行为与发布出来的 {@code DatabaseConfig#containerBootstrap()} 一致。
+     * 回退创建一个 gaarason 容器，行为与发布出来的 {@code DatabaseConfig#containerBootstrap()} 一致。
      *
      * @return 已完成初始化的容器
      */
@@ -174,7 +174,7 @@ public final class ConnectionManager {
                 RAW_DATA_SOURCES.put(name, effectiveRaw);
             }
             // 「第一个注册的连接在无显式默认声明时自动成为默认连接」的选举必须在锁内完成：
-            // 放到锁外会让并发注册线程都读到 first=true（或都读 false）而选错默认连接（审计 L10）
+            // 放到锁外会让并发注册线程都读到 first=true（或都读 false）而选错默认连接
             if (first && !defaultExplicitlySet) {
                 defaultConnection = name;
             }

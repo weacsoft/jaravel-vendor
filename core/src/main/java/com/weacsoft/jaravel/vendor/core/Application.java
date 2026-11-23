@@ -183,12 +183,11 @@ public class Application {
      * @param factory 实例工厂
      */
     public void singleton(String name, Supplier<Object> factory) {
+        // 重新注册时先清除旧实例缓存，避免旧实例残留导致新工厂永不执行
+        singletons.remove(name);
         factories.put(name, () -> {
-            Object instance = singletons.get(name);
-            if (instance == null) {
-                instance = factory.get();
-                singletons.put(name, instance);
-            }
+            // 原子化：并发首次 make 只有一条线程创建实例，避免产生双实例
+            Object instance = singletons.computeIfAbsent(name, key -> factory.get());
             return instance;
         });
     }

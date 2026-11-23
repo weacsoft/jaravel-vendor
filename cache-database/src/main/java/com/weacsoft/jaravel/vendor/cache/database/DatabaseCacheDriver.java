@@ -238,7 +238,7 @@ public class DatabaseCacheDriver implements CacheDriver,
     // ==================== AtomicCacheDriver：真原子原语（基于 inTransaction）====================
 
     /**
-     * 原子写入（仅当键不存在或已过期）：靠<b>主键唯一约束 + 事务</b>兜底并发，
+     * 原子写入（仅当键不存在或已过期）：靠<b>主键唯一约束 + 事务</b>回退并发，
      * 不再依赖「先查后写」两步（那会让并发 add 都返回 true，互斥门闩语义失效）。
      */
     @Override
@@ -323,7 +323,7 @@ public class DatabaseCacheDriver implements CacheDriver,
      * 原子自增（乐观 CAS，可移植）：读当前值 → 计算 → 条件更新（{@code WHERE value = 读到的原值}），
      * 更新 0 行说明期间被别人改过 → 重读重算；键不存在/已过期时尝试插入（主键冲突则重试）。
      * <p>
-     * 为什么不用 {@code SELECT ... FOR UPDATE}：各家 MVCC/行锁实现细节不同（H2 MVStore 下实测
+     * 为什么不用 {@code SELECT ... FOR UPDATE}：各家 MVCC/行锁实现细节不同（H2 MVStore 下验证
      * {@code FOR UPDATE} 不足以防丢更新），CAS 的语义在所有方言上一致。
      * <p>
      * TTL：已存在的键<b>保留原 expires_at</b>；新键使用 {@code ttlIfAbsentSeconds}。

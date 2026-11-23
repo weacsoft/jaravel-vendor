@@ -8,8 +8,8 @@ import com.weacsoft.jaravel.vendor.springboot.condition.OnDriverInUseCondition;
  * <h3>命中条件</h3>
  * 仅当 {@code jaravel.queue.driver} 取值为 {@code redis} 时装配。
  *
- * <h3>为什么不兜底</h3>
- * redis 队列依赖 RedisManager，不在兜底列表；缺失应回退到 {@code sync}（内存队列）。
+ * <h3>为什么不回退</h3>
+ * redis 队列依赖 RedisManager，不在回退列表；缺失应回退到 {@code sync}（内存队列）。
  * 因此本条件<b>不认缺省</b>。此前使用 {@code @ConditionalOnProperty(..., havingValue = "redis")}，
  * 现统一到 vendor 模块组的 {@link OnDriverInUseCondition} 原则：<b>安装 ≠ 启用，用上了才注册</b>。
  *

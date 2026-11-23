@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 路由派生结果的<b>内存缓存</b>（进程内，纯 JVM 堆，不序列化、不落盘、不走外部 CacheStore）。
+ * 路由派生结果的<b>内存缓存</b>（进程内，纯 JVM 堆，不序列化、不写入、不走外部 CacheStore）。
  *
  * <h3>缓存什么</h3>
  * 路由的完整 URI / 名称 / 命名空间、解析后的中间件列表、折叠后的处理链，以及 Router 级的

@@ -46,7 +46,7 @@ import java.util.concurrent.TimeUnit;
  * <h3>装配顺序</h3>
  * 两个注册器继承 {@code AnnotationDrivenRegistrar}（SmartInitializingSingleton），
  * 在所有单例 Bean（含业务工程的 {@code @Register*} 配置类）初始化之后执行扫描，
- * 声明的配置回填到共享 {@link WechatProperties}，实现「声明 &gt; yml &gt; 兜底默认」。
+ * 声明的配置回填到共享 {@link WechatProperties}，实现「声明 &gt; yml &gt; 回退默认」。
  *
  * <h3>装配条件</h3>
  * <ul>

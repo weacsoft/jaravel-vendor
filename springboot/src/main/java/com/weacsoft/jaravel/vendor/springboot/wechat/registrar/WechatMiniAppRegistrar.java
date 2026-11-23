@@ -10,7 +10,7 @@ import java.lang.reflect.Method;
 /**
  * 扫描 {@link RegisterWechatMiniApp} 注解方法，调用并把返回的
  * {@link WechatProperties.MiniAppConfig} 回填到共享的 {@link WechatProperties}
- * （声明 &gt; yml &gt; 兜底默认 的最高层）。
+ * （声明 &gt; yml &gt; 回退默认 的最高层）。
  * <p>
  * 产物不注册为 {@code @Bean}，仅回填配置对象。
  *

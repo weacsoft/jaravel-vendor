@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * 上传归属（owner）校验回归测试 —— 收敛「可预测 identifier 带来的越权」。
  * <p>
- * 背景（专家团安全角色标为 High，且该模块当时尚未被业务使用，故直接改契约）：
+ * 背景：
  * identifier 由前端按「文件名+大小+mtime」这类<b>可预测</b>规则拼出。原实现把它当作全局键，
  * 于是攻击者只要知道目标文件的三要素，就能：①读到他人的上传进度/位图；
  * ②向他人的 resourceId 写分片；③最终决定受害者拿到什么文件内容（分片写满后 move 成成品）。

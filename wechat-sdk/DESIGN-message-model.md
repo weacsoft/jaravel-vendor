@@ -5,9 +5,9 @@
 > 参照：微信官方服务端文档（developers.weixin.qq.com，2026-08 快照）、EasyWeChat 5.x（w7corp/easywechat）消息模型
 > 关联：`README.md`（PHP 对齐关系）、`AccessTokenManager.java`、`OfficialAccountService.java`、`MiniProgramService.java`
 
-> **实现落地说明（对本文档的两处修订）**：
-> 1. **旧 Map 接口直接移除**（不保留、不标 `@Deprecated`）——由项目所有者明确指示（"还没开始用，直接去掉"），覆盖下方 §1 的"兼容性承诺"。
-> 2. **配置面采用「声明 > yml > 兜底」**：新增 `@RegisterWechatOfficialAccount` / `@RegisterWechatMiniApp` + 注册器 + `vendor:publish --tag=wechat-sdk` 声明模板（`WechatPublishableConfig`），对齐 jaravel-vendor 既有 vendor 装配模式；token/jsapi_ticket 缓存明确走 core + cache 模块（`CacheManager`/`CacheStore`，`WechatCacheResolver` 共享解析）。
+> **实现说明**：
+> 1. **旧 Map 接口直接移除**（不保留、不标 `@Deprecated`）——由项目所有者明确指示（"还没开始用，直接去掉"）。
+> 2. **配置面采用「声明 > yml > 回退」**：新增 `@RegisterWechatOfficialAccount` / `@RegisterWechatMiniApp` + 注册器 + `vendor:publish --tag=wechat-sdk` 声明模板（`WechatPublishableConfig`），对齐 jaravel-vendor 既有 vendor 装配模式；token/jsapi_ticket 缓存明确走 core + cache 模块（`CacheManager`/`CacheStore`，`WechatCacheResolver` 共享解析）。
 
 ---
 
@@ -17,7 +17,7 @@
 
 - 发送侧：`sendMessage(Map)`、`sendTemplate(..., Map data, Map miniprogram)`、`setMenu(Object)` —— 消息结构靠文档与字符串键约定；
 - 接收侧：**完全缺失** —— 没有解析微信推送 XML 的能力，没有签名校验/消息加解密，没有被动回复；
-- 响应侧：所有 API 返回原始 `Map`，`errcode != 0` 只打 warn 日志，**调用方拿到的"成功" Map 里可能藏着业务失败**，且 `msgid` 等关键字段需要手工强转提取。
+- 响应侧：所有 API 返回原始 `Map`，`errcode != 0` 只记录 warn 日志，**调用方拿到的"成功" Map 里可能包含业务失败**，且 `msgid` 等关键字段需要手工强转提取。
 
 本设计引入三类核心构件，把 Map 用法收敛为强类型：
 
@@ -29,7 +29,7 @@
 
 配套补齐：`menu.Menu/MenuItem`、`template.TemplateMessage / SubscriptionNotice / TemplateDataItem`、`mini.MiniProgramSession / MiniSubscribeMessage`、`crypto.WxBizMsgCrypt`（消息加解密）、`WeChatServer`（验签/解密/解析/被动回复一体）。
 
-**兼容性承诺**（已被实现指令修订，见文首）：~~现有公开方法签名与返回类型全部保留（标记 `@Deprecated`，内部改为委托新实现），~~ **实际落地：旧 Map 裸接口全部移除，无过渡期**——本项目为 vendor 组件、尚无外部消费方，按"直接去掉"处理。
+**兼容性**：旧 Map 裸接口全部移除（不保留、不标 `@Deprecated`，无过渡期）——本项目为 vendor 组件、尚无外部消费方。
 
 ---
 
@@ -42,7 +42,7 @@
 | 类 | 职责 | 问题 |
 |---|---|---|
 | `WechatProperties` | `jaravel.wechat.*` 配置（已含 `token`/`aes-key` 字段，但目前没有任何代码使用） | 配置位已占好，能力未落地 |
-| `AccessTokenManager` | token 获取/缓存/刷新（`/cgi-bin/token`） | 仅 legacy token 接口；`errcode!=0` 有抛异常（此点合格） |
+| `AccessTokenManager` | token 获取/缓存/刷新（`/cgi-bin/token`） | 仅 legacy token 接口；`errcode!=0` 有抛异常 |
 | `OfficialAccountService` | 用户/模板/菜单/标签/素材/客服/JSSDK | 全部 Map 化；`setMenu(Object)` 甚至不声明类型；`errcode` warn 后仍返回；无接收消息能力 |
 | `MiniProgramService` | `jscode2session` / token / 订阅消息 | Map 化；失败时（返回 `errcode/errmsg`，无 `session_key`）返回的 Map "看起来成功了" |
 | `WechatAutoConfiguration` | Bean 装配 | 无问题 |
@@ -278,7 +278,7 @@ public final class Music extends Message {
 ```
 
 **附：`customservice`/`aimsgcontext`**（可选包装，`WeChatResponse` 同层）：
-`Message.wrapCustomService(String kfAccount)` 与 `Message.wrapAiContext(boolean isAiMsg)` 两个实例方法，把这两个正交字段挂在请求体顶层而不是消息类内部——与官方"顶层字段"的 JSON 位置一致，避免污染消息结构。
+`Message.wrapCustomService(String kfAccount)` 与 `Message.wrapAiContext(boolean isAiMsg)` 两个实例方法，把这两个正交字段置于请求体顶层而不是消息类内部——与官方"顶层字段"的 JSON 位置一致，避免污染消息结构。
 
 ### 5.3 接收侧：`server.*` + `MessageParser`
 

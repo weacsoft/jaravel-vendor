@@ -92,6 +92,7 @@ public class RemoteServerAutoConfiguration {
                 properties.getPort(), properties.getAuthToken(), beanResolver,
                 properties.getNodeId(), properties.isRelayEnabled());
         server.setMaxHops(properties.getMaxHops());
+        server.setAllowedMethods(properties.getAllowedBeanNames(), properties.getAllowedMethods());
         server.start();
         log.info("远程插件服务端已自动启动: port={}, relay={}", properties.getPort(), properties.isRelayEnabled());
         return server;

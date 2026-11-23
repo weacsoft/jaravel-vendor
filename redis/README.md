@@ -2,7 +2,7 @@
 
 Redis 连接管理模块（**零 Spring 依赖**），对齐 Laravel `RedisManager`（`Illuminate\Redis\RedisManager`）。基于 Lettuce 客户端管理多个命名连接（default / cache / session / model-cache 等），支持 standalone、sentinel、cluster 三种部署模式，是 redis-cache、session-redis 等模块的基础依赖。
 
-> Spring 自动装配收口于 **springboot** 模块（`vendor.springboot.redis` 包）：`RedisAutoConfiguration` / `RedisProperties`（`@ConfigurationProperties(prefix="jaravel.redis")`，经 `toRedisConfig()` 映射为纯 Java `RedisConfig`）/ `RedisPublishAutoConfiguration`。本模块保留纯 Java 的 `RedisManager`、`RedisConfig`、`RedisLockProvider(Impl)` 与 `RedisPublishableConfig`。
+> Spring 自动装配位于 **springboot** 模块（`vendor.springboot.redis` 包）：`RedisAutoConfiguration` / `RedisProperties`（`@ConfigurationProperties(prefix="jaravel.redis")`，经 `toRedisConfig()` 映射为纯 Java `RedisConfig`）/ `RedisPublishAutoConfiguration`。本模块保留纯 Java 的 `RedisManager`、`RedisConfig`、`RedisLockProvider(Impl)` 与 `RedisPublishableConfig`。
 
 ## 依赖
 
@@ -73,7 +73,7 @@ public class RedisProperties {
 
 ### RedisLockProvider / RedisLockProviderImpl
 
-本模块定义 `RedisLockProvider` 接口（继承 core 模块的 `LockProvider` 契约），并提供基于 Redis 的分布式锁实现 `RedisLockProviderImpl`，对齐 Laravel `Illuminate\Cache\RedisLock`。锁契约（`core.lock.LockProvider`）与消费方（`schedule` 模块）均不依赖本模块：Redis 不可用或未注册时，`LockProviderManager` 自动兜底为内置同步锁（代码级兜底，单机执行）。使用 Redis `SET key value NX EX seconds` 实现原子性加锁，`DEL key` 释放锁。
+本模块定义 `RedisLockProvider` 接口（继承 core 模块的 `LockProvider` 契约），并提供基于 Redis 的分布式锁实现 `RedisLockProviderImpl`，对齐 Laravel `Illuminate\Cache\RedisLock`。锁契约（`core.lock.LockProvider`）与消费方（`schedule` 模块）均不依赖本模块：Redis 不可用或未注册时，`LockProviderManager` 自动回退为内置同步锁（代码级回退，单机执行）。使用 Redis `SET key value NX EX seconds` 实现原子性加锁，`DEL key` 释放锁。
 
 ```java
 public class RedisLockProviderImpl implements RedisLockProvider {
@@ -194,7 +194,7 @@ public void executeWithLock(String taskName) {
 - Redis 分布式锁提供者 — **不创建 bean**：通过 `@RegisterLockProvider(value = "redis", defaultProvider = true)` 注册到 core 的 `LockProviderManager`，供 `schedule` 模块消费
 
 > 锁契约位于 core 模块（`core.lock.LockProvider`）。redis 模块不存在或 provider 未注册时，
-> `LockProviderManager` 自动兜底为内置「同步锁」（代码级兜底，单机执行），
+> `LockProviderManager` 自动回退为内置「同步锁」（代码级回退，单机执行），
 > `schedule` 模块的定时任务不受影响，不会启动失败。
 
 该模块是其他 Redis 相关模块（redis-cache、session-redis）的基础依赖，提供统一的 Redis 连接管理能力，避免每个模块各自创建连接池。

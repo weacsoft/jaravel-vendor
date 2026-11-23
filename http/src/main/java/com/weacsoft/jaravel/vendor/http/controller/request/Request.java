@@ -9,6 +9,8 @@ import lombok.Setter;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.*;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.*;
 
 public class Request {
@@ -31,7 +33,7 @@ public class Request {
      * 反向代理必须把客户端提交的 body 原封不动转发给上游，而不是自己重新序列化
      * （重新序列化会丢字段、改顺序、改变数字精度）。
      * <p>
-     * 因此解析时顺手把原始字节留一份，供 {@link #rawBody()} 取用。
+     * 因此解析时同时保留原始字节，供 {@link #rawBody()} 取用。
      * 未解析过 body 的请求（如 GET）该值为 {@code null}。
      */
     private byte[] rawBody;
@@ -262,12 +264,26 @@ public class Request {
             }
         }
         if (value == null) return null;
+        return convert(value, clazz);
+    }
+
+    /**
+     * 把原始值转换为目标类型。
+     * <p>
+     * HTTP 查询参数、表单字段与请求头通常是字符串，而调用方常按目标类型请求
+     * （如 {@code query("page", Long.class)}）。类型恰好匹配时直接返回；
+     * 类型不匹配时尝试字符串到目标类型的转换；转换失败返回 {@code null}，
+     * 由调用方回退默认值。
+     *
+     * @param value 原始值
+     * @param clazz 目标类型
+     * @return 转换后的值，无法转换时返回 {@code null}
+     */
+    @SuppressWarnings("unchecked")
+    protected static <T> T convert(Object value, Class<T> clazz) {
+        if (value == null || clazz == null) return null;
         // 类型恰好匹配(如 String 值 + String.class)→ 直接返回
         if (clazz.isInstance(value)) return (T) value;
-        // 类型不匹配:HTTP 查询参数/表单值通常是 String,而调用方常按目标类型请求
-        // (如 get("page", Long.class)/get("page", 1L))。此时尝试字符串→目标类型转换,
-        // 避免「非 String 默认值永远拿不到真实值、恒返回默认值」的隐性 bug。
-        // 转换失败时返回 null(由调用方回退默认值),与转换异常语义一致。
         try {
             String s = String.valueOf(value);
             if (clazz == String.class) return (T) s;
@@ -278,6 +294,10 @@ public class Request {
             if (clazz == Boolean.class || clazz == boolean.class) return (T) Boolean.valueOf(s);
             if (clazz == Short.class || clazz == short.class) return (T) Short.valueOf(s);
             if (clazz == Byte.class || clazz == byte.class) return (T) Byte.valueOf(s);
+            if (clazz == BigDecimal.class) return (T) new BigDecimal(s);
+            if (clazz == BigInteger.class) return (T) new BigInteger(s);
+            if (clazz == java.time.LocalDate.class) return (T) java.time.LocalDate.parse(s);
+            if (clazz == java.time.LocalDateTime.class) return (T) java.time.LocalDateTime.parse(s);
         } catch (Exception ignored) {
         }
         return null;
@@ -325,14 +345,14 @@ public class Request {
      * @return 参数值;缺省/空串返回 null
      */
     public String query(String key) {
-        // 走 String 重载:非 String 原始值(如 addQuery 写入的 Integer)经 toString 兜底
+        // 走 String 重载:非 String 原始值(如 addQuery 写入的 Integer)经 toString 回退
         return query(key, (String) null);
     }
 
     public String query(String key, String defaultValue) {
         String value = query(key, String.class);
         if (value == null) {
-            // 原始值可能非 String(如 replaceQuery 写入的对象),做 toString 兜底
+            // 原始值可能非 String(如 replaceQuery 写入的对象),做 toString 回退
             Object v = query.get(key);
             if (v != null && !(v instanceof List)) {
                 value = v.toString();
@@ -358,10 +378,9 @@ public class Request {
         if (query.containsKey(key)) {
             Object value = query.get(key);
             if (value instanceof List) {
-                return (T) ((List<Object>) value).get(0);
-            } else if (clazz.isInstance(value)) {
-                return (T) value;
+                value = ((List<Object>) value).get(0);
             }
+            return convert(value, clazz);
         }
         return null;
     }
@@ -392,7 +411,7 @@ public class Request {
      * @return 参数值;缺省/空串返回 null
      */
     public String input(String key) {
-        // 走 String 重载:非 String 原始值(如 addInput 写入的 Integer)经 toString 兜底
+        // 走 String 重载:非 String 原始值(如 addInput 写入的 Integer)经 toString 回退
         return input(key, (String) null);
     }
 
@@ -423,10 +442,9 @@ public class Request {
         if (input.containsKey(key)) {
             Object value = input.get(key);
             if (value instanceof List) {
-                return (T) ((List<Object>) value).get(0);
-            } else if (clazz.isInstance(value)) {
-                return (T) value;
+                value = ((List<Object>) value).get(0);
             }
+            return convert(value, clazz);
         }
         return null;
     }
@@ -488,7 +506,7 @@ public class Request {
      * @return 参数值;缺省返回 null
      */
     public String header(String key) {
-        // 走 String 重载:非 String 原始值(如 addHeader 写入的 Integer)经 toString 兜底
+        // 走 String 重载:非 String 原始值(如 addHeader 写入的 Integer)经 toString 回退
         return header(key, (String) null);
     }
 
@@ -519,10 +537,9 @@ public class Request {
         if (header.containsKey(key)) {
             Object value = header.get(key);
             if (value instanceof List) {
-                return (T) ((List<Object>) value).get(0);
-            } else if (clazz.isInstance(value)) {
-                return (T) value;
+                value = ((List<Object>) value).get(0);
             }
+            return convert(value, clazz);
         }
         return null;
     }
@@ -602,9 +619,7 @@ public class Request {
     public <T> T cookie(String key, Class<T> clazz) {
         for (Cookie cookie : cookies) {
             if (cookie.getName().equals(key)) {
-                if (clazz == String.class) {
-                    return (T) cookie.getValue();
-                }
+                return convert(cookie.getValue(), clazz);
             }
         }
         return null;
@@ -643,7 +658,7 @@ public class Request {
      * @return 参数值;缺省/空串返回 null
      */
     public String session(String key) {
-        // 走 String 重载:非 String 原始值(如 addSession 写入的 Long)经 toString 兜底
+        // 走 String 重载:非 String 原始值(如 addSession 写入的 Long)经 toString 回退
         return session(key, (String) null);
     }
 
@@ -806,7 +821,7 @@ public class Request {
      * <p>
      * <b>只有直连来源已被 {@code TrustProxies} 声明为受信任代理时</b>才采信
      * {@code X-Forwarded-For} / {@code X-Real-IP}；否则一律返回 TCP 直连地址 ——
-     * 否则任何客户端都能靠伪造转发头冒充来源 IP（审计 S3）。
+     * 否则任何客户端都能靠伪造转发头冒充来源 IP。
      * <p>
      * 转发链按<b>从右往左</b>解析：跳过受信任代理，取第一个不受信任的地址（最左侧值可能是
      * 客户端自己塞进去的）。
@@ -877,7 +892,7 @@ public class Request {
      * <p>
      * 代理场景下，<b>仅当直连来源已被 {@code TrustProxies} 声明为受信任代理时</b>才采用
      * {@code X-Forwarded-Proto} / {@code X-Forwarded-Host} 还原真实入口地址；
-     * 否则使用请求自身的协议与 Host（避免 Host 头注入与协议伪造，审计 S3）。
+     * 否则使用请求自身的协议与 Host（避免 Host 头注入与协议伪造）。
      *
      * @return 完整 URL（如 {@code https://example.com/weapp?from=mp}），request 不可用时返回空串
      */
@@ -1098,6 +1113,18 @@ public class Request {
 
         @Override
         public void transferTo(File dest) throws IllegalStateException {
+            if (dest == null) {
+                throw new IllegalStateException("目标文件不能为空");
+            }
+            try {
+                byte[] bytes = getBytes();
+                try (OutputStream out = new FileOutputStream(dest)) {
+                    out.write(bytes);
+                    out.flush();
+                }
+            } catch (IOException e) {
+                throw new IllegalStateException("文件写入失败: " + dest, e);
+            }
         }
     }
 }

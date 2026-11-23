@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 验证码「一次性」保证的并发回归测试（审计 M5）。
+ * 验证码「一次性」保证的并发回归测试。
  * <p>
  * 修复前 {@code AbstractCaptcha} 用「先查 {@code isNonceConsumed} 再 {@code consumeNonce}」判断复用，
  * 并发下两个请求可同时通过检查 → 同一验证码可被并行验证两次（一次性保证失效）。

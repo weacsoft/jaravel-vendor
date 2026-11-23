@@ -1,6 +1,6 @@
 # http 模块
 
-> **模块拆分提示（0.1.3）**：原先位于本模块 `http.session` 包的 Session 存储契约与实现（`SessionStore` / `CookieSessionStore` / `@RegisterSessionStore` / `SessionStoreHolder`）已迁至独立的 **`session`** 模块（Spring 装配在 `springboot.session`）；`auth.guard` 的 `SessionGuard`/`SessionGuardDriver` 已迁至 **`auth-session`** 模块。http 模块不再包含 Session 存储。
+> **模块拆分提示（0.1.3）**：Session 存储契约与实现（`SessionStore` / `CookieSessionStore` / `@RegisterSessionStore` / `SessionStoreHolder`）位于独立的 **`session`** 模块（Spring 装配在 `springboot.session`）；`auth.guard` 的 `SessionGuard`/`SessionGuardDriver` 位于 **`auth-session`** 模块。http 模块不包含 Session 存储。
 
 
 > Jaravel-Vendor 的 HTTP 层模块，提供 Laravel 风格的中间件管道、Request / Response 抽象、路由系统与控制器契约。包名统一为 `com.weacsoft.jaravel.vendor.*`（含 `middleware`、`route`、`http.request`、`http.response`、`controller` 子包）。
@@ -40,7 +40,7 @@
   - [11.6 路径安全](#116-路径安全)
   - [11.7 Blade 模板 @asset 指令](#117-blade-模板-asset-指令)
 - [12. Session 功能（SessionStore / CookieSessionStore / RegisterSessionStore）](#12-session-功能sessionstore--cookiesessionstore--registersessionstore)
-- [13. 上传文件落盘助手（UploadFile）](#13-上传文件落盘助手uploadfile)
+- [13. 上传文件写入助手（UploadFile）](#13-上传文件写入助手uploadfile)
 
 ---
 
@@ -63,7 +63,7 @@
 | `public` 目录 / `asset()` | `StaticResourceHandler` / `StaticResourceRoute` / `Router.serveStatic()` | 静态资源目录服务，对齐 Laravel `public` 与 `asset()` |
 | Session 存储 | `SessionStore` / `CookieSessionStore` / `SessionStoreHolder` / `SessionStoreRegistrar` / `RegisterSessionStore` | 全局 Session 存储抽象（默认 CookieSessionStore = Servlet HttpSession），由 auth 等模块的守卫复用 |
 
-**重要设计原则**：内置中间件**不是** Spring Bean（不再标注 `@Component`），而是普通类。配置通过**继承式**模式完成——子类覆盖 `protected` 方法（如 `except()`、`encryptionKey()`、`trustedProxies()`）自定义行为，而非通过构造器传参。使用者继承预定义中间件后标注 `@MiddlewareAlias` 注解，由 `springboot` 模块通过反射实例化（要求有无参构造器）并注册到全局 `MiddlewareAliasRegistry`，从而以别名、类对象或类名三种方式在路由中引用。预定义中间件本身不标注 `@MiddlewareAlias`，由使用者继承后自行标注。
+**重要设计原则**：内置中间件**不是** Spring Bean（不标注 `@Component`），而是普通类。配置通过**继承式**模式完成——子类覆盖 `protected` 方法（如 `except()`、`encryptionKey()`、`trustedProxies()`）自定义行为，而非通过构造器传参。使用者继承预定义中间件后标注 `@MiddlewareAlias` 注解，由 `springboot` 模块通过反射实例化（要求有无参构造器）并注册到全局 `MiddlewareAliasRegistry`，从而以别名、类对象或类名三种方式在路由中引用。预定义中间件本身不标注 `@MiddlewareAlias`，由使用者继承后自行标注。
 
 ---
 
@@ -94,7 +94,7 @@
 
 > 视图渲染（`ResponseBuilder.view()`）仅依赖 core 标准层的 `View` 契约
 > （`core.view.ViewManagerHolder`），具体模板引擎由使用者单独引入并在装配期注册
-> （如 `jblade` 模块的 `ViewAutoConfiguration`）；http 模块不再依赖 jblade。
+> （如 `jblade` 模块的 `ViewAutoConfiguration`）；http 模块不依赖 jblade。
 
 > 运行环境要求：JDK 17+，Spring Boot 3.2.12（Jakarta Servlet）。
 
@@ -125,7 +125,7 @@ com.weacsoft.jaravel.vendor
 │       ├── StaticResourceHandler      // 静态资源处理器（MIME 推断/路径安全/双模式加载）
 │       └── StaticResourceRoute        // 静态资源路由（实现 Controllers.Runner）
 └── upload
-    └── UploadFile                     // 上传文件落盘助手（MultipartFile → Target 函数式写入，storage 侧零 Spring 的解耦点）
+    └── UploadFile                     // 上传文件写入助手（MultipartFile → Target 函数式写入，storage 侧零 Spring 的解耦点）
 ├── route
 │   ├── Router                         // 路由器（注册与分组，支持控制器引用重载）
 │   ├── Route                          // 单条路由
@@ -293,7 +293,7 @@ public class AppConvertEmptyStringsToNull extends ConvertEmptyStringsToNull {
 ```java
 import com.weacsoft.jaravel.vendor.springboot.annotation.MiddlewareAlias;
 
-// 生产环境务必覆盖 encryptionKey() 指定强密钥
+// 生产环境应覆盖 encryptionKey() 指定强密钥
 @MiddlewareAlias("encryptCookies")
 public class AppEncryptCookies extends EncryptCookies {
     @Override
@@ -608,7 +608,7 @@ router.get("/api/users", action)
 
 `com.weacsoft.jaravel.vendor.http.request.Request`
 
-Laravel 风格请求对象，封装 query、input、file、header、cookie、session、attributes、routeParams 等多维数据。所有读取方法返回副本（防御性拷贝）。
+Laravel 风格请求对象，封装 query、input、file、header、cookie、session、attributes、routeParams 等多维数据。所有读取方法返回副本。
 
 #### 数据维度与核心方法
 
@@ -636,9 +636,9 @@ Laravel 风格请求对象，封装 query、input、file、header、cookie、ses
 | `boolean has(String key)` | query 或 input 是否包含该 key |
 
 > **使用注意（2026-08-16）**：`query(key)` / `input(key)` / `header(key)` / `session(key)` /
-> `cookie(key)` 等<b>单参数重载缺省时返回 `null`</b>（不再是空串）——配合
+> `cookie(key)` 等<b>单参数重载缺省时返回 `null`</b>（不是空串）——配合
 > `ConvertEmptyStringsToNull` 中间件（空串已转 null），可直接 `if (request.query("key") != null)` 判断。
-> 泛型重载（`query(key, T defaultValue)`）传 `null` 默认值<b>不再 NPE</b>，按「缺省返回 null」处理；
+> 泛型重载（`query(key, T defaultValue)`）传 `null` 默认值<b>不抛 NPE</b>，按「缺省返回 null」处理；
 > 传非 null 默认值（如 `query("page", "1")`）时缺省仍返回该默认值。
 
 #### 写入方法（add / replace / remove）
@@ -769,7 +769,7 @@ public Response store(Request request) {
 
 - `buildFromServerRequest` 会同时调用 `setCurrentRequest` 设置线程局部变量。
 - multipart 解析通过 `submittedFileName` 是否为 null 区分文件字段与文本字段。
-- form-urlencoded 统一使用 `HttpServletRequest.getInputStream()` **缓存式读取** body（一次性读取后写入 `request.input`），避免 `getReader()` / `getParameterMap()` 与 inputStream 的竞态导致 body 被消费后无法再读。仅当 `getInputStream()` 真正抛异常时，才回退到 `getParameterMap()`。这样 Wire 请求的 `wire_body` 字段能被稳定解析（翻页、改名等携带的参数不再丢失）。已删除原先基于 `getReader()` 的危险 `generateUrlencode(Request)` 方法。
+- form-urlencoded 统一使用 `HttpServletRequest.getInputStream()` **缓存式读取** body（一次性读取后写入 `request.input`），避免 `getReader()` / `getParameterMap()` 与 inputStream 的竞态导致 body 被消费后无法再读。仅当 `getInputStream()` 真正抛异常时，才回退到 `getParameterMap()`。这样 Wire 请求的 `wire_body` 字段能被稳定解析（翻页、改名等携带的参数不丢失）。
 
 ```java
 // 通常由框架自动调用，无需手动构建
@@ -799,10 +799,10 @@ Request current = RequestFactory.getCurrentRequest();
 | `void addCookie(String name, String value)` | 追加 Cookie（名值） |
 | `String getContent()` | 获取文本内容 |
 | `default byte[] getBytes()` | 获取二进制内容（默认 null） |
-| `default String getContentType()` | 从响应头提取 Content-Type；若未设置，返回默认值 `text/plain;charset=utf-8`（兜底机制） |
+| `default String getContentType()` | 从响应头提取 Content-Type；若未设置，返回默认值 `text/plain;charset=utf-8`（回退机制） |
 | `default Object getBody()` | 获取响应体（默认返回 getContent） |
 
-> **Content-Type 兜底机制**：如果 `Response` 没有设置 `Content-Type` 响应头，框架在写入 HTTP 响应时会通过 `getContentType()` 兜底为 `text/plain;charset=utf-8`。`raw()` 构建的空响应若不显式设置 Content-Type 即走此兜底逻辑。
+> **Content-Type 回退机制**：如果 `Response` 没有设置 `Content-Type` 响应头，框架在写入 HTTP 响应时会通过 `getContentType()` 回退为 `text/plain;charset=utf-8`。`raw()` 构建的空响应若不显式设置 Content-Type 即走此回退逻辑。
 
 ### 6.2 ResponseBuilder
 
@@ -819,6 +819,9 @@ Request current = RequestFactory.getCurrentRequest();
 | `static Response view(String templateName, Map<String,Object> data)` | 200 状态，渲染 Blade 模板，Content-Type: text/html |
 | `static Response file(byte[] data, String filename)` | 200 状态，文件下载，Content-Type: application/octet-stream |
 | `static Response staticFile(byte[] data, String mimeType, int cacheMaxAge)` | 200 状态，静态文件响应，设置 Content-Type / Cache-Control / Content-Length |
+| `static Response staticFileStream(String mimeType, int cacheMaxAge, long contentLength, StreamSource opener)` | 200 状态，静态文件流式响应，内容按块写出，不整体载入内存；设置 Content-Type / Cache-Control / Content-Length |
+| `static Response fileStream(String mimeType, long contentLength, String filename, StreamSource opener)` | 200 状态，文件下载流式响应，设置 Content-Type / Content-Disposition / Content-Length / X-Content-Type-Options |
+| `static Response inlineFileStream(String mimeType, String cacheControl, long contentLength, String filename, StreamSource opener)` | 200 状态，内联文件流式响应，设置 Content-Type / Cache-Control / Content-Disposition / Content-Length / X-Content-Type-Options |
 | `static Response redirect(String url)` | 302 重定向，设置 Location 头 |
 | `static Response unauthorized(String message)` | 401 未授权 |
 | `static Response forbidden(String message)` | 403 禁止访问 |
@@ -881,7 +884,7 @@ Response r8 = ResponseBuilder.raw()
 
 同时实现 `Response` 接口的全部方法：`getStatus` / `getHeaders` / `addHeader` / `getCookies` / `addCookie(Cookie)` / `addCookie(String,String)` / `getContent` / `getBytes` / `getContentType` / `getBody`。
 
-> `body(...)` 方法返回 `Response` 类型（而非 `RawResponse`），调用后即结束链式构建。若未通过 `header` 或 `contentType` 设置 Content-Type，框架在写入 HTTP 响应时兜底为 `text/plain;charset=utf-8`。
+> `body(...)` 方法返回 `Response` 类型（而非 `RawResponse`），调用后即结束链式构建。若未通过 `header` 或 `contentType` 设置 Content-Type，框架在写入 HTTP 响应时回退为 `text/plain;charset=utf-8`。
 
 ```java
 // 自定义二进制响应（如图片）
@@ -890,7 +893,7 @@ return ResponseBuilder.raw()
     .header("Content-Type", "image/png")
     .body(imageBytes);
 
-// 不设 Content-Type，框架兜底为 text/plain;charset=utf-8
+// 不设 Content-Type，框架回退为 text/plain;charset=utf-8
 return ResponseBuilder.raw()
     .status(204)
     .body("");
@@ -1249,7 +1252,7 @@ router.get("/users/{id}", UserController.class, "show");            // 类对象
 
 ## 9. 配置选项
 
-`http` 模块除 URL 自动解码开关外不读取外部配置文件。内置中间件**不是** Spring Bean，不再通过构造器参数配置，而是采用**继承式配置**——使用者继承预定义中间件后覆盖 `protected` 方法自定义行为，并标注 `@MiddlewareAlias` 注解：
+`http` 模块除 URL 自动解码开关外不读取外部配置文件。内置中间件**不是** Spring Bean，不通过构造器参数配置，而是采用**继承式配置**——使用者继承预定义中间件后覆盖 `protected` 方法自定义行为，并标注 `@MiddlewareAlias` 注解：
 
 | 中间件 | 可覆盖方法（protected） | 默认值 |
 | --- | --- | --- |
@@ -1259,7 +1262,7 @@ router.get("/users/{id}", UserController.class, "show");            // 类对象
 | `TrustProxies` | `trustedProxies()`（信任代理 IP） | `127.0.0.1`, `::1` |
 | `VerifyCsrfToken` | `except()`（排除 URI） | 空数组 |
 
-全局中间件不再通过独立的注册表管理，而是直接在根 `Router` 上通过 `router.middleware(...)` 声明；`springboot` 模块的 `SpringBootRouteAutoConfiguration` 负责在启动时扫描 `@MiddlewareAlias` 注解的类，通过反射实例化（要求有无参构造器，中间件不是 Spring Bean）并注册到全局 `MiddlewareAliasRegistry`。预定义中间件本身不标注 `@MiddlewareAlias`，由使用者继承后自行标注。
+全局中间件不通过独立的注册表管理，而是直接在根 `Router` 上通过 `router.middleware(...)` 声明；`springboot` 模块的 `SpringBootRouteAutoConfiguration` 负责在启动时扫描 `@MiddlewareAlias` 注解的类，通过反射实例化（要求有无参构造器，中间件不是 Spring Bean）并注册到全局 `MiddlewareAliasRegistry`。预定义中间件本身不标注 `@MiddlewareAlias`，由使用者继承后自行标注。
 
 ### URL 自动解码（jaravel.http.url-decode-auto）
 
@@ -1287,7 +1290,7 @@ jaravel:
 
 `com.weacsoft.jaravel.vendor.http.staticresource`
 
-`http` 模块新增静态资源目录功能，对齐 Laravel 的 `public` 目录与 `asset()` 辅助函数。开发者通过 `Router.serveStatic()` 注册一个或多个资源目录，框架自动处理 MIME 推断、缓存头与路径穿越防护，将 GET 请求映射到 classpath 或文件系统中的静态文件。
+`http` 模块提供静态资源目录功能，对齐 Laravel 的 `public` 目录与 `asset()` 辅助函数。开发者通过 `Router.serveStatic()` 注册一个或多个资源目录，框架自动处理 MIME 推断、缓存头与路径穿越防护，将 GET 请求映射到 classpath 或文件系统中的静态文件。
 
 涉及类：
 
@@ -1311,23 +1314,25 @@ StaticResourceRoute.handle(Request)
    从 routeParam("path") 提取相对路径 css/app.css
         │
         ▼
-StaticResourceHandler.load("css/app.css")
-   ├── sanitizePath()   路径穿越防护（拒绝 .. 与反斜杠 \）
+StaticResourceHandler.open("css/app.css")
+   ├── sanitizePath()   路径穿越防护（按路径段拒绝 .. 与反斜杠 \）
    ├── guessMimeType()  推断 text/css; charset=utf-8
-   └── 双模式加载
-        ├── classpath:/static/  → ClassLoader.getResource() 读取（JAR 内）
-        └── file:./public/      → Files.readAllBytes() 读取（外部目录）
+   └── 双模式打开
+        ├── classpath:/static/  → ClassLoader.getResource() 打开（JAR 内）
+        └── file:./public/      → Files.newInputStream() 打开（外部目录）
         │
         ▼
-ResourceResult(content / mimeType / cacheMaxAge)
+ResourceSource(filePath / url / mimeType / cacheMaxAge / contentLength)
         │
         ▼
-ResponseBuilder.staticFile(bytes, mimeType, cacheMaxAge)
-   设置 Content-Type / Cache-Control / Content-Length
+ResponseBuilder.staticFileStream(mimeType, cacheMaxAge, contentLength, source::openStream)
+   设置 Content-Type / Cache-Control / Content-Length，边读边写
         │
         ▼
 200 OK 响应
 ```
+
+> 静态资源默认以流式响应返回：文件内容不在内存中整体缓存，写出时按块读取。
 
 ### 11.2 使用示例
 
@@ -1530,22 +1535,27 @@ auth 模块的 `SessionGuardDriver` 直接注入本配置提供的 `SessionStore
 
 ---
 
-## 13. 上传文件落盘助手（UploadFile）
+## 13. 上传文件写入助手（UploadFile）
 
 `com.weacsoft.jaravel.vendor.http.upload.UploadFile`
 
-`MultipartFile` 是 **HTTP 请求侧**概念，其落盘能力（解析原始文件名 + 交给写入目标）因此收敛在 http 模块，
+`MultipartFile` 是 **HTTP 请求侧**概念，其写入文件的能力（解析原始文件名 + 交给写入目标）因此收敛在 http 模块，
 使 `storage` 等**纯 JVM 核心层模块不感知 Spring**。写入目标通过函数式接口 `Target` 交给调用方，
 http 模块**不反向依赖** storage 的 `Filesystem` 契约。
 
 ### 类结构
 
-`UploadFile`（final 工具类）含一个函数式接口 `Target`：
+`UploadFile`（final 工具类）含两个函数式接口 `Target`（字节数组写入）与 `StreamTarget`（流式写入）：
 
 ```java
 @FunctionalInterface
 public interface Target {
     void store(String path, byte[] contents) throws IOException;
+}
+
+@FunctionalInterface
+public interface StreamTarget {
+    void store(String path, InputStream contents) throws IOException;
 }
 ```
 
@@ -1554,8 +1564,10 @@ public interface Target {
 | 方法 | 说明 |
 | --- | --- |
 | `String baseName(MultipartFile file)` | 解析原始文件名，只取最后一段路径（防路径污染），空值回退 `file` |
-| `String store(MultipartFile file, String dir, Target target)` | 使用原始文件名落盘，返回相对路径 |
-| `String storeAs(MultipartFile file, String dir, String name, Target target)` | 使用指定文件名落盘，返回相对路径 |
+| `String store(MultipartFile file, String dir, Target target)` | 使用原始文件名写入文件，返回相对路径 |
+| `String storeAs(MultipartFile file, String dir, String name, Target target)` | 使用指定文件名写入文件，返回相对路径 |
+| `String storeStream(MultipartFile file, String dir, StreamTarget target)` | 以流式方式写入文件，内容不整体载入内存，返回相对路径 |
+| `String storeAsStream(MultipartFile file, String dir, String name, StreamTarget target)` | 以流式方式使用指定文件名写入文件，返回相对路径 |
 
 `dir` 支持相对目录（`null`/空串=根），并规范化前导/结尾斜杠与反斜杠。
 
@@ -1577,7 +1589,16 @@ String path2 = UploadFile.storeAs(avatar, "reports", "a-2026.pdf", (p, b) -> Sto
 UploadFile.store(dataFile, "tmp", (p, bytes) -> mySink.put(p, bytes));
 ```
 
+大文件建议使用流式版本，目标侧同样可以是 `Filesystem::putStream`：
+
+```java
+// StreamTarget 直接适配 storage 的 Filesystem::putStream
+String path = UploadFile.storeStream(avatar, "avatars",
+        (p, in) -> Storage.disk("public").putStream(p, in));
+```
+
 > **设计要点**：`Target` 把"写入哪、怎么写"解耦给调用方，http 模块只负责解析上传文件并回调 `store(path, bytes)`，
 > 因此不引入 `storage` 依赖，避免 Spring Web 的 `MultipartFile` 与核心存储层耦合。
 > 若目标需要自行创建父目录，由 `Target` 实现保证（storage 的 `Filesystem::put` 会自动创建父目录）。
+> `StreamTarget` 与 `Target` 的差别仅在于内容传递方式，前者避免大文件在内存中完整驻留。
 

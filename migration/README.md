@@ -587,7 +587,7 @@ public class Migration_2024_02_01_CreateBlogTables implements Migration {
 
 `com.weacsoft.jaravel.vendor.migration.MigrationAnnotation`
 
-迁移类标记注解，用于在运行时识别哪些类是迁移类。**替代 Spring `@Component`**：迁移文件不再作为 Spring Bean 注册到容器，而是通过 `MigrationScanner` 在运行时加载（DIRECTORY 编译 / DIRECTORY_CLASSES 加载 / PACKAGED 加载 / JAR 加载 / CLASSPATH 扫描）、反射实例化、执行后自动释放。
+迁移类标记注解，用于在运行时识别哪些类是迁移类。**替代 Spring `@Component`**：迁移文件不作为 Spring Bean 注册到容器，而是通过 `MigrationScanner` 在运行时加载（DIRECTORY 编译 / DIRECTORY_CLASSES 加载 / PACKAGED 加载 / JAR 加载 / CLASSPATH 扫描）、反射实例化、执行后自动释放。
 
 ### 注解定义
 
@@ -647,11 +647,11 @@ public class Migration_2024_01_02_CustomName implements Migration {
 | `void compileFromDirectory(File dir)` | DIRECTORY | 同上，接收 `File` 参数 |
 | `void loadFromDirectoryClasses(String dirPath)` | DIRECTORY_CLASSES | 从目录加载预编译 `.class` 文件（仅需 JRE），递归扫描所有 `.class` |
 | `void loadFromDirectoryClasses(File dir)` | DIRECTORY_CLASSES | 同上，接收 `File` 参数 |
-| `void loadFromZip(String zipPath)` | PACKAGED | **新增**：从预编译 zip 包加载迁移类（仅需 JRE），使用 `MemoryClassLoader` 从 zip 读取字节码后直接定义类 |
+| `void loadFromZip(String zipPath)` | PACKAGED | 从预编译 zip 包加载迁移类（仅需 JRE），使用 `MemoryClassLoader` 从 zip 读取字节码后直接定义类 |
 | `void loadFromJar(File jarFile)` | JAR | 从 JAR 文件加载预编译迁移类，使用 `URLClassLoader`，扫描所有 `.class`（跳过 `META-INF` 与内部类） |
 | `void loadFromClasspath()` | CLASSPATH | 从当前 classpath 扫描迁移类，支持目录（递归）与 JAR 文件 |
 | `Class<?> getCompiledClass(String className)` | 通用 | 获取已编译或已加载的类，优先从 `compiledClasses` 查找，其次 `loadedClasses` |
-| `Map<String, byte[]> getCompiledClasses()` | 通用 | **新增**：获取编译后的字节码（类名 -> 字节码），供 `MigrationPrecompiler` 预编译器使用 |
+| `Map<String, byte[]> getCompiledClasses()` | 通用 | 获取编译后的字节码（类名 -> 字节码），供 `MigrationPrecompiler` 预编译器使用 |
 | `List<String> getAllMigrationClassNames()` | 通用 | 获取所有迁移类全限定名列表（含 DIRECTORY 编译的与 DIRECTORY_CLASSES/PACKAGED/JAR/CLASSPATH 加载的） |
 | `void finish()` | 通用 | 释放所有资源：清除类字节码、已加载类、关闭 `URLClassLoader`、释放 `MemoryClassLoader` |
 | `MemoryClassLoader getMemoryClassLoader()` | DIRECTORY | 获取内存类加载器（懒加载，每次返回同一实例） |
@@ -1389,7 +1389,7 @@ try {
 
 对齐 Laravel artisan 的 migrate 系列命令。实现 `CommandLineRunner`，通过启动参数触发迁移命令。
 
-> **重要变更**：不再通过 Spring DI 注入 `List<Migration>`，而是在运行时创建 `MigrationScanner`，根据 `jaravel.migration.source` 配置选择加载方式（DIRECTORY 编译 / DIRECTORY_CLASSES 加载 / PACKAGED 加载 / JAR 加载 / CLASSPATH 扫描），通过 `Migrator` 执行迁移，完成后调用 `scanner.finish()` 释放资源。
+> 不通过 Spring DI 注入 `List<Migration>`，而是在运行时创建 `MigrationScanner`，根据 `jaravel.migration.source` 配置选择加载方式（DIRECTORY 编译 / DIRECTORY_CLASSES 加载 / PACKAGED 加载 / JAR 加载 / CLASSPATH 扫描），通过 `Migrator` 执行迁移，完成后调用 `scanner.finish()` 释放资源。
 
 ### 执行流程
 
@@ -1605,13 +1605,13 @@ Per table: tableName + columnDefs + primaryKey + rowCount + rowData
 
 Spring Boot 自动装配类。当 `jaravel.migration.enabled=true`（默认）时注册 `MigrationRunner` Bean。
 
-> **不再使用 `@ConditionalOnBean(DataSource.class)`。** 迁移模块不与 Spring 的 `DataSource`
+> 不使用 `@ConditionalOnBean(DataSource.class)`。迁移模块不与 Spring 的 `DataSource`
 > Bean 强绑定——jaravel 的连接可能只存在于 database 模块的 `ConnectionManager` 注册表中
-> （由 `@RegisterConnection` 声明）。因此改为**运行时解析**：先查连接注册表，再回退 Spring 容器。
-> 若最终一个连接都没有，仅打印告警并注册空执行器，**不阻断应用启动**；
+> （由 `@RegisterConnection` 声明）。连接解析在运行时进行：先查连接注册表，再回退 Spring 容器。
+> 若最终一个连接都没有，打印告警并注册空执行器，不阻断应用启动；
 > 真正执行迁移命令时才给出明确错误。
 
-> **重要变更**：不再注入 `List<Migration>`，也不再注册 `Schema`、`MigrationRepository`、`Migrator` 为 Bean。迁移文件不再是 Spring 组件，而是通过 `MigrationScanner` 在运行时加载（DIRECTORY 编译 / DIRECTORY_CLASSES 加载 / PACKAGED 加载 / JAR 加载 / CLASSPATH 扫描）、反射实例化、执行后自动释放。本类仅注册 `MigrationRunner` 一个 Bean，注入 `DataSource` 与 `MigrationProperties`。
+> 不注入 `List<Migration>`，也不注册 `Schema`、`MigrationRepository`、`Migrator` 为 Bean。迁移文件不是 Spring 组件，而是通过 `MigrationScanner` 在运行时加载（DIRECTORY 编译 / DIRECTORY_CLASSES 加载 / PACKAGED 加载 / JAR 加载 / CLASSPATH 扫描）、反射实例化、执行后自动释放。本类仅注册 `MigrationRunner` 一个 Bean，注入 `DataSource` 与 `MigrationProperties`。
 
 | Bean | 类型 | 说明 |
 | --- | --- | --- |

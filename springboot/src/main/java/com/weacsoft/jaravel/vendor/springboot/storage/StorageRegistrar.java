@@ -25,7 +25,7 @@ import java.util.Map;
  *   <li>收集所有 {@link FilesystemDriver} Bean 并注册为驱动</li>
  *   <li>按 {@code jaravel.storage.disks} 配置注册磁盘定义</li>
  *   <li>扫描 {@link RegisterDisk @RegisterDisk} 注解注册磁盘（<b>覆盖</b>同名配置式磁盘）</li>
- *   <li>若最终一个磁盘都没有，注册兜底的 {@code local} 磁盘（{@code storage/app}）</li>
+ *   <li>若最终一个磁盘都没有，注册回退的 {@code local} 磁盘（{@code storage/app}）</li>
  * </ol>
  *
  * <h3>方法返回值支持</h3>
@@ -55,7 +55,7 @@ public class StorageRegistrar extends AnnotationDrivenRegistrar<RegisterDisk> {
     }
 
     /**
-     * 扫描后：兜底注册 local 磁盘，并输出就绪日志。
+     * 扫描后：回退注册 local 磁盘，并输出就绪日志。
      */
     @Override
     protected void afterScan() {
@@ -83,7 +83,7 @@ public class StorageRegistrar extends AnnotationDrivenRegistrar<RegisterDisk> {
      */
     private void registerConfiguredDisks() {
         properties.getDisks().forEach((name, config) -> {
-            // 兜底：写了 disks 但没写 driver，使用最基础的 local 磁盘保证功能可用
+            // 回退：写了 disks 但没写 driver，使用最基础的 local 磁盘保证功能可用
             String driver = (config.getDriver() == null || config.getDriver().isBlank())
                     ? "local" : config.getDriver();
             manager.registerDisk(name, DiskDefinition.of(driver, config.toConfig()));
@@ -120,7 +120,7 @@ public class StorageRegistrar extends AnnotationDrivenRegistrar<RegisterDisk> {
     }
 
     /**
-     * 若一个磁盘都没注册，兜底注册默认 local 磁盘，保证开箱即用。
+     * 若一个磁盘都没注册，回退注册默认 local 磁盘，保证开箱即用。
      */
     private void registerFallbackDisk() {
         if (manager.hasDisks()) {
@@ -131,6 +131,6 @@ public class StorageRegistrar extends AnnotationDrivenRegistrar<RegisterDisk> {
         manager.registerDisk(name, DiskDefinition.local(
                 com.weacsoft.jaravel.vendor.storage.local.LocalFilesystemDriver.DEFAULT_ROOT));
         manager.setDefaultDisk(name);
-        log.debug("未配置任何磁盘，已注册兜底 local 磁盘 [{}]", name);
+        log.debug("未配置任何磁盘，已注册回退 local 磁盘 [{}]", name);
     }
 }

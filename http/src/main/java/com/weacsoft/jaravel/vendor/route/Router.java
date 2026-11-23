@@ -376,7 +376,7 @@ public class Router {
         // 必须用 {*path}（capture-the-rest）而不是 {path}/{**}：
         // - {path} 只匹配单段 → /static/css/app.css 恒 404；
         // - /** 在 Spring PathPattern 下不产生 pathVariables → routeParam("path") 为 null → 也 404；
-        // {*path} 捕获「含前导 / 的剩余路径」，StaticResourceHandler.sanitizePath 会剥掉前导 /（审计 M3）。
+        // {*path} 捕获「含前导 / 的剩余路径」，StaticResourceHandler.sanitizePath 会剥掉前导 /。
         RouteDefinition r = addRoute("GET", urlPrefix + "/{*path}", route);
         r.name("static:" + urlPrefix);
         return route;
@@ -706,7 +706,7 @@ public class Router {
         List<Middleware> middlewares = new ArrayList<>();
         // 顺序必须与 Laravel 的「洋葱」一致：父级（全局/根）在外、本路由器在内。
         // 旧实现先加自身、后加父级，折叠后全局中间件反而最内层 —— 于是
-        // 「根挂 EncryptCookies、组挂 VerifyCsrfToken」会变成先验 CSRF 再解密 Cookie（审计 M3）。
+        // 「根挂 EncryptCookies、组挂 VerifyCsrfToken」会变成先验 CSRF 再解密 Cookie。
         if (parentRouter != null) {
             middlewares.addAll(parentRouter.getAllMiddlewares());
         }

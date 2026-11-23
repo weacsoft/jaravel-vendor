@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 文件响应头安全回归测试（审计 L4 / N3）。
+ * 文件响应头安全回归测试。
  * <p>
  * <ul>
  *   <li><b>N3</b>：内联展示/下载用户可上传的内容必须带 {@code X-Content-Type-Options: nosniff}，

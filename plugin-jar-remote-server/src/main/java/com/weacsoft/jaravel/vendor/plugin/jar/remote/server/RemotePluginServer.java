@@ -21,7 +21,10 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -58,9 +61,26 @@ public class RemotePluginServer {
 
     private static final Logger log = LoggerFactory.getLogger(RemotePluginServer.class);
 
+    /** 连接处理线程池核心线程数 */
+    private static final int CONNECTION_POOL_CORE_SIZE = 4;
+
+    /** 连接处理线程池最大线程数 */
+    private static final int CONNECTION_POOL_MAX_SIZE = 64;
+
+    /**
+     * 客户端连接读超时（秒）：避免半开连接长期占用工作线程。
+     * <p>
+     * 取值需大于客户端两次请求之间的正常空闲间隔；客户端在同一连接上连续调用，
+     * 超时后按「连接断开」处理并重连。
+     */
+    private static final int SOCKET_READ_TIMEOUT_SECONDS = 300;
+
     private final int port;
     private final String authToken;
     private final BeanResolver beanResolver;
+
+    /** 远程调用的方法访问控制（默认为不限制，仅拒绝线程控制类方法） */
+    private volatile RpcMethodGuard methodGuard = RpcMethodGuard.unrestricted();
 
     private ServerSocket serverSocket;
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -210,6 +230,25 @@ public class RemotePluginServer {
     }
 
     /**
+     * 设置远程调用的访问控制。
+     *
+     * @param allowedBeanNames 允许调用的 Bean 名（为空表示不限制）
+     * @param allowedMethods  允许调用的方法名（为空表示不限制）
+     */
+    public void setAllowedMethods(List<String> allowedBeanNames, List<String> allowedMethods) {
+        this.methodGuard = RpcMethodGuard.of(allowedBeanNames, allowedMethods);
+    }
+
+    /**
+     * 设置远程调用的访问控制。
+     *
+     * @param guard 访问控制实例
+     */
+    public void setMethodGuard(RpcMethodGuard guard) {
+        this.methodGuard = guard == null ? RpcMethodGuard.unrestricted() : guard;
+    }
+
+    /**
      * 返回本节点 ID。
      */
     public String getNodeId() {
@@ -233,12 +272,22 @@ public class RemotePluginServer {
             log.warn("远程服务端已在运行");
             return;
         }
-        executor = Executors.newCachedThreadPool(r -> {
-            Thread t = new Thread(r, "remote-plugin-server-worker");
-            t.setDaemon(true);
-            return t;
-        });
-        executor.submit(this::acceptLoop);
+        // 连接处理线程池设有上限：避免大量连接耗尽操作系统线程
+        executor = new ThreadPoolExecutor(
+                CONNECTION_POOL_CORE_SIZE,
+                CONNECTION_POOL_MAX_SIZE,
+                60L, TimeUnit.SECONDS,
+                new SynchronousQueue<>(),
+                r -> {
+                    Thread t = new Thread(r, "remote-plugin-server-worker");
+                    t.setDaemon(true);
+                    return t;
+                },
+                new ThreadPoolExecutor.AbortPolicy());
+        // 接收循环独占一个线程，不占用连接池配额
+        Thread acceptor = new Thread(this::acceptLoop, "remote-plugin-server-acceptor");
+        acceptor.setDaemon(true);
+        acceptor.start();
         log.info("远程插件服务端已启动: port={}, auth={}, nodeId={}, relay={}",
                 port, authToken != null, nodeId, relayEnabled);
     }
@@ -298,7 +347,14 @@ public class RemotePluginServer {
                 Socket socket = serverSocket.accept();
                 String connId = UUID.randomUUID().toString();
                 activeConnections.put(connId, socket);
-                executor.submit(() -> handleConnection(socket, connId));
+                try {
+                    executor.execute(() -> handleConnection(socket, connId));
+                } catch (RejectedExecutionException e) {
+                    // 连接数超过上限：拒绝新连接，避免无限创建线程
+                    activeConnections.remove(connId);
+                    closeQuietly(socket);
+                    log.warn("连接数超过上限，拒绝新连接: {}", connId);
+                }
             }
         } catch (IOException e) {
             if (running.get()) {
@@ -307,11 +363,21 @@ public class RemotePluginServer {
         }
     }
 
+    private static void closeQuietly(Socket socket) {
+        try {
+            socket.close();
+        } catch (IOException ignored) {
+            // 忽略关闭异常
+        }
+    }
+
     private void handleConnection(Socket socket, String connId) {
         log.debug("客户端连接: {} from {}", connId, socket.getRemoteSocketAddress());
         try (Socket s = socket;
              InputStream in = s.getInputStream();
              OutputStream out = s.getOutputStream()) {
+            // 读超时：半开连接不应长期占用工作线程
+            s.setSoTimeout(SOCKET_READ_TIMEOUT_SECONDS * 1000);
             // 握手
             if (!handshake(in, out)) {
                 log.warn("握手失败: {}", connId);
@@ -363,7 +429,7 @@ public class RemotePluginServer {
             try {
                 Map<String, Object> node = Json.parseToMap(body);
                 String token = node.containsKey("authToken") ? String.valueOf(node.get("authToken")) : null;
-                if (!authToken.equals(token)) {
+                if (!tokenMatches(authToken, token)) {
                     out.write(ProtocolCodec.encodeFrame(RemoteProtocol.MSG_ERROR,
                             "{\"error\":\"认证失败\"}"));
                     out.flush();
@@ -468,6 +534,14 @@ public class RemotePluginServer {
             Object bean = beanResolver.getBean(request.getPluginId(), request.getBeanName());
             if (bean == null) {
                 return null; // 本地无此插件，可继续转发
+            }
+            RpcMethodGuard guard = this.methodGuard;
+            if (!guard.isAllowed(request.getPluginId(), request.getBeanName(), request.getMethodName())) {
+                String reason = guard.rejectReason(request.getPluginId(), request.getBeanName(),
+                        request.getMethodName());
+                log.warn("[relay] 拒绝未授权的远程调用: pluginId={}, beanName={}, method={}, reason={}",
+                        request.getPluginId(), request.getBeanName(), request.getMethodName(), reason);
+                return ExecuteResponse.error(request.getRequestId(), reason);
             }
             Method targetMethod = findMethod(bean.getClass(), request.getMethodName(), request.getArgTypes());
             if (targetMethod == null) {
@@ -638,5 +712,21 @@ public class RemotePluginServer {
             }
         }
         return result;
+    }
+
+    /**
+     * 令牌比较：常量时间，避免逐字节短路比较泄露时序信息。
+     *
+     * @param expected 期望令牌
+     * @param actual   请求携带的令牌（可为 null）
+     * @return 是否一致
+     */
+    private static boolean tokenMatches(String expected, String actual) {
+        if (actual == null) {
+            return false;
+        }
+        byte[] expectedBytes = expected.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] actualBytes = actual.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        return java.security.MessageDigest.isEqual(expectedBytes, actualBytes);
     }
 }

@@ -4,8 +4,6 @@
 > 面向 IntelliJ IDEA 插件开发者，涵盖 `.jblade` 模板文件的编辑提示、跳转、校验所需的全部语义。
 >
 > **最后更新**：2026-08-06 | 对应源码：`jaravel-vendor/jblade/src/main/java/.../jblade/`（63 个 .java 文件）
->
-> 生成依据：源码精读 + `README.md`（1543 行）+ 演示项目 22 个 `.jblade` + 测试模板 20 个。
 
 ---
 
@@ -23,7 +21,7 @@
 10. [表达式编译规则](#10-表达式编译规则)
 11. [运行时辅助函数（PHP 风格）](#11-运行时辅助函数php-风格)
 12. [自定义扩展机制](#12-自定义扩展机制)
-13. [PJAX / Wire 模板约定](#13-pjax--wire-模板约定)
+13. [Wire 模板约定](#13-wire-模板约定)
 14. [配置项](#14-配置项)
 15. [编译缓存与热更新](#15-编译缓存与热更新)
 16. [预编译模式](#16-预编译模式)
@@ -664,24 +662,15 @@ public class DirectiveConfig {
 **编译期必须已知**指令类型（条件 vs 输出），因此必须在模板编译前注册。
 
 
-## 13. PJAX / Wire 模板约定
+## 13. Wire 模板约定
 
-### 13.1 PJAX 分段标记
+### 13.1 分段标记
 
-当 `BladeEngine.renderPjax()` 渲染时，会设置 `context.setVariable("__pjax_mode", true)`，
-使 `@yield` 输出附加 HTML 注释分段标记：
-
-```
-<!--pjax:start:NAME-->...内容...<!--pjax:end:NAME-->
-```
-
-**模板编写约定**：布局模板中需要被 PJAX 无感替换的区域用 `@yield('区域名')` 标识，
+布局模板中需要被局部替换的区域用 `@yield('区域名')` 标识，
 前端按区域名 diff 并替换。
 
-`renderPjax` 的返回值 `PjaxRenderResult` 包含：
-- `html`：整页 HTML
-- `meta`：`TemplateRegionMeta`（`parentTemplate`、`yieldNames`、`sectionNames`）
-- `title`：从 `<title>` 区域抽取的标题
+> **注意**：当前实现中 `@yield` 始终输出 wire 分段标记（`<!--wire:section-start:NAME-->`），
+> 不再输出 `<!--pjax:start:NAME-->` 形式的 PJAX 标记；`__pjax_mode` 变量在代码中已不存在。
 
 ### 13.2 Wire 分段标记
 
@@ -716,7 +705,7 @@ WireOutlet 中间件检测到已有 `wire:outlet` 标记时不重复注入。
 |---|---|---|---|
 | `jaravel.view.template-dir` | String | `templates` | 模板根目录（classpath 相对路径） |
 | `jaravel.view.suffix` | String | `.jblade` | 模板文件后缀 |
-| `jaravel.view.default` | String | `""` | 激活的 View 实现名；空则按注解/兜底判定 |
+| `jaravel.view.default` | String | `""` | 激活的 View 实现名；空则按注解/回退判定 |
 | `jaravel.view.asset-url-prefix` | String | `/static` | 静态资源 URL 前缀（**不影响 `@asset`**，见 §11） |
 
 **发布配置**：`artisan vendor:publish --tag=jblade` 生成 `JbladeConfig`，内含上述 4 个 key。
@@ -743,23 +732,20 @@ WireOutlet 中间件检测到已有 `wire:outlet` 标记时不重复注入。
 
 | 方法 | 作用 |
 |---|---|
-| `BladeEngine.clearCache()` | 清除一级 + 二级（逐个 forget，不调用 flush）+ 实例缓存 |
-| `BladeEngine.clearTemplate(name)` | 仅清除指定模板的一级 + 二级 + 实例 |
-| `BladeEngine.clearTemplateInstanceCache()` | 仅清除实例缓存 |
-| `BladeEngine.clearRegionMeta()` | 清除 PJAX 区域元数据缓存 |
+| `BladeEngine.clearCache()` | 清除一级 + 二级（逐个 forget，不调用 flush）+ 类名索引 |
 
 ### 15.3 Artisan 命令
 
 | 命令 | 作用 |
 |---|---|
 | `view:cache` | 编译全部模板并写入缓存，同时生成预编译包 `storage/framework/views/templates.jblade.zip` |
-| `view:clear` | 清除全部模板编译缓存与 PJAX 区域元数据 |
+| `view:clear` | 清除全部模板编译缓存 |
 
 ### 15.4 重要事实
 
 - **无热重载**：模板文件修改后**不会自动重新编译**，必须手动调用 `clearCache()` 或执行 `view:clear`
 - **无 mtime 校验**：缓存判断只看 key，不比较文件时间戳
-- **实例缓存**：每次 `loadTemplate()` 都会 `newInstance()` 新实例（不共享状态）
+- **实例缓存**：每次 `loadTemplate()` 都会 `newInstance()` 新实例（不共享状态），编译产物 `Class` 由一级缓存共享
 
 ## 16. 预编译模式
 
@@ -919,9 +905,9 @@ java -cp ... BladePrecompilerMain \
 
 ### 18.2 @asset 不使用 BladeAssetHelper
 
-**重要更正**：`@asset('path')` **不**调用 `BladeAssetHelper.url()`，等价于 `url('path')`。
+`@asset('path')` **不**调用 `BladeAssetHelper.url()`，等价于 `url('path')`。
 
-- `jaravel.view.asset-url-prefix` 配置项**实质上是死配置**（除非应用自行注册 `BladeFunctions.register("asset", ...)`）
+- `jaravel.view.asset-url-prefix` 配置项**实质上是未生效的配置**（除非应用自行注册 `BladeFunctions.register("asset", ...)`）
 - `@asset('css/app.css')` → `/css/app.css`（**不加 `/static` 前缀**）
 - `BladeAssetHelper` 的 Javadoc 是过时的文档
 
@@ -947,7 +933,7 @@ java -cp ... BladePrecompilerMain \
 ### 18.6 BladeEngine 没有 share()/make()/exists()
 
 - **不存在** `BladeEngine.share(...)` 方法
-- **不存在** `BladeEngine.make(...)` 方法（渲染入口只有 `render`/`renderSection`/`renderSections`/`renderPjax`）
+- **不存在** `BladeEngine.make(...)` 方法（渲染入口只有 `render`/`renderSection`/`renderSections`）
 - `exists(...)` 只在 `BladeView`（实现 `View` 接口）上存在，`BladeEngine` 上叫 `templateExists(String)`
 - 变量注入的唯一途径是 `render(name, Map)` 的 `variables` 参数
 
@@ -1005,10 +991,9 @@ return ResponseBuilder.view("index", data);
 - 通过反射调用 `prop(name)` 获取属性
 - 嵌套循环会压栈/出栈（`pushLoop` / `popLoop`）
 
-### 18.13 PJAX 模式标记
+### 18.13 分段标记
 
-- `renderPjax()` 设置 `context.setVariable("__pjax_mode", true)`
-- `@yield` 输出附加 HTML 注释分段标记 `<!--pjax:start:NAME-->...<!--pjax:end:NAME-->`
+- `@yield` 始终输出 wire 分段标记 `<!--wire:section-start:NAME-->...<!--wire:section-end:NAME-->`
 - `renderSection()` 可设置 `__wire_mode` 输出 wire 标记
 
 ### 18.14 wire_outlet() 辅助函数

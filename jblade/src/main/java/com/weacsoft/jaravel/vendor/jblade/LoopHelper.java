@@ -73,7 +73,7 @@ public class LoopHelper {
     }
 
     /**
-     * 以 Blade 属性名读取（供表达式 $loop->xxx 反射兜底使用）。
+     * 以 Blade 属性名读取（供表达式 $loop->xxx 反射回退使用）。
      */
     public Object prop(String name) {
         switch (name) {

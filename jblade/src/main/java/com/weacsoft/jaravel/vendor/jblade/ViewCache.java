@@ -39,7 +39,7 @@ public final class ViewCache {
     }
 
     /**
-     * 清除全部模板缓存（内存字节码 + 模板类 + 外部 CacheStore + 实例缓存 + 区域元数据）。
+     * 清除全部模板缓存（内存字节码 + 模板类 + 外部 CacheStore）。
      *
      * @return 清除前的内存字节码缓存条目数；无可用引擎时返回 0
      */

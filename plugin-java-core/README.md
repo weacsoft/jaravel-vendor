@@ -30,7 +30,7 @@
 ## 核心特性
 
 - **动态编译**：使用 JDK 内置 `javax.tools.JavaCompiler` 编译 `.java` 文件，无需引入第三方编译器。
-- **内存加载**：编译后的字节码存储在内存中（`Map<String, byte[]>`），无需落盘，由 `DynamicClassLoader` 直接加载。
+- **内存加载**：编译后的字节码存储在内存中（`Map<String, byte[]>`），无需写入文件，由 `DynamicClassLoader` 直接加载。
 - **字符串源码模式**：从内存中的 Java 源码字符串直接编译热加载，无需文件系统。
 - **热更新**：修改 `.java` 文件后重新编译，刷新所有类，创建新的 `ClassLoader` 实现插件热重载。
 - **动态路由**：自动扫描 `@PluginMapping` 注解注册路由，支持 `path`、`method`、`produces` 等属性。

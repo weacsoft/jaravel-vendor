@@ -54,8 +54,9 @@ public class PluginBeanRegistrar {
     public boolean registerBean(String beanName, Class<?> beanClass) {
         DefaultListableBeanFactory beanFactory = getDefaultBeanFactory();
         try {
-            // 若已存在则先销毁
+            // 若已存在则先销毁（单例实例由插件 ClassLoader 加载，不销毁会泄漏 ClassLoader）
             if (beanFactory.containsBeanDefinition(beanName)) {
+                destroySingleton(beanFactory, beanName);
                 beanFactory.removeBeanDefinition(beanName);
             }
             GenericBeanDefinition definition = new GenericBeanDefinition();
@@ -79,6 +80,9 @@ public class PluginBeanRegistrar {
 
     /**
      * 注销单个 Bean。
+     * <p>
+     * 注销时先销毁已存在的单例实例再移除 Bean 定义：插件 Bean 的类由插件 ClassLoader 加载，
+     * 仅移除定义会保留单例缓存中的实例引用，导致插件 ClassLoader 无法回收。
      *
      * @param beanName Bean 名称
      */
@@ -88,11 +92,28 @@ public class PluginBeanRegistrar {
         }
         DefaultListableBeanFactory beanFactory = getDefaultBeanFactory();
         try {
+            destroySingleton(beanFactory, beanName);
             if (beanFactory.containsBeanDefinition(beanName)) {
                 beanFactory.removeBeanDefinition(beanName);
             }
         } catch (Exception e) {
             log.error("注销 Bean 失败: {}", beanName, e);
+        }
+    }
+
+    /**
+     * 销毁 Bean 单例实例（若已存在）。
+     *
+     * @param beanFactory Bean 工厂
+     * @param beanName    Bean 名称
+     */
+    private void destroySingleton(DefaultListableBeanFactory beanFactory, String beanName) {
+        try {
+            if (beanFactory.containsSingleton(beanName)) {
+                beanFactory.destroySingleton(beanName);
+            }
+        } catch (Exception e) {
+            log.error("销毁 Bean 单例失败: {}", beanName, e);
         }
     }
 

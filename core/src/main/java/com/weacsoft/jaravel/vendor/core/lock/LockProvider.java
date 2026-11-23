@@ -8,7 +8,7 @@ package com.weacsoft.jaravel.vendor.core.lock;
  * {@link LockProviderManager}，不进入 Spring 容器。
  * <p>
  * 当 Redis 可用时，由 redis 模块的 {@code RedisLockProviderImpl} 提供实现；
- * 当 Redis 不可用时，{@link LockProviderManager} 自动兜底为同步锁（单机执行）。
+ * 当 Redis 不可用时，{@link LockProviderManager} 自动回退为同步锁（单机执行）。
  * <p>
  * 业务方也可自定义实现（如基于 ZooKeeper、etcd 等），通过 {@code @RegisterLockProvider} 注册自动生效。
  *

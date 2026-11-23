@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * 「扫描注解方法 → 调用 → 注册产物」的通用流程（零 Spring 依赖）。
  * <p>
  * <h3>扫描时机</h3>
- * P3 起扫描与「容器何时就绪」解耦：宿主显式调用 {@link #scan()} 触发
+ * 扫描与「容器何时就绪」解耦：宿主显式调用 {@link #scan()} 触发
  * （Spring 宿主在各模块自动装配中以 {@code SmartInitializingSingleton}
  * 包装 {@code registrar::scan}，保持「所有单例初始化完成后扫描」的原有时序）。
  * {@code scan()} 幂等：重复调用直接返回，保证唯一性注册器不被二次登记。
@@ -64,7 +64,7 @@ public abstract class AnnotationDrivenRegistrar<A extends Annotation> {
     }
 
     /**
-     * 扫描后回调，通常用于注册兜底默认实现（「无则回退」）。
+     * 扫描后回调，通常用于注册回退默认实现（「无则回退」）。
      */
     protected void afterScan() {
     }
@@ -93,7 +93,7 @@ public abstract class AnnotationDrivenRegistrar<A extends Annotation> {
 
     /**
      * 取当前安装的 Bean 提供者（子类需要按类型枚举 Bean 时使用，
-     * 如 storage / queue 驱动的兜底解析）。
+     * 如 storage / queue 驱动的回退解析）。
      *
      * @return 已安装的 GlobalBeanProvider
      * @throws RegistrarException 未安装时

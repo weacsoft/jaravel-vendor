@@ -89,7 +89,7 @@ public abstract class OnDriverInUseCondition implements Condition {
      */
     private String enableKey;
 
-    /** 缺省即命中标志，用于兜底默认驱动。 */
+    /** 缺省即命中标志，用于回退默认驱动。 */
     private boolean matchIfAbsent = false;
 
     /**
@@ -114,7 +114,7 @@ public abstract class OnDriverInUseCondition implements Condition {
     }
 
     /**
-     * 缺省即命中标志。适用于<b>兜底默认驱动</b>（如 session 守卫、local 磁盘）：
+     * 缺省即命中标志。适用于<b>回退默认驱动</b>（如 session 守卫、local 磁盘）：
      * 当用户<b>完全没有显式配置</b>本模块的任何驱动键（单值键为空且其映射配置块下无任何键）时，
      * 视为选用了本默认驱动而装配。
      * <p>
@@ -214,7 +214,7 @@ public abstract class OnDriverInUseCondition implements Condition {
             return true;
         }
 
-        // 5) 兜底默认驱动：用户完全未显式配置本模块任何驱动键时命中
+        // 5) 回退默认驱动：用户完全未显式配置本模块任何驱动键时命中
         if (matchIfAbsent && !hasAnyExplicitDriverKey(env)) {
             return true;
         }

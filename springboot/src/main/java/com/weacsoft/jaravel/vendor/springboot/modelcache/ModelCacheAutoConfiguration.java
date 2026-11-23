@@ -31,7 +31,7 @@ import org.springframework.context.annotation.Bean;
  * {@link ModelCacheProperties} 为纯 POJO（留在 model-cache 模块，{@code ModelCacheService} 直接消费），
  * 通过 {@code @Bean @ConfigurationProperties} 方法完成绑定。
  * <p>
- * Spring 装配收口于 springboot 模块（model-cache 核心模块零 Spring 依赖）。
+ * Spring 装配集中于 springboot 模块（model-cache 核心模块零 Spring 依赖）。
  */
 @AutoConfiguration
 @ConditionalOnClass({CacheManager.class, ModelCacheService.class})

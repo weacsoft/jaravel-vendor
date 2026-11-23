@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 背景：{@code pop} 优先走「{@code SELECT ... FOR UPDATE SKIP LOCKED} + 同一事务内 UPDATE」
  * 的无竞争抢占；但各方言写法不一致（Oracle 无 {@code LIMIT}、SQL Server 无 {@code SKIP LOCKED}
  * 关键字、SQLite 无行级锁）。这些差异无法在当前测试基建里跑真实 Oracle/SQL Server，
- * 因此把「生成的 SQL 形状」用纯函数单测固定下来（专家团验收清单明确要求）。
+ * 因此把「生成的 SQL 形状」用纯函数单测固定下来。
  * <p>
  * 策略：只有确定支持的方言才生成 SKIP LOCKED 语句，其余返回 {@code null} →
  * 调用方降级到「乐观锁 + 竞争退避重试」（该路径在任何标准 SQL 库上都正确）。

@@ -24,7 +24,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * 缓存命中值的类型还原（审计 M16）。
+ * 缓存命中值的类型还原。
  * <p>
  * 非内存 store（redis/database/file）命中时取回的是 JSON 结构（{@code LinkedHashMap} /
  * {@code ArrayList}），调用方按实体类型使用会抛 {@code ClassCastException}。

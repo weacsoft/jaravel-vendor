@@ -306,7 +306,7 @@ boolean ok2 = manager.verify(result.getKey(), "90");
 
 ### 5.5 文字点选验证码（`click`）
 
-在背景图上随机生成若干汉字（目标文字 + 干扰文字），要求用户按提示顺序依次点击指定文字。出于安全考虑，不再向前端返回文字坐标，前端需完全依赖视觉识别后点击。支持[水印](#11-水印)。
+在背景图上随机生成若干汉字（目标文字 + 干扰文字），要求用户按提示顺序依次点击指定文字。出于安全考虑，文字坐标不返回给前端，前端需完全依赖视觉识别后点击。支持[水印](#11-水印)。
 
 | 项 | 说明 |
 | --- | --- |
@@ -362,9 +362,9 @@ captchaKey = AES.encrypt(expireTime + "|" + nonce + "|" + answer)
 - `expireTime`：毫秒时间戳，过期后拒绝验证；
 - `nonce`：每次生成唯一，验证成功后写入 `CaptchaStore` 标记为「已消费」，再次用同一 `captchaKey` 提交即被拒绝（防复用）；
 - `answer`：真实答案，位于最后一段，可含特殊字符；
-- 加密算法由 `CaptchaProperties.encryptionType` 决定（默认 `aes`，可选 `none`/`rsa`），密钥按「模块自身配置优先 → core 全局 `jaravel.key` 兜底」解析。
+- 加密算法由 `CaptchaProperties.encryptionType` 决定（默认 `aes`，可选 `none`/`rsa`），密钥按「模块自身配置优先 → core 全局 `jaravel.key` 回退」解析。
 
-> 注意：旧文档中「token 为明文 Base64」已不适用——当前 `captchaKey` 是 **AES 加密密文**，服务端解密后才能取到答案。将其直接暴露给前端不会泄露答案。
+> 注意：`captchaKey` 是 **AES 加密密文**，服务端解密后才能取到答案；将其直接暴露给前端不会泄露答案。
 
 为方便前端，**生成结果额外下发一个合并凭证 `key`**：
 
@@ -399,7 +399,7 @@ boolean ok = manager.verify(key, userInput);
 
 > **一次性语义**：
 > - `verify(captchaKey, userInput)`：解密 token → **原子占用 nonce** → 比对答案；占用失败即「已被使用」。
-> - 并发提交同一凭证时，只有一个请求能通过（原子占用保证）；失败尝试同样烧掉 nonce，用于防暴力尝试。
+> - 并发提交同一凭证时，只有一个请求能通过（原子占用保证）；失败尝试同样使 nonce 失效，用于防暴力尝试。
 > - 因此不要再使用「三参 `verify(type, key, input)`」写法（第三个参数是**加密密钥**，语义完全不同）。
 
 ---
@@ -1000,7 +1000,7 @@ CaptchaResult result = captcha.generate();  // 图片同时含文字水印与图
 | 线程安全 | 是 |
 | TTL | 自带过期机制，读取时惰性清理，另提供 `cleanup()` 主动清理 |
 | 适用场景 | 单机、低并发场景 |
-| 跨进程 | 不支持（进程重启即失） |
+| 跨进程 | 不支持（进程重启后失效） |
 
 ### 12.2 CacheStoreCaptchaStore（跨进程）
 

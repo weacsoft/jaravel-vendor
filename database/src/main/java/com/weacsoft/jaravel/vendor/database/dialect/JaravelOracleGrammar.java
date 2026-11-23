@@ -85,7 +85,7 @@ public class JaravelOracleGrammar extends OracleGrammar {
      * from   → "JW_USER"."ZF_JWC_XSJBXXB" "JW_USER_ZF_JWC_x9k2"
      * update → "JW_USER"."ZF_JWC_XSJBXXB"
      * </pre>
-     * 注意：别名不使用 {@code AS} 关键字——实测目标服务端（Oracle 8i 时代语法/
+     * 注意：别名不使用 {@code AS} 关键字——验证目标服务端（Oracle 8i 时代语法/
      * Oracle 协议兼容库）拒绝 {@code FROM 表 AS 别名} 并报 ORA-00933，
      * 而 {@code FROM 表 别名} 形式在 Oracle 8~21 全系均合法，兼容性最好。
      */

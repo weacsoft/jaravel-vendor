@@ -75,7 +75,7 @@ public class AuthManager {
     private volatile String fallbackAllowedDriver = "session";
 
     /**
-     * 设置「允许空守卫兜底」的驱动名（默认 {@code session}）。
+     * 设置「允许空守卫回退」的驱动名（默认 {@code session}）。
      *
      * @param driver 驱动名
      */
@@ -86,7 +86,7 @@ public class AuthManager {
     }
 
     /**
-     * @return 允许空守卫兜底的驱动名
+     * @return 允许空守卫回退的驱动名
      */
     public String getFallbackAllowedDriver() {
         return fallbackAllowedDriver;
@@ -95,10 +95,10 @@ public class AuthManager {
     private final Map<String, UserProvider> providers = new ConcurrentHashMap<>();
     /** 守卫驱动列表（工厂模式），进程级共享，启动后只读 */
     /**
-     * 守卫驱动（含 auth 内置的空守卫驱动兜底）。
+     * 守卫驱动（含 auth 内置的空守卫驱动回退）。
      * <p>
      * 空驱动放进来是为了「只依赖 auth」也能装配：它 support 恒为 false，不会抢真实驱动的匹配，
-     * 仅在遍历后仍无匹配时被 {@code createGuard} 显式兜底使用。
+     * 仅在遍历后仍无匹配时被 {@code createGuard} 显式回退使用。
      */
     private final List<AuthGuardDriver> guardDrivers =
             new CopyOnWriteArrayList<>(List.of(
@@ -107,7 +107,7 @@ public class AuthManager {
     private static final org.slf4j.Logger logger =
             org.slf4j.LoggerFactory.getLogger(AuthManager.class);
 
-    /** 「无匹配驱动，已用空守卫兜底」告警去重（按驱动名） */
+    /** 「无匹配驱动，已用空守卫回退」告警去重（按驱动名） */
     private static final java.util.Set<String> NULL_GUARD_WARNED =
             java.util.concurrent.ConcurrentHashMap.newKeySet();
     /** 提供者驱动列表（工厂模式），进程级共享，启动后只读 */
@@ -244,13 +244,13 @@ public class AuthManager {
                 fallback = driver;
             }
         }
-        // auth 是「认证标准」，不应因为没引入具体守卫实现就崩：用内置空守卫兜底（恒未登录）。
+        // auth 是「认证标准」，不应因为未引入具体守卫实现而失败：用内置空守卫回退（恒未登录）。
         // 需要真实登录态时引入实现模块（auth-session / jwt / 自定义驱动）。
         //
-        // 但兜底只应覆盖「默认驱动 + 实现模块缺失」这一种情形（例如只依赖 auth、没引 auth-session）。
+        // 但回退只应覆盖「默认驱动 + 实现模块缺失」这一种情形（例如只依赖 auth、没引 auth-session）。
         // 若显式配置了一个没人支持的 driver（拼写错误、忘了引模块），静默变成「恒未登录」会让
         // 业务侧 if (Auth.check()) { ... } else { 放行 } 之类的写法**静默失去鉴权** ——
-        // 这类配置错误必须大声失败（架构评审建议）。
+        // 这类配置错误必须大声失败。
         if (fallback != null && cfg.driver != null
                 && cfg.driver.equalsIgnoreCase(fallbackAllowedDriver)) {
             if (NULL_GUARD_WARNED.add(cfg.driver)) {

@@ -16,7 +16,7 @@ import java.util.List;
  * 将任务持久化到数据库 {@code jobs} 表，支持多实例消费、重试和延迟执行。
  * 失败任务归档到 {@code failed_jobs} 表，对齐 Laravel {@code failed_jobs}。
  * <p>
- * <b>架构对齐（D3 收口 + 0.1.3）</b>：SQL 操作统一经由 database 模块的
+ * <b>架构对齐（0.1.3）</b>：SQL 操作统一经由 database 模块的
  * {@link JdbcExecutor} 执行（连接来自 {@code ConnectionManager} 注册表或业务方显式传入），
  * 不再依赖 spring-jdbc，也不再自带一套私有 JDBC 工具；建表统一走 migration 模块
  * 迁移能力（{@code vendor:publish --tag=migrations} 发布内置迁移 + {@code artisan migrate}，
@@ -32,7 +32,7 @@ import java.util.List;
  * {@code LIMIT} 在 Oracle / SQL Server 上不合法。候选抢占失败时本实现会<b>短暂退避重试</b>，
  * 而不是把「抢失败」当成「队列为空」。
  * <p>
- * 因此投递保证为<b>至少一次</b>：崩溃或超过 {@code retryAfterSeconds} 后任务会被重新取出，
+ * 因此投递保证为<b>至少一次</b>：异常退出或超过 {@code retryAfterSeconds} 后任务会被重新取出，
  * 消费方必须<u>幂等</u>。
  *
  * <h3>重试机制</h3>
@@ -294,7 +294,7 @@ public class DatabaseQueueDriver implements QueueDriver {
     /**
      * 乐观锁抢占（降级路径）：可移植的 {@code id = (SELECT MIN(id) ...)} + 条件 UPDATE + 竞争退避重试。
      * <p>
-     * 该路径在<b>任何</b>支持标准 SQL 的库上都正确（架构评审结论）；SKIP LOCKED 不可用时走这里。
+     * 该路径在<b>任何</b>支持标准 SQL 的库上都正确；SKIP LOCKED 不可用时走这里。
      *
      * @param queueName 队列名
      * @param now       当前时间戳

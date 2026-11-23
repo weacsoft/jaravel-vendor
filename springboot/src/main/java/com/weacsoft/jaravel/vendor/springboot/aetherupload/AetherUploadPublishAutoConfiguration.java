@@ -18,7 +18,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
  * <p>
  * 而 {@code artisan vendor:publish} 属于<b>构建期脚手架</b>：能否生成
  * {@code AetherUploadConfig.java} 模板，与「上传运行时是否启用」是两回事——
- * 恰恰是尚未启用的开发者更需要先拿到模板，配置好分组、落盘磁盘与记录头 store 之后才打开开关。
+ * 恰恰是尚未启用的开发者更需要先拿到模板，配置好分组、写入磁盘与记录头 store 之后才打开开关。
  * <p>
  * 因此本类使用静态注册表，确保任何情况下都能执行
  * {@code artisan vendor:publish --tag=aether-upload}（含其配置类与静态前端资源）。

@@ -26,7 +26,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * 末片重放不得覆盖已落盘成品（审计 M6 核心断言）。
+ * 末片重放不得覆盖已写入成品。
  * <p>
  * 真实故障场景：{@code finalizeUpload} 先把 {@code .part} move 成成品、再 {@code saveHeader}；
  * 若 {@code saveHeader} 失败，持久化状态仍是 UPLOADING 且末片未记录 —— 客户端随后重试末片时，
@@ -35,7 +35,7 @@ import static org.mockito.Mockito.when;
  * <p>
  * 现在写分片前校验「临时文件存在且长度 == 声明大小」，不一致即拒绝并要求重新 prepare。
  * <p>
- * 注入手法（专家给出）：给组配置 {@code header-store: throwing}（**必须在注册 group 之前**），
+ * 注入手法：给组配置 {@code header-store: throwing}（**必须在注册 group 之前**），
  * 并用一个 {@code put} 会**抛异常**（不是返回 false —— {@code CacheUploadHeaderStore.put} 忽略
  * 布尔返回值）的 {@link CacheStore} 替身，在**末片写入前**武装，从而精确模拟「move 成功、saveHeader 失败」。
  */
@@ -94,15 +94,15 @@ class AetherUploadReplayGuardTest {
         manager.writeChunk("file", prepared.resourceId, 0, chunkOf(content, 0));
         manager.writeChunk("file", prepared.resourceId, 1, chunkOf(content, 1));
 
-        // 末片写入 → 触发最终落盘：move 成功、saveHeader 失败
+        // 末片写入 → 触发最终写入：move 成功、saveHeader 失败
         armed.set(true);
         assertThrows(RuntimeException.class,
                 () -> manager.writeChunk("file", prepared.resourceId, 2, chunkOf(content, 2)),
-                "最终落盘时 header 持久化失败必须向上抛出");
+                "最终写入时 header 持久化失败必须向上抛出");
 
         Path product = findProduct("replay.bin");
         Assumptions.assumeTrue(product != null && Files.exists(product),
-                "未走到「成品已落盘」状态（实现顺序变化），本用例不适用");
+                "未走到「成品已写入」状态（实现顺序变化），本用例不适用");
         String hashBefore = sha256(product);
 
         // 重试末片：.part 已被 move → 长度校验必须拒绝，且不得重建文件覆盖成品
@@ -123,7 +123,7 @@ class AetherUploadReplayGuardTest {
     }
 
     private Path findProduct(String filename) throws Exception {
-        // 落盘名为 "{resourceId}_{filename}"（见 AetherUploadManager.savedPath）
+        // 写入名为 "{resourceId}_{filename}"（见 AetherUploadManager.savedPath）
         try (Stream<Path> walk = Files.walk(tempRoot)) {
             return walk.filter(p -> p.getFileName().toString().endsWith("_" + filename))
                     .findFirst().orElse(null);

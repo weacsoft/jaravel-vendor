@@ -47,6 +47,10 @@ public final class AsyncReplyDispatcher {
     private final WechatProperties properties;
     private final AtomicInteger threadSeq = new AtomicInteger();
 
+    /** 按额度键的串行锁：保证「读剩余额度 → 扣减 → 写回」不并发交错 */
+    private final java.util.concurrent.ConcurrentHashMap<String, Object> quotaLocks =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     private volatile Executor executor;
 
     /**
@@ -130,9 +134,13 @@ public final class AsyncReplyDispatcher {
             return;
         }
         String key = key(account, openid);
-        Integer remaining = read(key);
-        int base = remaining == null ? remainingDefault(account) : remaining;
-        store.put(key, Math.max(0, base - slots), windowSeconds(accountConfig(account)));
+        // 读改写必须串行：并发消耗会各自读到同一基数，超发的额度被放行
+        Object lock = quotaLocks.computeIfAbsent(key, k -> new Object());
+        synchronized (lock) {
+            Integer remaining = read(key);
+            int base = remaining == null ? remainingDefault(account) : remaining;
+            store.put(key, Math.max(0, base - slots), windowSeconds(accountConfig(account)));
+        }
     }
 
     /**
@@ -185,8 +193,11 @@ public final class AsyncReplyDispatcher {
         try {
             executor().execute(task);
         } catch (RuntimeException e) {
-            logger.warn("[wechat-reply] 异步执行器不可用，退化为当前线程发送: {}", e.getMessage());
-            sendAll(account, openid, messages);
+            // 执行器不可用：改用独立守护线程补发，避免占用当前线程（被动回复只有 5 秒窗口）
+            logger.warn("[wechat-reply] 异步执行器不可用，改由独立线程补发: {}", e.getMessage());
+            Thread fallback = new Thread(task, "wechat-reply-fallback-" + threadSeq.incrementAndGet());
+            fallback.setDaemon(true);
+            fallback.start();
         }
     }
 

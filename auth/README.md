@@ -4,7 +4,7 @@
 > 对齐 Laravel 特性：`Illuminate\Auth`（AuthManager、Guard、UserProvider、Auth 门面、auth 中间件）
 >
 > **零 Spring 依赖**：本模块保留纯 Java 的 `AuthManager` / `AuthContext` / `contract/*` / `facade/Auth` / `guard/*` / `middleware/Authenticate` / `@RegisterGuard` / `@RegisterProvider` 与 `AuthPublishableConfig`。
-> Spring 装配收口于 **springboot** 模块（`vendor.springboot.auth` 包）：`AuthAutoConfiguration` / `AuthProperties` / `AuthRegistrar` / `OnSessionGuardDriverCondition` / `AuthLifecycleFilter` / `AuthPublishAutoConfiguration`。
+> Spring 装配收尾于 **springboot** 模块（`vendor.springboot.auth` 包）：`AuthAutoConfiguration` / `AuthProperties` / `AuthRegistrar` / `OnSessionGuardDriverCondition` / `AuthLifecycleFilter` / `AuthPublishAutoConfiguration`。
 
 ## 目录
 
@@ -47,7 +47,7 @@ Auth 模块是 Jaravel 框架的认证核心，对齐 Laravel 的 `Illuminate\Au
 - **多守卫（Multi-Guard）**：支持在同一应用中配置多个认证守卫（如 `web` 使用 Session、`api` 使用 JWT），按名称解析。
 - **多提供者（Multi-Provider）**：支持注册多个 `UserProvider`，不同守卫可绑定不同提供者。
 - **工厂模式驱动**：通过 `AuthGuardDriver` 的 `support()` 方法匹配驱动（对齐 database-all 多数据库支持），第三方模块只需注册为 Spring Bean 即可自动收集。
-- **Session 存储分离**：Session 存储后端是**全局配置**（由 `config/SessionConfig.java` 决定），不绑定到具体守卫。`SessionGuardDriver` 注入 `session` 模块提供的 `SessionStoreHolder`（默认实现 `CookieSessionStore`，基于 Servlet HttpSession）。**auth 只保留认证标准**：`SessionGuard`/`SessionGuardDriver` 已迁到 **`auth-session`** 模块，Session 存储契约与实现已迁到 **`session`** 模块（装配在 `springboot.session`）；auth 自身不依赖 session，遍历完所有守卫驱动仍无匹配时回退到内置空守卫（`NullGuard`，`check()` 恒 false）。需要「用 session 保存登录态」时引入 `auth-session`（`starter` 已聚合 auth + auth-session + session）。
+- **Session 存储分离**：Session 存储后端是**全局配置**（由 `config/SessionConfig.java` 决定），不绑定到具体守卫。`SessionGuardDriver` 注入 `session` 模块提供的 `SessionStoreHolder`（默认实现 `CookieSessionStore`，基于 Servlet HttpSession）。**auth 只保留认证标准**：`SessionGuard`/`SessionGuardDriver` 位于 **`auth-session`** 模块，Session 存储契约与实现位于 **`session`** 模块（装配在 `springboot.session`）；auth 自身不依赖 session，遍历完所有守卫驱动仍无匹配时回退到内置空守卫（`NullGuard`，`check()` 始终为 false）。需要「用 session 保存登录态」时引入 `auth-session`（`starter` 已聚合 auth + auth-session + session）。
 - **请求级隔离**：基于 `ThreadLocal` 实现每请求独立的认证上下文，杜绝线程池复用导致的串态问题。
 - **密码校验解耦**：`Authenticatable` 与 `UserProvider` 均不包含密码相关方法，密码校验完全由应用层负责。
 
@@ -345,7 +345,7 @@ public interface AuthGuardDriver {
 
 ### SessionStore（契约，已迁移到 http 模块）
 
-> **注意**：`SessionStore` 接口、`CookieSessionStore` 默认实现、`SessionStoreHolder`、`SessionStoreRegistrar`、`RegisterSessionStore` 注解均已迁移到 **http 模块**（`com.weacsoft.jaravel.vendor.http.session`），详见 http/README.md 第 12 章。以下保留接口定义供参考。
+> **注意**：`SessionStore` 接口、`CookieSessionStore` 默认实现、`SessionStoreHolder`、`SessionStoreRegistrar`、`RegisterSessionStore` 注解均位于 **http 模块**（`com.weacsoft.jaravel.vendor.http.session`），详见 http/README.md 第 12 章。以下保留接口定义供参考。
 
 Session 存储契约。Session 存储后端是全局配置（由 `config/SessionConfig.java` 决定），`SessionGuardDriver` 注入 http 模块提供的 `SessionStoreHolder`（默认实现 `CookieSessionStore`）。
 
@@ -531,7 +531,7 @@ public final class AuthContext {
 
 ### SessionGuardDriver
 
-Session 守卫驱动，实现 `AuthGuardDriver` 接口。`support("session")` 匹配成功后，使用注入的 http 模块提供的 `SessionStoreHolder` 创建 `SessionGuard`。Session 存储后端由 `config/SessionConfig.java` 全局决定，不再绑定到具体守卫。`SessionStoreHolder` 默认回退到 `CookieSessionStore`（Servlet HttpSession），由 http 的 `HttpSessionAutoConfiguration` 注册；auth 仅弱引用，不强依赖具体 Session 实现。
+Session 守卫驱动，实现 `AuthGuardDriver` 接口。`support("session")` 匹配成功后，使用注入的 http 模块提供的 `SessionStoreHolder` 创建 `SessionGuard`。Session 存储后端由 `config/SessionConfig.java` 全局决定，不绑定到具体守卫。`SessionStoreHolder` 默认回退到 `CookieSessionStore`（Servlet HttpSession），由 http 的 `HttpSessionAutoConfiguration` 注册；auth 仅弱引用，不强依赖具体 Session 实现。
 
 ```java
 public class SessionGuardDriver implements AuthGuardDriver {
@@ -556,7 +556,7 @@ public class SessionGuardDriver implements AuthGuardDriver {
 
 由 `AuthAutoConfiguration` 自动注册为 Spring Bean。
 
-> **装配条件（重要）**：`SessionGuardDriver` 受 `@Conditional(OnSessionGuardDriverCondition.class)` 约束——当 `jaravel.auth.guards.*.driver` 出现 `session`，**或用户写了 guards 但没写 driver（兜底回退到 session）**，或完全没写任何 guard 配置时装配。`session` 是 auth 模块的**兜底默认驱动**，因此本条件调用 `matchIfAbsent()` 认缺省；与之相对，`jwt` 等额外驱动严格按需、不认缺省（见 jwt/README）。
+> **装配条件（重要）**：`SessionGuardDriver` 受 `@Conditional(OnSessionGuardDriverCondition.class)` 约束——当 `jaravel.auth.guards.*.driver` 出现 `session`，**或用户配置了 guards 但未配置 driver（回退到 session）**，或完全未配置任何 guard 时装配。`session` 是 auth 模块的**回退默认驱动**，因此本条件调用 `matchIfAbsent()` 接受缺省值；与之相对，`jwt` 等额外驱动严格按需、不接受缺省值（见 jwt/README）。
 
 ---
 
@@ -777,7 +777,7 @@ router.post("/api/wire/demo", handler).middleware(new Authenticate());
 
 #### Wire 请求认证过期无感重定向
 
-当用户在浏览页面期间认证过期（如 Session 失效），传统做法下后续的 AJAX 请求会收到 401，前端通常只能整体刷新页面跳转登录，出现白屏。Authenticate 中间件对 **Wire 请求**做了特殊处理，配合前端 `wire.js` 实现「无感重定向」：
+当用户在浏览页面期间认证过期（如 Session 失效），传统做法下后续的 AJAX 请求会收到 401，前端通常只能整体刷新页面跳转登录，出现页面空白。Authenticate 中间件对 **Wire 请求**做了特殊处理，配合前端 `wire.js` 实现「无感重定向」：
 
 - **识别方式**：Wire 请求通过自定义请求头 `X-Wire-Request: true` 标识。前端 `wire.js` 在发起请求时会自动带上该头。
 - **响应内容**：未认证时返回 401 JSON，其中额外包含 `redirect` 字段指向登录页：
@@ -791,7 +791,7 @@ router.post("/api/wire/demo", handler).middleware(new Authenticate());
   ```
 
 - **前端跳转**：前端 `wire.js` 收到该响应后，自动跳转到 `/login?redirect=当前页面URL`，将当前页面地址作为回跳参数。
-- **登录后回跳**：用户在登录页完成登录后，根据 `redirect` 参数回到之前的页面，整个过程不出现白屏，体验上接近 SPA 的路由切换。
+- **登录后回跳**：用户在登录页完成登录后，根据 `redirect` 参数回到之前的页面，整个过程不出现页面空白，体验上接近 SPA 的路由切换。
 
 > Wire 请求响应中的 `redirect` 字段取自 Authenticate 构造方法中配置的 `loginPath`（默认 `/login`）。若通过 `new Authenticate("web", "/portal/login")` 自定义了登录页，则 `redirect` 字段值同步变为 `/portal/login`。
 
@@ -839,7 +839,7 @@ public class AuthLifecycleFilter extends OncePerRequestFilter {
 
 ### AuthAutoConfiguration（springboot 模块）
 
-Spring Boot 自动装配类，注册 `AuthManager`、`AuthLifecycleFilter` 和 `SessionGuardDriver`，并自动收集所有 `AuthGuardDriver` Bean 注册到 `AuthManager`。**Session 存储（CookieSessionStore / SessionStoreHolder / 扫描 @RegisterSessionStore）由 http 模块的 `HttpSessionAutoConfiguration` 负责**，auth 仅消费 http 提供的 `SessionStoreHolder`（通过 `@Autowired(required = false)` 弱引用，缺失时兜底构造，退化为原生 HttpSession），不强依赖具体 Session 实现。
+Spring Boot 自动装配类，注册 `AuthManager`、`AuthLifecycleFilter` 和 `SessionGuardDriver`，并自动收集所有 `AuthGuardDriver` Bean 注册到 `AuthManager`。**Session 存储（CookieSessionStore / SessionStoreHolder / 扫描 @RegisterSessionStore）由 http 模块的 `HttpSessionAutoConfiguration` 负责**，auth 仅消费 http 提供的 `SessionStoreHolder`（通过 `@Autowired(required = false)` 弱引用，缺失时回退构造，使用原生 HttpSession），不强依赖具体 Session 实现。
 
 ```java
 @AutoConfiguration
@@ -875,9 +875,9 @@ public class AuthAutoConfiguration implements SmartInitializingSingleton {
 **装配条件**：
 - Servlet Web 应用环境
 - classpath 存在 `AuthManager` 类
-- `sessionGuardDriver` 额外受 `@Conditional(OnSessionGuardDriverCondition.class)` 约束（session 为兜底默认，认缺省；详见「守卫驱动按需装配」）
+- `sessionGuardDriver` 额外受 `@Conditional(OnSessionGuardDriverCondition.class)` 约束（session 为回退默认，接受缺省值；详见「守卫驱动按需装配」）
 
-> **守卫驱动按需装配（安装 ≠ 启用）**：`SessionGuardDriver`（session）与 `JwtGuardDriver`（jwt，由 jwt 模块提供）均通过 core 的 `OnDriverInUseCondition` 判定，仅当用户显式选用（或按兜底默认选用）对应驱动时才装配。用户写了 `guards` 但没写 `driver` 时，由 `AuthRegistrar` 补成默认的 `session` 守卫，保证功能基本可用。
+> **守卫驱动按需装配（安装 ≠ 启用）**：`SessionGuardDriver`（session）与 `JwtGuardDriver`（jwt，由 jwt 模块提供）均通过 core 的 `OnDriverInUseCondition` 判定，仅当用户显式选用（或按回退默认选用）对应驱动时才装配。用户配置了 `guards` 但未配置 `driver` 时，由 `AuthRegistrar` 补成默认的 `session` 守卫，保证功能基本可用。
 
 **自动收集机制**：所有 `AuthGuardDriver` 实现（如 auth 模块的 `SessionGuardDriver`、jwt 模块的 `JwtGuardDriver`）注册为 Spring Bean 后，本配置类在所有单例就绪后自动将它们注册到 `AuthManager`，无需各模块手动调用注册方法。
 
@@ -932,12 +932,12 @@ jaravel:
 | 配置项 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
 | `jaravel.auth.default-guard` | String | `web` | 默认守卫名称 |
-| `jaravel.auth.guards.<name>.driver` | String | `session`（兜底） | 驱动名称（session / jwt 等）；不写时兜底为 `session` |
+| `jaravel.auth.guards.<name>.driver` | String | `session`（回退默认） | 驱动名称（session / jwt 等）；未配置时回退为 `session` |
 | `jaravel.auth.guards.<name>.provider` | String | - | 提供者名称（即 `@RegisterProvider` 的别名；见下「provider 别名」） |
 
 **provider 别名（重要）**：`driver` / `provider` 字段都接受字符串，运行时按 `support()` 匹配对应驱动对象（类似数据库多兼容）。特别注意——**`provider` 不是一种 driver**：同一个 `EloquentUserProvider` 类可对应多个对象（不同 model 类要用不同 provider 实例），此时应把「model 类 + provider」合并看成一个具名实例，称为**别名**，通过 `@RegisterProvider("users")` 声明，`AuthManager` 按别名解析而非按类解析。这样不同守卫可分别绑定到不同 model 的 provider（如 `web→users`、`admin→admins`），互不干扰。
 
-> Session 存储后端不再在守卫配置中指定，改为由 `config/SessionConfig.java` 全局决定。
+> Session 存储后端由 `config/SessionConfig.java` 全局决定，不在守卫配置中指定。
 
 ### 完整多守卫配置示例
 

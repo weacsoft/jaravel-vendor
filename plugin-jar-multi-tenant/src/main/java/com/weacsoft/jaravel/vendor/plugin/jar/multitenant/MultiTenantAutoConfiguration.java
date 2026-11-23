@@ -160,13 +160,16 @@ public class MultiTenantAutoConfiguration {
     /**
      * 定位核心 JAR 路径。
      * <p>
-     * 通过本类的 {@link ProtectionDomain} 获取其所在 JAR/目录。
-     * 逻辑与 {@code PluginJarAutoConfiguration.locateCoreJarPath()} 一致，
-     * 因原方法为 private，此处复制实现。
+     * 通过 {@code PluginJarAutoConfiguration}（位于 plugin-jar-core）的
+     * {@link ProtectionDomain} 获取其所在 JAR/目录：共享 JAR 需要包含
+     * plugin-jar-core 中的注解与接口类，若取本类所在构件，
+     * 多模块分别打包时核心类将不可见。
      */
     private Path locateCoreJarPath() {
         try {
-            ProtectionDomain pd = MultiTenantAutoConfiguration.class.getProtectionDomain();
+            ProtectionDomain pd =
+                    com.weacsoft.jaravel.vendor.plugin.jar.autoconfigure.PluginJarAutoConfiguration.class
+                            .getProtectionDomain();
             if (pd == null) {
                 return null;
             }

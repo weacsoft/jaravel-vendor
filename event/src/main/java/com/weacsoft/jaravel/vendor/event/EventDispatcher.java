@@ -22,7 +22,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * 不同队列的监听器互不阻塞。队列大小、重试次数等通过 {@link EventConfig} 配置。
  * <p>
  * <b>重试机制</b>：监听器执行抛出异常时，按 {@code retry.max-attempts} 配置自动重试，
- * 重试间隔由 {@code retry.delay-ms} 配置。重试在原队列的线程池中执行，线程安全。
+ * 重试间隔由 {@code retry.delay-ms} 配置。队列化监听器的重试以「延迟重投」方式回到调度器，
+ * 不占用队列工作线程等待；同步分发路径在当前线程上等待重试间隔。
  * <p>
  * 单个监听器最终失败（重试耗尽）后仅记录日志，不会中断其它监听器的执行。
  */
@@ -122,19 +123,51 @@ public class EventDispatcher implements Dispatcher {
         // 降级为内存队列
         if (delayMs > 0) {
             queueManager.schedule(queueName,
-                () -> invokeWithRetry(listener, event, listenerName, queueName), delayMs);
+                () -> invokeInQueue(listener, event, listenerName, queueName, 1), delayMs);
         } else {
             queueManager.submit(queueName,
-                () -> invokeWithRetry(listener, event, listenerName, queueName));
+                () -> invokeInQueue(listener, event, listenerName, queueName, 1));
         }
     }
 
     /**
-     * 执行单个监听器，支持自动重试。
+     * 在队列线程中执行监听器，失败时延迟重投。
+     * <p>
+     * 重试不再占用工作线程等待：失败后把任务按重试间隔重新投回调度器，
+     * 由调度器在到期时再次提交，避免持续失败的监听器长期占住线程池工作线程。
+     *
+     * @param listener     监听器
+     * @param event        被分发的事件
+     * @param listenerName 监听器类名（用于日志）
+     * @param queueName    队列名（用于日志与重投）
+     * @param attempt      当前已执行次数（首次执行为 1）
+     */
+    private void invokeInQueue(Listener<Event> listener, Event event, String listenerName,
+                               String queueName, int attempt) {
+        try {
+            listener.handle(event);
+        } catch (Exception e) {
+            int maxAttempts = queueManager.getRetryMaxAttempts();
+            if (attempt > maxAttempts) {
+                logger.error("事件监听器执行失败（已重试 {} 次）, queue={}, event={}, listener={}",
+                    maxAttempts, queueName, event.getClass().getName(), listenerName, e);
+                return;
+            }
+            logger.warn("事件监听器执行异常，将延迟重试 ({}/{}), queue={}, event={}, listener={}",
+                attempt, maxAttempts, queueName, event.getClass().getName(), listenerName, e);
+            queueManager.schedule(queueName,
+                () -> invokeInQueue(listener, event, listenerName, queueName, attempt + 1),
+                queueManager.getRetryDelayMs());
+        }
+    }
+
+    /**
+     * 执行单个监听器，支持自动重试（同步分发路径）。
      * <p>
      * 若监听器抛出异常，按 {@link QueueManager#getRetryMaxAttempts()} 配置的重试次数自动重试，
-     * 重试间隔由 {@link QueueManager#getRetryDelayMs()} 配置。重试通过 {@link Thread#sleep} 实现，
-     * 在队列线程池的工作线程中阻塞等待，不影响其它队列。所有重试耗尽后仅记录错误日志。
+     * 重试间隔由 {@link QueueManager#getRetryDelayMs()} 配置。同步分发时重试等待发生在
+     * 当前线程上（调用方即请求线程），与 Laravel 的同步事件重试语义一致。
+     * 所有重试耗尽后仅记录错误日志。
      * <p>
      * 线程安全：本方法无共享可变状态，{@code listener} 与 {@code event} 由调用方保证可见性
      * （通过线程池提交时的 happens-before 关系）。

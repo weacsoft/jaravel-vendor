@@ -43,7 +43,7 @@ import javax.sql.DataSource;
  *       {@link RedisQueueAutoConfiguration} 注册，先于本类处理，仅显式 {@code driver=redis} 时启用）</li>
  * </ul>
  * 不再存在「redis 不可用回退 database」逻辑：redis 与 database 各自独立按需装配，
- * sync 始终作为无驱动时的内存兜底。
+ * sync 始终作为无驱动时的内存回退。
  * <p>
  * <b>sync 模式</b>：当 {@code driver=sync}（默认）时，不创建任何 QueueDriver Bean，
  * EventDispatcher 自动降级为内存队列（{@link com.weacsoft.jaravel.vendor.event.QueueManager}），
@@ -84,7 +84,7 @@ public class QueueDatabaseAutoConfiguration {
     /**
      * 队列全局配置 Bean，绑定 {@code jaravel.queue.*} 配置。
      * <p>
-     * P3 起 {@link QueueProperties} 为纯 POJO（保留在 core，FQCN 稳定，
+     *  {@link QueueProperties} 为纯 POJO（保留在 core，FQCN 稳定，
      * publish 模板代码引用不受影响），经此 {@code @Bean @ConfigurationProperties} 完成绑定，
      * 字段与默认值与 P3 前 {@code @EnableConfigurationProperties} 方式完全一致。
      *
@@ -160,7 +160,7 @@ public class QueueDatabaseAutoConfiguration {
 
     /**
      * 队列驱动注册器扫描触发：所有单例初始化完成后执行 {@code @RegisterQueueDriver}
-     * 扫描（P3 起扫描与 Spring 生命周期解耦，由宿主按原有时序显式触发，语义不变）。
+     * 扫描（扫描与 Spring 生命周期解耦，由宿主按原有时序显式触发，语义不变）。
      */
     @Bean
     public SmartInitializingSingleton queueDriverRegistrarScanner(QueueDriverRegistrar registrar) {

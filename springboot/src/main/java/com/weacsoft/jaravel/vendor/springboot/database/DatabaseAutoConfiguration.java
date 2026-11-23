@@ -17,14 +17,14 @@ import com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry;
 /**
  * 数据库模块核心自动装配（不依赖 auth）。
  * <p>
- * 只要引入 {@code database} 模块即生效（D2 起装配位于 springboot 模块，database 模块零 Spring），负责注册：
+ * 只要引入 {@code database} 模块即生效（装配位于 springboot 模块，database 模块零 Spring），负责注册：
  * <ul>
  *   <li>{@code @RegisterConnection} 扫描器（{@link ConnectionRegistrar}，纯类 + SmartInitializingSingleton 触发）</li>
  *   <li>默认连接的惰性委托数据源 {@link JaravelDataSource}（暴露为 {@link javax.sql.DataSource}）</li>
  *   <li>可发布配置 {@link com.weacsoft.jaravel.vendor.database.autoconfigure.DatabasePublishableConfig}（{@code vendor:publish --tag=database}，模板类留 database 模块）</li>
  *   <li>{@code ModelShadow} 修复器（{@link ModelShadowPatcher}）</li>
  *   <li>{@link BaseModelDataSourceBindingPostProcessor}——为所有 {@code BaseModel} Bean 自动绑定
- *       {@code GaarasonDataSource}（承接 D2 前 BaseModel 字段上的 {@code @Autowired @Lazy} 注入语义）</li>
+ *       {@code GaarasonDataSource}（承接 此前 BaseModel 字段上的 {@code @Autowired @Lazy} 注入语义）</li>
  * </ul>
  * <p>
  * <b>不再依赖 auth 模块</b>：auth 的 {@code EloquentUserProviderDriver} 由
@@ -33,7 +33,7 @@ import com.weacsoft.jaravel.vendor.core.publish.PublishableRegistry;
 @AutoConfiguration
 // 类级守卫（必须写在类上，不能只写方法上）：database 是 optional 依赖，本类的方法签名用到
 // ConnectionRegistrar / JaravelDataSource，静态块还 new DatabasePublishableConfig()。
-// 只加方法级 @ConditionalOnClass 保护不了「声明类自身的加载」——实测缺 database 时启动报
+// 只加方法级 @ConditionalOnClass 保护不了「声明类自身的加载」——经验证，缺 database 时启动报
 // ClassNotFoundException: com.weacsoft.jaravel.vendor.database.autoconfigure.ConnectionRegistrar。
 // FQCN 字符串形式不会触发类加载，条件不满足时本类根本不会被加载。
 @ConditionalOnClass(name = "com.weacsoft.jaravel.vendor.database.JaravelDataSource")
@@ -43,7 +43,7 @@ public class DatabaseAutoConfiguration {
     }
 
     /**
-     * 注册 {@code @RegisterConnection} 扫描器（D2/P3：core 纯扫描器，
+     * 注册 {@code @RegisterConnection} 扫描器（core 纯扫描器，
      * 扫描时机由下方 SmartInitializingSingleton 触发，保持原「所有单例就绪后扫描」时序）。
      */
     @Bean
@@ -97,7 +97,7 @@ public class DatabaseAutoConfiguration {
      * BaseModel 数据源绑定后处理器：把所有 {@code BaseModel} Bean 的
      * {@code GaarasonDataSource} 字段绑定为容器的 {@code GaarasonDataSource} Bean。
      * <p>
-     * 承接 D2 前 {@code BaseModel} 字段上的 {@code @Autowired @Lazy} 注入：
+     * 承接 此前 {@code BaseModel} 字段上的 {@code @Autowired @Lazy} 注入：
      * 字段本身保持纯 Java（setter 注入），Spring 注入机制收敛到本装配侧，
      * 容器中没有 {@code GaarasonDataSource} Bean 时跳过（与字段回退逻辑一致：
      * {@code getGaarasonDataSource()} 仍会按别名/默认连接经 {@code ConnectionManager} 解析）。

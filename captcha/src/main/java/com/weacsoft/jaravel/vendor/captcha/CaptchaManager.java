@@ -253,7 +253,7 @@ public class CaptchaManager {
         }
         int idx = key.indexOf('.');
         if (idx <= 0 || idx == key.length() - 1) {
-            // 语义护栏（审计 M17），但**必须区分两条路径**（验收专家复现：护栏放在共享入口会让
+            // 语义护栏，但**必须区分两条路径**（护栏放在共享入口会导致
             // 攻击者可控的 2 参路径抛异常 → 未捕获即 HTTP 500，属可用性缺陷）：
             //   - 3/4 参重载（额外参数非空）出现「首参是类型名」= 调用方把参数顺序写反（旧 README 写法）
             //     → 抛 IllegalArgumentException（程序员错误，应当大声）；
@@ -288,7 +288,7 @@ public class CaptchaManager {
             new java.util.concurrent.atomic.AtomicBoolean(false);
 
     /**
-     * 2 参公开路径收到「裸类型名」时告警一次（审计 M17 / 验收专家复现）。
+     * 2 参公开路径收到「裸类型名」时告警一次。
      * <p>
      * 该输入可能来自攻击者（伪造 captchaKey），因此<b>不能抛异常</b>（会变成 500）；
      * 但也必须留痕，否则「参数顺序写反」会重新变成静默失败。

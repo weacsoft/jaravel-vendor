@@ -10,9 +10,9 @@ package com.weacsoft.jaravel.vendor.jwt;
  * 需配合 cache 模块使用。宽限期功能需要黑名单开启才能工作（因为宽限期结束后需要将旧 token
  * 加入黑名单以防止重复使用）。
  * <p>
- * <b>密钥兜底</b>：当 {@link #secret} 仍为出厂默认值 {@link #DEFAULT_SECRET} 时，
+ * <b>密钥回退</b>：当 {@link #secret} 仍为出厂默认值 {@link #DEFAULT_SECRET} 时，
  * {@code JwtAutoConfiguration} 会自动回退到 core 模块的全局应用密钥
- * （application 配置项 {@code jaravel.key}），遵循「模块自身配置优先 → core 全局密钥兜底」。
+ * （application 配置项 {@code jaravel.key}），遵循「模块自身配置优先 → core 全局密钥回退」。
  */
 public class JwtConfig {
 

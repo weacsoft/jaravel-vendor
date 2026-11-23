@@ -20,7 +20,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * 受信任代理（审计 S3）回归测试：转发头<b>只在直连来源已被声明为受信任代理时</b>才采信。
+ * 受信任代理回归测试：转发头<b>只在直连来源已被声明为受信任代理时</b>才采信。
  * <p>
  * 旧实现无条件读取 {@code X-Forwarded-For} 并取最左侧值 —— 客户端自己塞一个
  * {@code X-Forwarded-For: 1.2.3.4} 就能冒充来源 IP（限流/审计/白名单全部失真），
@@ -34,10 +34,10 @@ class TrustedProxyResolutionTest {
     @BeforeEach
     @AfterEach
     void resetGlobalMatcher() throws Exception {
-        // 全局匹配器是进程级状态：每个用例前后都清空，避免用例间互相影响
-        Field field = TrustProxies.class.getDeclaredField("globalMatcher");
+        // 已发布的匹配器是进程级状态：每个用例前后都清空，避免用例间互相影响
+        Field field = TrustProxies.class.getDeclaredField("PUBLISHED_MATCHERS");
         field.setAccessible(true);
-        field.set(null, null);
+        ((Map<?, ?>) field.get(null)).clear();
     }
 
     private static Request request(String remoteAddr, Map<String, String> headers) {

@@ -35,7 +35,7 @@ import java.util.Map;
  * </ul>
  *
  * <h3>多配置</h3>
- * 支持多小程序命名配置（声明 {@code @RegisterWechatMiniApp} &gt; yml &gt; 兜底默认）；
+ * 支持多小程序命名配置（声明 {@code @RegisterWechatMiniApp} &gt; yml &gt; 回退默认）；
  * 配置名也支持直接用 appId 定位（{@link WechatProperties#getMiniApp}）。
  *
  * <h3>线程安全</h3>

@@ -79,7 +79,7 @@ public class MakeModelFromMigrationCommand extends ArtisanCommand {
 
         Map<String, ParsedTable> tables = parser.parseAll(migrationDir);
 
-        // 解析失败必须可见且影响退出码（审计 M19）：旧实现静默跳过失败迁移，
+        // 解析失败必须可见且影响退出码：旧实现静默跳过失败迁移，
         // 调用方拿到「缺表」的结果却仍看到命令成功。这里打印失败清单并返回非 0。
         List<String> parseFailures = parser.lastFailures();
         if (!parseFailures.isEmpty()) {

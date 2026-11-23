@@ -121,7 +121,7 @@ public class ArtisanAutoConfiguration {
      * {@code key:generate} 命令：生成 Base64 全局应用密钥并写入 application 配置。
      * <p>
      * 生成的密钥对应 core 模块的 {@code jaravel.key}，是 captcha / jwt / cookies
-     * 等模块的兜底主密钥。
+     * 等模块的回退主密钥。
      */
     @RegisterCommand("生成应用密钥")
     public KeyGenerateCommand keyGenerateCommand(MakeCodeProperties properties) {

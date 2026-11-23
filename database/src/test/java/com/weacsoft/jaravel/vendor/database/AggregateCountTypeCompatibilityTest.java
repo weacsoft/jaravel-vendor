@@ -56,7 +56,7 @@ class AggregateCountTypeCompatibilityTest {
     /**
      * 核心回归：{@code Integer} 形态的 COUNT 结果<b>不得</b>再抛 {@code ClassCastException}。
      * <p>
-     * 这是 #64 在 SQLite 下的真实返回类型，也是 7.0.15 的崩溃点。
+     * 这是 #64 在 SQLite 下的真实返回类型，也是 7.0.15 的异常点。
      */
     @Test
     void integerCountResultIsAccepted() {
@@ -73,7 +73,7 @@ class AggregateCountTypeCompatibilityTest {
         assertEquals(42L, stubReturning(42L).count("*"));
     }
 
-    /** {@code BigInteger} 形态（部分驱动/大表）不得崩。 */
+    /** {@code BigInteger} 形态（部分驱动/大表）不得抛出异常。 */
     @Test
     void bigIntegerCountResultIsAccepted() {
         assertEquals(42L, stubReturning(BigInteger.valueOf(42L)).count("*"));

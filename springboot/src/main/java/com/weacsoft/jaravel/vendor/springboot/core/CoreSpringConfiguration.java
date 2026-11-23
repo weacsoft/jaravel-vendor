@@ -11,7 +11,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 
 /**
- * jaravel 核心装配（P3 起为 Spring 宿主与零 Spring core 的唯一桥）。
+ * jaravel 核心装配（为 Spring 宿主与零 Spring core 的唯一桥）。
  * <p>
  * <h3>职责</h3>
  * <ul>

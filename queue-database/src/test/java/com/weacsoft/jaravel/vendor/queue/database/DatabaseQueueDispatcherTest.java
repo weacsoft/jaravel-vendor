@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * {@link DatabaseQueueDispatcher} 任务分发单元测试（使用伪造驱动，不依赖真实数据库）。
  * <p>
- * D3 起监听器 bean 解析经 {@link BeanLookup} SPI（零 Spring），测试用空 Map 版适配器。
+ * 监听器 bean 解析经 {@link BeanLookup} SPI（零 Spring），测试用空 Map 版适配器。
  */
 class DatabaseQueueDispatcherTest {
 

@@ -35,7 +35,7 @@ public class CacheTableCommand extends ArtisanCommand {
 
     /**
      * @param table      缓存表名
-     * @param makeProps  artisan 代码生成配置（决定迁移文件落盘目录与包名，可为 null）
+     * @param makeProps  artisan 代码生成配置（决定迁移文件写入目录与包名，可为 null）
      */
     public CacheTableCommand(String table, MakeCodeProperties makeProps) {
         this.table = (table == null || table.isEmpty()) ? "jaravel_cache" : table;

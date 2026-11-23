@@ -235,7 +235,7 @@ public class HotPluginManager implements Application.HotPluginManagerRef {
      * 从字节数组注册插件（内存插件，不持久化）。
      * <p>
      * 将字节数组写入临时文件后加载，{@code persisted=false}，重启后丢失。
-     * 适合从数据库、网络等获取 JAR 二进制数据后直接热加载，无需落盘到插件目录。
+     * 适合从数据库、网络等获取 JAR 二进制数据后直接热加载，无需写入到插件目录。
      *
      * @param jarBytes JAR 字节数组
      * @param pluginId 插件 ID（为空时自动生成）
@@ -407,6 +407,9 @@ public class HotPluginManager implements Application.HotPluginManagerRef {
                 return true;
             } catch (Exception e) {
                 log.error("启用插件失败: {}", pluginId, e);
+                // 回滚：注销已注册的路由与 Bean、关闭插件 ClassLoader，
+                // 否则失败插件会残留 Bean 与路由引用，并持有 ClassLoader 导致内存泄漏
+                rollbackEnable(pluginId, info);
                 info.setErrorMessage(e.getMessage());
                 info.setState(PluginInfo.State.DISABLED);
                 return false;
@@ -1086,6 +1089,41 @@ public class HotPluginManager implements Application.HotPluginManagerRef {
             fileName = fileName.substring(0, fileName.length() - 4);
         }
         return fileName;
+    }
+
+    /**
+     * 回滚插件启用过程中已产生的副作用。
+     * <p>
+     * 启用失败时按与 {@link #disablePlugin(String)} 相反的顺序撤销：注销路由、注销 Bean、
+     * 关闭并移除插件 ClassLoader。任一步骤的异常仅记录日志，不影响其余清理步骤，
+     * 避免单项失败导致残留 Bean 与 ClassLoader 泄漏。
+     *
+     * @param pluginId 插件 ID
+     * @param info     插件元数据
+     */
+    private void rollbackEnable(String pluginId, PluginInfo info) {
+        try {
+            routeRegistrar.unregisterRoutes(pluginId);
+        } catch (Exception e) {
+            log.error("回滚插件路由失败: {}", pluginId, e);
+        }
+        try {
+            Set<String> beanNames = info.getRegisteredBeanNames();
+            if (beanNames != null && !beanNames.isEmpty()) {
+                beanRegistrar.unregisterBeans(beanNames);
+                beanNames.clear();
+            }
+        } catch (Exception e) {
+            log.error("回滚插件 Bean 失败: {}", pluginId, e);
+        }
+        try {
+            PluginClassLoader cl = pluginClassLoaders.remove(pluginId);
+            if (cl != null) {
+                cl.close();
+            }
+        } catch (Exception e) {
+            log.error("回滚插件 ClassLoader 失败: {}", pluginId, e);
+        }
     }
 
     /**

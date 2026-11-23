@@ -2,8 +2,8 @@ package com.weacsoft.jaravel.vendor.core.config;
 
 import com.weacsoft.jaravel.vendor.core.support.Arr;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 /**
@@ -21,9 +21,9 @@ public class ConfigRepository {
 
     private final Function<String, Object> external;
     /** 运行时覆盖配置，优先级最高 */
-    private final Map<String, Object> overrides = new LinkedHashMap<>();
+    private final Map<String, Object> overrides = new ConcurrentHashMap<>();
     /** 代码级配置，按命名空间组织，如 {"app": {...}, "database": {...}}，优先级高于外部配置 */
-    private final Map<String, Object> codeConfig = new LinkedHashMap<>();
+    private final Map<String, Object> codeConfig = new ConcurrentHashMap<>();
 
     /**
      * @param external 宿主外部配置取值器（key -> value，缺失返回 null）；

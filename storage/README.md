@@ -12,7 +12,7 @@
 - **驱动 SPI**：实现 `FilesystemDriver` 并注册为 Bean 即自动接入，可扩展 S3/OSS/FTP
 - **流式 IO**：`putStream` / `readStream` / `writeTo` 内存占用恒定，支持任意大小文件
 - **路径穿越防护**：所有路径规范化后校验，`../` 逃逸根目录直接抛异常
-- **开箱即用**：不做任何配置也会兜底注册 `local` 磁盘（根目录 `storage/app`）
+- **开箱即用**：不做任何配置也会回退注册 `local` 磁盘（根目录 `storage/app`）
 
 ## 引入
 
@@ -71,7 +71,7 @@ jaravel:
 - `binary: true`（默认）：内容以二进制写入该列（`LONGBLOB`），适合支持二进制列的关系型数据库。
 - `binary: false`：内容以 base64 编码写入该列（`LONGTEXT`），以兼容不支持二进制列的数据库。
 
-> 不再区分 `content_binary` / `content_text` 双列，**无论二进制还是文本都使用同一列**。
+> **无论二进制还是文本都使用同一列**。
 > 切换 `binary` 开关后，新文件按新方式写入；如需兼容旧数据，请统一开关再执行迁移脚本重建表。
 
 **自定义列名示例**：
@@ -138,19 +138,19 @@ public class StorageConfig {
 }
 ```
 
-**注册优先级**：驱动收集 → 配置式磁盘 → `@RegisterDisk`（覆盖同名）→ 兜底 `local`。
+**注册优先级**：驱动收集 → 配置式磁盘 → `@RegisterDisk`（覆盖同名）→ 回退 `local`。
 
 ### 驱动按需装配（安装 ≠ 启用，用上了才注册）
 
 两个磁盘驱动均由 **springboot 模块**（`vendor.springboot.storage` 包）的 `StorageAutoConfiguration`
-装配，且通过 core 的 `OnDriverInUseCondition` 判定，**不写配置不进内存**：
+装配，且通过 core 的 `OnDriverInUseCondition` 判定，**未配置则不装配**：
 
 - `LocalFilesystemDriver`：受 `@Conditional(OnLocalDiskDriverCondition.class)` 约束。当任一
-  `jaravel.storage.disks.*.driver` 取值为 `local` / `public`，**或用户写了 disks 但没写 driver（兜底回退到 `local`）**，
-  或完全没写任何 disk 配置（模块自动兜底注册 `local` 默认磁盘）时装配。`local` 是 storage 的**兜底默认驱动**，
-  因此本条件调用 `matchIfAbsent()` 认缺省。
+  `jaravel.storage.disks.*.driver` 取值为 `local` / `public`，**或用户配置了 disks 但未配置 driver（回退到 `local`）**，
+  或完全未配置任何 disk（模块自动回退注册 `local` 默认磁盘）时装配。`local` 是 storage 的**回退默认驱动**，
+  因此本条件调用 `matchIfAbsent()` 匹配缺省。
 - `DatabaseFilesystemDriver`：受 `@Conditional(OnDatabaseDiskDriverCondition.class)` 约束，仅当
-  任一 `jaravel.storage.disks.*.driver` 显式取值为 `database` 时装配。**`database` 不在兜底**，
+  任一 `jaravel.storage.disks.*.driver` 显式取值为 `database` 时装配。**`database` 不作为回退**，
   用户未显式选用时完全不创建，不连数据库。
 
 `StorageAutoConfiguration` 整体仍受 `jaravel.storage.enabled`（默认 true）开关控制（功能型模块），
@@ -186,6 +186,10 @@ try (InputStream in = request.file("video").getInputStream()) {
 
 // 流式下载
 Storage.disk("uploads").writeTo("videos/a.mp4", response.getOutputStream());
+
+// HTTP 集成：直接返回 Response，文件内容以流式写出，不整体载入内存
+Response attachment = Storage.download("uploads", "videos/a.mp4");   // 附件下载
+Response preview   = Storage.response("uploads", "videos/a.mp4");    // 内联预览（按 MIME）
 
 // 目录
 for (FileInfo f : Storage.files("avatars")) {
@@ -303,6 +307,8 @@ public class S3FilesystemDriver implements FilesystemDriver {
   `visibility()` 返回磁盘配置的默认值。
 - **`local` 与 `public` 是同一驱动**：`public` 只是语义别名，
   区别在于是否配置了 `url` 前缀与 `visibility: public`。
+- **大文件按流处理**：`download()` 与 `response()` 返回流式响应，读取与写出按块进行，
+  内存占用与文件大小无关；需要整体读入内存时才使用 `read()`。
 
 ## 与 aether-upload 集成
 
@@ -320,7 +326,7 @@ jaravel:
   aether-upload:
     groups:
       file:
-        disk: media       # 落盘到 media 磁盘
+        disk: media       # 写入 media 磁盘
         save-dir: uploads # 此时为磁盘内的相对子目录
 ```
 

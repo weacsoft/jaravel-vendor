@@ -23,7 +23,7 @@ import java.util.stream.Collectors;
  * 动态 Java 编译器。
  * <p>
  * 使用 JDK 内置的 {@link javax.tools.JavaCompiler}（通过 {@link ToolProvider#getSystemJavaCompiler()} 获取），
- * 将 .java 源文件编译为内存中的字节码，无需落盘。
+ * 将 .java 源文件编译为内存中的字节码，无需写入。
  * <p>
  * 编译过程：
  * <ol>

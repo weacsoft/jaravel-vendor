@@ -19,7 +19,7 @@ import java.util.jar.JarInputStream;
  * 提供一站式「jar → 加载 → 反射调用」能力。
  * <ul>
  *   <li>{@code inMemory=true}（默认）：从 byte[] 加载，使用 {@link InMemoryJarClassLoader}
- *       （JarInputStream + ByteArrayInputStream），不落盘</li>
+ *       （JarInputStream + ByteArrayInputStream），不写入</li>
  *   <li>{@code inMemory=false}：从文件路径加载，使用 {@link URLClassLoader}，
  *       保留传统的文件方式</li>
  * </ul>
@@ -42,7 +42,7 @@ public final class JarBytesExecutor {
     // ==================== 纯内存加载入口 ====================
 
     /**
-     * 从内存中的 jar 字节数组加载并执行指定方法（纯内存，不落盘）。
+     * 从内存中的 jar 字节数组加载并执行指定方法（纯内存，不写入）。
      *
      * @param jarBytes  jar 文件的字节数组
      * @param mainClass 要调用的主类全限定名
@@ -229,7 +229,7 @@ public final class JarBytesExecutor {
      * 内存 Jar ClassLoader。
      * <p>
      * 从 jar 字节数组中读取所有 .class entry，存入内存 Map（类全限定名 -> byte[]），
-     * {@link #findClass(String)} 时从内存 Map 中 defineClass，不落盘。
+     * {@link #findClass(String)} 时从内存 Map 中 defineClass，不写入。
      * <p>
      * 继承 ClassLoader（非 URLClassLoader），避免对文件 URL 的依赖。
      */
@@ -267,7 +267,8 @@ public final class JarBytesExecutor {
 
         @Override
         public void close() throws IOException {
-            // ClassLoader 无需显式关闭资源
+            // 释放仍被持有的 class 字节，避免 ClassLoader 实例存活期间内存不降
+            classBytes.clear();
         }
 
         private static byte[] readAllBytes(JarInputStream jis) throws IOException {

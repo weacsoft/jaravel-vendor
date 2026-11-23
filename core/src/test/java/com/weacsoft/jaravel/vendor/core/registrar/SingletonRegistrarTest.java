@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * {@link SingletonRegistrar} 单元测试（零 Spring）：验证「注册式但只允许一个」的语义。
  * <p>
- * P3 起扫描经 {@code GlobalLookup} 安装的 {@link GlobalBeanProvider} 驱动，
+ * 扫描经 {@code GlobalLookup} 安装的 {@link GlobalBeanProvider} 驱动，
  * 本测试安装一个 Map 版实现，注解方法直接写在普通类上（无 @Bean）。
  * <p>
  * 覆盖：单个注册、重复注册报错、override 覆盖、多个 override 报错、无注册回退默认。

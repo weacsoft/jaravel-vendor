@@ -58,7 +58,7 @@ public record DiskDefinition(String driver, Map<String, Object> config) {
     public static final String VISIBILITY = "visibility";
 
     /**
-     * 紧凑构造器：对配置 Map 做防御性拷贝，保证不可变。
+     * 紧凑构造器：对配置 Map 做副本拷贝，保证不可变。
      */
     public DiskDefinition {
         config = config == null ? Map.of() : Map.copyOf(config);

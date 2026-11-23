@@ -291,7 +291,7 @@ public class VendorPublishCommand extends ArtisanCommand {
      * 发布模块内置迁移文件（{@link PublishableMigration}）到业务工程迁移源代码目录：
      * 从模块 jar 读取 Java 源文件 → 把 {@code package} 声明重写为工程迁移包
      * （{@code MakeCodeProperties#getMigrationPackage}，与目标目录
-     * {@code getMigrationSourceDir()} 严格对应，保证发布后直接可编译）→ 落盘。
+     * {@code getMigrationSourceDir()} 严格对应，保证发布后直接可编译）→ 写入。
      */
     private void publishMigration(PublishableMigration item, boolean force, Counters c) {
         Path migrationDir = resolveMigrationDir();

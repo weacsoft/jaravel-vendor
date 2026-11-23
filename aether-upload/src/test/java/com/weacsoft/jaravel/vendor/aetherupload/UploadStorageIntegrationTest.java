@@ -104,7 +104,7 @@ class UploadStorageIntegrationTest {
         assertTrue(result.completed);
 
         Path saved = Path.of(result.savedPath);
-        assertTrue(saved.startsWith(diskRoot), "落盘路径应在磁盘根目录内: " + saved);
+        assertTrue(saved.startsWith(diskRoot), "写入路径应在磁盘根目录内: " + saved);
         assertTrue(Files.exists(saved));
         assertArrayEquals(content, readAll(saved));
 
@@ -114,7 +114,7 @@ class UploadStorageIntegrationTest {
     }
 
     @Test
-    @DisplayName("落盘后临时分片文件被清理")
+    @DisplayName("写入后临时分片文件被清理")
     void tempFileRemovedAfterCompletion() {
         storage.registerDisk("media", DiskDefinition.local(tempRoot.resolve("d2").toString()));
         AetherUploadManager manager = manager("media");

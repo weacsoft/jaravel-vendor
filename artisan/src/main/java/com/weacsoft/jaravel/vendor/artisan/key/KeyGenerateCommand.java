@@ -15,7 +15,7 @@ import java.util.List;
 /**
  * {@code key:generate} 命令，对齐 Laravel 的 {@code php artisan key:generate}。
  * <p>
- * 生成一把 Base64 编码的随机应用密钥，并写入 application 配置的 {@code jaravel.key}。
+ * 生成一个 Base64 编码的随机应用密钥，并写入 application 配置的 {@code jaravel.key}。
  * 该密钥是框架的全局主密钥：captcha / jwt / http-cookies 等模块在未单独配置
  * 专用密钥时，统一回退到它（见
  * {@link com.weacsoft.jaravel.vendor.core.crypto.AppKey#resolve(String, String)}）。

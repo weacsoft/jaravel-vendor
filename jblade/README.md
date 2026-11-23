@@ -2,7 +2,7 @@
 
 > Jaravel-Vendor 的模板引擎模块，提供 Laravel Blade 风格的模板编译与渲染。支持 `{{ }}` 输出、`@if/@foreach/@for/@while` 控制结构、`@extends/@section/@yield` 模板继承、`@component` 组件等特性，通过内存编译（`MemoryClassLoader`）将模板编译为 Java 类后执行。支持预编译模式：开发阶段将模板预编译为字节码（打包文件或散乱 class），生产环境仅需 JRE 即可运行。包名统一为 `com.weacsoft.jaravel.vendor.jblade`。
 >
-> **零 Spring 依赖（P2-J）**：模板引擎内核不依赖 Spring。`ViewAutoConfiguration` / `JbladeArtisanAutoConfiguration` / `@RegisterView` / `ViewRegistrar` 等装配类位于 **`springboot`** 模块（`vendor.springboot.jblade` 包）；`BladeDirectiveRegistrar` 与开箱即用模板函数注册（`csrf_token()/route()/url()`）位于 `springboot` 根包的 `BladeIntegrationConfiguration`（`@ConditionalOnClass(BladeFunctions)`，无 jblade 时不加载任何 Blade 类）。
+> **零 Spring 依赖**：模板引擎内核不依赖 Spring。`ViewAutoConfiguration` / `JbladeArtisanAutoConfiguration` / `@RegisterView` / `ViewRegistrar` 等装配类位于 **`springboot`** 模块（`vendor.springboot.jblade` 包）；`BladeDirectiveRegistrar` 与开箱即用模板函数注册（`csrf_token()/route()/url()`）位于 `springboot` 根包的 `BladeIntegrationConfiguration`（`@ConditionalOnClass(BladeFunctions)`，无 jblade 时不加载任何 Blade 类）。
 
 ---
 
@@ -61,7 +61,7 @@
 - **一级缓存（内存）**：`ConcurrentHashMap` 缓存编译后的 `Class<?>` 对象，进程内有效，始终启用。这是主缓存，解决"每用一次就编译一次"的核心问题。
 - **二级缓存（可选）**：通过 cache 模块的 `CacheStore`（实例接口）缓存编译后的字节码（`byte[]`），支持跨进程/跨实例共享（如 Redis）。引入 cache 模块后自动启用，未引入时仅使用一级缓存。
 
-> 关键修复：早期版本每次 `render()` 都会调用 `compiler.compile()`（含 JavaC 编译），现在仅在一二级缓存均未命中时才编译。详见 [4.1 模板缓存机制](#41-模板缓存机制)。
+> 仅在一二级缓存均未命中时才执行 `compiler.compile()`（含 JavaC 编译）。详见 [4.1 模板缓存机制](#41-模板缓存机制)。
 
 ### 工作原理
 
@@ -142,7 +142,7 @@ com.weacsoft.jaravel.vendor
 
 为保证「用 database 不必依赖模板引擎」，`jblade` **仅作为 `core` 标准层的实现方**，而非契约提供方：
 
-- `core.view.Htmlable` / `core.view.HtmlString`：免转义 HTML 值对象契约（`jblade` 不再重复定义）。
+- `core.view.Htmlable` / `core.view.HtmlString`：免转义 HTML 值对象契约（`jblade` 不重复定义）。
 - `core.view.View`：视图渲染标准接口（`render` / `exists` / `name`）。**`BladeView` 实现的是 `core.view.View`**，框架（如 `Paginator.links()`）只依赖该标准接口，不依赖 `jblade`。
 - `core.view.ViewManager`：视图管理者标准接口；`jblade.view.ViewManager` 实现它。
 - `core.pagination.Paginator`：Laravel 风格分页器（标准层，不依赖 `jblade`）。
@@ -176,16 +176,13 @@ com.weacsoft.jaravel.vendor
 | --- | --- |
 | `String render(String templateName, Map<String, Object> variables)` | 渲染模板，注入变量，返回 HTML 字符串 |
 | `String render(String templateName)` | 渲染模板（无变量） |
-| `BladeTemplate loadTemplate(String templateName)` | 加载（编译 + 缓存）模板，返回 `BladeTemplate` 实例。内部按"查一级 → 查二级 → 编译 → 回填缓存"流程执行。**预编译模式**下优先从已加载字节码获取 `Class`，无需运行时编译 |
-| `int preheatTemplates()` | **预热**：扫描并编译缓存全部模板，返回成功数量。避免首次访问某页面时现场 javac 编译造成卡顿。由调用方主动触发（`ViewFacade.preheat()` 或在模板里 `{{ View::preheat() }}`），框架不会自动执行 |
-| `void clearCache()` | 清除所有缓存：一级缓存 + 二级缓存（按 key 逐个 `forget`，不调用 `flush()`）+ 模板实例缓存 |
-| `void clearTemplate(String templateName)` | 清除指定模板的所有缓存（一级 Class + 二级 CacheStore + 实例），不影响其他模板 |
-| `void clearTemplateInstanceCache()` | 仅清除模板实例缓存 |
+| `BladeTemplate loadTemplate(String templateName)` | 加载（编译 + 缓存）模板，返回**新建的** `BladeTemplate` 实例。内部按"查一级 → 查二级 → 编译 → 回填缓存"流程执行。**预编译模式**下优先从已加载字节码获取 `Class`，无需运行时编译。实例不跨请求共享，编译产物 `Class` 由一级缓存共享 |
+| `int preheatTemplates()` | **预热**：扫描并编译缓存全部模板，返回成功数量。避免首次渲染时临时编译造成延迟。由调用方主动触发（`ViewFacade.preheat()` 或在模板里 `{{ View::preheat() }}`），框架不会自动执行 |
+| `void clearCache()` | 清除所有缓存：一级缓存 + 二级缓存（按 key 逐个 `forget`，不调用 `flush()`） |
 | `MemoryClassLoader getMemoryClassLoader()` | 获取内存类加载器 |
 | `CacheStore getCacheStore()` | 获取二级缓存 store（可能为 `null`） |
 | `boolean isUseCacheStore()` | 是否启用了二级缓存（`CacheStore` 非 null 时为 true） |
-| `int getTemplateInstanceCacheSize()` | 获取模板实例缓存大小 |
-| `int getClassCacheSize()` | 获取一级缓存中的模板数量（`Class<?>` 缓存大小） |
+| `int templateClassCacheSize()` | 获取内存字节码缓存中的模板数量 |
 | `String getSuffix()` | 获取模板文件后缀（默认 `.blade.java`） |
 
 ### 渲染流程
@@ -200,7 +197,7 @@ loadTemplate(templateName)
         ├── 2. 查二级缓存（CacheStore）—— 命中则加载字节码到 MemoryClassLoader
         ├── 3. 缓存未命中 → compiler.compile()  -- 编译模板，返回类全名
         ├── 4. 编译后字节码写入二级缓存、Class 写入一级缓存
-        └── 5. 从实例缓存或反射创建 BladeTemplate 实例
+        └── 5. 基于该 Class 反射创建**新的** BladeTemplate 实例（实例不跨请求共享）
         │
         ▼
 template.resetContext()  -- 重置上下文
@@ -255,7 +252,7 @@ engine.clearCache();
 
 ### 4.1 模板缓存机制
 
-`BladeEngine` 采用两级缓存机制，避免每次渲染都重新编译模板（`BladeCompiler.compile()` 含 JavaC 编译，开销较大）。早期版本存在"每次 `render()` 都调用 `compile()`"的缺陷，现已修复：仅在一二级缓存均未命中时才编译。
+`BladeEngine` 采用两级缓存机制，避免每次渲染都重新编译模板（`BladeCompiler.compile()` 含 JavaC 编译，开销较大）：仅在一二级缓存均未命中时才编译。
 
 #### 一级缓存（内存，始终启用）
 
@@ -297,7 +294,7 @@ loadTemplate(templateName)
 6. Class 写入一级缓存 <─────────────────────────┘
         │
         ▼
-7. 从实例缓存或反射创建 BladeTemplate 实例并返回
+7. 基于该 Class 反射创建**新的** BladeTemplate 实例并返回（实例不跨请求共享）
 ```
 
 > **降级策略**：二级缓存的读/写失败均会被捕获并降级（读失败重新编译，写失败不影响功能），确保缓存异常不会阻断渲染流程。
@@ -308,11 +305,9 @@ loadTemplate(templateName)
 
 1. **一级缓存**：`templateClassCache.clear()`
 2. **二级缓存**：遍历已缓存的模板名，逐个调用 `cacheStore.forget(key)`（**不调用 `flush()`**，避免清空其他模块的缓存）
-3. **模板实例缓存**：`templateInstanceCache` 重置并清空
+3. **类名索引**：`templateClassNameCache.clear()`
 
-仅清除模板实例缓存可使用 `clearTemplateInstanceCache()`。
-
-清除单个模板缓存可使用 `clearTemplate(templateName)`，仅影响该模板，其他已编译模板不受影响。
+模板实例不跨请求共享，因此没有实例缓存需要清理。
 
 #### CompiledTemplateData 内部类
 
@@ -352,7 +347,7 @@ loadTemplate(templateName)
 | 方法签名 | 说明 |
 | --- | --- |
 | `String compile(String templateName)` | 编译模板，返回编译后的类全名 |
-| `String compileSource(String templateName, String content)` | **新增**：直接编译模板内容（跳过文件读取），返回类全名。供 `BladePrecompiler` 预编译时使用 |
+| `String compileSource(String templateName, String content)` | 直接编译模板内容（跳过文件读取），返回类全名。供 `BladePrecompiler` 预编译时使用 |
 | `String compileExpression(String expr, Set<String> localVars)` | 编译 Blade 表达式为 Java 表达式（核心入口，按步骤依次处理字符串字面量、静态方法、对象方法/属性、数组访问、拼接、运算符等） |
 | `String compileConditionExpression(String expr, Set<String> localVars)` | 编译条件表达式（`@if`/`@elseif`），布尔上下文，简单变量自动包装 `toBoolean()` |
 | `String compileOutputExpression(String expr, Set<String> localVars)` | 编译输出表达式（`{{ }}`），值上下文，不包装 `toBoolean()` |
@@ -368,11 +363,11 @@ loadTemplate(templateName)
 | `String compileTernaryOperator(String expr, Set<String> localVars)` | 将三元 `? :` 编译为 `toBoolean(cond) ? a : b` |
 | `String compileVariables(String expr, Set<String> localVars)` | 将剩余 `$var` 编译为 `ctx.getVariable("var")` 或本地变量名 |
 | `String getSuffix()` | 获取模板文件后缀（默认 `.blade.java`） |
-| `MemoryClassLoader getClassLoader()` | **新增**：获取内部类加载器，供预编译工具提取编译后的字节码 |
+| `MemoryClassLoader getClassLoader()` | 获取内部类加载器，供预编译工具提取编译后的字节码 |
 
 ### 编译流程
 
-`compile(templateName)` 方法已重构，分离文件读取与编译逻辑：
+`compile(templateName)` 方法分离文件读取与编译逻辑：
 
 ```
 compile(templateName)
@@ -874,7 +869,7 @@ public Object listUsers() {
 
 ## 11. 使用注意
 
-同一 `BladeEngine` / 同一模板实例**不应并发调用 `render()`**（渲染会重置模板上下文）；多请求共享引擎时请串行渲染或为每个请求创建独立实例。
+同一 `BladeEngine` 支持并发渲染：每次渲染都会创建独立的模板实例，模板上下文为实例私有字段，不同请求之间互不干扰。
 
 ## 12. 静态资源 URL 生成（@asset / asset）
 
@@ -1146,7 +1141,7 @@ CSRF 防护由「**中间件校验**」与「**模板输出令牌**」两部分�
 1. `jaravel-springboot` 的自动配置在启动时完成两件内置注册：
    - 向 `MiddlewareAliasRegistry` 注册别名 `"VerifyCsrfToken"`（指向 `VerifyCsrfToken.instance()`）。
    - 向 `BladeFunctions` 注册 `"csrf_token"` 函数：从当前请求 session 读取/生成令牌。
-2. 开发者在路由组上挂接该中间件即可（见 `RouteServiceProvider`）：
+2. 开发者在路由组上注册该中间件即可（见 `RouteServiceProvider`）：
    ```java
    Route.group(Map.of(Route.Group.MIDDLEWARE, new String[]{"VerifyCsrfToken"}), Web::register);
    ```
@@ -1155,13 +1150,13 @@ CSRF 防护由「**中间件校验**」与「**模板输出令牌**」两部分�
 
 `csrf_field()` / `@csrf` 的输出**严格取决于 `VerifyCsrfToken` 中间件是否应用于当前请求**：
 
-- **已挂接（启用）**：`VerifyCsrfToken.handle` 运行时会做两件事——
+- **已注册（启用）**：`VerifyCsrfToken.handle` 运行时会做两件事——
   - 给请求打上「已启用」标记（`request` 属性 `__jaravel_csrf_enabled = true`）；
   - 若 session 中尚无令牌，则生成一个写入 `HttpSession`（key = `csrf_token`），并通过 `Set-Cookie` 下发（受 `addHttpOnlyCookie` 控制）。
   
   之后模板渲染时，`csrf_token()` 依据该标记返回非空令牌，`csrf_field()` 正常输出隐藏域。表单提交时，中间件对 POST/PUT/PATCH/DELETE 校验请求中的 `_token` 与 session 令牌是否一致。
 
-- **未挂接（未启用）**：`handle` 不会被调用，请求上**没有**「已启用」标记，`csrf_token()` 返回空串，此时 `csrf_field()` / `@csrf` **返回空字符串、不输出任何 `<input>`**——等同该指令不存在。
+- **未注册（未启用）**：`handle` 不会被调用，请求上**没有**「已启用」标记，`csrf_token()` 返回空串，此时 `csrf_field()` / `@csrf` **返回空字符串、不输出任何 `<input>`**——等同该指令不存在。
 
   > 设计意图：若开发者没有在某组路由上启用 CSRF 中间件，却仍让模板输出隐藏域，既无用又易误导；因此框架选择「未启用即不输出」。
 
@@ -1211,7 +1206,7 @@ jaravel:
 </form>
 ```
 
-若把该模板用于**未挂接** `VerifyCsrfToken` 的路由组，`@csrf` 渲染为空字符串，表单中不会出现隐藏域。
+若把该模板用于**未注册** `VerifyCsrfToken` 的路由组，`@csrf` 渲染为空字符串，表单中不会出现隐藏域。
 
 ### 14.2 route() 与 url()：按路由名 / 按路径生成 URL
 
@@ -1285,8 +1280,8 @@ String url5 = RouteHelper.url("/admin/login");
 
 ### 14.3 开箱即用与“零注册”保证
 
-- `csrf_token`、`csrf_field`、`@csrf`、`route`、`url` 均由框架在启动时**自动注册并自检**：若任一注册未落地，自动配置会抛出 `IllegalStateException` 使应用启动失败（而不是悄悄留下“空 value / 空路由”的不可用状态）。
-- 在请求上下文之外调用 `csrf_token()`（如离线渲染），框架记录 WARN 日志并返回空串，确保不会静默产生一个无用的空令牌。
+- `csrf_token`、`csrf_field`、`@csrf`、`route`、`url` 均由框架在启动时**自动注册并自检**：若任一注册未落地，自动配置会抛出 `IllegalStateException` 使应用启动失败（而不是留下“空 value / 空路由”的不可用状态）。
+- 在请求上下文之外调用 `csrf_token()`（如离线渲染），框架记录 WARN 日志并返回空串。
 - **开发者侧**：不需要、也不应该在应用层 `BladeEngineProvider` 或任何 Provider 中重新注册这些内置函数——它们已由框架托管。若你需要自定义函数，见第 16 节。
 
 ---
@@ -1305,7 +1300,7 @@ String url5 = RouteHelper.url("/admin/login");
 | --- | --- |
 | `BladeFunctions.register(String name, Function<Object[],Object> fn)` | 注册/覆盖一个函数。同名会被覆盖（最后注册者生效） |
 | `BladeFunctions.has(String name)` | 判断函数是否已注册 |
-| `BladeFunctions.callOrDefault(String name, Object def)` | 调用函数；未注册时返回 `def`（内置 `csrf_token()` 即走此兜底逻辑） |
+| `BladeFunctions.callOrDefault(String name, Object def)` | 调用函数；未注册时返回 `def`（内置 `csrf_token()` 即走此回退逻辑） |
 | `BladeFunctions.call(String name, Object... args)` | 调用函数（未注册会抛异常） |
 | `BladeFunctions.clear()` | 清空整个注册表（主要用于测试隔离） |
 

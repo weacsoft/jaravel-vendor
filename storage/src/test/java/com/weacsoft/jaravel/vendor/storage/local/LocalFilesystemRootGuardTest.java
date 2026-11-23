@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 路径越界防护回归（审计 L2 / L3）。
+ * 路径越界防护回归。
  * <p>
  * 修复前两个真实缺陷：
  * <ol>

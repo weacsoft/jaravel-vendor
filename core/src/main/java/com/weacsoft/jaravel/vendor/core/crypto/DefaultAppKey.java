@@ -10,9 +10,9 @@ import java.util.Base64;
  * {@link AppKey} 的默认实现。
  * <p>
  * 优先使用 application 配置中的 {@code jaravel.key}（Base64 编码的随机串）。
- * 若该配置缺失，则<b>每次启动随机生成一把密钥</b>并打印强烈告警——
+ * 若该配置缺失，则<b>每次启动随机生成一个密钥</b>并打印强烈告警——
  * 随机密钥意味着重启后旧令牌 / 旧验证码全部失效，仅可用于本地开发，
- * 生产环境务必通过 {@code artisan key:generate} 生成并写入配置。
+ * 生产环境应通过 {@code artisan key:generate} 生成并写入配置。
  */
 public class DefaultAppKey implements AppKey {
 
@@ -56,7 +56,7 @@ public class DefaultAppKey implements AppKey {
      * 生成指定字节长度随机密钥的 Base64 表示。
      * <p>
      * 供 {@code artisan key:generate} 命令复用，保证 CLI 生成的密钥
-     * 与运行时兜底生成的密钥格式完全一致。
+     * 与运行时回退生成的密钥格式完全一致。
      *
      * @param byteLength 随机字节数（建议 16 / 24 / 32）
      * @return Base64 编码的随机密钥

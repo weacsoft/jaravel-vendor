@@ -97,7 +97,7 @@ public class VerifyCsrfToken implements Middleware {
             return false;
         }
 
-        // 常量时间比较（审计 M1）：equals 短路比较会泄露「前多少位猜对了」的时序信息
+        // 常量时间比较：equals 短路比较会泄露「前多少位猜对了」的时序信息
         return java.security.MessageDigest.isEqual(
                 sessionToken.getBytes(java.nio.charset.StandardCharsets.UTF_8),
                 requestToken.getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -117,7 +117,7 @@ public class VerifyCsrfToken implements Middleware {
      * <p>
      * 旧实现还接受 {@code request.get(...)}（会合并 query string）与 Cookie ——
      * 前者让令牌可以随 URL 出现在日志/Referer/历史记录里（正是「令牌泄漏」的经典途径），
-     * 后者等于把「双提交」退化成「只要有 Cookie 就放行」，攻击者可自行设置 Cookie 绕过（审计 M1）。
+     * 后者等于把「双提交」退化成「只要有 Cookie 就放行」，攻击者可自行设置 Cookie 绕过。
      * <p>
      * 注意：这里的「请求体字段」用 {@link Request#input(String)}（body-only），
      * 不能用 {@code get(...)}（它会把 query 一并算进去）。
@@ -137,7 +137,7 @@ public class VerifyCsrfToken implements Middleware {
         }
 
         // 兼容开关：默认拒绝 query 里的令牌（令牌进 URL 会泄漏到日志/Referer/浏览器历史），
-        // 仅当子类显式开启时才接受，供老页面迁移期临时兼容（审计 M1）。
+        // 仅当子类显式开启时才接受，供老页面迁移期临时兼容。
         if (allowTokenInQuery()) {
             token = request.query(CSRF_TOKEN_INPUT_NAME);
             if (token != null && !token.isEmpty()) {
@@ -151,8 +151,8 @@ public class VerifyCsrfToken implements Middleware {
     /**
      * 是否允许从 query string 读取 CSRF 令牌。
      * <p>
-     * <b>默认 {@code false}</b>：URL 里的令牌会随日志、Referer、浏览器历史泄漏，且是审计 M1
-     * 的原始问题。老页面若把 {@code _token} 拼在 URL 上，可临时覆盖本方法返回 {@code true}，
+     * <b>默认 {@code false}</b>：URL 里的令牌会随日志、Referer、浏览器历史泄漏。
+     * 老页面若把 {@code _token} 拼在 URL 上，可临时覆盖本方法返回 {@code true}，
      * 但迁移完成后必须改回默认值。
      *
      * @return 允许则返回 true

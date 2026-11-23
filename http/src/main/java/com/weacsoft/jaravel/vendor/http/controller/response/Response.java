@@ -27,10 +27,22 @@ public interface Response {
     /**
      * 从响应头中提取 Content-Type。
      * 如果未设置，返回默认值 {@code text/plain;charset=utf-8}。
+     * <p>
+     * HTTP 头名不区分大小写，故此处按忽略大小写匹配 {@code Content-Type}。
      */
     default String getContentType() {
-        List<String> values = getHeaders().get("Content-Type");
-        return (values != null && !values.isEmpty()) ? values.get(0) : "text/plain;charset=utf-8";
+        Map<String, List<String>> headers = getHeaders();
+        if (headers != null) {
+            for (Map.Entry<String, List<String>> entry : headers.entrySet()) {
+                if (entry.getKey() != null && entry.getKey().equalsIgnoreCase("Content-Type")) {
+                    List<String> values = entry.getValue();
+                    if (values != null && !values.isEmpty()) {
+                        return values.get(0);
+                    }
+                }
+            }
+        }
+        return "text/plain;charset=utf-8";
     }
 
     /** 响应体，默认返回 getContent() */

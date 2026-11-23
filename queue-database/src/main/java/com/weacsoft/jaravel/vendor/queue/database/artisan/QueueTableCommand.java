@@ -31,7 +31,7 @@ public class QueueTableCommand extends ArtisanCommand {
 
     /**
      * @param dbProps   数据库队列配置（含任务表名）
-     * @param makeProps artisan 代码生成配置（决定迁移文件落盘目录与包名，可为 null）
+     * @param makeProps artisan 代码生成配置（决定迁移文件写入目录与包名，可为 null）
      */
     public QueueTableCommand(QueueDatabaseProperties dbProps, MakeCodeProperties makeProps) {
         this.dbProps = dbProps;

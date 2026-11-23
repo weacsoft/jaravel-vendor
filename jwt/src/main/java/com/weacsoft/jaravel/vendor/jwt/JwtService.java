@@ -91,7 +91,7 @@ public class JwtService {
     /**
      * 解析 token，返回 Claims。token 过期时抛出 {@link ExpiredJwtException}。
      * <p>
-     * 除库自带的签名与过期校验外，这里<b>额外校验签发方</b>（{@code iss}，审计 L5）：
+     * 除库自带的签名与过期校验外，这里<b>额外校验签发方</b>（{@code iss}）：
      * 签发时写入了 {@code iss}，但旧实现解析时完全不看它 —— 用同一密钥签发的<b>其它系统/租户</b>
      * 的令牌会被本系统接受。校验失败抛 {@link JwtException}，与签名失败同一处理路径。
      *
@@ -202,9 +202,9 @@ public class JwtService {
      * <p>
      * <b>本方法不做轮换</b>（语义保持不变）：现有协议只把 access token 通过
      * {@code X-New-Token} 交回客户端，<b>没有任何通道下发新的 refresh token</b> ——
-     * 若在此拉黑旧 refresh，客户端刷新一次后就再也无法刷新（功能性破坏）。需要轮换请使用
+     * 若在此移入黑名单旧 refresh，客户端刷新一次后就再也无法刷新（功能性破坏）。需要轮换请使用
      * {@link #refreshPair(String)}。已知限制：同一 refresh token 在 {@code refreshTtl} 内可被重放，
-     * 除非启用黑名单并配合 {@link #refreshPair(String)}（审计 N4）。
+     * 除非启用黑名单并配合 {@link #refreshPair(String)}。
      *
      * @param refreshToken refresh token
      * @return 新的 access token，校验失败返回 {@code null}
@@ -229,13 +229,13 @@ public class JwtService {
     }
 
     /**
-     * 用 refresh token 换取<b>令牌对</b>（新 access + 新 refresh），并**旧 refresh 用后即失效**（审计 N4）。
+     * 用 refresh token 换取<b>令牌对</b>（新 access + 新 refresh），并**旧 refresh 用后即失效**。
      * <p>
-     * 这是<b>可选的增量 API</b>：单次刷新即完成轮换，客户端拿到新的一组令牌，旧 refresh 被拉黑，
+     * 这是<b>可选的增量 API</b>：单次刷新即完成轮换，客户端拿到新的一组令牌，旧 refresh 被移入黑名单，
      * 因此被盗的 refresh token 只能使用一次。轮换依赖黑名单：
      * <ul>
      *   <li>黑名单可用（{@code blacklistEnabled=true} 且有 CacheStore）→ 真正轮换；</li>
-     *   <li>不可用 → 打一次性 WARN 并仍返回令牌对，但<b>旧 refresh 依然有效</b>（不假装已轮换）。</li>
+     *   <li>不可用 → 打一次性 WARN 并仍返回令牌对，但<b>旧 refresh 依然有效</b>（不视为已轮换）。</li>
      * </ul>
      * 新 refresh token 的交付通道（新增响应头或由业务 controller 返回）属协议决策，
      * 框架不擅自增加响应头 —— 需要时由调用方自行下发。

@@ -147,7 +147,7 @@ public class SpringBootRouteAutoConfiguration {
      * <b>为什么必须单独放一个内部配置类</b>：{@code @ConditionalOnClass} 挂在<b>方法</b>上
      * 保护不了「声明类自身能否被加载」—— 只要方法形参引用了 optional 依赖里的类型，
      * Spring 内省外层配置类的方法签名时就会抛 {@code NoClassDefFoundError}
-     * （实测：只引 {@code springboot} 而不引 {@code auth}，应用直接启动失败）。
+     * （经验证：只引 {@code springboot} 而不引 {@code auth}，应用直接启动失败）。
      * 移入独立的内部类并加类级条件后，条件不满足时这个类根本不会被加载。
      */
     @org.springframework.context.annotation.Configuration(proxyBeanMethods = false)
@@ -281,9 +281,9 @@ public class SpringBootRouteAutoConfiguration {
      * {@link MiddlewareAliasRegistry}。
      * <p>
      * 模板辅助函数（{@code csrf_token()} / {@code route()} / {@code url()}，依赖 jblade
-     * {@code BladeFunctions}）与 {@code @RegisterDirective} 指令扫描已收口到
+     * {@code BladeFunctions}）与 {@code @RegisterDirective} 指令扫描已集中到
      * {@link BladeIntegrationConfiguration}（内部配置类，{@code @ConditionalOnClass}
-     * 保护：无 jblade 的应用不加载任何 Blade 类，P2-J）。
+     * 保护：无 jblade 的应用不加载任何 Blade 类）。
      */
     void registerBuiltinMiddlewareAndHelpers(Router router) {
         MiddlewareAliasRegistry registry = MiddlewareAliasRegistry.getGlobal();
@@ -503,7 +503,7 @@ public class SpringBootRouteAutoConfiguration {
         //
         // 例外：capture-the-rest 模式（如 /static/{*path}）**不能**再拼尾斜杠变体 ——
         // PathPattern 语法要求 {*var} 必须是模式最后一个元素，拼成 "/static/{*path}/" 会解析失败，
-        // 轻则该谓词无效、重则应用启动失败（审计 M3）。{*path} 本身已匹配 "/static"、"/static/"
+        // 轻则该谓词无效、重则应用启动失败。{*path} 本身已匹配 "/static"、"/static/"
         // 与任意多段路径，无需变体。
         if (exactPath.length() > 1 && !exactPath.contains("{*")) {
             String slashPath = exactPath + "/";
@@ -556,7 +556,7 @@ public class SpringBootRouteAutoConfiguration {
             builder.header(key, value.toArray(new String[0]));
         });
 
-        // 兜底 Content-Type：如果 Response 没有设置，使用 getContentType() 的默认值（text/plain）
+        // 回退 Content-Type：如果 Response 没有设置，使用 getContentType() 的默认值（text/plain）
         if (response.getHeaders().get("Content-Type") == null) {
             builder.header("Content-Type", response.getContentType());
         }

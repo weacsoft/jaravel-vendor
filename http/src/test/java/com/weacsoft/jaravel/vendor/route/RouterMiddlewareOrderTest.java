@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 路由中间件顺序与静态资源匹配回归测试（审计 M3）。
+ * 路由中间件顺序与静态资源匹配回归测试。
  * <p>
  * <ul>
  *   <li><b>顺序</b>：必须与 Laravel 的洋葱模型一致 —— 父级（全局/根）最外层、组次之、路由最内。

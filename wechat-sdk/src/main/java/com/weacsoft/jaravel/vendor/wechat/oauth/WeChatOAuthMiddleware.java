@@ -13,7 +13,7 @@ import java.util.List;
  * 公众号网页授权中间件（<b>自动重定向</b>），对齐 overtrue {@code OAuthAuthenticate}：
  * <ol>
  *   <li>会话已有 {@code easywechat.oauth_user.{account}} → 放行（{@code next}），业务侧 guard 可直接取 openid</li>
- *   <li>微信回调（带 {@code ?code=}；state 已记录时核对，防 CSRF）→ 换 openid/用户、
+ *   <li>微信回调（带 {@code ?code=}；state 缺失或不匹配一律拒绝，防 CSRF）→ 换 openid/用户、
  *       写入会话、302 回原地址（剔除 {@code code}/{@code state}，保留其余 query）</li>
  *   <li>否则 → 清除该账号的旧会话值、生成 state 存会话、302 微信授权页</li>
  * </ol>
@@ -117,7 +117,9 @@ public class WeChatOAuthMiddleware implements Middleware {
         if (code != null && !code.isEmpty()) {
             String expectedState = (store != null) ? asString(store.get(WeChatOAuth.stateKey(account))) : null;
             String givenState = request.query("state");
-            if (expectedState != null && !expectedState.equals(givenState)) {
+            // 期望 state 缺失（会话丢失或未配置会话存储）时不得跳过校验：
+            // 跳过会让任何人构造 code 回调注入 openid。
+            if (expectedState == null || !expectedState.equals(givenState)) {
                 if (store != null) {
                     store.remove(WeChatOAuth.stateKey(account));
                 }

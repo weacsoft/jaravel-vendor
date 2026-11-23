@@ -45,3 +45,4 @@ pnpm-lock.yaml
 # AI-generated summary files (not for git)
 PROJECT_SUMMARY.md
 Recycle/
+.dsh-tmp/

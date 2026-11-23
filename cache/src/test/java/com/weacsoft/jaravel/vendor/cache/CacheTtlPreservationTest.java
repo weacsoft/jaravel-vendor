@@ -13,9 +13,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 自增/自减的 <b>TTL 保留</b> 回归测试（审计 M9，已实测复现过）。
+ * 自增/自减的 <b>TTL 保留</b> 回归测试（，已重现）。
  * <p>
- * 缺陷形态：{@code DefaultCacheStore.increment/decrement} 写死 {@code put(key,next,0)}，
+ * 缺陷形态：{@code DefaultCacheStore.increment/decrement} 硬编码 {@code put(key,next,0)}，
  * 于是「有期限」的键被写成永不过期 —— 限流计数永久生效、model-cache 版本键无限堆积。
  * <p>
  * 同时锁定两条设计决定：

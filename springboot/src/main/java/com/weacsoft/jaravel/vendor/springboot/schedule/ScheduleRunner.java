@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <p>
  * <b>分布式锁</b>：当任务启用 {@link ScheduledTask#withDistributedLock()} 时，
  * 通过 {@link LockProviderManager} 获取锁提供者实现分布式锁。
- * 未注册任何 provider 时自动兜底为同步锁（单机执行），
+ * 未注册任何 provider 时自动回退为同步锁（单机执行），
  * 引入 Redis 模块后通过 {@code @RegisterLockProvider} 注册 Redis 分布式锁。
  *
  * <h3>执行策略</h3>
@@ -45,6 +45,10 @@ public class ScheduleRunner {
     private final ExecutorService executor;
     private final AtomicInteger executedCount = new AtomicInteger(0);
     private final AtomicInteger failedCount = new AtomicInteger(0);
+
+    /** cron 表达式解析缓存（表达式在任务生命周期内不变） */
+    private final java.util.concurrent.ConcurrentHashMap<String, CronExpression> cronExpressions =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
     public ScheduleRunner(Schedule schedule, ArtisanApplication artisanApplication,
                           LockProviderManager lockProviderManager) {
@@ -78,14 +82,36 @@ public class ScheduleRunner {
         if (cron == null || cron.isEmpty()) {
             return false;
         }
+        CronExpression cronExpr = cronExpression(cron);
+        if (cronExpr == null) {
+            return false;
+        }
+        LocalDateTime lastMinute = now.minusMinutes(1);
+        LocalDateTime next = cronExpr.next(lastMinute);
+        return next != null && next.equals(now);
+    }
+
+    /**
+     * 解析并缓存 cron 表达式。
+     * <p>
+     * cron 表达式在任务生命周期内不变，解析结果按表达式缓存复用，
+     * 避免每分钟为每个任务重复解析。解析失败的表达式不缓存，每次调用记录错误日志。
+     *
+     * @param cron cron 表达式
+     * @return 解析结果，失败返回 null
+     */
+    private CronExpression cronExpression(String cron) {
+        CronExpression cached = cronExpressions.get(cron);
+        if (cached != null) {
+            return cached;
+        }
         try {
-            CronExpression cronExpr = CronExpression.parse(cron);
-            LocalDateTime lastMinute = now.minusMinutes(1);
-            LocalDateTime next = cronExpr.next(lastMinute);
-            return next != null && next.equals(now);
+            CronExpression parsed = CronExpression.parse(cron);
+            cronExpressions.put(cron, parsed);
+            return parsed;
         } catch (Exception e) {
             logger.error("[schedule] 解析 cron 表达式失败: {} - {}", cron, e.getMessage());
-            return false;
+            return null;
         }
     }
 

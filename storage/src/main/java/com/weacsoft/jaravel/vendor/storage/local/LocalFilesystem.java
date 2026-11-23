@@ -118,7 +118,7 @@ public class LocalFilesystem implements Filesystem {
         }
         // 词法 normalize 挡不住「根目录内的软链接指向外部」：这里再按<b>真实路径</b>校验一次。
         // 目标尚不存在时，退化为校验「最近的已存在祖先」（它包含软链接解析结果），
-        // 从而拦住 `link-to-/etc/passwd` 这类逃逸（审计 L2）。
+        // 从而拦住 `link-to-/etc/passwd` 这类逃逸。
         try {
             Path realRoot = realRoot();
             Path existing = resolved;
@@ -135,7 +135,7 @@ public class LocalFilesystem implements Filesystem {
         return resolved;
     }
 
-    /** 磁盘根的真实路径缓存（`root` 构造后不变；避免每次路径解析都做一次 toRealPath，审计 R5/性能） */
+    /** 磁盘根的真实路径缓存（`root` 构造后不变；避免每次路径解析都做一次 toRealPath） */
     private volatile Path realRootCache;
 
     /**
@@ -292,7 +292,7 @@ public class LocalFilesystem implements Filesystem {
     public boolean delete(String path) {
         Path file = resolve(path);
         // delete("") / delete("/") 会被 resolve 解析为根目录本身：文件系统允许删除空目录，
-        // 于是「删一个空路径」会把整个磁盘根删掉（审计 L3）。与 deleteDirectory 一致地显式拒绝。
+        // 于是「删一个空路径」会把整个磁盘根删掉。与 deleteDirectory 一致地显式拒绝。
         if (file.equals(root)) {
             throw new StorageException("不允许删除磁盘根目录: " + path);
         }
@@ -325,7 +325,7 @@ public class LocalFilesystem implements Filesystem {
      * 拒绝「解析后等于根目录」的路径。
      * <p>
      * {@code ""} / {@code "/"} / {@code "."} / {@code "a/.."} 经 {@code resolve} 后都等于根目录，
-     * 若不加判定，删除/复制/移动这类写操作会作用到整个磁盘根（审计 L3）。
+     * 若不加判定，删除/复制/移动这类写操作会作用到整个磁盘根。
      *
      * @param resolved 解析后的绝对路径
      * @param original 原始路径（用于错误信息）

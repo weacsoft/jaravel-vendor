@@ -13,7 +13,7 @@ import java.util.Map;
  * <p>
  * 支持 {@code "eloquent"} 驱动名，从配置中读取 Model 类名和凭证字段，
  * 通过 Spring 容器获取 Model 单例后创建 {@link EloquentUserProvider}
- * （D2 起位于 springboot 模块：本类持有 {@link ApplicationContext}，属 Spring 宿主侧装配）。
+ * （位于 springboot 模块：本类持有 {@link ApplicationContext}，属 Spring 宿主侧装配）。
  *
  * <h3>配置示例</h3>
  * <pre>

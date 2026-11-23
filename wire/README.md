@@ -108,7 +108,7 @@ Route.post("/change", "AdminController::update").name("change");     // wire 局
 | `getTemplateName()` | 局部 section 刷新的目标模板。默认取 `render().getTemplateName()`；若组件的 wire 更新目标是固定页面（如列表页），应覆盖返回该页面模板名，避免依赖请求状态（`fullPageForm` 等字段在 update() 中不更新） |
 | `getRedirectUrl(request)` | **全局默认**重定向 URL：所有 wire 响应都会带上它（作为 `effects.redirect` 下发，前端整页跳转）。若你**只想在某个 action 后跳转**（如 `save()`），请勿重写此方法，改用 `WireEffects.redirect(url)` 在 action 内显式下发，否则每个 action（含 `add()`/`edit()`）都会触发整页跳转、把刚下发的对话框冲掉 |
 | `wire()` | 下发**命名组件** `wire().component("name", params)`（toast / confirm 等带 `wire:lifecycle` 生命周期脚本的临时事务组件，见「命名组件」节） |
-| `WireEffects.push(name, params)` | 下发**交互式组件**：渲染时注入 `wire:config` + 签名快照 + `data-wire-update`，使组件成为「活的」wire 组件（`wire:model` 双向绑定、`wire:submit` 提交均生效）。组件模板由 `wireComponents()` → 全局注册表 → 组件名兜底解析；如需套用 Dialog 等替换布局，在 `wireLayoutReplacements()` 中声明 |
+| `WireEffects.push(name, params)` | 下发**交互式组件**：渲染时注入 `wire:config` + 签名快照 + `data-wire-update`，使组件成为「活的」wire 组件（`wire:model` 双向绑定、`wire:submit` 提交均生效）。组件模板由 `wireComponents()` → 全局注册表 → 组件名回退解析；如需套用 Dialog 等替换布局，在 `wireLayoutReplacements()` 中声明 |
 | `WireEffects.redirect(url)` | 在 action 内**显式**下发重定向效果，仅当前 action 生效（区别于 `getRedirectUrl` 的全局默认）。典型：`save()` 末尾调用，保存成功后整页跳回列表 |
 | `WireEffects.dispatch(name, data)` | 下发前端事件（`window.dispatchEvent(new CustomEvent(name, {detail:data}))`）。典型用于关闭对话框：`WireEffects.dispatch("wire-dialog-close", null)`，前端 `form.dialog` 监听后关闭、列表监听后 `Wire.refresh()`（均不整页刷新） |
 | `WireEffects.pushUrl(url)` | 下发 URL 变更：`effects.url` 由前端 `history.pushState` 改变地址栏（如点击「修改」后 URL 变深链 `/admin/admin/change?id=5`），不刷新页面 |
@@ -209,7 +209,7 @@ public class AdminController extends WireController {
     public void save() {
         Admin a = (id != null) ? Admin.self().find(id.toString()).toObject() : new Admin();
         if (a == null) a = new Admin();         // find() 记录不存在时返回 null,需判空
-        // 编辑留空密码 -> 保留原密码;新增留空 -> 用学号兜底(避免 admins.password NOT NULL)
+        // 编辑留空密码 -> 保留原密码;新增留空 -> 用学号回退(避免 admins.password NOT NULL)
         if (id != null && (password == null || password.isEmpty())) {
             var orig = Admin.self().find(id.toString()).toObject();
             password = (orig != null) ? orig.getPassword() : password;
@@ -284,7 +284,7 @@ public class AdminController extends WireController {
 
 1. **本控制器强关联组件注册表** `wireComponents()`（如 `admin-form` → `mdui.admin.admin.item`）——与控制器绑定的对话框/表单组件必须在此声明；
 2. **全局命名组件注册表** `WireManager.resolveComponentTemplate(name)`（来自 `jaravel.wire.components` 配置，如 `toast` → `components.toast`）；
-3. **兜底**：组件名即模板名。
+3. **回退**：组件名即模板名。
 
 **禁止**把与某个控制器强关联的组件写进 `jaravel.wire.components` 配置文件——它的模板、布局替换、action 全部由该控制器承接，散落到全局配置会造成职责混乱、跨项目冲突。
 
@@ -500,7 +500,7 @@ protected Map<String, String[]> wireQueryTemplates() {
 
 ### 前端：保留上一条 URL
 
-`wire.js` 每次收到 `effects.url` 执行 `history.pushState` 前,先把当前地址存入 `window.__wirePrevUrl`(只保留一条,通常用户只会返回一次)。对话框取消时 `restoreBackUrl` **优先还原 `__wirePrevUrl`**,兜底用后端 `effects.backUrl` 生成的 `__wireBackUrl`——两套机制一致,互为保险。
+`wire.js` 每次收到 `effects.url` 执行 `history.pushState` 前,先把当前地址存入 `window.__wirePrevUrl`(只保留一条,通常用户只会返回一次)。对话框取消时 `restoreBackUrl` **优先还原 `__wirePrevUrl`**,回退用后端 `effects.backUrl` 生成的 `__wireBackUrl`——两套机制一致,互为保险。
 
 ---
 
@@ -537,7 +537,7 @@ protected Map<String, String[]> wireQueryTemplates() {
 
 针对「与主数据无关、生命周期短、可能多实例并存」的临时 UI，wire 模块提供一套独立于 section 体系的**命名组件**机制（由 `WireOutlet` 中间件 + `wire-component.js` 前端运行时承接，详见 wire 模块的 `WireOutlet`/`WireComponents` 相关源码）：
 
-- **后端一行下发**：`wire().component("name", params)`（WireController 内）。
+- **后端一行代码下发**：`wire().component("name", params)`（WireController 内）。
 - **模板注册**：全局命名组件在 `application.yml` 的 `jaravel.wire.components` 注册（组件名 → 模板名），如 `toast: components.toast`、`confirm: components.confirm`。与控制器绑定的业务组件（对话框等）**不在此注册**，用 `wireComponents()` 声明。
 - **四条下发路径统一**：首屏 HTML bootstrap、Wire 更新 `effects.components`、组件内嵌套下发——共用同一队列与渲染器。
 - **生命周期**：`onCreate → onStart → onStop → onDestroy`，`wire.stop()` 主动结束实例，多实例 id 隔离（`wc-{name}-{seq}`），脚本按实例独立闭包求值。

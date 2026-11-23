@@ -137,7 +137,14 @@ public final class WxBizMsgCrypt {
      */
     public boolean verifySignature(String timestamp, String nonce, String encrypt, String msgSignature) {
         String expected = sign(timestamp, nonce, encrypt);
-        return expected != null && expected.equalsIgnoreCase(msgSignature);
+        if (expected == null || msgSignature == null || msgSignature.isEmpty()) {
+            return false;
+        }
+        // 常量时间比较（与 verifyPlainSignature 一致）：equalsIgnoreCase 短路比较会泄露逐字节的时序信息。
+        byte[] expectedBytes = expected.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        byte[] actualBytes = msgSignature.toLowerCase(java.util.Locale.ROOT)
+                .getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        return java.security.MessageDigest.isEqual(expectedBytes, actualBytes);
     }
 
     /**

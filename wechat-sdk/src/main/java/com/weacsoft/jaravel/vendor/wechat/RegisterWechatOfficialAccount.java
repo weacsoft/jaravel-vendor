@@ -24,11 +24,11 @@ import java.lang.annotation.Target;
  * }
  * </pre>
  *
- * <h3>三层优先级（框架约定：声明 &gt; yml &gt; 兜底默认）</h3>
+ * <h3>三层优先级（框架约定：声明 &gt; yml &gt; 回退默认）</h3>
  * <ol>
  *   <li><b>本注解声明</b>（最高）：容器启动扫描后直接覆盖同名配置</li>
  *   <li><b>yml</b>：{@code jaravel.wechat.official-accounts.<name>.*}（经 vendor:publish 发布后编辑）</li>
- *   <li><b>兜底默认</b>：无声明且 yml 未配置时，依赖运行期环境变量/手动 set</li>
+ *   <li><b>回退默认</b>：无声明且 yml 未配置时，依赖运行期环境变量/手动 set</li>
  * </ol>
  *
  * 声明<b>不注册为 Spring Bean</b>（仅回填到共享的 {@link WechatProperties}），

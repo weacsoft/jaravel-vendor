@@ -387,7 +387,9 @@ public final class Storage {
         if (!fs.exists(path)) {
             return ResponseBuilder.error(404, "文件不存在: " + path);
         }
-        return ResponseBuilder.file(fs.read(path), filenameOf(path));
+        // 流式下载：内容按块写出，不在堆内存中保留完整副本
+        return ResponseBuilder.fileStream("application/octet-stream", fs.size(path), filenameOf(path),
+                () -> fs.readStream(path));
     }
 
     /**
@@ -416,10 +418,10 @@ public final class Storage {
         if (mime == null || mime.isEmpty()) {
             mime = "application/octet-stream";
         }
-        // 可见性决定缓存语义（审计 L4）：私有文件若按 public + max-age 下发，
+        // 可见性决定缓存语义：私有文件若按 public + max-age 下发，
         // 经反向代理/共享缓存（或浏览器磁盘缓存）后任何访问者都能拿到副本。
-        byte[] data = fs.read(path);
         String filename = filenameOf(path);
+        long length = fs.size(path);
         Visibility visibility = null;
         try {
             visibility = fs.visibility(path);
@@ -427,10 +429,13 @@ public final class Storage {
             // 取不到可见性时按私有处理（安全默认）
             visibility = Visibility.PRIVATE;
         }
+        // 流式预览：内容按块写出，不在堆内存中保留完整副本
         if (visibility == Visibility.PUBLIC) {
-            return ResponseBuilder.staticFile(data, mime, 3600, filename);
+            return ResponseBuilder.inlineFileStream(mime, "public, max-age=3600", length, filename,
+                    () -> fs.readStream(path));
         }
-        return ResponseBuilder.inlineFile(data, mime, "private, no-store", filename);
+        return ResponseBuilder.inlineFileStream(mime, "private, no-store", length, filename,
+                () -> fs.readStream(path));
     }
 
     /**

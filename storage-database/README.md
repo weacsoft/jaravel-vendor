@@ -71,7 +71,7 @@ com.weacsoft.jaravel.vendor.storage.database
 - `create(name, config)` 读取 `binary` / `content-column` / `chunk-size` / `table-prefix` / `visibility`，
   以及可选 `connection`（旧键 `datasource` 兼容）：别名经 `ConnectionManager.rawDataSource(alias)` 解析；
 - 最终解析不到数据源时抛出带操作建议的 `StorageException`（提示 `@RegisterConnection` 或改用 `local` 驱动），
-  而不是在启动期莫名失败。
+  而不是在启动期以原因不明的形式失败。
 
 ### StorageTableCommand（artisan）
 

@@ -38,7 +38,7 @@ public class RemoteExecutionDispatcher {
     private static final Logger log = LoggerFactory.getLogger(RemoteExecutionDispatcher.class);
 
     private final SubServerRegistry registry;
-    private final RemoteTransport transport;
+    private volatile RemoteTransport transport;
     private final RequestCoordinator coordinator;
 
     /** 轮询计数器（用于负载均衡） */
@@ -69,15 +69,22 @@ public class RemoteExecutionDispatcher {
     /**
      * 切换传输模式。
      * <p>
-     * 注意：切换会断开所有现有 TCP 连接。
+     * 切换会断开旧 TCP 传输的全部连接，并把新的传输层同步给协调器，
+     * 保证后续转发请求使用新传输层。
      *
      * @param newTransport 新的传输层
      */
     public void setTransport(RemoteTransport newTransport) {
-        if (transport instanceof TcpTransport oldTcp) {
+        if (newTransport == null) {
+            throw new IllegalArgumentException("传输层不能为空");
+        }
+        RemoteTransport old = this.transport;
+        if (old instanceof TcpTransport oldTcp) {
             oldTcp.disconnectAll();
         }
-        log.info("传输模式切换: {} -> {}", transport.getType(), newTransport.getType());
+        this.transport = newTransport;
+        coordinator.setTransport(newTransport);
+        log.info("传输模式切换: {} -> {}", old.getType(), newTransport.getType());
     }
 
     /**

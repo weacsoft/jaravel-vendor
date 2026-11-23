@@ -8,7 +8,7 @@ import java.util.List;
 
 /**
  * 测试专用：把 `ApplicationContext` 适配为 core 的 {@link GlobalBeanProvider}
- * （P3 起 core 静态门面经 {@code GlobalLookup} 安装的提供者驱动，
+ * （ core 静态门面经 {@code GlobalLookup} 安装的提供者驱动，
  * 测试中以本类替代旧版 {@code SpringContext#setApplicationContext} 注入）。
  */
 class CtxProvider implements GlobalBeanProvider {

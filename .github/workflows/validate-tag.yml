@@ -1,0 +1,23 @@
+# Server-side enforcement of the version tag convention: tags must be x.y.z.
+# Runs on every tag push; fails (and tells you how to delete a bad tag)
+# when a tag carries a "v" prefix or any other decoration.
+name: Validate tag format
+
+on:
+  push:
+    tags:
+      - "*"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check tag is x.y.z
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          if ! printf '%s' "$tag" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Tag '$tag' violates the x.y.z convention (no leading 'v', no suffix)."
+            echo "Remove it with:  git push origin :refs/tags/$tag"
+            exit 1
+          fi
+          echo "Tag '$tag' is valid (x.y.z)."

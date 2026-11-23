@@ -48,7 +48,7 @@ class BundledMigrationE2ETest {
 
     @Test
     void publishBundledMigrationThenMigrateAndUseDriver() throws Exception {
-        // 1) 模拟 vendor:publish：读取模块 jar 内置迁移资源，落盘到业务工程迁移目录
+        // 1) 模拟 vendor:publish：读取模块 jar 内置迁移资源，写入到业务工程迁移目录
         Path migDir = Files.createDirectories(tempDir.resolve("src/main/java/migrations"));
         try (InputStream in = CacheDatabaseMigrationPublishable.class.getClassLoader()
                 .getResourceAsStream(CacheDatabaseMigrationPublishable.CLASSPATH_RESOURCE)) {

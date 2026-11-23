@@ -29,7 +29,7 @@ import java.lang.annotation.Target;
  * <ul>
  *   <li>声明层：本注解提供 View 实例，{@code name} 为其实例名；</li>
  *   <li>配置层：{@code jaravel.view.default=xxx} 指定默认激活哪一个声明；</li>
- *   <li>默认层：无任何声明时由 {@code ViewAutoConfiguration} 兜底注册 Blade 实现。</li>
+ *   <li>默认层：无任何声明时由 {@code ViewAutoConfiguration} 回退注册 Blade 实现。</li>
  * </ul>
  *
  * @see ViewManager

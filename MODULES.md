@@ -86,7 +86,7 @@ public SessionStore mySessionStore() { ... }
 ### 2.2 驱动型模块：安装 ≠ 启用
 
 把依赖放进 classpath 只表示"可用"，不表示"启用"。
-只有用户显式选用（或按兜底默认选用）了该驱动，才进行注册和配置；否则完全静默。
+只有用户显式选用（或按默认回退规则选用）了该驱动，才进行注册和配置；否则完全静默。
 
 以下**所有驱动**统一通过 core 的 `OnDriverInUseCondition`（仅依赖 `spring-context`）
 判定，子类声明"驱动名 + 配置键"即可：
@@ -98,9 +98,9 @@ public SessionStore mySessionStore() { ... }
 | **cache 的 database 驱动** | `database` | 任一 `jaravel.cache.stores.*.driver: database` | 不装配，无需数据源 |
 | **queue-database (redis)** | `redis` | `jaravel.queue.driver: redis` | 不装配，回退 `sync` |
 | **queue-database (database)** | `database` | `jaravel.queue.driver: database` | 不装配，回退 `sync` |
-| **auth (session 守卫)** | `session` | 任一 `jaravel.auth.guards.*.driver: session` 或**未写 driver（兜底）** | —（自身即兜底） |
-| **auth (jwt 守卫)** | `jwt` | 任一 `jaravel.auth.guards.*.driver: jwt` | 不装配（**JWT 不在兜底**） |
-| **storage (local 磁盘)** | `local` / `public` | 任一 `jaravel.storage.disks.*.driver: local` 或**未写 driver（兜底）** | —（自身即兜底） |
+| **auth (session 守卫)** | `session` | 任一 `jaravel.auth.guards.*.driver: session` 或**未写 driver（默认回退）** | —（自身即默认回退） |
+| **auth (jwt 守卫)** | `jwt` | 任一 `jaravel.auth.guards.*.driver: jwt` | 不装配（**JWT 不在默认回退之列**） |
+| **storage (local 磁盘)** | `local` / `public` | 任一 `jaravel.storage.disks.*.driver: local` 或**未写 driver（默认回退）** | —（自身即默认回退） |
 | **storage (database 磁盘)** | `database` | 任一 `jaravel.storage.disks.*.driver: database` | 不装配 |
 
 每个驱动模块还提供一个**覆盖开关**（优先级最高）：
@@ -146,7 +146,7 @@ plugin-* 等）默认启用，通过 `jaravel.<模块>.enabled: false` 关闭。
 | **storage** | `database` 磁盘（有连接，自动建表） | **local 文件驱动**，根目录 `storage/app` |
 | **queue** | `driver=redis` + redis / `driver=database` + 数据库连接 | **sync 同步模式**，任务在当前线程立即执行 |
 | **session** | 引入 session-redis **且** `driver=redis` → `RedisSessionStore`（多机同步） | **CookieSessionStore**（Servlet HttpSession） |
-| **auth** | 引入 jwt → `jwt` 守卫驱动可用（严格按需） | 仅 `session` 守卫驱动（写了 guards 但未写 driver 时兜底为 session） |
+| **auth** | 引入 jwt → `jwt` 守卫驱动可用（严格按需） | 仅 `session` 守卫驱动（写了 guards 但未写 driver 时默认回退为 session） |
 | **artisan** | 引入 artisan → 各模块注册各自命令 | **不注册任何命令**，不影响 HTTP 服务 |
 | **migration** | 引入 migration → `migrate` 系列命令可用 | 无连接时仅告警，**不阻断启动** |
 | **schedule** | 引入 redis → Redis 分布式锁防多机重复执行 | 单机执行，无锁 |

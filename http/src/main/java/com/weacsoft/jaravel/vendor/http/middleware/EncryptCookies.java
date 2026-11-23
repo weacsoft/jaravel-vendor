@@ -41,9 +41,9 @@ import java.util.Base64;
  * <b>升级注意</b>：带 {@code v2:} 前缀的才被接受，旧格式 Cookie 一律丢弃 → 升级后用户会掉一次登录态。
  * 若确需灰度兼容，可继承并覆盖 {@link #decrypt(String)} 自行放行旧格式（不建议）。
  *
- * <p><b>密钥兜底</b>：未覆盖 {@link #encryptionKey()} 时（即仍返回出厂默认值
+ * <p><b>密钥回退</b>：未覆盖 {@link #encryptionKey()} 时（即仍返回出厂默认值
  * {@link #DEFAULT_ENCRYPTION_KEY}），框架会自动回退到 core 模块的全局应用密钥
- * {@code jaravel.key}，遵循「模块自身配置优先 → core 全局密钥兜底」。
+ * {@code jaravel.key}，遵循「模块自身配置优先 → core 全局密钥回退」。
  *
  * <p><b>安全提示</b>：默认密钥仅用于演示，生产环境请配置 {@code jaravel.key}
  * 或覆盖 {@link #encryptionKey()}（建议 32 字节随机串）。
@@ -97,7 +97,7 @@ public class EncryptCookies implements Middleware {
     }
 
     /**
-     * 解析实际生效的加密密钥：「子类覆盖优先 → core 全局密钥兜底」。
+     * 解析实际生效的加密密钥：「子类覆盖优先 → core 全局密钥回退」。
      *
      * @return 最终用于派生 AES/HMAC 密钥的密钥材料
      */
@@ -177,10 +177,12 @@ public class EncryptCookies implements Middleware {
                 // 因此 setValue 会直接改变最终写出的 Set-Cookie，不会产生重复头。
                 cookie.setValue(encrypt(cookie.getValue()));
             } catch (Exception e) {
-                // 加密失败宁可不下发（置空），也不能把明文发出去
+                // 加密失败宁可不下发（置空并立即失效），也不能把明文发出去
                 logger.error("[jaravel-cookie] Cookie '{}' 加密失败，已置空以失败关闭: {}",
                         cookie.getName(), e.getMessage());
                 cookie.setValue("");
+                // 立即失效：否则空值 Cookie 会按原 max-age 长期驻留客户端
+                cookie.setMaxAge(0);
             }
         }
     }

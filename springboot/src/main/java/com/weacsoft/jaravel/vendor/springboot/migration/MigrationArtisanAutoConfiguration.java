@@ -47,7 +47,7 @@ import javax.sql.DataSource;
  * 这些命令委托给 {@link MigrationExecutor} 执行，与 {@link MigrationRunner}
  * 共享同一个 {@link MigrationExecutor} Bean 实例。
  * <p>
- * Spring 装配收口于 springboot 模块（migration 核心模块零 Spring 依赖）。
+ * Spring 装配集中于 springboot 模块（migration 核心模块零 Spring 依赖）。
  */
 @AutoConfiguration
 @AutoConfigureAfter(MigrationAutoConfiguration.class)

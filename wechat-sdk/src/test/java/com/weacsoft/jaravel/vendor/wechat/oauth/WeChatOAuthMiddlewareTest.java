@@ -172,6 +172,16 @@ class WeChatOAuthMiddlewareTest {
         assertNull(store.map.get(WeChatOAuth.stateKey("default")), "非法 state 应清除");
     }
 
+    @Test
+    void testCallbackWithoutExpectedStateRejected() {
+        // 会话中没有 state（会话丢失或未配置会话存储）：不得跳过校验直接换取 openid
+        Response resp = new WeChatOAuthMiddleware(oauth, "default", null, store)
+                .handle(webRequest("code=STOLEN&state=whatever", false), next(), "default");
+        assertEquals(403, resp.getStatus(), "缺少期望 state 时必须拒绝（防 CSRF）");
+        assertFalse(nextCalled);
+        assertNull(store.map.get(WeChatOAuth.sessionKey("default")), "不得写入用户会话");
+    }
+
     // ===== 4) 未授权 → 302 微信授权页 =====
 
     @Test

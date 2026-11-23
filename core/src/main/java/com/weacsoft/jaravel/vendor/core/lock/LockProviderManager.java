@@ -1,5 +1,8 @@
 package com.weacsoft.jaravel.vendor.core.lock;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -18,13 +21,18 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class LockProviderManager {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(LockProviderManager.class);
+
+    /** 同步锁回退对应的 provider 名称 */
+    private static final String SYNC_PROVIDER_NAME = "sync";
+
     /** 已注册的 provider：name -> LockProvider，进程级共享，线程安全 */
     private final Map<String, LockProvider> providers = new ConcurrentHashMap<>();
 
     /** 默认 provider 名称 */
-    private String defaultProvider = "sync";
+    private String defaultProvider = SYNC_PROVIDER_NAME;
 
-    /** 同步锁（默认兜底） */
+    /** 同步锁（默认回退） */
     private final LockProvider syncProvider = new LockProvider() {
         @Override
         public boolean tryLock(String key, long ttlSeconds) {
@@ -37,7 +45,7 @@ public class LockProviderManager {
     };
 
     /**
-     * 返回默认 provider。首次访问时若默认名称的 provider 未注册，自动兜底为同步锁。
+     * 返回默认 provider。首次访问时若默认名称的 provider 未注册，自动回退为同步锁。
      */
     public LockProvider provider() {
         return provider(defaultProvider);
@@ -48,7 +56,6 @@ public class LockProviderManager {
      *
      * @param name provider 名称
      * @return provider 实例
-     * @throws IllegalStateException provider 未注册
      */
     public LockProvider provider(String name) {
         String providerName = (name == null || name.isEmpty()) ? defaultProvider : name;
@@ -56,7 +63,10 @@ public class LockProviderManager {
         if (p != null) {
             return p;
         }
-        // 未注册时兜底为同步锁
+        // 未注册时回退为同步锁：同步锁无跨节点互斥能力，多节点部署须显式告警
+        if (!SYNC_PROVIDER_NAME.equals(providerName)) {
+            LOGGER.warn("[jaravel-lock] 未注册的锁提供者 '{}'，已退化为同步锁（多节点部署下无互斥能力）", providerName);
+        }
         return syncProvider;
     }
 

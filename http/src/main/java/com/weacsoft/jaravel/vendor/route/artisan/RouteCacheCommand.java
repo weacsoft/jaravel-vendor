@@ -12,7 +12,7 @@ import com.weacsoft.jaravel.vendor.route.Router;
  * 并预先计算完整 URI / 名称 / 命名空间 / 中间件链 / 别名索引 / 别名→URL 索引，
  * 把首个请求的解析成本提前到启动期。
  * <p>
- * 缓存为纯 JVM 堆内存（{@link RouteCache}），不序列化、不落盘、不走外部 CacheStore。
+ * 缓存为纯 JVM 堆内存（{@link RouteCache}），不序列化、不写入、不走外部 CacheStore。
  * 任何结构性写操作会自动整体失效，下次访问按需重建。
  *
  * @see RouteCache#warm(Router)

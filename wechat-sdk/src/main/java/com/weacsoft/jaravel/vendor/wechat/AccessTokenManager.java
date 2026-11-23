@@ -69,6 +69,10 @@ public class AccessTokenManager {
     /** 缓存仓库（优先配置的 store，未注册时回退 array） */
     private final CacheStore cacheStore;
 
+    /** 按 appId 的刷新锁：避免缓存未命中时多个线程同时请求微信接口 */
+    private final java.util.concurrent.ConcurrentHashMap<String, Object> refreshLocks =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     /** 获取模式：legacy（默认）| stable，决定请求 {@code cgi-bin/token} 还是 {@code cgi-bin/stable_token} */
     private final String tokenMode;
 
@@ -149,9 +153,18 @@ public class AccessTokenManager {
             return cached;
         }
 
-        // 2. 缓存未命中，调用微信 API 获取新 token 并写入缓存
-        logger.info("[wechat] AccessToken 缓存未命中，请求微信 API: appId={}", appId);
-        return fetchAndCacheToken(appId, secret);
+        // 2. 缓存未命中：按 appId 串行化刷新，避免并发请求同时打微信接口
+        //    （微信对 access_token 获取有频率限制，重复请求会互相作废已发放的 token）
+        Object lock = refreshLocks.computeIfAbsent(appId, key -> new Object());
+        synchronized (lock) {
+            String afterLock = cacheStore.get(cacheKey, String.class);
+            if (afterLock != null && !afterLock.isEmpty()) {
+                logger.debug("[wechat] AccessToken 由其他线程刷新成功，直接复用: appId={}", appId);
+                return afterLock;
+            }
+            logger.info("[wechat] AccessToken 缓存未命中，请求微信 API: appId={}", appId);
+            return fetchAndCacheToken(appId, secret);
+        }
     }
 
     /**

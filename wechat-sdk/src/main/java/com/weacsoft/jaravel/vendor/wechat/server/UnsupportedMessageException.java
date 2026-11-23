@@ -3,7 +3,7 @@ package com.weacsoft.jaravel.vendor.wechat.server;
 /**
  * 推送消息类型不受支持时抛出。
  * <p>
- * 携带原始节点表（{@link #getRaw()}），方便新增消息类型后在业务侧先行兜底处理。
+ * 携带原始节点表（{@link #getRaw()}），方便新增消息类型后在业务侧先行回退处理。
  *
  * @author weacsoft
  */
@@ -14,7 +14,7 @@ public class UnsupportedMessageException extends RuntimeException {
     /** 未知的 MsgType 值 */
     private final String msgType;
 
-    /** 原始节点表（便于排查/兜底） */
+    /** 原始节点表（便于排查/回退） */
     private final java.util.Map<String, Object> raw;
 
     /**

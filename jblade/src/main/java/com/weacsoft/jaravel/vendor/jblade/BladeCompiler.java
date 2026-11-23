@@ -555,14 +555,21 @@ public class BladeCompiler {
         }
     }
 
-    private int varCounter;
+    /**
+     * 临时变量名计数器（线程私有）。
+     * <p>
+     * 不同模板可能在不同线程中并行编译，计数器若为共享字段会被交叉污染，
+     * 导致生成的局部变量名重复。此处按线程隔离，每次生成代码前重置为 0。
+     */
+    private final ThreadLocal<int[]> varCounter = ThreadLocal.withInitial(() -> new int[]{0});
 
     private String nextVar(String prefix) {
-        return "__" + prefix + (varCounter++);
+        int[] counter = varCounter.get();
+        return "__" + prefix + (counter[0]++);
     }
 
     private String generateJavaCode(String className, String templateName, String content) {
-        varCounter = 0;
+        varCounter.get()[0] = 0;
         List<Tok> toks = tokenize(content);
 
         StringBuilder initCode = new StringBuilder();
@@ -1186,7 +1193,7 @@ public class BladeCompiler {
             return;
         }
 
-        // 理论不可达（tokenizer 已过滤未知指令），兜底按原文输出
+        // 理论不可达（tokenizer 已过滤未知指令），回退按原文输出
         emitText(em, tok.raw != null ? tok.raw : "@" + name);
     }
 

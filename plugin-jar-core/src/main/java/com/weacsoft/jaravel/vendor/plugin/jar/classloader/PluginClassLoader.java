@@ -84,8 +84,12 @@ public class PluginClassLoader extends URLClassLoader implements Closeable {
     /**
      * 热更新共享 ClassLoader。
      * <p>
-     * 切换后，后续加载的共享包前缀类将从新的共享 ClassLoader 加载；
+     * 切换后，命中 {@code sharedPackagePrefixes} 的类从新的共享 ClassLoader 加载；
      * 已加载的类不受影响（Class 对象一旦创建即绑定定义 ClassLoader）。
+     * <p>
+     * <b>限制</b>：父委托仍是构造时传入的共享 ClassLoader（Java 不允许运行时更换父加载器），
+     * 因此不在共享前缀内、只存在于共享 ClassLoader 的类仍按旧父委托加载。
+     * 需要这类类一并切换时，应重建插件 ClassLoader。
      *
      * @param newSharedClassLoader 新的共享 ClassLoader
      */

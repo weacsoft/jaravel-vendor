@@ -68,7 +68,7 @@ public class MemoryCaptchaStore implements CaptchaStore {
     }
 
     /**
-     * 原子「仅当不存在（或已过期）时写入」（一次性占用的基础原语，审计 M5）。
+     * 原子「仅当不存在（或已过期）时写入」（一次性占用的基础原语）。
      * <p>
      * 用 {@code ConcurrentHashMap.compute} 把「判断 + 写入」合成一个原子操作：
      * 已存在且未过期时原样返回（等于未写入），否则写入新条目并标记成功。

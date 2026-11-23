@@ -8,8 +8,8 @@ import com.weacsoft.jaravel.vendor.springboot.condition.OnDriverInUseCondition;
  * <h3>命中条件</h3>
  * 仅当 {@code jaravel.queue.driver} 取值为 {@code database} 时装配。
  *
- * <h3>为什么不兜底</h3>
- * database 队列依赖 DataSource，不在兜底列表；缺失应回退到 {@code sync}（内存队列）。
+ * <h3>为什么不回退</h3>
+ * database 队列依赖 DataSource，不在回退列表；缺失应回退到 {@code sync}（内存队列）。
  * 因此本条件<b>不认缺省</b>。
  *
  * <h3>P3 解耦说明</h3>

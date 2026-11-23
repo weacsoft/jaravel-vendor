@@ -54,9 +54,9 @@ JAR 插件系统核心库，提供动态加载/卸载 JAR 插件、三级 ClassL
 - **手动路由注册/注销**：提供 `registerRoute()` / `unregisterRoute()` 方法，以及 `getAvailableRoutes()` / `registerAvailableRoute()` 手动注册 API，支持以方法调用方式（非 REST API）动态注册和注销路由。
 - **Jaravel Request/Response 集成**：当 jaravel 可用时，插件方法可直接使用 jaravel 的 `Request`/`Response` 而非 Servlet API，通过 `PluginIntegration` 接口自动检测并适配，同一份插件代码可同时运行于 jaravel 与纯 Spring Boot 环境。
 - **ASM 字节码扫描依赖与路由**：使用 ASM 9.7 在不加载类的前提下扫描插件 JAR 的字节码，提取 `@PluginComponent` 组件类、`@SharedService` 共享依赖和 `@PluginMapping` / `@PluginRoute` 路由映射。
-- **元数据持久化**：重启后自动恢复插件状态。支持 JSON 文件（默认）和数据库两种持久化模式，仅落盘文件可自动持久化恢复。
-- **内存 JAR 加载**：支持从内存字节（`byte[]`）直接加载插件 JAR，不要求 `.jar` 落盘。但仅落盘文件（`persist=true`）可自动持久化恢复。
-- **字节数组模式**：从内存中的 JAR 二进制数据直接热加载，无需落盘到插件目录。
+- **元数据持久化**：重启后自动恢复插件状态。支持 JSON 文件（默认）和数据库两种持久化模式，仅写入文件的实现可自动持久化恢复。
+- **内存 JAR 加载**：支持从内存字节（`byte[]`）直接加载插件 JAR，不要求 `.jar` 写入文件。但仅写入文件的实现（`persist=true`）可自动持久化恢复。
+- **字节数组模式**：从内存中的 JAR 二进制数据直接热加载，无需写入插件目录。
 - **Spring Boot AutoConfiguration 开箱即用**：引入依赖后自动装配 `HotPluginManager`、`PluginBeanRegistrar`、`PluginRouteRegistrar`、`MetadataPersistence` 等核心组件。
 - **线程安全**：核心管理器使用 `ReadWriteLock` + `ConcurrentHashMap` 保证并发安全，插件注册/卸载与路由查询可安全并发。
 
@@ -212,8 +212,8 @@ private HotPluginManager hotPluginManager;
 
 | 方法签名 | 说明 |
 |---|---|
-| `String registerPluginFromPath(Path jarFile, String pluginId, boolean persist)` | 从文件路径注册插件。`persist=true` 时落盘持久化，重启后可自动恢复。返回实际使用的 pluginId |
-| `String registerPluginFromBytes(byte[] jarBytes, String pluginId)` | 从内存字节注册插件，不落盘、不持久化。返回实际使用的 pluginId |
+| `String registerPluginFromPath(Path jarFile, String pluginId, boolean persist)` | 从文件路径注册插件。`persist=true` 时写入文件持久化，重启后可自动恢复。返回实际使用的 pluginId |
+| `String registerPluginFromBytes(byte[] jarBytes, String pluginId)` | 从内存字节注册插件，不写入文件、不持久化。返回实际使用的 pluginId |
 | `boolean enablePlugin(String pluginId)` | 启用插件：注册 Bean + 注册路由 + 持久化元数据。返回是否操作成功 |
 | `boolean disablePlugin(String pluginId)` | 禁用插件：注销路由 + 注销 Bean + 更新元数据状态。返回是否操作成功 |
 | `boolean uninstallPlugin(String pluginId)` | 卸载插件：注销路由 + 注销 Bean + 关闭 ClassLoader + 删除元数据。返回是否操作成功 |
@@ -673,7 +673,7 @@ public interface MetadataPersistence {
 **存储路径**：`{plugins-dir}/{pluginId}/metadata.json`
 
 **持久化规则**：
-- 仅持久化 `persisted=true` 的插件（即通过 `registerPluginFromPath()` 且 `persist=true` 注册的磁盘落盘插件）。
+- 仅持久化 `persisted=true` 的插件（即通过 `registerPluginFromPath()` 且 `persist=true` 注册的磁盘插件）。
 - 通过 `registerPluginFromBytes()` 注册的内存插件不持久化，重启后不恢复。
 - 插件启用/禁用时自动更新元数据状态。
 - 插件卸载时自动删除元数据文件。
@@ -699,7 +699,7 @@ public interface MetadataPersistence {
 - `Migration_2024_01_03_CreatePluginMetadataTable`：自动迁移脚本，创建插件元数据表。
 - `PluginJarDatabaseAutoConfiguration`：自动装配类，注册 `ModelMetadataPersistence` Bean（`@ConditionalOnMissingBean(MetadataPersistence.class)`）。
 
-引入 `plugin-jar-database` 后，`PluginJarAutoConfiguration` 中的 `metadataPersistence()` 方法会优先使用数据库实现（通过 `ObjectProvider` 检测），JSON 文件实现作为兜底。
+引入 `plugin-jar-database` 后，`PluginJarAutoConfiguration` 中的 `metadataPersistence()` 方法会优先使用数据库实现（通过 `ObjectProvider` 检测），JSON 文件实现作为回退。
 
 ---
 

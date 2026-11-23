@@ -54,7 +54,7 @@ Database 模块是 Jaravel 框架的数据库 ORM 层，基于 `gaarason/databas
 Laravel Eloquent 的核心特性是「一个类既是实体又是查询入口」。Java 传统 ORM（如 MyBatis）通常需要拆分为「实体 POJO」+「Mapper/DAO」两个类。本模块通过 `BaseModel` 实现了 Laravel 风格的合并模型：
 
 ```java
-// 一个类搞定一切
+// 由一个类完成全部工作
 @Repository
 @Table(name = "users")
 public class User extends BaseModel<User, Long> {
@@ -68,7 +68,7 @@ public class User extends BaseModel<User, Long> {
 
 #### 2. EloquentUserProvider 简化
 
-对齐 auth 模块的设计决策，`EloquentUserProvider` 仅负责通过 Eloquent Model 按主键/凭证**取出**用户，**不**负责校验密码。不再包含 `CredentialMatcher` 与 `validateCredentials`。
+对齐 auth 模块的设计决策，`EloquentUserProvider` 仅负责通过 Eloquent Model 按主键/凭证**取出**用户，**不**负责校验密码，不包含 `CredentialMatcher` 与 `validateCredentials`。
 
 ---
 
@@ -88,8 +88,7 @@ public class User extends BaseModel<User, Long> {
 - `io.github.gaarason:database-query`（Laravel 风格 ORM 核心，依赖 `database-core` + Druid）
 - `com.alibaba:druid`（数据源）
 
-> D2（Spring 解耦）：本模块已零 Spring import（原 `spring-boot-starter-jdbc` /
-> `spring-boot-starter-aop` 编译依赖已移除）。Spring 宿主侧装配（`DatabaseAutoConfiguration` /
+> **Spring 解耦**：本模块零 Spring import。Spring 宿主侧装配（`DatabaseAutoConfiguration` /
 > `EloquentUserProviderAutoConfiguration` / `ModelShadowPatcher` / `EloquentUserProviderDriver` /
 > BaseModel 数据源绑定 BPP）位于 **jaravel-springboot** 模块 `vendor.springboot.database` 包；
 > gaarason 运行期所需的 Spring JDBC/AOP 由宿主（starter/springboot）提供。
@@ -114,10 +113,10 @@ com.weacsoft.jaravel.vendor.database
     └── DatabasePublishableConfig      # vendor:publish --tag=database 的模板
 ```
 
-> **D2（Spring 解耦）**：`DatabaseAutoConfiguration` / `EloquentUserProviderAutoConfiguration` /
-> `ModelShadowPatcher` / `EloquentUserProviderDriver` 已迁入 **jaravel-springboot** 模块
+> **Spring 解耦**：`DatabaseAutoConfiguration` / `EloquentUserProviderAutoConfiguration` /
+> `ModelShadowPatcher` / `EloquentUserProviderDriver` 位于 **jaravel-springboot** 模块
 > `com.weacsoft.jaravel.vendor.springboot.database` 包（Spring 宿主侧装配 + BaseModel 数据源绑定 BPP）；
-> 本模块保持零 Spring import，运行期 Spring 依赖由宿主提供。
+> 本模块无 Spring import，运行期 Spring 依赖由宿主提供。
 
 ---
 
@@ -152,7 +151,7 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K>
 
 | 字段 | 注解 | 说明 |
 |---|---|---|
-| `gaarasonDataSource` | `@Column(inDatabase=false) @JsonIgnore`（+ 公开 setter） | 数据源（D2 起宿主侧 setter 注入：Spring 宿主由 springboot 的 `BaseModelDataSourceBindingPostProcessor` 自动绑定，等效原 `@Autowired @Lazy`），非数据库字段 |
+| `gaarasonDataSource` | `@Column(inDatabase=false) @JsonIgnore`（+ 公开 setter） | 数据源（宿主侧 setter 注入：Spring 宿主由 springboot 的 `BaseModelDataSourceBindingPostProcessor` 自动绑定），非数据库字段 |
 | `modelShadow` | `@Column(inDatabase=false) @JsonIgnore` | 覆盖父类字段，排除 ORM 映射 |
 
 ### 数据源解析：getGaarasonDataSource()
@@ -190,7 +189,7 @@ public class Product extends BaseModel<Product, Long> {
 }
 ```
 
-> **关键**：必须先检查 `getConnectionAlias()` / `@DataSource` 注解，否则宿主侧按类型绑定时总是取到 `@Primary` 数据源（Spring 宿主：`BaseModelDataSourceBindingPostProcessor`；非 Spring 宿主：setter 手动注入）。
+> **关键**：宿主侧按类型绑定时总是取到 `@Primary` 数据源（Spring 宿主：`BaseModelDataSourceBindingPostProcessor`；非 Spring 宿主：setter 手动注入），因此必须先检查 `getConnectionAlias()` / `@DataSource` 注解。
 
 ### 实例方法
 
@@ -335,8 +334,8 @@ gaarason 原生的 `updateOrCreate` / `findOrCreate` / `findOrNew` 定义在 Mod
 
 由此带来的问题是：对一条**已被软删除**的记录再次 `updateOrCreate` 时，因默认作用域查不到该记录而误判为「不存在」，从而**重复 INSERT**（甚至触发唯一键冲突）。
 
-> **gaarason 7.1.2 起已原生解决**：`Builder` 新增 `ModelOp`，直接提供 `updateOrCreate` / `findOrCreate` / `findOrNew` / `findByPrimaryKeyOrCreate` 等，并额外提供 `updateOrCreateAutoRestore`（命中已软删除记录时**在同一条 SQL 内恢复并更新**，省一次查询）。
-> jaravel 的 `TrashedScope` 因此改为**纯委托**：先按 `withTrash()` / `onlyTrash()` / `withoutTrash()` 选出对应作用域的 `Builder`，再把方法调用直接转交给该 `Builder` 上的官方实现。对外 API 与旧版**完全一致**，既有调用代码无需改动。
+> **gaarason 7.1.2 起原生支持**：`Builder` 提供 `ModelOp`（`updateOrCreate` / `findOrCreate` / `findOrNew` / `findByPrimaryKeyOrCreate` 等），并额外提供 `updateOrCreateAutoRestore`（命中已软删除记录时在**同一条 SQL 内恢复并更新**，省一次查询）。
+> jaravel 的 `TrashedScope` 为**纯委托**：先按 `withTrash()` / `onlyTrash()` / `withoutTrash()` 选出对应作用域的 `Builder`，再把方法调用直接转交给该 `Builder` 上的官方实现。既有调用代码无需改动。
 
 `BaseModel` 提供软删除感知的入口方法，返回 gaarason `Record`，可继续链式调用 `restore()` / `save()` / `delete()`：
 
@@ -640,7 +639,7 @@ protected String getConnectionAlias() {
 
 ### 核心设计
 
-仅负责通过 Eloquent Model 按主键/凭证**取出**用户，**不**负责校验密码。密码校验是应用层的责任（在 Controller / Service 中完成），因此本类不再包含 `CredentialMatcher` 与 `validateCredentials`。
+仅负责通过 Eloquent Model 按主键/凭证**取出**用户，**不**负责校验密码。密码校验是应用层的责任（在 Controller / Service 中完成），因此本类不包含 `CredentialMatcher` 与 `validateCredentials`。
 
 ### 类定义
 
@@ -757,9 +756,9 @@ jaravel:
 ### ContainerBootstrap：必须全局唯一
 
 gaarason 在 SpringBoot 环境下，**每个 `GaarasonDataSource` 都必须携带 `ContainerBootstrap`**，
-且所有数据源必须**共用同一个实例**，否则 Model 注册表、类型转换器会分裂到不同容器，导致查询报错。
+且所有数据源必须**共用同一个实例**。不同实例会导致 Model 注册表、类型转换器分裂到不同容器，查询报错。
 
-发布出来的 `DatabaseConfig` 已处理好这件事：`containerBootstrap()` 创建唯一实例并存入
+发布出来的 `DatabaseConfig` 遵循此约定：`containerBootstrap()` 创建唯一实例并存入
 `ConnectionManager`，其余连接方法只需声明 `ContainerBootstrap` 参数即可复用，**切勿另行 `build()`**。
 
 ```java
@@ -830,14 +829,14 @@ public class DatabaseConfig {
 
 ### 默认连接会自动暴露为 Spring 的 DataSource Bean
 
-连接改用注解声明后，业务工程**不需要**再手写 `@Bean DataSource`。
-但 Spring 生态中大量组件仍依赖容器里存在 `DataSource` 类型的 Bean：
+连接以注解声明，业务工程**不需要**手写 `@Bean DataSource`。
+Spring 生态中大量组件依赖容器里存在 `DataSource` 类型的 Bean：
 
 - `DataSourceTransactionManager`（`@Transactional` 事务管理器）
 - `JdbcTemplate`
 - 第三方 starter 的 `@ConditionalOnBean(DataSource.class)`
 
-因此 springboot 侧的 `DatabaseAutoConfiguration`（D2 起位于 jaravel-springboot 的
+因此 springboot 侧的 `DatabaseAutoConfiguration`（位于 jaravel-springboot 的
 `vendor.springboot.database` 包）会把**默认连接**以 `JaravelDataSource` 的形式
 注册为 `@Primary` 的 Spring Bean：
 
@@ -856,11 +855,11 @@ public JaravelDataSource jaravelDataSource() {
 2. **若一个都没标记，则第一个注册的连接自动成为默认连接。**
 
 **为什么是惰性的**：`JaravelDataSource` 只是一个委托，构造时不解析任何东西，
-直到真正 `getConnection()` 才去 `ConnectionManager` 取默认连接。
-这样就避免了"`@RegisterConnection` 尚未扫描完成 ⇄ 事务管理器已需要 DataSource"的先后顺序死结。
+直到真正 `getConnection()` 才去 `ConnectionManager` 取默认连接，
+以避免 `@RegisterConnection` 扫描与事务管理器初始化之间的顺序冲突。
 
-**向后兼容**：若业务工程自己定义了 `DataSource` Bean（历史写法），
-`@ConditionalOnMissingBean` 会让框架的 Bean 自动让位。
+**向后兼容**：若业务工程自己定义了 `DataSource` Bean，
+`@ConditionalOnMissingBean` 会让框架的 Bean 回退。
 
 ### 别名解析顺序：先注册表，后 Spring
 
@@ -871,8 +870,8 @@ Model 上 `@DataSource("别名")` 填写的是**连接别名**，不是 Spring b
 3. 回退 Spring 容器中同名的 `javax.sql.DataSource` bean（自动用全局 Container 包装）；
 4. 均未命中 → 抛出异常并列出全部可用别名。
 
-因此历史的 `@Bean` 写法依然兼容，迁移无破坏性。迁移脚本（`Migration#connection()`）
-使用完全相同的一套别名语义。
+因此既有 `@Bean` 写法仍然兼容。迁移脚本（`Migration#connection()`）
+使用相同的别名语义。
 
 ---
 
@@ -1080,13 +1079,13 @@ public Response login(@RequestBody LoginRequest req, UserProvider provider) {
 `BaseModel.paginate(page, size)` 及其重载返回的是 **`core.pagination.Paginator`**（位于 `core` 标准层），
 而非 `jblade` 的实现。这意味着：
 
-- **`database` 不再硬依赖 `jblade`**：仅使用 ORM 与分页、不想引入模板引擎的项目可单独依赖 `database`。
+- **`database` 不依赖 `jblade`**：仅使用 ORM 与分页、不想引入模板引擎的项目可单独依赖 `database`。
 - 分页器提供 Laravel 风格 API：`hasPages()` / `onFirstPage()` / `hasMorePages()` / `previousPageUrl()` /
   `nextPageUrl()` / `url(n)` / `appends()` / `elements()` / `links()`，并实现 `Iterable`
   （模板中可直接 `@foreach($list as $item)`）与 `Htmlable`（实现后 `{{ $list }}` 免转义输出 HTML）。
 - **`links(viewName)` 的渲染解耦**：`Paginator` 仅依赖 `core.view.View`（标准接口）。视图引擎（jblade）
   在启动时通过 `ViewFacade.bind()` 注入默认 `View`；若未引入 jblade（无默认视图），
-  `links()` 安全降级为空串——即「没有分页视图时该方法等同于未执行」。
+  `links()` 返回空串——即「没有分页视图时该方法等同于未执行」。
 
 ```java
 // 返回 core.pagination.Paginator，不耦合模板引擎

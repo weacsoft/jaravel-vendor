@@ -20,7 +20,7 @@ import java.util.Set;
  * </ul>
  * 由此保证 {@code Migration#connection()} 与 Model 的 {@code @DataSource} 使用同一套别名语义。
  * <p>
- * Spring 装配收口于 springboot 模块（migration 核心模块零 Spring 依赖；本类属装配辅助，随装配同迁）。
+ * Spring 装配集中于 springboot 模块（migration 核心模块零 Spring 依赖；本类属装配辅助，随装配同迁）。
  */
 final class ConnectionAliasResolver {
 
@@ -73,7 +73,7 @@ final class ConnectionAliasResolver {
      * 从 {@code GaarasonDataSource} 中取出底层的 {@link DataSource}。
      * <p>
      * gaarason 的 {@code GaarasonDataSource} 本身继承 {@link DataSource}，
-     * 可直接使用；此处保留兜底以兼容不同版本。
+     * 可直接使用；此处保留回退以兼容不同版本。
      *
      * @param gaarasonDataSource gaarason 数据源对象
      * @return 底层 JDBC 数据源，无法解析时返回 {@code null}

@@ -30,7 +30,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * <p>
  * 额外维护 {@link #tenantRouteInfos} 映射表，记录每个插件注册的前缀化路由，
  * 以便在 {@link #unregisterRoutes(String)} 时同步清理 {@link PluginRouteHandler}
- * 的路由注册表（原版未实现此清理）。
+ * 的路由注册表。
  */
 public class TenantAwarePluginRouteRegistrar extends PluginRouteRegistrar {
 

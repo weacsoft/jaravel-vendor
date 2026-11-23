@@ -16,7 +16,7 @@ import org.springframework.context.annotation.Bean;
 /**
  * 事件模块自动装配，对齐 Laravel {@code EventServiceProvider} 与队列配置。
  * <p>
- * Spring 装配收口于 springboot 模块（event 核心模块零 Spring 依赖）。
+ * Spring 装配集中于 springboot 模块（event 核心模块零 Spring 依赖）。
  *
  * <p>
  * 注册以下 Bean：

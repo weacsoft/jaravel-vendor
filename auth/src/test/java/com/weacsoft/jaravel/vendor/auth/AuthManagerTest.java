@@ -204,7 +204,7 @@ class AuthManagerTest {
 
     @Test
     void testDefaultDriverFallsBackToBuiltInNullGuardWhenImplementationMissing() {
-        // 语义（有意）：auth 是「认证标准」，不应因为没引入具体守卫实现就崩。
+        // 语义（有意）：auth 是「认证标准」，不应因为未引入具体守卫实现而失败。
         // 默认驱动（session）没有驱动支持时回退到内置空守卫（恒未登录），
         // 这样「只依赖 auth、不依赖 auth-session」的应用也能装配起来。
         AuthManager manager = new AuthManager();
@@ -232,12 +232,12 @@ class AuthManagerTest {
         manager.registerGuard("web", "weird-driver", "users");
 
         assertThrows(IllegalStateException.class, () -> manager.guard("web"),
-                "显式声明的未知 driver 必须大声失败，不得静默兜底");
+                "显式声明的未知 driver 必须大声失败，不得静默回退");
     }
 
     @Test
     void testRegisteredDriverStillWinsOverNullGuardFallback() {
-        // 兜底不得抢真实驱动的匹配（NullGuardDriver.support 恒为 false）
+        // 回退不得抢真实驱动的匹配（NullGuardDriver.support 恒为 false）
         AuthManager manager = new AuthManager();
         manager.registerProvider("users", new InMemoryProvider());
         manager.registerGuard("web", "session", "users");

@@ -176,7 +176,7 @@ public class CaptchaCrypto {
             new java.util.concurrent.atomic.AtomicBoolean(false);
 
     /**
-     * 仍在使用<b>源码中的公开常量</b>密钥时告警一次（审计 N1）。
+     * 仍在使用<b>源码中的公开常量</b>密钥时告警一次。
      * <p>
      * 该密钥对任何人都可见，等于「没有密钥」：token 可被离线解开、答案可被直接读出，
      * 甚至可自造 token。此处覆盖非 Spring 直连场景（{@code new NumberCaptcha(props)}），

@@ -17,7 +17,7 @@ import java.io.IOException;
  * 认证生命周期过滤器：每个请求开始时绑定 {@link AuthContext}，结束时清理 ThreadLocal，
  * 对齐 Laravel 每个请求独立的认证上下文。
  * <p>
- * Spring 装配收口于 springboot 模块（auth 核心模块零 Spring 依赖）；
+ * Spring 装配集中于 springboot 模块（auth 核心模块零 Spring 依赖）；
  * 该过滤器依赖 {@code OncePerRequestFilter}（spring-web），故与装配一同位于本模块。
  */
 public class AuthLifecycleFilter extends OncePerRequestFilter {

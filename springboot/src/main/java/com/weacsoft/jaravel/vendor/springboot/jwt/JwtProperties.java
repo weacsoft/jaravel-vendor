@@ -10,7 +10,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *   # 全局应用密钥（Base64），由 `artisan key:generate` 生成
  *   key: base64-random-key
  *   jwt:
- *     # 不配置时自动回退到上面的 jaravel.key（模块配置优先 → 全局密钥兜底）
+ *     # 不配置时自动回退到上面的 jaravel.key（模块配置优先 → 全局密钥回退）
  *     secret: your-secret-key
  *     ttl: 3600000
  *     refresh-ttl: 604800000

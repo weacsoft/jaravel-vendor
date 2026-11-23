@@ -8,6 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
@@ -130,7 +131,13 @@ public class QueueManager {
      * @param task      待执行任务
      */
     public void submit(String queueName, Runnable task) {
-        getOrCreateExecutor(queueName).submit(task);
+        ExecutorService executor = getOrCreateExecutor(queueName);
+        try {
+            executor.submit(task);
+        } catch (RejectedExecutionException e) {
+            // 关闭期提交被拒：显式告警，避免延迟任务静默丢失
+            logger.warn("[event] 队列 '{}' 已关闭，任务提交被拒绝", queueName, e);
+        }
     }
 
     /**
@@ -147,7 +154,15 @@ public class QueueManager {
             submit(queueName, task);
             return;
         }
-        scheduler.schedule(() -> submit(queueName, task), delayMs, TimeUnit.MILLISECONDS);
+        if (scheduler.isShutdown()) {
+            logger.warn("[event] 队列管理器已关闭，延迟任务被拒绝: queue={}, delayMs={}", queueName, delayMs);
+            return;
+        }
+        try {
+            scheduler.schedule(() -> submit(queueName, task), delayMs, TimeUnit.MILLISECONDS);
+        } catch (RejectedExecutionException e) {
+            logger.warn("[event] 队列管理器关闭中，延迟任务提交被拒绝: queue={}, delayMs={}", queueName, delayMs, e);
+        }
     }
 
     /**
@@ -165,26 +180,27 @@ public class QueueManager {
     }
 
     /**
-     * 优雅关闭所有队列执行器与调度器：先 {@code shutdown}，最多等待 5 秒，
-     * 超时则执行 {@code shutdownNow} 强制关闭。
+     * 优雅关闭所有队列执行器与调度器：先统一 {@code shutdown}，再统一等待，
+     * 总超时 5 秒，超时则对未结束的执行器执行 {@code shutdownNow} 强制关闭。
      */
     @PreDestroy
     public void shutdown() {
         logger.info("[event] QueueManager 正在关闭...");
-        // 关闭调度器
+        // 先全部 shutdown，再统一等待，避免逐个顺序等待导致 N×5 秒
         scheduler.shutdown();
-        // 关闭所有队列执行器
         for (var entry : executors.entrySet()) {
             entry.getValue().shutdown();
         }
         try {
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
             if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
                 logger.warn("[event] 调度器在 5 秒内未完成全部任务，执行强制关闭");
                 scheduler.shutdownNow();
             }
             for (var entry : executors.entrySet()) {
-                if (!entry.getValue().awaitTermination(5, TimeUnit.SECONDS)) {
-                    logger.warn("[event] 队列 '{}' 执行器在 5 秒内未完成全部任务，执行强制关闭", entry.getKey());
+                long remaining = deadline - System.nanoTime();
+                if (remaining <= 0 || !entry.getValue().awaitTermination(remaining, TimeUnit.NANOSECONDS)) {
+                    logger.warn("[event] 队列 '{}' 执行器未在超时前完成全部任务，执行强制关闭", entry.getKey());
                     entry.getValue().shutdownNow();
                 }
             }

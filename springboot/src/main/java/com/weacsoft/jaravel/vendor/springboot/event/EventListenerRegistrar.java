@@ -17,7 +17,7 @@ import java.util.Map;
  * <p>
  * 采用构造器注入，确保 {@link Dispatcher} 与 {@link ApplicationContext} 在注册前已就绪。
  * <p>
- * Spring 装配收口于 springboot 模块（event 核心模块零 Spring 依赖）。
+ * Spring 装配集中于 springboot 模块（event 核心模块零 Spring 依赖）。
  */
 @Component
 public class EventListenerRegistrar implements SmartInitializingSingleton {

@@ -50,7 +50,7 @@ public class JbladePublishableConfig implements PublishableConfig {
                  * <pre>
                  * jaravel:
                  *   view:
-                 *     default: ""                    # 默认激活的 View 实现名，留空按注解/兜底判定
+                 *     default: ""                    # 默认激活的 View 实现名，留空按注解/回退判定
                  *     template-dir: templates        # 模板根目录，默认 templates
                  *     suffix: .blade.java            # 模板文件后缀，默认 .blade.java
                  *     asset-url-prefix: /static      # 静态资源 URL 前缀，默认 /static

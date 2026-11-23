@@ -28,7 +28,7 @@ Java 版 Laravel 框架核心库，在 Spring Boot 3.2.12 基础上近乎 100% �
 | cache | `cache` | CacheManager/驱动分包/Cache门面（零 Spring 依赖） | [README](cache/README.md) |
 | cache-database | `cache-database` | DatabaseCacheDriver/database驱动工厂（原生 JDBC 走 database 模块，不依赖 spring-jdbc，可选） | [README](cache-database/README.md) |
 | jblade | `jblade` | Blade模板引擎（零Spring依赖，装配在springboot；@if/@foreach/@extends等指令，表达式编译） | [README](jblade/README.md) |
-| auth | `auth` | AuthManager/Guard·UserProvider 契约/Auth门面/**空守卫兜底**（零Spring依赖，装配在springboot；不依赖 session） | [README](auth/README.md) |
+| auth | `auth` | AuthManager/Guard·UserProvider 契约/Auth门面/**空守卫回退**（零Spring依赖，装配在springboot；不依赖 session） | [README](auth/README.md) |
 | auth-session | `auth-session` | SessionGuard/SessionGuardDriver——把 auth 标准落到 session 存储上的一种实现（零Spring依赖；按需引入） | - |
 | session | `session` | SessionStore 契约/CookieSessionStore/@RegisterSessionStore/SessionStoreHolder（零Spring依赖，装配在springboot.session） | - |
 | jwt | `jwt` | JWT认证插件（零Spring依赖，装配在springboot；续期/登出黑名单/Cache集成） | [README](jwt/README.md) |
@@ -40,7 +40,7 @@ Java 版 Laravel 框架核心库，在 Spring Boot 3.2.12 基础上近乎 100% �
 | session-redis | `session-redis` | RedisSessionStore（零Spring依赖，装配在springboot；多机Session同步，基于 session 模块的 SessionStore） | [README](session-redis/README.md) |
 | artisan | `artisan` | ArtisanApplication/ArtisanCommand/ArtisanRunner（CLI命令框架，签名解析） | [README](artisan/README.md) |
 | schedule | `schedule` | Schedule/ScheduledTask + 装配（零Spring依赖，装配在springboot；Cron调度，分布式锁） | [README](schedule/README.md) |
-| queue-database | `queue-database` | DatabaseQueueDriver/Worker（装配在springboot；driver层保留spring-jdbc/spring-context（D3豁免），持久化队列，多实例消费，重试） | [README](queue-database/README.md) |
+| queue-database | `queue-database` | DatabaseQueueDriver/Worker（装配在springboot；driver层保留spring-jdbc/spring-context，持久化队列，多实例消费，重试） | [README](queue-database/README.md) |
 | springboot | `springboot` | RouterFunction桥接/全局中间件注入/MVC解析 | [README](springboot/README.md) |
 | wire | `wire` | Wire响应式UI（零Spring依赖，装配在springboot；Livewire风格，wire:model双向绑定/wire:click事件/部分更新/延迟重定向） | [README](wire/README.md) |
 | captcha | `captcha` | 验证码生成器/存储/加密分子包（零Spring依赖，装配在springboot；number/arithmetic/slider/rotate，轨迹验证，水印） | [README](captcha/README.md) |
@@ -55,7 +55,7 @@ Java 版 Laravel 框架核心库，在 Spring Boot 3.2.12 基础上近乎 100% �
 | **plugin-jar-remote-client** | `plugin-jar-remote-client` | JAR插件远程执行客户端（P2SP主节点，动态代理/协调器） | [README](plugin-jar-remote-client/README.md) |
 | **storage** | `storage` | 多磁盘文件存储（Filesystem契约/local驱动/@RegisterDisk注解式注册/驱动SPI，零Spring依赖，对齐Laravel Storage） | [README](storage/README.md) |
 | **storage-database** | `storage-database` | 存储 database 磁盘驱动（原生JDBC走database模块连接，不用spring-jdbc，可选；Spring装配在springboot模块） | [README](storage-database/README.md) |
-| **aether-upload** | `aether-upload` | 不限大小分片上传（零Spring依赖，装配在springboot；断点·断线续传/base64传输/多组配置/storage落盘，对齐peinhu/AetherUpload） | [README](aether-upload/README.md) |
+| **aether-upload** | `aether-upload` | 不限大小分片上传（零Spring依赖，装配在springboot；断点·断线续传/base64传输/多组配置/storage写入，对齐peinhu/AetherUpload） | [README](aether-upload/README.md) |
 
 ## 快速集成
 
@@ -245,7 +245,7 @@ jarPluginManager.enablePlugin("my-plugin");  // 路由 /api/greeting 自动注�
 - **`Jackson2JsonCodec`**：SB3 运行时自动选择（classpath 有 `com.fasterxml.jackson.databind.ObjectMapper`）
 - **`Jackson3JsonCodec`**：SB4 运行时自动选择（classpath 有 `tools.jackson.databind.ObjectMapper`）
 - **`JsonCodecHolder`**：全局持有器，Spring 环境下由 `JsonCodecAutoConfiguration` 注入，非 Spring 环境（如单元测试）自动检测 classpath
-- **`Json` 静态门面**：`Json.stringify(obj)` / `Json.parse(json, MyClass.class)` / `Json.parseToMap(json)` 等一行替换原 `ObjectMapper` 用法
+- **`Json` 静态门面**：`Json.stringify(obj)` / `Json.parse(json, MyClass.class)` / `Json.parseToMap(json)` 等一行代码可替换原 `ObjectMapper` 用法
 
 ## 配置参考
 
@@ -376,7 +376,9 @@ jaravel:
 
 ## 版本
 
-当前版本：**0.1.3**（源码开发中，见 [CHANGELOG](CHANGELOG.md) 的 Unreleased 段）；Maven Central 上已发布的版本为 **0.1.2**。
+当前版本：**0.1.3**（变更记录见 [CHANGELOG](CHANGELOG.md) 的 0.1.3 段）；Maven Central 上已发布的版本为 **0.1.2**，**0.1.3** 的构件由发布流程上传。
+
+版本标签统一采用 `x.y.z` 格式（如 `0.1.3`），不使用 `v` 前缀，也不带任何后缀（如 `0.1.3-rc1`）。仓库内置两层校验：本地 pre-push 钩子（`.githooks/pre-push`，克隆后执行 `git config core.hooksPath .githooks` 启用）与 GitHub Actions（`.github/workflows/validate-tag.yml`，服务器端校验）。
 
 ## 许可证
 

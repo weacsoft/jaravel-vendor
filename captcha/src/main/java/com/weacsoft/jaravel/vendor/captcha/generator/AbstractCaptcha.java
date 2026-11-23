@@ -174,7 +174,7 @@ public abstract class AbstractCaptcha implements Captcha {
         // 输入通道密钥：只用于前端加密「用户输入」，可以公开。
         // 关键：绝不能把「解密 captchaKey 的密钥」下发 —— captchaKey 内含 answer，
         // 谁拿到那把密钥就能直接解出答案、绕过验证码（对称加密模式下的历史严重缺陷）。
-        //   对称（AES）：每次生成一把一次性输入密钥放进 token，前端拿到的只是它；
+        //   对称（AES）：每次生成一个一次性输入密钥放进 token，前端拿到的只是它；
         //   非对称（RSA）：token 用服务端密钥（含私钥）加密，前端只下发公钥。
         String encType = effectiveEncryptionType();
         String serverKey = effectiveEncryptionKey(encryptionKey);
@@ -190,7 +190,7 @@ public abstract class AbstractCaptcha implements Captcha {
         String captchaKey = crypto.encrypt(payload);
         if (captchaKey == null || captchaKey.isEmpty()) {
             // 绝不下发「永远校验不过」的凭证（旧行为会产出 "number.null" 且接口仍返回 200，
-            // 表现是用户永远验证失败且无任何日志）。加密失败必须显式失败（审计 M4）。
+            // 表现是用户永远验证失败且无任何日志）。加密失败必须显式失败。
             throw new IllegalStateException("验证码加密失败（encryptionType=" + encType
                     + "）。请检查密钥配置：RSA 需 `公钥|私钥`（仅配私钥会解析失败），AES 需非默认密钥。");
         }
@@ -201,10 +201,10 @@ public abstract class AbstractCaptcha implements Captcha {
         result.setKey(getType() + "." + captchaKey);
         result.setType(getType());
         result.setExpireTime(expireTime);
-        // 下发实际生效的加密类型与密钥，确保前端加密用户输入时与服务端解密使用同一把密钥
-        // （尤其在服务端启用了 jaravel.key 全局密钥兜底时，前端必须用下发值而非静态配置）。
+        // 下发实际生效的加密类型与密钥，确保前端加密用户输入时与服务端解密使用同一份密钥
+        // （尤其在服务端启用了 jaravel.key 全局密钥回退时，前端必须用下发值而非静态配置）。
         // 这里必须取「crypto 实际使用的」参数，而不是 props（可能是场景级副本）中的值，
-        // 否则前端会拿到一把服务端并未使用的密钥，校验阶段解密必定失败（表现为恒定 403）。
+        // 否则前端会拿到一个服务端并未使用的密钥，校验阶段解密必定失败（表现为恒定 403）。
         result.setEncType(encType);
         // RSA 只下发公钥（客户端可加密、不可解密 token）；AES 下发一次性输入密钥。
         // 两者都无法用来解密 captchaKey → 答案不再可被前端/攻击者还原。
@@ -329,7 +329,7 @@ public abstract class AbstractCaptcha implements Captcha {
             return false;
         }
         consumeNonce(nonce, expireTime);
-        // 兼容路径必须可见（审计 F2）：存储不支持原子占用时，「一次性」会静默退回
+        // 兼容路径必须可见：存储不支持原子占用时，「一次性」会静默退回
         // 「先查后写」，并发下两个请求可同时通过 —— 与 M5 的原始缺陷等价。
         if (NON_ATOMIC_CLAIM_WARNED.compareAndSet(false, true)) {
             log.warn("[captcha] 当前 CaptchaStore 未实现 putIfAbsent（不支持原子占用），"
@@ -356,7 +356,7 @@ public abstract class AbstractCaptcha implements Captcha {
             org.slf4j.LoggerFactory.getLogger(AbstractCaptcha.class);
 
     /**
-     * 「未启用加密（none）」告警一次（审计 N1）。
+     * 「未启用加密（none）」告警一次。
      * <p>
      * 此时 token 内容就是 {@code expireTime|nonce|answer}：前端或攻击者 Base64 解码即得答案，
      * 并可自行构造任意 token —— 验证码等于形同虚设。只应出现在本地演示环境。
@@ -409,19 +409,19 @@ public abstract class AbstractCaptcha implements Captcha {
      * </ul>
      * 若 generate 时用了 overrides 副本里的密钥（例如场景副本继承了模块出厂默认密钥，
      * 而实例级配置已被 {@code AppKey} 回退成全局 {@code jaravel.key}），
-     * verify 阶段就会用另一把密钥解密，导致校验恒定失败（HTTP 403）且极难排查。
+     * verify 阶段就会用另一个密钥解密，导致校验恒定失败（HTTP 403）且极难排查。
      * <p>
      * 因此 overrides 只用于控制验证码的「形态」（尺寸、长度、容差、干扰等），
      * 加解密参数只有两个来源：显式传入的 {@code encryptionKey}，或实例级配置。
      *
-     * @param props         配置属性（仅用于兜底，实例级配置缺失时才使用）
+     * @param props         配置属性（仅用于回退，实例级配置缺失时才使用）
      * @param encryptionKey 运行时密钥（null 则使用实例级配置中的密钥）
      * @return CaptchaCrypto 实例
      */
     protected CaptchaCrypto createCrypto(CaptchaProperties props, String encryptionKey) {
         CaptchaProperties cryptoProps = this.properties != null ? this.properties : props;
         String type = cryptoProps != null ? cryptoProps.getEncryptionType() : "none";
-        // properties 为 null 时不能静默降级为 "none"（审计 N8）：那等于「装配缺失 → 明文下发答案」，
+        // properties 为 null 时不能静默降级为 "none"：那等于「装配缺失 → 明文下发答案」，
         // 且调用方毫无察觉。这里显式告警一次，让问题可被发现。
         if (type == null || "none".equalsIgnoreCase(type)) {
             warnNoneEncryptionOnce();

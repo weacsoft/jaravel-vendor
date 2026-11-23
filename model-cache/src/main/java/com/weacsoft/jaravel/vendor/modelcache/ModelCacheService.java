@@ -72,7 +72,7 @@ public class ModelCacheService {
         String key = buildKey(modelClass, "find:" + id);
         long ttl = getTtl(modelClass);
         // 命中值可能是反序列化后的 LinkedHashMap（非内存 store）→ 按实体类型还原；
-        // 不可还原则驱逐并回源，绝不把错类型交给调用方（审计 M16）
+        // 不可还原则驱逐并回源，绝不把错类型交给调用方
         return cachedOrReload(store, key, ttl, modelClass, loader);
     }
 
@@ -109,12 +109,12 @@ public class ModelCacheService {
         CacheStore store = resolveStore();
         String key = buildKey(modelClass, "query:" + queryKey);
         long ttl = getTtl(modelClass);
-        // query 的契约是「任意 Object」（count / 标量 / 投影），**不做类型还原**（审计 M16）
+        // query 的契约是「任意 Object」（count / 标量 / 投影），**不做类型还原**
         return rememberSkipNull(store, key, ttl, loader);
     }
 
     /**
-     * 读缓存命中并还原类型；<b>不可还原时驱逐该键并回源</b>（审计 M16）。
+     * 读缓存命中并还原类型；<b>不可还原时驱逐该键并回源</b>。
      * <p>
      * 为什么不「返回原值 + WARN」：那会把类型契约变成「有时实体、有时 LinkedHashMap」——
      * 调用点仍会 CCE（只是延后），且按类型分派的逻辑（instanceof、序列化、权限判断）可能走错分支。
@@ -233,7 +233,7 @@ public class ModelCacheService {
         return null;
     }
 
-    /** 已告警过的模型类（**按模型记忆**：进程级单例会让第二个坏模型永久静默，架构评审 R5） */
+    /** 已告警过的模型类（**按模型记忆**：进程级单例会让第二个坏模型永久静默） */
     private static final java.util.Set<Class<?>> COERCE_FAILURE_WARNED =
             java.util.concurrent.ConcurrentHashMap.newKeySet();
 
@@ -383,7 +383,7 @@ public class ModelCacheService {
             new java.util.concurrent.atomic.AtomicBoolean(false);
 
     /**
-     * 非内存（序列化）store 的两条已知限制告警（审计 M16/N7）。
+     * 非内存（序列化）store 的两条已知限制告警。
      * <p>
      * 1. <b>类型保真度</b>：{@code find}/{@code findAll} 命中后会做元素级还原（Map → 实体），
      *    但 JSON 往返<b>会丢失</b>懒加载/派生字段/被 {@code @JsonIgnore} 的字段 —— 还原成功

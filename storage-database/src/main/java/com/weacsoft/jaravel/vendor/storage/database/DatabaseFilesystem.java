@@ -191,7 +191,7 @@ public class DatabaseFilesystem implements Filesystem {
     }
 
     /**
-     * 流式读取（审计 M8/O1）：<b>按分片惰性读取</b>，内存占用 O(chunkSize) 而不是整个文件。
+     * 流式读取：<b>按分片惰性读取</b>，内存占用 O(chunkSize) 而不是整个文件。
      * <p>
      * 旧实现是 {@code new ByteArrayInputStream(read(path))} —— 先把整个文件读进堆再包一层流，
      * 配置 {@code disk: <数据库磁盘>} 时大文件下载会 OOM（与「流式」的名字完全相反）。
@@ -329,7 +329,7 @@ public class DatabaseFilesystem implements Filesystem {
     }
 
     /**
-     * 流式写入（审计 M8/O1）：<b>边读边写分片</b>，内存占用 O(chunkSize) 而不是整个文件。
+     * 流式写入：<b>边读边写分片</b>，内存占用 O(chunkSize) 而不是整个文件。
      * <p>
      * 旧实现 {@code input.readAllBytes()} 会把整个上传文件读进堆 —— 上传大文件时与「流式」的名字
      * 相反地 OOM（{@code AetherUploadManager.moveToDisk} 的「内存占用恒定」注释因此不成立）。
@@ -409,7 +409,7 @@ public class DatabaseFilesystem implements Filesystem {
     }
 
     /**
-     * 追加内容（审计 M8/O2）。
+     * 追加内容。
      * <p>
      * 旧实现是「{@code read} 全量 → 拼接 → {@code put} 全量」：既把整个文件读进堆（大文件 OOM），
      * 又是**跨事务的读-改-写**（并发追加丢更新）。
@@ -490,7 +490,7 @@ public class DatabaseFilesystem implements Filesystem {
      * 按路径分段锁：把「读旧长度 → 重写末片 → 更新元信息」整段串行化（同一 JVM 内）。
      * <p>
      * 为何必须有它：{@code UPDATE ... WHERE size = 旧值} 的 CAS 在 MVCC 快照语义下仍可能
-     * 基于过期快照成功提交（H2 MVStore 实测：并发追加 8000 字节只留下 1900），因此同一进程内
+     * 基于过期快照成功提交（H2 MVStore 验证：并发追加 8000 字节只留下 1900），因此同一进程内
      * 必须用锁串行；CAS 保留用于<b>跨实例</b>冲突检测（失败即重读重试）。
      */
     private static final int APPEND_LOCK_SEGMENTS = 64;
@@ -510,7 +510,7 @@ public class DatabaseFilesystem implements Filesystem {
     private static final int APPEND_MAX_ATTEMPTS = 5;
 
     /**
-     * 流式写出（审计 M8/O1）：逐分片写目标流，内存 O(chunkSize)。
+     * 流式写出：逐分片写目标流，内存 O(chunkSize)。
      *
      * @param path   相对路径
      * @param output 目标流（不关闭）

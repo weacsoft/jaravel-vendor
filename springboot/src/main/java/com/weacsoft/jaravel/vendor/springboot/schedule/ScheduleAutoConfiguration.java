@@ -20,7 +20,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * 启用 Spring {@link EnableScheduling} 驱动 {@link ScheduleRunner#run()} 定期执行。
  * <p>
  * 锁提供者通过 {@code @RegisterLockProvider} 注解注册到 {@link LockProviderManager}，
- * 不进入 Spring 容器。未注册任何 provider 时自动兜底为同步锁（单机执行）。
+ * 不进入 Spring 容器。未注册任何 provider 时自动回退为同步锁（单机执行）。
  * <p>
  * 业务方通过 {@link RegisterSchedule} 注解注册任务（推荐）：
  * <pre>

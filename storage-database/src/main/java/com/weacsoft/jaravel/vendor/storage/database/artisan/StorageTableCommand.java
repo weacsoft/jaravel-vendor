@@ -53,7 +53,7 @@ public class StorageTableCommand extends ArtisanCommand {
      * @param tablePrefix   表名前缀（默认 storage_）
      * @param contentColumn 内容列名（默认 content）
      * @param binary        是否使用二进制列（true=LONGBLOB, false=LONGTEXT）
-     * @param makeProps     artisan 代码生成配置（决定迁移文件落盘目录与包名，可为 null）
+     * @param makeProps     artisan 代码生成配置（决定迁移文件写入目录与包名，可为 null）
      */
     public StorageTableCommand(String tablePrefix, String contentColumn, boolean binary,
                                MakeCodeProperties makeProps) {

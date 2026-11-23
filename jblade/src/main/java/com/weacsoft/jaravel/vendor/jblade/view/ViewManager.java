@@ -15,13 +15,13 @@ import org.slf4j.LoggerFactory;
  * <p>
  * 实现 core 标准层 {@link ViewManager}，使得框架（如 database 的 {@code Paginator}）仅依赖
  * core 抽象即可渲染视图，而无需直接耦合 jblade。
- * 默认选择优先级（与模块兜底规则一致：声明 → 配置 → 默认）：
+ * 默认选择优先级（与模块回退规则一致：声明 → 配置 → 默认）：
  * <ol>
  *   <li>若设置了配置指定的默认名（{@link #setConfiguredDefault}），优先用它；</li>
  *   <li>否则用声明时标 {@code defaultView=true} 的那个；</li>
  *   <li>否则用名为 {@code blade} 的实现；</li>
  *   <li>否则用第一个注册的；</li>
- *   <li>都无则返回空（由 {@code ViewAutoConfiguration} 兜底注册 Blade）。</li>
+ *   <li>都无则返回空（由 {@code ViewAutoConfiguration} 回退注册 Blade）。</li>
  * </ol>
  */
 public class ViewManager implements com.weacsoft.jaravel.vendor.core.view.ViewManager {
@@ -64,7 +64,7 @@ public class ViewManager implements com.weacsoft.jaravel.vendor.core.view.ViewMa
     /**
      * 解析当前应激活的默认 View 实现。
      *
-     * @return 默认 View，未配置返回 null（由 {@code ViewAutoConfiguration} 兜底注册 Blade）
+     * @return 默认 View，未配置返回 null（由 {@code ViewAutoConfiguration} 回退注册 Blade）
      */
     @Override
     public View defaultView() {

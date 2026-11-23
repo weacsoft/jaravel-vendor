@@ -118,7 +118,9 @@ public class Schedule {
      */
     public ScheduledTask command(String command, String[] args) {
         ScheduledTask task = new ScheduledTask("cmd:" + command, () -> {
-            // 占位回调：实际执行由 ScheduleRunner 通过 ArtisanApplication 调度
+            // 该任务由 ScheduleRunner 通过 ArtisanApplication 执行；直接调用回调说明调度链路缺失
+            throw new IllegalStateException("artisan 命令任务 '" + command
+                    + "' 需由 ScheduleRunner 通过 ArtisanApplication 执行");
         });
         task.setArtisanCommand(command, args);
         task.description("artisan " + command);

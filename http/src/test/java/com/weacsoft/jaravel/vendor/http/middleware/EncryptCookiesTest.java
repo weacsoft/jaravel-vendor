@@ -29,7 +29,7 @@ class EncryptCookiesTest {
 
     private static final String SECRET = "unit-test-secret-key-0123456789abcdef";
 
-    /** 固定密钥的最小实现（避免依赖 Spring 上下文 / jaravel.key 兜底） */
+    /** 固定密钥的最小实现（避免依赖 Spring 上下文 / jaravel.key 回退） */
     private static class TestCookies extends EncryptCookies {
         @Override
         protected String encryptionKey() {

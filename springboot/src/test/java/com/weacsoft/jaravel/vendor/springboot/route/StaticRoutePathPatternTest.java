@@ -13,7 +13,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * 静态资源路由的 Spring {@code PathPattern} 语义回归测试（审计 M3 / R9）。
+ * 静态资源路由的 Spring {@code PathPattern} 语义回归测试。
  * <p>
  * 背景：静态资源路由原先用 {@code /static/{path}}（只匹配单段 → 嵌套资源恒 404）。
  * 修复为 {@code /static/{*path}}（capture-the-rest）后有两个必须钉死的性质：
@@ -69,6 +69,6 @@ class StaticRoutePathPatternTest {
         RequestPredicate oldStyle = RequestPredicates.path("/static/{path}");
         assertTrue(oldStyle.test(request("/static/app.css")), "旧写法单段仍可命中");
         assertFalse(oldStyle.test(request("/static/css/app.css")),
-                "旧写法对多段路径不命中 —— 这正是审计 M3 的功能缺陷");
+                "旧写法对多段路径不命中 —— 这正是既有的功能缺陷");
     }
 }

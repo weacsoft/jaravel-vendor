@@ -220,7 +220,7 @@ class AetherUploadManagerTest {
     }
 
     @Test
-    void 同步上传应直接落盘并标记完成() throws IOException {
+    void 同步上传应直接写入并标记完成() throws IOException {
         byte[] content = randomBytes(500);
         UploadResult result = manager.uploadSync("file", "s.txt", "text/plain", content);
         assertTrue(result.completed);

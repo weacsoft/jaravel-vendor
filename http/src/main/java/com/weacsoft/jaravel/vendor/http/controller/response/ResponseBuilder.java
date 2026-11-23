@@ -168,7 +168,7 @@ public class ResponseBuilder {
             {
                 addHeader("Content-Type", "application/octet-stream");
                 addHeader("Content-Disposition", contentDisposition("attachment", filename));
-                // 下载同样禁止嗅探（审计 N3）：否则 .html/.svg 可能被当页面渲染
+                // 下载同样禁止嗅探：否则 .html/.svg 可能被当页面渲染
                 addHeader("X-Content-Type-Options", "nosniff");
             }
 
@@ -190,7 +190,7 @@ public class ResponseBuilder {
     }
 
     /**
-     * 构造 {@code Content-Disposition} 头值（审计 L4）。
+     * 构造 {@code Content-Disposition} 头值。
      * <p>
      * 两个要点：
      * <ul>
@@ -223,7 +223,7 @@ public class ResponseBuilder {
      * 构建内联文件响应（可指定 Cache-Control 与文件名）。
      * <p>
      * 供「文件预览」使用：<b>私有文件必须配合 {@code private, no-store}</b>，
-     * 否则经反向代理/共享缓存时会被当成公共资源缓存，任何访问者都能拿到副本（审计 L4）。
+     * 否则经反向代理/共享缓存时会被当成公共资源缓存，任何访问者都能拿到副本。
      *
      * @param data         内容
      * @param mimeType     MIME 类型
@@ -237,7 +237,7 @@ public class ResponseBuilder {
                 addHeader("Content-Type", mimeType);
                 addHeader("Cache-Control", cacheControl);
                 addHeader("Content-Length", String.valueOf(data.length));
-                // 禁止内容嗅探（审计 N3）：内联渲染用户可上传的内容（.html/.svg 等）时，
+                // 禁止内容嗅探：内联渲染用户可上传的内容（.html/.svg 等）时，
                 // 若浏览器忽略 Content-Type 去嗅探，会变成同源存储型 XSS。
                 addHeader("X-Content-Type-Options", "nosniff");
                 if (filename != null && !filename.isBlank()) {
@@ -266,7 +266,7 @@ public class ResponseBuilder {
      * 构建静态资源响应（inline 展示 + 指定文件名）。
      * <p>
      * 供「文件预览」场景使用：浏览器内联展示的同时带上真实文件名，
-     * 用户「另存为」得到的是原名而不是随机串（审计 L4）。
+     * 用户「另存为」得到的是原名而不是随机串。
      *
      * @param data        内容
      * @param mimeType    MIME 类型
@@ -312,6 +312,121 @@ public class ResponseBuilder {
                 return data;
             }
         };
+    }
+
+    /**
+     * 构建静态资源的流式响应（内容边读边写，不整体进入堆内存）。
+     * <p>
+     * 与 {@link #staticFile(byte[], String, int)} 的区别：后者要求调用方先提供完整的
+     * {@code byte[]}，内容必然整份驻留堆内存；本方法把「打开内容流」与「写出」交给
+     * 调用方，由其按块搬运，大文件的内存占用与文件大小无关。
+     * <p>
+     * 典型用法（静态资源处理器）：
+     * <pre>
+     * return ResponseBuilder.staticFileStream(source.getMimeType(), source.getCacheMaxAge(),
+     *         source.getContentLength(), source::openStream);
+     * </pre>
+     *
+     * @param mimeType      MIME 类型
+     * @param cacheMaxAge   缓存秒数
+     * @param contentLength 内容长度，未知时传 {@code -1}
+     * @param opener       内容流供给器（调用方负责关闭返回的流）
+     * @return 可流式响应的 {@link Response}
+     */
+    public static Response staticFileStream(String mimeType, int cacheMaxAge, long contentLength,
+                                             StreamSource opener) {
+        StreamResponse response = new StreamResponse(200,
+                mimeType != null ? mimeType : "application/octet-stream",
+                output -> copy(opener, output));
+        response.header("Cache-Control", "public, max-age=" + cacheMaxAge);
+        if (contentLength >= 0) {
+            response.header("Content-Length", String.valueOf(contentLength));
+        }
+        return response;
+    }
+
+    /**
+     * 构建以附件形式下载的流式响应（内容边读边写，不整体进入堆内存）。
+     *
+     * @param mimeType      MIME 类型
+     * @param contentLength 内容长度，未知时传 {@code -1}
+     * @param filename      文件名（可含中文）
+     * @param opener        内容流供给器（调用方负责关闭返回的流）
+     * @return 可流式响应的 {@link Response}
+     */
+    public static Response fileStream(String mimeType, long contentLength, String filename,
+                                      StreamSource opener) {
+        StreamResponse response = new StreamResponse(200,
+                mimeType != null ? mimeType : "application/octet-stream",
+                output -> copy(opener, output));
+        response.header("Content-Disposition", contentDisposition("attachment", filename));
+        // 下载同样禁止嗅探：否则 .html/.svg 可能被当页面渲染
+        response.header("X-Content-Type-Options", "nosniff");
+        if (contentLength >= 0) {
+            response.header("Content-Length", String.valueOf(contentLength));
+        }
+        return response;
+    }
+
+    /**
+     * 构建内联预览的流式响应（内容边读边写，不整体进入堆内存）。
+     * <p>
+     * 供「文件预览」场景使用：<b>私有文件必须配合 {@code private, no-store}</b>，
+     * 否则经反向代理/共享缓存时会被当成公共资源缓存，任何访问者都能拿到副本。
+     *
+     * @param mimeType      MIME 类型
+     * @param cacheControl  Cache-Control 头值（如 {@code public, max-age=3600} / {@code private, no-store}）
+     * @param contentLength 内容长度，未知时传 {@code -1}
+     * @param filename      文件名（可含中文；空则不加 Content-Disposition）
+     * @param opener        内容流供给器（调用方负责关闭返回的流）
+     * @return 可流式响应的 {@link Response}
+     */
+    public static Response inlineFileStream(String mimeType, String cacheControl, long contentLength,
+                                            String filename, StreamSource opener) {
+        StreamResponse response = new StreamResponse(200,
+                mimeType != null ? mimeType : "application/octet-stream",
+                output -> copy(opener, output));
+        if (cacheControl != null) {
+            response.header("Cache-Control", cacheControl);
+        }
+        // 禁止内容嗅探：内联渲染用户可上传的内容（.html/.svg 等）时，
+        // 若浏览器忽略 Content-Type 去嗅探，会变成同源存储型 XSS。
+        response.header("X-Content-Type-Options", "nosniff");
+        if (filename != null && !filename.isBlank()) {
+            response.header("Content-Disposition", contentDisposition("inline", filename));
+        }
+        if (contentLength >= 0) {
+            response.header("Content-Length", String.valueOf(contentLength));
+        }
+        return response;
+    }
+
+    /**
+     * 把内容流按块复制到输出流。
+     *
+     * @param opener 内容流供给器
+     * @param output 目标输出流
+     * @throws Exception 打开或复制失败
+     */
+    private static void copy(StreamSource opener, OutputStream output) throws Exception {
+        try (java.io.InputStream in = opener.open()) {
+            byte[] chunk = new byte[8192];
+            int n;
+            while ((n = in.read(chunk)) != -1) {
+                output.write(chunk, 0, n);
+            }
+            output.flush();
+        }
+    }
+
+    /**
+     * 内容流供给器：返回待写出的内容流。
+     * <p>
+     * 实现方负责关闭返回的流。
+     */
+    @FunctionalInterface
+    public interface StreamSource {
+        java.io.InputStream open() throws Exception;
     }
 
     public static Response unauthorized(String message) {
@@ -412,7 +527,7 @@ public class ResponseBuilder {
      * Raw 模式：创建一个完全空的响应构建器，开发者自由组织 header 和 body。
      * <p>
      * 不预设任何 Content-Type 或状态码，全部由开发者决定。
-     * 如果最终没有设置 Content-Type，框架会在写入 HTTP 响应时兜底为 {@code text/plain;charset=utf-8}。
+     * 如果最终没有设置 Content-Type，框架会在写入 HTTP 响应时回退为 {@code text/plain;charset=utf-8}。
      *
      * <h3>使用示例</h3>
      * <pre>{@code
@@ -429,7 +544,7 @@ public class ResponseBuilder {
      *     .header("Content-Type", "image/png")
      *     .body(imageBytes);
      *
-     * // 不设 Content-Type，框架兜底为 text/plain
+     * // 不设 Content-Type，框架回退为 text/plain
      * return ResponseBuilder.raw()
      *     .status(204)
      *     .body("");
@@ -514,6 +629,11 @@ public class ResponseBuilder {
         private final StreamingResponse writer;
 
         /**
+         * 响应头快照：读取后复用，变更时置空。
+         */
+        private volatile Map<String, List<String>> headersSnapshot;
+
+        /**
          * @param status      HTTP 状态码
          * @param contentType Content-Type，null 时用 application/octet-stream
          * @param writer      写出逻辑
@@ -528,6 +648,7 @@ public class ResponseBuilder {
         /** 追加响应头（链式） */
         public StreamResponse header(String name, String value) {
             headers.computeIfAbsent(name, k -> new ArrayList<>()).add(value);
+            headersSnapshot = null;
             return this;
         }
 
@@ -544,14 +665,20 @@ public class ResponseBuilder {
 
         @Override
         public Map<String, List<String>> getHeaders() {
-            Map<String, List<String>> copy = new LinkedHashMap<>();
-            headers.forEach((k, v) -> copy.put(k, new ArrayList<>(v)));
-            return copy;
+            Map<String, List<String>> snapshot = headersSnapshot;
+            if (snapshot == null) {
+                Map<String, List<String>> copy = new LinkedHashMap<>();
+                headers.forEach((k, v) -> copy.put(k, new ArrayList<>(v)));
+                snapshot = java.util.Collections.unmodifiableMap(copy);
+                headersSnapshot = snapshot;
+            }
+            return snapshot;
         }
 
         @Override
         public void addHeader(String name, String value) {
             headers.computeIfAbsent(name, k -> new ArrayList<>()).add(value);
+            headersSnapshot = null;
         }
 
         @Override
@@ -597,6 +724,11 @@ public class ResponseBuilder {
         private byte[] bytes;
 
         /**
+         * 响应头快照：读取后复用，变更时置空。
+         */
+        private volatile Map<String, List<String>> headersSnapshot;
+
+        /**
          * 设置 HTTP 状态码（默认 200）。
          */
         public RawResponse status(int status) {
@@ -609,6 +741,7 @@ public class ResponseBuilder {
          */
         public RawResponse header(String name, String value) {
             headers.computeIfAbsent(name, k -> new ArrayList<>()).add(value);
+            headersSnapshot = null;
             return this;
         }
 
@@ -617,6 +750,7 @@ public class ResponseBuilder {
          */
         public RawResponse contentType(String contentType) {
             headers.put("Content-Type", new ArrayList<>(List.of(contentType)));
+            headersSnapshot = null;
             return this;
         }
 
@@ -661,12 +795,20 @@ public class ResponseBuilder {
 
         @Override
         public Map<String, List<String>> getHeaders() {
-            return new LinkedHashMap<>(headers);
+            Map<String, List<String>> snapshot = headersSnapshot;
+            if (snapshot == null) {
+                Map<String, List<String>> copy = new LinkedHashMap<>();
+                headers.forEach((k, v) -> copy.put(k, new ArrayList<>(v)));
+                snapshot = java.util.Collections.unmodifiableMap(copy);
+                headersSnapshot = snapshot;
+            }
+            return snapshot;
         }
 
         @Override
         public void addHeader(String name, String value) {
             headers.computeIfAbsent(name, k -> new ArrayList<>()).add(value);
+            headersSnapshot = null;
         }
 
         @Override
@@ -699,14 +841,29 @@ public class ResponseBuilder {
         protected final Map<String, List<String>> headers = new HashMap<>();
         protected final List<Cookie> cookies = new ArrayList<>();
 
+        /**
+         * 响应头快照：无变更时重复读取直接复用，避免每次调用都拷贝整个映射。
+         */
+        private volatile Map<String, List<String>> headersSnapshot;
+
         @Override
         public Map<String, List<String>> getHeaders() {
-            return new HashMap<>(headers);
+            Map<String, List<String>> snapshot = headersSnapshot;
+            if (snapshot == null) {
+                Map<String, List<String>> copy = new HashMap<>();
+                for (Map.Entry<String, List<String>> entry : headers.entrySet()) {
+                    copy.put(entry.getKey(), new ArrayList<>(entry.getValue()));
+                }
+                snapshot = java.util.Collections.unmodifiableMap(copy);
+                headersSnapshot = snapshot;
+            }
+            return snapshot;
         }
 
         @Override
         public void addHeader(String name, String value) {
             headers.computeIfAbsent(name, k -> new ArrayList<>()).add(value);
+            headersSnapshot = null;
         }
 
         @Override

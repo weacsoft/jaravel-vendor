@@ -24,7 +24,7 @@ import java.util.function.Consumer;
 /**
  * Blade 模板引擎，负责编译和渲染 Blade 模板。
  * <p>
- * <b>缓存机制（全部 JVM 堆内存，不序列化、不落盘）</b>：
+ * <b>缓存机制（全部 JVM 堆内存，不序列化、不写入）</b>：
  * <ol>
  *   <li><b>一级缓存——模板类</b>：{@code ConcurrentHashMap<String, Class<?>>} 缓存编译后的
  *       {@code Class<?>} 对象，进程内有效，始终启用。</li>
@@ -47,8 +47,8 @@ public class BladeEngine {
     private final BladeCompiler compiler;
     /** 一级缓存：模板名 → 编译后的 Class 对象（始终启用） */
     private final Map<String, Class<?>> templateClassCache = new ConcurrentHashMap<>();
-    /** 模板实例缓存：模板名 → BladeTemplate 实例 */
-    private final Map<String, BladeTemplate> templateInstanceCache = new ConcurrentHashMap<>();
+    /** 模板编译锁：模板名 → 锁对象，只保证同一模板名不并发编译 */
+    private final Map<String, Object> templateCompileLocks = new ConcurrentHashMap<>();
     /** 内存字节码缓存：模板名 → 编译后的字节码（view:cache 预热的主目标） */
     private final Map<String, byte[]> templateBytecodeCache = new ConcurrentHashMap<>();
     /** 类名索引：模板名 → 编译后的类全限定名（配合字节码缓存使用） */
@@ -193,12 +193,15 @@ public class BladeEngine {
 
     /**
      * 渲染模板。
+     * <p>
+     * 每次渲染都使用独立的模板实例（编译产物 Class 仍由一级缓存共享），因此不同请求之间
+     * 不存在共享的可变上下文，渲染可并行执行。
      *
      * @param templateName 模板名（不含后缀，如 "welcome"、"docs.index"）
      * @param variables    模板变量
      * @return 渲染后的 HTML 字符串
      */
-    public synchronized String render(String templateName, Map<String, Object> variables) throws Exception {
+    public String render(String templateName, Map<String, Object> variables) throws Exception {
         BladeTemplate template = loadTemplate(templateName);
         template.setEngine(this);
 
@@ -344,38 +347,32 @@ public class BladeEngine {
      */
     public String renderSection(String templateName, String sectionName, Map<String, Object> variables) throws Exception {
         BladeTemplate template = loadTemplate(templateName);
-        // 并发安全:templateInstanceCache 中的模板实例(含继承链父模板、组件模板)被跨请求共享,
-        // 其 context 是可变实例字段。多个并发 wire 更新同时渲染不同模板时,可能共享同一父/布局模板
-        // 实例,并发 resetContext/init/renderComponent 同一实例的 context(尤其是 componentSlots 的
-        // clear/putAll 与迭代),导致 ConcurrentModificationException(表现为「点击后页面直接蹦」)。
-        // 故对整引擎加锁(与 loadTemplate 的 synchronized(this) 同一把锁),保证任意时刻至多一个渲染
-        // 在走,共享实例的 context 不再被并发篡改。
-        synchronized (this) {
-            template.setEngine(this);
-            template.resetContext();
-            BladeContext context = template.getContext();
+        // 并发安全:模板实例不再跨请求共享,每次渲染都新建独立实例,其 context 为该实例私有,
+        // 因此不同请求的渲染互不干扰,无需对整引擎加锁。
+        template.setEngine(this);
+        template.resetContext();
+        BladeContext context = template.getContext();
 
-            if (variables != null) {
-                for (Map.Entry<String, Object> entry : variables.entrySet()) {
-                    context.setVariable(entry.getKey(), entry.getValue());
-                }
+        if (variables != null) {
+            for (Map.Entry<String, Object> entry : variables.entrySet()) {
+                context.setVariable(entry.getKey(), entry.getValue());
             }
-
-            // Wire 局部渲染同样需要初始化完整继承链：
-            // 1. resetContext 后 section renderer 已被清空，必须重新 init（不能依赖 isInitialized 守卫）；
-            // 2. section 可能定义在父模板中，或经 @parent 与父模板合并，需与整页渲染语义一致。
-            initInheritanceChain(template, templateName, context);
-
-            Consumer<Writer> renderer = context.getSectionRenderer(sectionName);
-            if (renderer == null) {
-                String sectionContent = context.getSection(sectionName);
-                return sectionContent != null ? sectionContent : "";
-            }
-
-            StringWriter writer = new StringWriter();
-            renderer.accept(writer);
-            return WireAnchorRewriter.rewrite(writer.toString());
         }
+
+        // Wire 局部渲染同样需要初始化完整继承链：
+        // 1. resetContext 后 section renderer 已被清空，必须重新 init（不能依赖 isInitialized 守卫）；
+        // 2. section 可能定义在父模板中，或经 @parent 与父模板合并，需与整页渲染语义一致。
+        initInheritanceChain(template, templateName, context);
+
+        Consumer<Writer> renderer = context.getSectionRenderer(sectionName);
+        if (renderer == null) {
+            String sectionContent = context.getSection(sectionName);
+            return sectionContent != null ? sectionContent : "";
+        }
+
+        StringWriter writer = new StringWriter();
+        renderer.accept(writer);
+        return WireAnchorRewriter.rewrite(writer.toString());
     }
 
     /**
@@ -388,36 +385,33 @@ public class BladeEngine {
      */
     public Map<String, String> renderSections(String templateName, List<String> sectionNames, Map<String, Object> variables) throws Exception {
         BladeTemplate template = loadTemplate(templateName);
-        // 并发安全:与 renderSection 同理,对整引擎加锁(共享缓存模板实例含继承链父/组件模板),
-        // 保证任意时刻至多一个渲染在走,避免并发请求同时迭代/修改同一 context 引发
-        // ConcurrentModificationException。
-        synchronized (this) {
-            template.setEngine(this);
-            template.resetContext();
-            BladeContext context = template.getContext();
+        // 并发安全:模板实例不再跨请求共享,每次渲染都新建独立实例,其 context 为该实例私有,
+        // 因此不同请求的渲染互不干扰,无需对整引擎加锁。
+        template.setEngine(this);
+        template.resetContext();
+        BladeContext context = template.getContext();
 
-            if (variables != null) {
-                for (Map.Entry<String, Object> entry : variables.entrySet()) {
-                    context.setVariable(entry.getKey(), entry.getValue());
-                }
+        if (variables != null) {
+            for (Map.Entry<String, Object> entry : variables.entrySet()) {
+                context.setVariable(entry.getKey(), entry.getValue());
             }
-
-            initInheritanceChain(template, templateName, context);
-
-            Map<String, String> result = new LinkedHashMap<>();
-            for (String sectionName : sectionNames) {
-                Consumer<Writer> renderer = context.getSectionRenderer(sectionName);
-                if (renderer != null) {
-                    StringWriter writer = new StringWriter();
-                    renderer.accept(writer);
-                    result.put(sectionName, WireAnchorRewriter.rewrite(writer.toString()));
-                } else {
-                    String sectionContent = context.getSection(sectionName);
-                    result.put(sectionName, sectionContent != null ? WireAnchorRewriter.rewrite(sectionContent) : "");
-                }
-            }
-            return result;
         }
+
+        initInheritanceChain(template, templateName, context);
+
+        Map<String, String> result = new LinkedHashMap<>();
+        for (String sectionName : sectionNames) {
+            Consumer<Writer> renderer = context.getSectionRenderer(sectionName);
+            if (renderer != null) {
+                StringWriter writer = new StringWriter();
+                renderer.accept(writer);
+                result.put(sectionName, WireAnchorRewriter.rewrite(writer.toString()));
+            } else {
+                String sectionContent = context.getSection(sectionName);
+                result.put(sectionName, sectionContent != null ? WireAnchorRewriter.rewrite(sectionContent) : "");
+            }
+        }
+        return result;
     }
 
     /**
@@ -426,7 +420,7 @@ public class BladeEngine {
      * @param templateName 模板名
      * @return section 名列表
      */
-    public synchronized List<String> getSectionNames(String templateName) throws Exception {
+    public List<String> getSectionNames(String templateName) throws Exception {
         BladeTemplate template = loadTemplate(templateName);
         template.setEngine(this);
         template.resetContext();
@@ -540,10 +534,14 @@ public class BladeEngine {
      *   <li>查外部 CacheStore（可选），命中则加载字节码到 MemoryClassLoader；</li>
      *   <li>缓存未命中时调用 {@link BladeCompiler#compile} 编译模板（需要 JDK），编译后写入内存字节码缓存；</li>
      *   <li>Class 存入一级缓存；</li>
-     *   <li>创建或获取 BladeTemplate 实例（实例缓存）。</li>
+     *   <li>基于该 Class 创建独立的模板实例。</li>
      * </ol>
      * <p>
      * <b>关键修复</b>：不再在每次调用时都执行 compile()，仅缓存未命中时才编译。
+     * <p>
+     * <b>并发约定</b>：编译产物 Class 由一级缓存共享，但每次调用都创建独立的模板实例，
+     * 模板上下文（{@code context}）为实例私有字段，因此并发渲染互不干扰。
+     * 同一模板名在缓存未命中时的编译由该模板名对应的锁串行化，不同模板名之间互不阻塞。
      *
      * @param templateName 模板名
      * @return BladeTemplate 实例
@@ -555,7 +553,8 @@ public class BladeEngine {
         Class<?> templateClass = templateClassCache.get(templateName);
 
         if (templateClass == null) {
-            synchronized (this) {
+            Object compileLock = templateCompileLocks.computeIfAbsent(templateName, name -> new Object());
+            synchronized (compileLock) {
                 templateClass = templateClassCache.get(templateName);
                 if (templateClass == null) {
                     // 2. 查内存字节码缓存（templateName → byte[]，view:cache 预热的主目标）
@@ -577,20 +576,18 @@ public class BladeEngine {
                     if (templateClass == null) {
                         throw new RuntimeException("Failed to load template: " + templateName);
                     }
+                    templateClassCache.put(templateName, templateClass);
                 }
-                templateClassCache.put(templateName, templateClass);
             }
         }
 
-        // 5. 创建或获取模板实例（按模板名缓存）
+        // 5. 创建独立的模板实例（实例不跨请求共享，上下文互不干扰）
         final Class<?> finalTemplateClass = templateClass;
-        return templateInstanceCache.computeIfAbsent(templateName, name -> {
-            try {
-                return (BladeTemplate) finalTemplateClass.getDeclaredConstructor().newInstance();
-            } catch (Exception e) {
-                throw new RuntimeException("Failed to create template instance for: " + name, e);
-            }
-        });
+        try {
+            return (BladeTemplate) finalTemplateClass.getDeclaredConstructor().newInstance();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to create template instance for: " + templateName, e);
+        }
     }
 
     /**
@@ -660,15 +657,13 @@ public class BladeEngine {
      * <ul>
      *   <li>templateClassCache：模板名 → Class 对象缓存（一级缓存）；</li>
      *   <li>templateBytecodeCache：模板名 → 字节码缓存（内存字节码缓存）；</li>
-     *   <li>templateClassNameCache：模板名 → 类名缓存（类名索引）；</li>
-     *   <li>templateInstanceCache：模板实例缓存。</li>
+     *   <li>templateClassNameCache：模板名 → 类名缓存（类名索引）。</li>
      * </ul>
      */
     public void clearCache() {
         templateClassCache.clear();
         templateBytecodeCache.clear();
         templateClassNameCache.clear();
-        templateInstanceCache.clear();
         if (cacheStore != null) {
             try {
                 cacheStore.flush();

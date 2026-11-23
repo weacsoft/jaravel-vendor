@@ -22,7 +22,7 @@ import java.lang.annotation.Target;
  * }
  * </pre>
  *
- * 与 {@link RegisterWechatOfficialAccount} 同层优先级：声明 &gt; yml &gt; 兜底默认。
+ * 与 {@link RegisterWechatOfficialAccount} 同层优先级：声明 &gt; yml &gt; 回退默认。
  *
  * @author weacsoft
  */

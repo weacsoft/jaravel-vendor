@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 数据库磁盘的流式读写与并发追加（审计 M8 / O1 / O2）。
+ * 数据库磁盘的流式读写与并发追加。
  * <p>
  * 修复前三处「名不副实」的实现：
  * <ul>

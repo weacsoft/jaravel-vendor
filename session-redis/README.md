@@ -6,7 +6,7 @@ Redis Session 存储模块，提供 `RedisSessionStore`（实现 `SessionStore` 
 
 > 本模块**不强依赖 auth**：只依赖 http 模块提供的 Session 功能（`SessionStore` 接口与 `@RegisterSessionStore` 注册机制）。当项目仅引入 core + auth（无 http 的 Session 功能）时，auth 退化为使用原生 Servlet HttpSession。
 
-> **零 Spring 依赖**：Spring 自动装配收口于 **springboot** 模块（`vendor.springboot.sessionredis` 包）：`SessionRedisAutoConfiguration` / `SessionRedisProperties` / `OnRedisSessionDriverCondition` / `SessionRedisPublishAutoConfiguration`。本模块保留纯 Java 的 `RedisSessionStore` 与 `SessionRedisPublishableConfig`。
+> **零 Spring 依赖**：Spring 自动装配位于 **springboot** 模块（`vendor.springboot.sessionredis` 包）：`SessionRedisAutoConfiguration` / `SessionRedisProperties` / `OnRedisSessionDriverCondition` / `SessionRedisPublishAutoConfiguration`。本模块保留纯 Java 的 `RedisSessionStore` 与 `SessionRedisPublishableConfig`。
 
 ## 依赖
 
@@ -86,9 +86,7 @@ jaravel:
 未选用时，本模块**不创建任何 Bean、不连接 Redis**，Session 回退到 http 模块的
 `CookieSessionStore`。因此项目即便引入了本依赖，在**没有 Redis 的环境下也能正常启动**。
 
-> **历史行为变更**：早期版本使用 `@ConditionalOnProperty(..., matchIfMissing = true)`，
-> 只要依赖在 classpath 上就自动装配并注入 `RedisManager`，导致"装了但没启用"的项目
-> 在无 Redis 时启动失败。现已修正为显式选用。
+> **装配条件**：装配由 `jaravel.session.driver` 显式选择驱动（`@ConditionalOnProperty`，无 `matchIfMissing`）；仅依赖在 classpath 上不会触发装配。
 
 覆盖开关（优先级最高，用于特殊场景）：
 
@@ -98,8 +96,7 @@ jaravel:
 | `true` | 强制启用 |
 | `false` | 强制关闭 |
 
-此外还叠加了 `@ConditionalOnBean(RedisManager.class)` 兜底：即便误开了开关，
-只要 redis 模块本身没装配出 `RedisManager`，也不会因注入失败中断启动。
+此外还叠加了 `@ConditionalOnBean(RedisManager.class)` 回退：开关开启而 redis 模块未装配出 `RedisManager` 时不装配，避免注入失败中断启动。
 
 ## 配置
 

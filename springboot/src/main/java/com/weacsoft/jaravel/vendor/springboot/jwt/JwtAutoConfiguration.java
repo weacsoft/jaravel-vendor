@@ -34,7 +34,7 @@ import org.springframework.context.annotation.Conditional;
  * 过期 token 在宽限期内仍可请求一次，{@code JwtTokenResponseFilter} 会自动将新 token
  * 写入响应 header。
  * <p>
- * Spring 装配收口于 springboot 模块（jwt 核心模块零 Spring 依赖）。
+ * Spring 装配集中于 springboot 模块（jwt 核心模块零 Spring 依赖）。
  */
 @AutoConfiguration
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
@@ -47,9 +47,9 @@ public class JwtAutoConfiguration {
     /**
      * 创建 JwtConfig。
      * <p>
-     * <b>密钥兜底</b>：若用户没有显式配置 {@code jaravel.jwt.secret}（值仍等于
+     * <b>密钥回退</b>：若用户没有显式配置 {@code jaravel.jwt.secret}（值仍等于
      * {@link JwtConfig#DEFAULT_SECRET}），则回退到 core 模块的全局应用密钥
-     * {@code jaravel.key}，遵循「模块自身配置优先 → core 全局密钥兜底」。
+     * {@code jaravel.key}，遵循「模块自身配置优先 → core 全局密钥回退」。
      *
      * @param properties     JWT 配置属性
      * @param appKeyProvider 全局应用密钥（core 模块提供，缺失时保持模块默认值）

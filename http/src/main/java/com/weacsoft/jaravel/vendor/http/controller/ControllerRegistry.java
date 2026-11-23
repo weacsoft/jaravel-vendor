@@ -1,5 +1,8 @@
 package com.weacsoft.jaravel.vendor.http.controller;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -59,6 +62,8 @@ import java.util.function.Function;
  * @see com.weacsoft.jaravel.vendor.springboot.SpringBootRouteAutoConfiguration
  */
 public class ControllerRegistry {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(ControllerRegistry.class);
 
     private static final ControllerRegistry GLOBAL = new ControllerRegistry();
 
@@ -157,6 +162,9 @@ public class ControllerRegistry {
      * 注册控制器实例。
      * <p>
      * 同时写入类映射和名称映射（简名 + 全限定名），确保通过类对象或类名均能找到。
+     * <p>
+     * 简名（{@code getSimpleName()}）在不同包下可能重名，此时后注册者会覆盖先注册者
+     * 的简名映射；覆盖时记录告警，避免路由指向了非预期的控制器却无从察觉。
      *
      * @param controller 控制器实例
      */
@@ -164,7 +172,11 @@ public class ControllerRegistry {
         if (controller == null) return;
         Class<?> clazz = controller.getClass();
         classMap.put(clazz, controller);
-        nameMap.put(clazz.getSimpleName(), controller);
+        Object previous = nameMap.put(clazz.getSimpleName(), controller);
+        if (previous != null && !previous.getClass().equals(clazz)) {
+            LOGGER.warn("[jaravel-router] 控制器简名 '{}' 已被覆盖: {} -> {}，建议使用全限定名引用",
+                    clazz.getSimpleName(), previous.getClass().getName(), clazz.getName());
+        }
         nameMap.put(clazz.getName(), controller);
     }
 

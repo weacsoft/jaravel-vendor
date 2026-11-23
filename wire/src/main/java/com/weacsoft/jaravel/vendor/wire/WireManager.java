@@ -207,13 +207,21 @@ public class WireManager {
         if (excludedSections.isEmpty() || html == null) {
             return html;
         }
-        String result = html;
+        // 单次正则替换：逐个 replace 需要为每个排除项全量扫描并复制 HTML
+        StringBuilder pattern = new StringBuilder();
         for (String name : excludedSections) {
-            // 移除注释标记: <!--wire:section-start:name--> 和 <!--wire:section-end:name-->
-            result = result.replace("<!--wire:section-start:" + name + "-->", "");
-            result = result.replace("<!--wire:section-end:" + name + "-->", "");
+            if (pattern.length() > 0) {
+                pattern.append('|');
+            }
+            pattern.append("<!--wire:section-start:")
+                    .append(java.util.regex.Pattern.quote(name))
+                    .append("-->")
+                    .append('|')
+                    .append("<!--wire:section-end:")
+                    .append(java.util.regex.Pattern.quote(name))
+                    .append("-->");
         }
-        return result;
+        return html.replaceAll(pattern.toString(), "");
     }
 
     /**
@@ -484,7 +492,7 @@ public class WireManager {
             return "";
         }
         // 1) 先定位带 wire:section="name" 的开始标签，拿到标签名与标签结束位置。
-        //    注意：这里只匹配开始标签，绝不能用 (.*?)</tag> 去「顺手」匹配结束标签，
+        //    注意：这里只匹配开始标签，绝不能用 (.*?)</tag> 去顺带匹配结束标签，
         //    因为 section 内部几乎必然存在同名嵌套标签（如 div 里套很多 div），
         //    非贪婪匹配会停在第一个 </div>，导致返回的 HTML 被截断（分页器、列表行全部丢失）。
         String openRegex = "(?s)<([a-zA-Z][a-zA-Z0-9]*)\\b[^>]*?\\bwire:section\\s*=\\s*[\"']"

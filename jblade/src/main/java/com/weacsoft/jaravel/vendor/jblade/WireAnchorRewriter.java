@@ -201,7 +201,7 @@ public final class WireAnchorRewriter {
                 p++;
                 continue;
             }
-            // 兜底：锚点注释被误写在属性区（如 <div @yield('attrs')>），整段跳过。
+            // 回退：锚点注释被误写在属性区（如 <div @yield('attrs')>），整段跳过。
             // 注意必须在属性名解析之前处理 —— 注释以 "-->" 结尾，若按属性名扫描会在 '>' 处
             // 提前截断标签，导致后续 HTML 结构被吞掉。
             if (html.startsWith("<!--", p)) {

@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 验证码「参数顺序写反」的语义护栏（审计 M17）。
+ * 验证码「参数顺序写反」的语义护栏。
  * <p>
  * 旧 README 的 {@code verify(type, key, input)} 能编译但错绑到
  * {@code verify(key, userInput, encryptionKey)}。护栏必须<b>区分两条路径</b>：
@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *       {@code IllegalArgumentException}（程序员错误应当大声）；</li>
  *   <li><b>2 参公开路径</b>的 key 可能来自不可信输入（攻击者伪造 {@code captchaKey=number}）
  *       → <b>绝不抛异常</b>（否则未捕获即 HTTP 500），只记一次性 ERROR 并按失败处理。
- *       这一条是终局评审复现出的缺陷，必须由本用例钉死。</li>
+ *       该场景必须由本用例钉死。</li>
  * </ul>
  */
 class CaptchaVerifyMisuseGuardTest {

@@ -26,7 +26,7 @@ import org.springframework.context.annotation.Bean;
  * 记录头存储依赖 cache 模块的 {@link CacheManager}（组配置 header-store 为
  * cache/redis 等 store 名时生效），无 CacheManager 时自动降级为内存记录头。
  * <p>
- * 落盘依赖 storage 模块的 {@link StorageManager}（组配置 disk 时生效，
+ * 写入依赖 storage 模块的 {@link StorageManager}（组配置 disk 时生效，
  * 可将完成的文件落到任意磁盘/驱动），未配置 disk 时直接写本地 {@code save-dir}。
  * <p>
  * {@link AetherUploadProperties} 为纯 POJO（保留在 aether-upload 模块，{@code AetherUploadManager} 直接消费），

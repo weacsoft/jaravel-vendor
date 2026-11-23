@@ -8,10 +8,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
 /**
@@ -59,6 +55,14 @@ public class HttpTransport implements RemoteTransport {
     private final String endpoint;
 
     /**
+     * HTTP 客户端（线程安全，内置按目标地址复用的连接池）。
+     * <p>
+     * 复用同一实例可让连续的 RPC 调用复用已建立的 TCP 连接，
+     * 避免每次请求都重新握手。
+     */
+    private final java.net.http.HttpClient httpClient;
+
+    /**
      * 构造 HTTP 传输，使用默认端点路径 {@code /__remote_rpc__}。
      */
     public HttpTransport() {
@@ -74,6 +78,10 @@ public class HttpTransport implements RemoteTransport {
      */
     public HttpTransport(String endpoint) {
         this.endpoint = endpoint != null && !endpoint.isEmpty() ? endpoint : DEFAULT_ENDPOINT;
+        this.httpClient = java.net.http.HttpClient.newBuilder()
+                .connectTimeout(java.time.Duration.ofMillis(DEFAULT_TIMEOUT_MS))
+                .version(java.net.http.HttpClient.Version.HTTP_1_1)
+                .build();
     }
 
     /**
@@ -85,42 +93,31 @@ public class HttpTransport implements RemoteTransport {
 
     @Override
     public ExecuteResponse send(String host, int port, String authToken, ExecuteRequest request) {
-        HttpURLConnection conn = null;
         try {
             String urlStr = String.format("http://%s:%d%s", host, port, endpoint);
-            URL url = new URL(urlStr);
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("POST");
-            conn.setRequestProperty("Content-Type", "application/json;charset=UTF-8");
+            java.net.http.HttpRequest.Builder builder = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(urlStr))
+                    .timeout(java.time.Duration.ofMillis(DEFAULT_TIMEOUT_MS))
+                    .header("Content-Type", "application/json;charset=UTF-8")
+                    .POST(java.net.http.HttpRequest.BodyPublishers.ofString(
+                            Json.stringify(request), StandardCharsets.UTF_8));
             if (authToken != null && !authToken.isEmpty()) {
-                conn.setRequestProperty("X-Auth-Token", authToken);
+                builder.header("X-Auth-Token", authToken);
             }
-            conn.setConnectTimeout((int) DEFAULT_TIMEOUT_MS);
-            conn.setReadTimeout((int) DEFAULT_TIMEOUT_MS);
-            conn.setDoOutput(true);
-
-            String body = Json.stringify(request);
-            try (OutputStream out = conn.getOutputStream()) {
-                out.write(body.getBytes(StandardCharsets.UTF_8));
-                out.flush();
-            }
-
-            int code = conn.getResponseCode();
-            InputStream stream = code >= 400 ? conn.getErrorStream() : conn.getInputStream();
-            if (stream == null) {
-                return ExecuteResponse.error(request.getRequestId(), "HTTP " + code + ": 无响应体");
-            }
-            byte[] respBytes = stream.readAllBytes();
-            String respBody = new String(respBytes, StandardCharsets.UTF_8);
-            if (code >= 400) {
-                return ExecuteResponse.error(request.getRequestId(), "HTTP " + code + ": " + respBody);
+            java.net.http.HttpResponse<String> resp =
+                    httpClient.send(builder.build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+            String respBody = resp.body();
+            if (resp.statusCode() >= 400) {
+                return ExecuteResponse.error(request.getRequestId(),
+                        "HTTP " + resp.statusCode() + ": " + respBody);
             }
             return Json.parse(respBody, ExecuteResponse.class);
         } catch (IOException e) {
             log.error("HTTP 请求失败: {}:{}{}", host, port, endpoint, e);
             return ExecuteResponse.error(request.getRequestId(), "HTTP 请求失败: " + e.getMessage());
-        } finally {
-            if (conn != null) conn.disconnect();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return ExecuteResponse.error(request.getRequestId(), "HTTP 请求被中断: " + e.getMessage());
         }
     }
 

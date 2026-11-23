@@ -113,7 +113,7 @@ class EloquentUserProviderTest {
         when(qb.first()).thenReturn(record);
         when(record.toObject()).thenReturn(user);
 
-        // 配置凭证字段为 email，验证不写死 "number"
+        // 配置凭证字段为 email，验证不硬编码 "number"
         assertSame(user, provider(model, "email")
                 .retrieveByCredentials(Map.of("email", "a@b.com")));
     }

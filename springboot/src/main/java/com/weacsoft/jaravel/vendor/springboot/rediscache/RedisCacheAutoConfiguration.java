@@ -25,7 +25,7 @@ import org.springframework.context.annotation.Conditional;
  * 不再直接创建 {@code RedisCacheDriver} 或 {@code RedisCacheStore} Bean，
  * 而是注册工厂，由 {@code CacheManager} 根据配置按需创建（对齐 Laravel 的按需创建模式）。
  * <p>
- * Spring 装配收口于 springboot 模块（redis-cache 核心模块零 Spring 依赖）。
+ * Spring 装配集中于 springboot 模块（redis-cache 核心模块零 Spring 依赖）。
  * <p>
  *
  * <h3>装配条件：用上了才装配</h3>

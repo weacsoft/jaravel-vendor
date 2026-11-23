@@ -14,7 +14,7 @@ package com.weacsoft.jaravel.vendor.core.queue;
  * </pre>
  * <p>
  * <h3>P3 解耦说明</h3>
- * P3 起本类为纯 POJO（移除 {@code @ConfigurationProperties} 注解）；
+ * 本类为纯 POJO（移除 {@code @ConfigurationProperties} 注解）；
  * Spring 宿主的属性绑定由 springboot 模块的队列自动装配以
  * {@code @Bean @ConfigurationProperties(prefix = "jaravel.queue")} 方式完成，
  * 字段与默认值保持不变。

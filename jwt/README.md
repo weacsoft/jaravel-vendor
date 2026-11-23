@@ -4,7 +4,7 @@
 > 对齐 Laravel 特性：`tymon/jwt-auth`（JWT 签发/解析/校验/刷新/黑名单）
 >
 > **零 Spring 依赖**：本模块保留纯 Java 的 `JwtConfig` / `JwtService` / `JwtGuard` / `JwtGuardDriver`（依赖 jjwt + core + auth + cache）。
-> Spring 装配收口于 **springboot** 模块（`vendor.springboot.jwt` 包）：`JwtAutoConfiguration` / `JwtProperties` / `OnJwtGuardDriverCondition` / `JwtTokenResponseFilter`。
+> Spring 装配集中于 **springboot** 模块（`vendor.springboot.jwt` 包）：`JwtAutoConfiguration` / `JwtProperties` / `OnJwtGuardDriverCondition` / `JwtTokenResponseFilter`。
 
 ## 目录
 
@@ -36,7 +36,7 @@ JWT 模块是 Jaravel 框架的 JWT 认证插件，对齐 Laravel 的 `tymon/jwt
 - **登出黑名单**：开启黑名单后，登出时将 token 加入缓存黑名单，即使 token 仍在有效期内也无法再次通过校验。
 - **宽限期续期**：开启黑名单并设置宽限期后，过期 token 在宽限期内仍可请求一次，响应 header 自动携带新 token，旧 token 被加入黑名单。
 - **Refresh Token 换取**：使用 refresh token 换取新的 access token。
-- **插件式集成**：引入 `jwt` 模块后，**仅当用户显式把某个 guard 的 `driver` 设为 `jwt` 时**才装配 `JwtGuardDriver` 启用 JWT 认证能力（遵循 vendor「安装 ≠ 启用，用上了才注册」原则，`jwt` **不在任何兜底列表**中，不会因缺省而误启用）；未引入或没有 guard 选用 `jwt` 时，`AuthManager` 不会识别 `"jwt"` 驱动，且完全不连接任何资源。
+- **插件式集成**：引入 `jwt` 模块后，**仅当用户显式把某个 guard 的 `driver` 设为 `jwt` 时**才装配 `JwtGuardDriver` 启用 JWT 认证能力（遵循 vendor「安装 ≠ 启用，用上了才注册」原则，`jwt` **不在任何默认回退列表**中，不会因缺省而误启用）；未引入或没有 guard 选用 `jwt` 时，`AuthManager` 不会识别 `"jwt"` 驱动，且完全不连接任何资源。
 
 ### 与 auth 模块的关系
 
@@ -148,7 +148,7 @@ JWT 配置，对齐 manage8 的 `config/jwt.php`。包含 token 签发、刷新�
 
 | 字段 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
-| `secret` | String | `jaravel-secret-key-change-this-in-production-32bytes` | 签名密钥（生产环境务必更换） |
+| `secret` | String | `jaravel-secret-key-change-this-in-production-32bytes` | 签名密钥（生产环境应更换） |
 | `issuer` | String | `jaravel` | 签发者 |
 | `ttl` | long | `3600_000`（1 小时） | access token 有效期（毫秒） |
 | `refreshTtl` | long | `604800_000`（7 天） | refresh token 有效期（毫秒） |
@@ -676,7 +676,7 @@ JWT 守卫驱动，实现 `AuthGuardDriver` 接口，采用工厂模式 + `suppo
 
 本驱动由 `JwtAutoConfiguration` 注册为 Spring Bean，再由 auth 模块的 `AuthAutoConfiguration` 自动收集并注册到 `AuthManager`。
 
-> **装配条件（重要）**：`JwtGuardDriver` 受 `@Conditional(OnJwtGuardDriverCondition.class)` 约束——只有当 `jaravel.auth.guards.*.driver` 取值为 `jwt` 时才装配。**JWT 不在任何兜底列表**，用户写了 guards 但没写 driver 时会回退到 `session` 而非 jwt，因此不会因缺省而误启用。`引入 jwt 模块但没有任何 guard 选用 jwt` 时，本驱动完全不创建，不连接任何资源。
+> **装配条件（重要）**：`JwtGuardDriver` 受 `@Conditional(OnJwtGuardDriverCondition.class)` 约束——只有当 `jaravel.auth.guards.*.driver` 取值为 `jwt` 时才装配。**JWT 不在任何默认回退列表**，用户写了 guards 但没写 driver 时会回退到 `session` 而非 jwt，因此不会因缺省而误启用。`引入 jwt 模块但没有任何 guard 选用 jwt` 时，本驱动完全不创建，不连接任何资源。
 
 ### 构造器
 
@@ -877,7 +877,7 @@ return new JwtService(jwtConfig, blacklistStore);
 ```yaml
 jaravel:
   jwt:
-    # 签名密钥（生产环境务必更换，需 >= 32 字节）
+    # 签名密钥（生产环境应更换，需 >= 32 字节）
     secret: your-production-secret-key-at-least-32-bytes
 
     # access token 有效期（毫秒），默认 1 小时
@@ -921,7 +921,7 @@ jaravel:
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
-| `jaravel.jwt.secret` | String | `jaravel-secret-key-...` | 签名密钥（生产环境务必更换，需 >= 32 字节） |
+| `jaravel.jwt.secret` | String | `jaravel-secret-key-...` | 签名密钥（生产环境应更换，需 >= 32 字节） |
 | `jaravel.jwt.ttl` | long | `3600000` | access token 有效期（毫秒），默认 1 小时 |
 | `jaravel.jwt.refresh-ttl` | long | `604800000` | refresh token 有效期（毫秒），默认 7 天 |
 | `jaravel.jwt.header` | String | `Authorization` | 请求头名 |

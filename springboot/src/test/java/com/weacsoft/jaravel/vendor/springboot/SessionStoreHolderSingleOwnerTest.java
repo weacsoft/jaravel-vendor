@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * {@code sessionStoreHolder} 唯一声明点的回归测试。
  * <p>
- * 背景（实测过的事故）：{@code session} 拆分为可选模块后，
+ * 背景（验证过的事故）：{@code session} 拆分为可选模块后，
  * {@code session.HttpSessionAutoConfiguration} 与 {@code auth.SessionGuardAutoConfiguration}
  * <b>各自无条件定义</b>了同名 bean {@code sessionStoreHolder}。两者条件范围相同
  * （都是 Servlet Web），只要 {@code session} + {@code auth-session} 同时在 classpath，

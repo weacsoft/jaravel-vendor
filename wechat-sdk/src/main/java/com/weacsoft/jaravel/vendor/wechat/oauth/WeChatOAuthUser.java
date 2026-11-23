@@ -83,7 +83,7 @@ public final class WeChatOAuthUser implements Serializable {
     }
 
     /**
-     * 从会话中读出的原始值还原（防御性）：
+     * 从会话中读出的原始值还原：
      * <ul>
      *   <li>{@code WeChatOAuthUser} 原样返回</li>
      *   <li>{@code Map}（序列化产物）按 token 响应还原（openid 必须存在）</li>

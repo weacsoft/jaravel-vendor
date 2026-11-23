@@ -126,7 +126,7 @@ public class CaptchaProperties {
      * <p>
      * 形态问题（RSA 缺私钥、仍在使用出厂默认密钥、未配置 {@code jaravel.key} 而使用随机临时密钥）
      * 默认只打 ERROR —— 直接 fail-fast 会让既有部署在升级后无法启动，属破坏性变更；
-     * 对安全要求高的环境可打开本开关（审计 N1，专家建议分档）。
+     * 对安全要求高的环境可打开本开关。
      */
     private boolean failFastOnInvalidKey = false;
 

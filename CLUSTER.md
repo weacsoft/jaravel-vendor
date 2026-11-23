@@ -425,7 +425,7 @@ public class RedisLockProviderImpl implements LockProvider {
 
 - **加锁**：使用 Redis `SET key value NX EX seconds` 命令，原子性地实现"不存在则写入并设置过期"。
 - **解锁**：使用 `DEL key` 释放锁。
-- **TTL 兜底**：即使持有锁的节点宕机未正常释放，锁也会在 TTL 到期后自动释放，避免死锁。
+- **TTL 回退**：即使持有锁的节点宕机未正常释放，锁也会在 TTL 到期后自动释放，避免死锁。
 
 #### 在集群中的作用
 

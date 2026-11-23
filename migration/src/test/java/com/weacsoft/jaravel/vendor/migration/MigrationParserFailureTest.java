@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 迁移解析失败的可见性（审计 M19，按两位专家意见收窄范围）。
+ * 迁移解析失败的可见性（，按两位专家意见收窄范围）。
  * <p>
  * 关键不变量：
  * <ol>
@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *   <li>失败清单<b>每次解析重置</b>，避免同一 parser 实例把上一次的失败串到下一次调用。</li>
  * </ol>
  * 注：命令层退出码同样受「classpath 上是否有可用迁移」影响，因此「合法回退」在<b>parser 层</b>断言
- * （这也是专家建议的最小、最稳写法）。
+ * 。
  */
 class MigrationParserFailureTest {
 

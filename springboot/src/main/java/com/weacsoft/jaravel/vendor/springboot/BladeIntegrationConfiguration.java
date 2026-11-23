@@ -14,7 +14,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.context.annotation.Bean;
 
 /**
- * jblade（Blade 模板引擎）集成装配 —— <b>P2-J 内部配置类</b>。
+ * jblade（Blade 模板引擎）集成装配 —— <b> 内部配置类</b>。
  * <p>
  * 仅当 classpath 存在 jblade 的 {@code BladeFunctions} 时整体生效；
  * 没有 jblade 的应用不加载任何 Blade 类（{@code SpringBootRouteAutoConfiguration} 的
@@ -40,7 +40,7 @@ public class BladeIntegrationConfiguration {
      * <p>
      * 未声明任何 {@code @RegisterDirective} 时不注册任何指令，不影响启动。
      * <p>
-     * P3 起 {@link BladeDirectiveRegistrar} 为 core 纯扫描器（零 Spring）：
+     *  {@link BladeDirectiveRegistrar} 为 core 纯扫描器（零 Spring）：
      * 扫描时机由下方 {@code SmartInitializingSingleton} 触发（保持原「所有单例就绪后扫描」时序）。
      */
     @Bean
@@ -62,7 +62,7 @@ public class BladeIntegrationConfiguration {
      * <p>
      * <b>硬保证（注册即可用）</b>：注册后立即自检——只要走了注册流程，模板辅助函数
      * 就必须确实生效；任一注册未落地将抛出 {@link IllegalStateException} 使应用启动失败
-     * （而非悄悄留下“空 value / 空路由”的不可用状态），
+     * （而非悄然留下“空 value / 空路由”的不可用状态），
      * 从而满足“一旦注册就必须自动可用、开发者零额外代码”的契约。
      */
     @Bean

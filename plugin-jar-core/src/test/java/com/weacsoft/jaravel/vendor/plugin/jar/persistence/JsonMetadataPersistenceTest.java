@@ -47,7 +47,7 @@ class JsonMetadataPersistenceTest {
         PluginInfo info = newPersisted("demo");
         persistence.save(info);
 
-        // 文件落盘
+        // 文件写入
         assertTrue(Files.exists(tempDir.resolve("demo").resolve("metadata.json")));
 
         PluginInfo loaded = persistence.load("demo");
@@ -70,7 +70,7 @@ class JsonMetadataPersistenceTest {
         info.setPersisted(false);
         persistence.save(info);
 
-        // 不落盘，load 返回 null
+        // 不写入，load 返回 null
         assertFalse(Files.exists(tempDir.resolve("mem").resolve("metadata.json")));
         assertNull(persistence.load("mem"));
     }

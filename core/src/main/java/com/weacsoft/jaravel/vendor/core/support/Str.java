@@ -70,7 +70,8 @@ public final class Str {
                 sb.append(c);
             }
         }
-        return sb.toString().replaceAll(delimiter + "+", delimiter);
+        // 分隔符按字面量处理：避免 "."、"+" 等正则元字符触发 PatternSyntaxException
+        return sb.toString().replaceAll(java.util.regex.Pattern.quote(delimiter) + "+", java.util.regex.Matcher.quoteReplacement(delimiter));
     }
 
     public static String ucwords(String value, String delimiter) {

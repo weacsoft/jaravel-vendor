@@ -11,7 +11,7 @@ package com.weacsoft.jaravel.vendor.cache;
  *   <li>{@code increment} 丢失更新（计数偏小，限流/配额判断失真）。</li>
  * </ul>
  * 实现本接口的驱动由 {@code DefaultCacheStore} 优先走原子路径；未实现的驱动回退到两步实现，
- * 并在接口文档中明确标注「原子性为尽力而为」，绝不假装原子。
+ * 并在接口文档中明确标注「原子性为尽力而为」，不宣称原子。
  * <p>
  * <b>内置实现</b>：内存驱动（{@code ConcurrentHashMap.compute}/{@code remove}）、
  * Redis 驱动（{@code SET NX} / Lua {@code GET+DEL} / {@code INCRBY}）。

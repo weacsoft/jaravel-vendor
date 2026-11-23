@@ -17,7 +17,7 @@ import org.springframework.context.annotation.Conditional;
  * Spring 内省本类时就会在缺模块的情况下抛 {@code NoClassDefFoundError} ——
  * 方法级条件保护不了「声明类自身的类加载」，所以条件和类型都必须收在这个类里。
  * <p>
- * 缺失这两个模块时：auth 仍可正常装配（登录态不具备存储后端，由 auth 内置的空守卫兜底），
+ * 缺失这两个模块时：auth 仍可正常装配（登录态不具备存储后端，由 auth 内置的空守卫回退），
  * 只是不会注册 {@code session} 驱动。
  * <p>
  * <b>本类只消费、不定义 {@link SessionStoreHolder}</b>：holder 的唯一声明点是

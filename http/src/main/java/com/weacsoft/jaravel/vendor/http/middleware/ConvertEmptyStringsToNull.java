@@ -4,6 +4,7 @@ import com.weacsoft.jaravel.vendor.http.controller.request.Request;
 import com.weacsoft.jaravel.vendor.http.controller.response.Response;
 
 import java.util.Arrays;
+import java.util.Map;
 
 /**
  * 空字符串转 Null 中间件，对齐 Laravel 的 {@code ConvertEmptyStringsToNull}。
@@ -48,16 +49,22 @@ public class ConvertEmptyStringsToNull implements Middleware {
     }
 
     private void convertEmptyStringsToNull(Request request) {
-        for (String name : request.inputNames()) {
+        // 每次迭代都调用 request.input()/query() 会各产生一次全表拷贝，
+        // 参数量为 n 时开销随 n 平方增长；此处先取一次快照再遍历。
+        Map<String, Object> inputs = request.input();
+        for (Map.Entry<String, Object> entry : inputs.entrySet()) {
+            String name = entry.getKey();
             if (isExcluded(name)) continue;
-            Object value = request.input().get(name);
+            Object value = entry.getValue();
             if (value instanceof String && ((String) value).isEmpty()) {
                 request.replaceInput(name, null);
             }
         }
-        for (String name : request.queryNames()) {
+        Map<String, Object> queries = request.query();
+        for (Map.Entry<String, Object> entry : queries.entrySet()) {
+            String name = entry.getKey();
             if (isExcluded(name)) continue;
-            Object value = request.query().get(name);
+            Object value = entry.getValue();
             if (value instanceof String && ((String) value).isEmpty()) {
                 request.replaceQuery(name, null);
             }

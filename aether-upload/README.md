@@ -81,7 +81,7 @@ jaravel:
       secret:                       # base64 组：规避安全软件拦截二进制
         base64: true
         header-store: cache         # cache 模块默认 store
-      cloud:                        # 落盘到 storage 磁盘（可为 S3/OSS 等任意驱动）
+      cloud:                        # 写入 storage 磁盘（可为 S3/OSS 等任意驱动）
         disk: media                 # storage 模块中注册的磁盘名
         save-dir: uploads           # 此时为磁盘内的相对子目录
 ```
@@ -92,11 +92,11 @@ jaravel:
 - `cache`：cache 模块默认 store（统一管理）
 - 其他值（如 `redis`）：cache 模块中对应名称的 store，引入 `redis-cache` 并配置即可
 
-### 落盘位置（storage 模块集成）
+### 写入位置（storage 模块集成）
 
 `disk` 未配置（默认）时，完成的文件直接写本地 `save-dir`，不依赖 storage 模块。
 
-配置 `disk` 后，落盘统一走 [storage](../storage/README.md) 模块的 `Filesystem` 抽象，
+配置 `disk` 后，写入文件统一走 [storage](../storage/README.md) 模块的 `Filesystem` 抽象，
 `save-dir` 变为磁盘内的相对子目录，从而可落到任意驱动：
 
 ```yaml

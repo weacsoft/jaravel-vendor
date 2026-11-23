@@ -2,7 +2,7 @@
 
 > Jaravel-Vendor 的事件模块（**零 Spring 依赖**），提供 Laravel 风格的 Event/Listener 契约、同步与异步事件分发、`ShouldQueue` per-listener 队列决策、`QueueManager` 多队列线程池管理、`@ListensTo` 注解自动注册、`EventFacade` 静态门面。包名统一为 `com.weacsoft.jaravel.vendor.event`。
 >
-> Spring 自动装配收口于 **springboot** 模块（`vendor.springboot.event` 包）：`EventAutoConfiguration`（含 `queue` 发布 tag 静态注册）/ `EventProperties`（`@ConfigurationProperties(prefix="jaravel.event")`，经 `toEventConfig()` 映射为纯 Java `EventConfig`）/ `EventListenerRegistrar` / `EventServiceProvider`。本模块保留纯 Java 的 `Event`/`Listener`/`Dispatcher`/`EventDispatcher`/`QueueManager`/`QueueDispatcher`/`EventFacade`/`@ListensTo`/`ShouldQueue`/`QueuePublishableConfig`。
+> Spring 自动装配集中于 **springboot** 模块（`vendor.springboot.event` 包）：`EventAutoConfiguration`（含 `queue` 发布 tag 静态注册）/ `EventProperties`（`@ConfigurationProperties(prefix="jaravel.event")`，经 `toEventConfig()` 映射为纯 Java `EventConfig`）/ `EventListenerRegistrar` / `EventServiceProvider`。本模块保留纯 Java 的 `Event`/`Listener`/`Dispatcher`/`EventDispatcher`/`QueueManager`/`QueueDispatcher`/`EventFacade`/`@ListensTo`/`ShouldQueue`/`QueuePublishableConfig`。
 
 ---
 

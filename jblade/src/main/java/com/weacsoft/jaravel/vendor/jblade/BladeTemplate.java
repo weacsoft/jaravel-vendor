@@ -28,8 +28,8 @@ public abstract class BladeTemplate {
 
     public abstract void render(Writer writer) throws Exception;
 
-    // 并发安全:整页渲染也走共享缓存的 BladeTemplate 实例,generated 子类在此之上调用 render(Writer)
-    // 并读写 this.context。synchronized 保证同一缓存模板实例的整页渲染串行,避免 context 并发竞态。
+    // 每次渲染使用独立的模板实例,实例不会被跨请求共享,context 为该实例私有字段,
+    // 因此并发渲染之间不存在共享状态。此处保留 synchronized 以防同一实例被同一渲染链重入调用。
     public synchronized String render() throws Exception {
         StringWriter writer = new StringWriter();
         render(writer);
@@ -683,10 +683,8 @@ public abstract class BladeTemplate {
         return java.time.LocalDate.now().getYear();
     }
 
-    // 并发安全:组件模板实例同样来自 templateInstanceCache(共享),其 context 是可变实例字段。
-    // 加 synchronized 后,同一缓存组件模板的 renderComponent 串行执行,避免并发线程在迭代
-    // context 的 slots/variables/componentData 时,另一线程对这些 map 做结构修改(put/clear/putAll)
-    // 而抛出 ConcurrentModificationException。
+    // 并发安全:组件模板实例同样为每次渲染新建的独立实例,其 context 是实例私有字段,
+    // 不会被其他请求并发读写。此处保留 synchronized 以防同一实例被同一渲染链重入调用。
     protected synchronized void renderComponent(Writer writer, String componentName, Map<String, Object> data, Map<String, String> slots) throws Exception {
         if (engine == null) {
             throw new IllegalStateException("BladeEngine not set for template");
@@ -717,7 +715,7 @@ public abstract class BladeTemplate {
         BladeContext componentCtx = componentTemplate.getContext();
 
         // 组件可见：外层变量（Laravel 行为：组件视图共享环境数据）+ 显式传入的数据 + 插槽
-        // 防御性快照:遍历前复制一份,避免迭代过程中 context 被并发修改而抛 ConcurrentModificationException。
+        // 快照:遍历前复制一份,避免迭代过程中 context 被并发修改而抛 ConcurrentModificationException。
         Map<String, Object> variablesSnapshot = new HashMap<>(context.getVariables());
         for (Map.Entry<String, Object> varEntry : variablesSnapshot.entrySet()) {
             componentCtx.setVariable(varEntry.getKey(), varEntry.getValue());
@@ -728,7 +726,7 @@ public abstract class BladeTemplate {
         String defaultSlot = context.getSlot("default");
         componentCtx.setVariable("slot", new HtmlString(defaultSlot == null ? "" : defaultSlot));
         componentCtx.setVariable("$slot", new HtmlString(defaultSlot == null ? "" : defaultSlot)); // 兼容旧版编译产物
-        // 防御性快照:遍历前复制一份 slots,避免迭代过程中 context.getComponentSlots() 被并发
+        // 快照:遍历前复制一份 slots,避免迭代过程中 context.getComponentSlots() 被并发
         // 修改(如其他线程的 clear/putAll)而抛 ConcurrentModificationException。
         // 注意：null 值的 slot 不写入组件 ctx，否则组件内 {{ $name ?? 'default' }} 的 ??
         // 无法触发（HtmlString 对象非 null，?? 返回 HtmlString 而非默认值）。
@@ -743,7 +741,7 @@ public abstract class BladeTemplate {
             componentCtx.setVariable(slotEntry.getKey(), htmlSlot);
             componentCtx.setVariable("$" + slotEntry.getKey(), htmlSlot);
         }
-        // 防御性快照:同上,避免迭代 componentData 时被并发修改。
+        // 快照:同上,避免迭代 componentData 时被并发修改。
         Map<String, Object> componentDataSnapshot = new HashMap<>(context.getComponentData());
         for (Map.Entry<String, Object> dataEntry : componentDataSnapshot.entrySet()) {
             componentCtx.setVariable(dataEntry.getKey(), dataEntry.getValue());

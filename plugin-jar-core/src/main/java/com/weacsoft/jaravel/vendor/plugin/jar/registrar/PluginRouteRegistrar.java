@@ -44,6 +44,9 @@ public class PluginRouteRegistrar {
     /** 已注册的映射：pluginId -> List<RequestMappingInfo> */
     private final Map<String, List<RequestMappingInfo>> registeredMappings = new ConcurrentHashMap<>();
 
+    /** 已注册的路由信息：pluginId -> List<RouteInfo>（注销时用于清理路由表） */
+    private final Map<String, List<RouteInfo>> registeredRoutes = new ConcurrentHashMap<>();
+
     /** PluginRouteHandler 的 Bean 名称（注册到容器中以便 handlerMapping 查找） */
     private static final String ROUTE_HANDLER_BEAN_NAME = "pluginRouteHandler";
 
@@ -111,6 +114,7 @@ public class PluginRouteRegistrar {
             handlerMapping.registerMapping(mappingInfo, routeHandler, handlerMethod);
             routeHandler.registerRouteInfo(route);
             registeredMappings.computeIfAbsent(pluginId, k -> new ArrayList<>()).add(mappingInfo);
+            registeredRoutes.computeIfAbsent(pluginId, k -> new ArrayList<>()).add(route);
             log.info("插件 {} 注册路由: {}", pluginId, route);
             return true;
         } catch (Exception e) {
@@ -126,17 +130,29 @@ public class PluginRouteRegistrar {
      */
     public void unregisterRoutes(String pluginId) {
         List<RequestMappingInfo> mappings = registeredMappings.remove(pluginId);
-        if (mappings == null || mappings.isEmpty()) {
+        List<RouteInfo> routes = registeredRoutes.remove(pluginId);
+        if ((mappings == null || mappings.isEmpty()) && (routes == null || routes.isEmpty())) {
             return;
         }
-        for (RequestMappingInfo mappingInfo : mappings) {
-            try {
-                handlerMapping.unregisterMapping(mappingInfo);
-            } catch (Exception e) {
-                log.warn("注销映射失败: {}", mappingInfo, e);
+        if (mappings != null) {
+            for (RequestMappingInfo mappingInfo : mappings) {
+                try {
+                    handlerMapping.unregisterMapping(mappingInfo);
+                } catch (Exception e) {
+                    log.warn("注销映射失败: {}", mappingInfo, e);
+                }
             }
         }
-        // 同步清理 routeHandler 中的路由（按 pluginId 无法直接清理，此处依赖上层维护）
+        // 同步清理 routeHandler 中的路由表，避免残留条目影响其他插件对同一 URL 的映射
+        if (routes != null) {
+            for (RouteInfo route : routes) {
+                try {
+                    routeHandler.unregisterRouteInfo(route.getMethod().name(), route.getPath());
+                } catch (Exception e) {
+                    log.warn("注销路由信息失败: {}", route, e);
+                }
+            }
+        }
         log.info("插件 {} 注销所有路由", pluginId);
     }
 

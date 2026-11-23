@@ -81,6 +81,8 @@ public class StaticResourceHandler {
 
     private final String location;
     private final int cacheMaxAge;
+    /** 文件系统位置对应的基准目录，构造时解析一次，避免依赖运行期的工作目录 */
+    private final Path baseDir;
 
     /**
      * 构造静态资源处理器。
@@ -91,6 +93,9 @@ public class StaticResourceHandler {
     public StaticResourceHandler(String location, int cacheMaxAge) {
         this.location = normalizeLocation(location);
         this.cacheMaxAge = cacheMaxAge;
+        this.baseDir = this.location.startsWith("file:")
+                ? Paths.get(this.location.substring("file:".length())).toAbsolutePath().normalize()
+                : null;
     }
 
     /**
@@ -126,6 +131,57 @@ public class StaticResourceHandler {
         }
     }
 
+    /**
+     * 定位静态资源并返回可直接写出的数据源。
+     * <p>
+     * 与 {@link #load(String)} 的区别：内容不在堆内存中物化为 {@code byte[]}，
+     * 而是保留为文件路径或资源 URL，由调用方按块写出，避免大文件占满堆内存。
+     *
+     * @param relativePath 相对路径（如 {@code css/app.css}）
+     * @return 可写出的数据源，不存在返回 null
+     */
+    public ResourceSource open(String relativePath) {
+        String safePath = sanitizePath(relativePath);
+        if (safePath == null) {
+            log.warn("[static] 路径穿越攻击已拦截: {}", relativePath);
+            return null;
+        }
+
+        String fullPath = location + safePath;
+        log.debug("[static] 定位资源: {}", fullPath);
+
+        if (location.startsWith("classpath:")) {
+            String classpathPath = fullPath.substring("classpath:".length());
+            URL url = getClass().getClassLoader().getResource(classpathPath);
+            if (url == null) {
+                return null;
+            }
+            return new ResourceSource(url, guessMimeType(safePath), cacheMaxAge, -1);
+        }
+
+        if (location.startsWith("file:")) {
+            Path path = Paths.get(fullPath.substring("file:".length())).toAbsolutePath().normalize();
+            // 二次路径安全检查：确保解析后的路径在基础目录内
+            if (baseDir != null && !path.startsWith(baseDir)) {
+                log.warn("[static] 文件系统路径越界: {} (base={})", path, baseDir);
+                return null;
+            }
+            if (!Files.exists(path) || Files.isDirectory(path)) {
+                return null;
+            }
+            long length = -1;
+            try {
+                length = Files.size(path);
+            } catch (IOException e) {
+                log.debug("[static] 读取文件长度失败: {} - {}", path, e.getMessage());
+            }
+            return new ResourceSource(path, guessMimeType(safePath), cacheMaxAge, length);
+        }
+
+        log.warn("[static] 不支持的位置前缀: {}", location);
+        return null;
+    }
+
     private ResourceResult loadFromClasspath(String classpathPath, String originalPath) throws IOException {
         URL url = getClass().getClassLoader().getResource(classpathPath);
         if (url == null) {
@@ -140,10 +196,9 @@ public class StaticResourceHandler {
 
     private ResourceResult loadFromFilesystem(String filePath, String originalPath) throws IOException {
         Path path = Paths.get(filePath).toAbsolutePath().normalize();
-        Path baseDir = Paths.get(location.substring("file:".length())).toAbsolutePath().normalize();
 
         // 二次路径安全检查：确保解析后的路径在基础目录内
-        if (!path.startsWith(baseDir)) {
+        if (baseDir != null && !path.startsWith(baseDir)) {
             log.warn("[static] 文件系统路径越界: {} (base={})", path, baseDir);
             return null;
         }
@@ -159,6 +214,9 @@ public class StaticResourceHandler {
 
     /**
      * 路径安全处理：拒绝 {@code ..} 路径穿越。
+     * <p>
+     * 判定以路径段为单位：仅当某个路径段恰为 {@code ..} 时才判定为穿越，
+     * 因此形如 {@code a..b} 的合法文件名不会被误拒；反斜杠一律拒绝。
      *
      * @param path 原始路径
      * @return 安全的路径，不安全返回 null
@@ -169,13 +227,19 @@ public class StaticResourceHandler {
         }
         // 去除开头的 /
         String p = path.startsWith("/") ? path.substring(1) : path;
-        // 检查路径穿越
-        if (p.contains("..") || p.contains("\\")) {
+        // 反斜杠不作为路径分隔符使用，直接拒绝
+        if (p.contains("\\")) {
             return null;
         }
         // 规范化：去除多余的 /
         while (p.contains("//")) {
             p = p.replace("//", "/");
+        }
+        // 检查路径穿越：按路径段判定，段恰为 ".." 才拒绝
+        for (String segment : p.split("/")) {
+            if ("..".equals(segment)) {
+                return null;
+            }
         }
         return p;
     }
@@ -243,5 +307,55 @@ public class StaticResourceHandler {
         public String getMimeType() { return mimeType; }
         public int getCacheMaxAge() { return cacheMaxAge; }
         public int getContentLength() { return content != null ? content.length : 0; }
+    }
+
+    /**
+     * 静态资源数据源：内容保留在文件或资源 URL 中，由调用方按块写出。
+     * <p>
+     * 与 {@link ResourceResult} 的区别：后者把内容整体读入堆内存，
+     * 前者只保留定位信息，内存占用与文件大小无关。
+     */
+    public static class ResourceSource {
+        private final URL url;
+        private final Path filePath;
+        private final String mimeType;
+        private final int cacheMaxAge;
+        private final long contentLength;
+
+        public ResourceSource(URL url, String mimeType, int cacheMaxAge, long contentLength) {
+            this(url, null, mimeType, cacheMaxAge, contentLength);
+        }
+
+        public ResourceSource(Path filePath, String mimeType, int cacheMaxAge, long contentLength) {
+            this(null, filePath, mimeType, cacheMaxAge, contentLength);
+        }
+
+        private ResourceSource(URL url, Path filePath, String mimeType, int cacheMaxAge, long contentLength) {
+            this.url = url;
+            this.filePath = filePath;
+            this.mimeType = mimeType;
+            this.cacheMaxAge = cacheMaxAge;
+            this.contentLength = contentLength;
+        }
+
+        public URL getUrl() { return url; }
+        public Path getFilePath() { return filePath; }
+        public String getMimeType() { return mimeType; }
+        public int getCacheMaxAge() { return cacheMaxAge; }
+        /** 内容长度，未知时为 -1 */
+        public long getContentLength() { return contentLength; }
+
+        /**
+         * 打开内容流。
+         *
+         * @return 内容流，调用方负责关闭
+         * @throws IOException 打开流失败
+         */
+        public InputStream openStream() throws IOException {
+            if (filePath != null) {
+                return Files.newInputStream(filePath);
+            }
+            return url.openStream();
+        }
     }
 }

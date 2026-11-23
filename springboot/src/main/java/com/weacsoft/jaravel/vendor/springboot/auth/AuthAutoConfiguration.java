@@ -16,7 +16,7 @@ import java.util.List;
 /**
  * 认证自动装配：注册 AuthManager、生命周期过滤器、内置 Session 存储和守卫驱动。
  * <p>
- * Spring 装配收口于 springboot 模块（auth 核心模块零 Spring 依赖）。
+ * Spring 装配集中于 springboot 模块（auth 核心模块零 Spring 依赖）。
  *
  * <b>双层工厂模式</b>：
  * <ul>

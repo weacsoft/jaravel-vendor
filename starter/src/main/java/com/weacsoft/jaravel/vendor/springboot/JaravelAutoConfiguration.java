@@ -24,7 +24,7 @@ import java.util.List;
  * 配置来源优先级：运行时覆盖 &gt; 代码级配置({@link ConfigDefinition})
  * &gt; Spring Environment(application.yml)。
  * <p>
- * <h3>P3 解耦说明（Spring 解耦终章）</h3>
+ * <h3>P3 解耦说明（Spring 解耦）</h3>
  * core 模块已零 Spring 依赖：
  * <ul>
  *   <li>{@code ConfigRepository} 改为纯类，外部配置层经 {@code environment::getProperty}

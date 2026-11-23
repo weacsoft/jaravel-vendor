@@ -9,13 +9,13 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * CSRF 令牌来源与比较方式回归测试（审计 M1）。
+ * CSRF 令牌来源与比较方式回归测试。
  * <p>
  * 修复前：令牌可以从 query string 与同名 Cookie 读取（{@code request.get()} 会合并 query；
- * Cookie 兜底让「双提交」退化为「浏览器自动携带即通过」），且比较用 {@code String.equals}（短路）。
+ * Cookie 回退让「双提交」退化为「浏览器自动携带即通过」），且比较用 {@code String.equals}（短路）。
  * 修复后：只接受请求头与请求体字段，比较改为常量时间；query 仅在显式开启兼容开关时才接受。
  * <p>
- * 本仓库此前<b>没有任何 CSRF 测试</b>（验收/安全两位专家都点出了这一缺口）。
+ * 本仓库此前<b>没有任何 CSRF 测试</b>。
  */
 class VerifyCsrfTokenTest {
 

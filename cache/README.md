@@ -283,7 +283,7 @@ cacheManager.addStore("myStore", new DefaultCacheStore(myDriver, "jaravel"));
 3. 值为 `Number` -> 按目标类型（Integer/Long/Double/Float/Short/Byte）转换
 4. 目标类型为 `String` -> 调用 `toString()`
 5. 目标类型为 `Boolean` 且值为 `Boolean` -> 直接返回
-6. 兜底：尝试以 `String` 构造器反射创建（如 `new URI(value.toString())`），失败抛 `ClassCastException`
+6. 回退：尝试以 `String` 构造器反射创建（如 `new URI(value.toString())`），失败抛 `ClassCastException`
 
 ### increment / decrement 说明
 
@@ -641,7 +641,7 @@ jaravel:
 2. **Spring 容器**中的 `DataSource` Bean。
 
 这与 Model 的连接解析语义一致。store 配置里的 `connection` 字段可指定别名；
-最终解析不到时抛出带操作建议的 `IllegalStateException`，而不是在启动期莫名失败。
+最终解析不到时抛出带操作建议的 `IllegalStateException`，而不是在启动期以原因不明的形式失败。
 
 ### 第三方模块扩展
 

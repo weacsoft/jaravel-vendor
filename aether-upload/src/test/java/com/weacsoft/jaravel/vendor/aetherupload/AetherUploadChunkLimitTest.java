@@ -20,12 +20,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 分片上限 / 溢出 / 位图性能 / 临时文件清理的回归测试（审计 S8 与 M6 相关面）。
+ * 分片上限 / 溢出 / 位图性能 / 临时文件清理的回归测试。
  * <p>
- * 背景（已实测的缺陷）：
+ * 背景：
  * <ul>
  *   <li>{@code uploadedChunkList()} 曾在循环内 {@code hasChunk(i)}，而位图在为空时<b>每次</b>
- *       重新分配 {@code (totalChunks+7)/8} 字节 → {@code totalChunks=1e6} 实测 21.4 秒、1e8 超过 120 秒
+ *       重新分配 {@code (totalChunks+7)/8} 字节 → {@code totalChunks=1e6} 测得 21.4 秒、1e8 超过 120 秒
  *       未返回（单请求 CPU/GC 长阻塞 DoS）；</li>
  *   <li>{@code totalChunks = (int)((size+chunkSize-1)/chunkSize)} 无溢出检查：{@code size=8e9&chunkSize=1}
  *       得到负数，分片状态机失效、上传永不完成；</li>
@@ -72,7 +72,7 @@ class AetherUploadChunkLimitTest {
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
 
         assertTrue(list.isEmpty(), "未标记任何分片时应返回空表");
-        // 修复前该调用实测 21,395ms；位图移到循环外后应是毫秒级
+        // 修复前该调用测得 21,395ms；位图移到循环外后应是毫秒级
         assertTrue(elapsedMs < 500,
                 "空位图必须 O(位图长度) 返回（修复前约 21 秒），实际 " + elapsedMs + "ms");
     }

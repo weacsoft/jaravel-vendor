@@ -29,7 +29,7 @@ import org.springframework.core.annotation.AnnotationUtils;
  * <ol>
  *   <li><b>声明</b>：扫描所有 {@link RegisterView} 标注的 {@link View} Bean；</li>
  *   <li><b>配置</b>：{@code jaravel.view.default=xxx} 指定默认激活实现；</li>
- *   <li><b>默认</b>：无任何声明时，兜底注册一个 Blade 运行时实现（对齐 session 的兜底逻辑）。</li>
+ *   <li><b>默认</b>：无任何声明时，回退注册一个 Blade 运行时实现（对齐 session 的回退逻辑）。</li>
  * </ol>
  * 最终把解析出的默认 {@link View} 绑定到 {@link ViewFacade}，供 {@code ResponseBuilder}、
  * {@code WireManager} 直接取用，无需手动 set 引擎。
@@ -40,7 +40,7 @@ import org.springframework.core.annotation.AnnotationUtils;
 @org.springframework.boot.autoconfigure.AutoConfiguration
 // 类级守卫：jblade 是 optional 依赖，且 starter 并不聚合它。本类的静态块会在类加载时
 // new JbladePublishableConfig()，方法签名又用到 ViewManager/BladeView/ViewFacade/BladeFunctions，
-// 缺 jblade 时不守卫会直接 NoClassDefFoundError（实测缺 jblade 启动报
+// 缺 jblade 时不守卫会直接 NoClassDefFoundError（经验证，缺 jblade 启动报
 // NoClassDefFoundError: com/weacsoft/jaravel/vendor/jblade/view/ViewManager）。
 @ConditionalOnClass(name = "com.weacsoft.jaravel.vendor.jblade.view.ViewManager")
 public class ViewAutoConfiguration {
@@ -85,9 +85,9 @@ public class ViewAutoConfiguration {
             manager.register(view);
         }
 
-        // 2. 默认层：无任何声明时，兜底注册 Blade 运行时实现
+        // 2. 默认层：无任何声明时，回退注册 Blade 运行时实现
         if (!hasDeclared) {
-            log.warn("[view] 未声明任何 View 实现，兜底注册 Blade（运行时编译模式）");
+            log.warn("[view] 未声明任何 View 实现，回退注册 Blade（运行时编译模式）");
             CacheStore cacheStore = resolveCacheStore(cacheManagerProvider);
             BladeView fallback = BladeView.runtime("blade", templateDir, suffix, cacheStore, assetUrlPrefix);
             manager.register(fallback);

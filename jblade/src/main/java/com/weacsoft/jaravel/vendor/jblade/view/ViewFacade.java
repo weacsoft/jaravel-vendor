@@ -34,7 +34,7 @@ public final class ViewFacade {
     /**
      * 取得当前激活的 View 实现。
      *
-     * @return View 实现；无任何实现时抛错（应保证兜底已注册）
+     * @return View 实现；无任何实现时抛错（应保证回退已注册）
      * @throws IllegalStateException 若未注册任何 View 实现
      */
     public static View getView() {
@@ -44,7 +44,7 @@ public final class ViewFacade {
         View view = manager.defaultView();
         if (view == null) {
             throw new IllegalStateException(
-                    "[view] 未注册任何 View 实现（应至少有 Blade 兜底），请检查 @RegisterView 或 jblade 依赖");
+                    "[view] 未注册任何 View 实现（应至少有 Blade 回退），请检查 @RegisterView 或 jblade 依赖");
         }
         return view;
     }

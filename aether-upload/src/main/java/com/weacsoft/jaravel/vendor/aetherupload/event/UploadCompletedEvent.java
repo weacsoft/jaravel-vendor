@@ -1,7 +1,7 @@
 package com.weacsoft.jaravel.vendor.aetherupload.event;
 
 /**
- * 上传完成事件（全部分片合并落盘后分发，同步上传完成也会分发）。
+ * 上传完成事件（全部分片合并写入后分发，同步上传完成也会分发）。
  */
 public class UploadCompletedEvent extends UploadEvent {
 

@@ -18,7 +18,7 @@ import java.util.List;
  *       即 text/image/voice/video/music/news）；</li>
  *   <li>第 1 条不支持被动回复（小程序卡片、卡券、菜单消息…）或配置
  *       {@code passive-reply-limit=0} 时，本次<b>不做被动回复</b>（回空串），全部走客服消息
- *       —— 不会把后面的消息悄悄提到前面；</li>
+ *       —— 不会把后面的消息悄然提到前面；</li>
  *   <li><b>客服消息</b>：其余消息走 {@code message/custom/send}，条数受
  *       {@code customer-service-reply-limit}（默认 5）与<b>该用户剩余额度</b>双重约束；</li>
  *   <li><b>溢出</b>：{@code reply-overflow-policy=drop}（默认）丢弃并记 warn；

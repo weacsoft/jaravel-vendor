@@ -12,7 +12,7 @@ import java.util.Map;
  * <ul>
  *   <li>{@code click}（点击拉取事件，需 {@code key}）</li>
  *   <li>{@code view}（跳转链接，需 {@code url}）</li>
- *   <li>{@code miniprogram}（跳转小程序，需 {@code appId}/{@code pagePath}，建议附 {@code url} 兜底）</li>
+ *   <li>{@code miniprogram}（跳转小程序，需 {@code appId}/{@code pagePath}，建议附 {@code url} 回退）</li>
  *   <li>{@code scancode_push / scancode_waitmsg}（扫码推事件，需 {@code key}）</li>
  *   <li>{@code pic_sysphoto / pic_photo_or_album / pic_weixin}（发图，需 {@code key}）</li>
  *   <li>{@code location_select}（发送位置，需 {@code key}）</li>

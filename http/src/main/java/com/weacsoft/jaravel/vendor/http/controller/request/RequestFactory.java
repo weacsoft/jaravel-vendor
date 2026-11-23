@@ -128,6 +128,8 @@ public class RequestFactory {
             if (body == null || body.trim().isEmpty()) {
                 return;
             }
+            // 缓存原始 body，供原样转发场景使用
+            request.setRawBody(body.getBytes(StandardCharsets.UTF_8));
             Map<String, Object> obj = Json.parseToMap(body);
             obj.forEach((key, value) -> {
                 request.addInput(key, value);
@@ -188,7 +190,8 @@ public class RequestFactory {
                 }
             }));
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("multipart 解析失败", e);
+            throw new RuntimeException("multipart 解析失败", e);
         }
     }
 
@@ -200,6 +203,8 @@ public class RequestFactory {
         try {
             String raw = readBodyRaw(httpServletRequest);
             if (raw != null && !raw.isEmpty()) {
+                // 缓存原始 body，供原样转发场景使用
+                request.setRawBody(raw.getBytes(StandardCharsets.UTF_8));
                 Map<String, List<String>> result = new LinkedHashMap<>();
                 String[] pairs = raw.split("&");
                 generateParam(result, pairs);
@@ -213,7 +218,7 @@ public class RequestFactory {
     }
 
     /**
-     * 从 Servlet 容器已解析的 parameterMap 中读取表单字段，作为 inputStream 已被消费时的兜底。
+     * 从 Servlet 容器已解析的 parameterMap 中读取表单字段，作为 inputStream 已被消费时的回退。
      */
     private static void fallbackToParameterMap(HttpServletRequest httpServletRequest, Request request) {
         Map<String, String[]> paramMap = httpServletRequest.getParameterMap();

@@ -18,7 +18,7 @@ import org.springframework.context.annotation.Bean;
  * Redis 分布式锁通过 {@code @RegisterLockProvider} 注解注册到
  * {@link com.weacsoft.jaravel.vendor.core.lock.LockProviderManager}，不进入 Spring 容器。
  * <p>
- * Spring 装配收口于 springboot 模块（redis 核心模块零 Spring 依赖）：
+ * Spring 装配集中于 springboot 模块（redis 核心模块零 Spring 依赖）：
  * {@link RedisProperties} 经 {@link RedisProperties#toRedisConfig()} 映射为 redis 模块的纯 Java
  * {@code RedisConfig} 后交给 {@link RedisManager}。
  */

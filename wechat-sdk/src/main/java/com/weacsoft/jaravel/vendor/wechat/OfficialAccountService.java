@@ -66,7 +66,7 @@ import java.util.UUID;
  * </ul>
  *
  * <h3>多配置支持</h3>
- * 支持多公众号命名配置（声明 {@code @RegisterWechatOfficialAccount} &gt; yml &gt; 兜底默认）；
+ * 支持多公众号命名配置（声明 {@code @RegisterWechatOfficialAccount} &gt; yml &gt; 回退默认）；
  * 每个方法都有「默认 default」与「指定 configName」两种重载。
  *
  * <h3>线程安全</h3>
@@ -112,6 +112,10 @@ public class OfficialAccountService {
 
     /** 缓存仓库（用于 jsapi_ticket 缓存） */
     private final CacheStore cacheStore;
+
+    /** 按 appId 的 ticket 刷新锁：避免缓存未命中时并发重复请求微信接口 */
+    private final java.util.concurrent.ConcurrentHashMap<String, Object> ticketLocks =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
     /** 多条应答调度器（懒创建，见 {@link #replyDispatcher()}） */
     private volatile AsyncReplyDispatcher replyDispatcher;
@@ -220,15 +224,53 @@ public class OfficialAccountService {
 
     /**
      * 拉取全部关注用户 openid（自动翻页 {@code user/get}）。
+     * <p>
+     * 返回值需要把全部 openid 常驻内存；粉丝量极大时请改用
+     * {@link #streamUserOpenids(String, java.util.function.Consumer)} 逐条消费。
      *
      * @param configName 公众号配置名
      * @return 全部关注用户 openid 列表
      */
-    @SuppressWarnings("unchecked")
     public List<String> listUserOpenids(String configName) {
         List<String> all = new ArrayList<>();
+        streamUserOpenids(configName, all::add);
+        return List.copyOf(all);
+    }
+
+    /**
+     * 流式拉取关注用户 openid：逐页拉取并逐条交给回调处理。
+     * <p>
+     * 与 {@link #listUserOpenids(String)} 的区别在于不累计 openid 列表，
+     * 因此内存占用与总人数无关，只与单页返回量相关。
+     *
+     * @param configName 公众号配置名
+     * @param consumer   单条 openid 消费者
+     * @return 已消费的 openid 条数
+     */
+    public int streamUserOpenids(String configName, java.util.function.Consumer<String> consumer) {
+        return streamUserOpenids(configName, Integer.MAX_VALUE, consumer);
+    }
+
+    /**
+     * 流式拉取关注用户 openid（限制条数）。
+     *
+     * @param configName 公众号配置名
+     * @param maxCount   最多消费的 openid 条数
+     * @param consumer   单条 openid 消费者
+     * @return 已消费的 openid 条数
+     */
+    @SuppressWarnings("unchecked")
+    public int streamUserOpenids(String configName, int maxCount,
+                                 java.util.function.Consumer<String> consumer) {
+        if (consumer == null) {
+            throw new IllegalArgumentException("consumer 不能为空");
+        }
+        if (maxCount <= 0) {
+            return 0;
+        }
+        int count = 0;
         String nextOpenid = null;
-        for (int page = 0; page < GETALL_MAX_PAGES; page++) {
+        for (int page = 0; page < GETALL_MAX_PAGES && count < maxCount; page++) {
             // 官方接口：GET /cgi-bin/user/get?access_token=…&next_openid=…
             // （不是 cgi-bin/user/getall —— 那会返回 errcode=40066 invalid url）
             Map<String, String> query = new LinkedHashMap<>(tokenQuery(configName));
@@ -242,7 +284,6 @@ public class OfficialAccountService {
             Object dataRaw = resp.raw().get("data");
             Object listRaw = null;
             if (dataRaw instanceof Map<?, ?> dataMap) {
-                @SuppressWarnings("unchecked")
                 Map<String, Object> data = (Map<String, Object>) dataMap;
                 listRaw = data.get("openid");
                 if (listRaw == null) {
@@ -254,14 +295,18 @@ public class OfficialAccountService {
             }
             for (Object o : list) {
                 if (o instanceof String s) {
-                    all.add(s);
+                    consumer.accept(s);
+                    count++;
+                    if (count >= maxCount) {
+                        break;
+                    }
                 }
             }
             Object noid = resp.raw().get("next_openid");
             nextOpenid = (noid instanceof String s && !s.isEmpty()) ? s : null;
         }
-        logger.info("[wechat] listUserOpenids 完成: 共 {} 人", all.size());
-        return List.copyOf(all);
+        logger.info("[wechat] listUserOpenids 完成: 共 {} 人", count);
+        return count;
     }
 
     /**
@@ -1185,19 +1230,27 @@ public class OfficialAccountService {
             return cached;
         }
 
-        WeChatResponse resp = wechatGet("cgi-bin/ticket/getticket",
-                Map.of("access_token", accessToken(configName), "type", "jsapi"), "getJsApiTicket");
-        resp.requireSuccess("getJsApiTicket");
-        Object ticketRaw = resp.raw().get("ticket");
-        if (ticketRaw == null || String.valueOf(ticketRaw).isEmpty()) {
-            throw new WechatApiException("getJsApiTicket 响应缺少 ticket 字段");
+        // 缓存未命中：按 appId 串行化刷新，避免并发请求同时取票（微信接口有频率限制）
+        Object lock = ticketLocks.computeIfAbsent(appId, key -> new Object());
+        synchronized (lock) {
+            String afterLock = cacheStore.get(cacheKey, String.class);
+            if (afterLock != null && !afterLock.isEmpty()) {
+                return afterLock;
+            }
+            WeChatResponse resp = wechatGet("cgi-bin/ticket/getticket",
+                    Map.of("access_token", accessToken(configName), "type", "jsapi"), "getJsApiTicket");
+            resp.requireSuccess("getJsApiTicket");
+            Object ticketRaw = resp.raw().get("ticket");
+            if (ticketRaw == null || String.valueOf(ticketRaw).isEmpty()) {
+                throw new WechatApiException("getJsApiTicket 响应缺少 ticket 字段");
+            }
+            String ticket = String.valueOf(ticketRaw);
+            int expiresIn = resp.raw().get("expires_in") instanceof Number n ? n.intValue() : 7200;
+            long ttlSeconds = Math.max(expiresIn - TICKET_BUFFER_SECONDS, 60);
+            cacheStore.put(cacheKey, ticket, ttlSeconds);
+            logger.info("[wechat] 获取 jsapi_ticket 成功: appId={}, expires_in={}s", appId, expiresIn);
+            return ticket;
         }
-        String ticket = String.valueOf(ticketRaw);
-        int expiresIn = resp.raw().get("expires_in") instanceof Number n ? n.intValue() : 7200;
-        long ttlSeconds = Math.max(expiresIn - TICKET_BUFFER_SECONDS, 60);
-        cacheStore.put(cacheKey, ticket, ttlSeconds);
-        logger.info("[wechat] 获取 jsapi_ticket 成功: appId={}, expires_in={}s", appId, expiresIn);
-        return ticket;
     }
 
     private static String sha1(String input) {

@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * {@link SpringContext} 静态门面单元测试（零 Spring，P3 起委托 {@link GlobalLookup} 安装的
+ * {@link SpringContext} 静态门面单元测试（零 Spring，委托 {@link GlobalLookup} 安装的
  * {@link GlobalBeanProvider}；此处安装一个 Map 版实现验证全部能力）。
  */
 class SpringContextTest {

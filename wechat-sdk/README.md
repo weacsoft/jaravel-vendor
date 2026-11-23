@@ -3,7 +3,7 @@
 > 包名：`com.weacsoft.jaravel.vendor.wechat`
 > 对齐 PHP 扩展包：`overtrue/laravel-wechat`（EasyWeChat 5.x）
 > 状态：**类型化消息模型（Typed Message Model）已全量实现** —— 旧 Map 裸接口已移除，不再保留。
-> **零 Spring 依赖（P2-W）**：SDK 内核与配置属性（`WechatProperties` 纯 POJO）不依赖 Spring；`WechatAutoConfiguration` / `WechatPublishAutoConfiguration` / 两个 `@Register*` 注册器位于 **`springboot`** 模块（`vendor.springboot.wechat[.registrar]` 包），属性绑定由 `WechatAutoConfiguration` 的 `@Bean @ConfigurationProperties(prefix="jaravel.wechat")` 完成。
+> **零 Spring 依赖**：SDK 内核与配置属性（`WechatProperties` 纯 POJO）不依赖 Spring；`WechatAutoConfiguration` / `WechatPublishAutoConfiguration` / 两个 `@Register*` 注册器位于 **`springboot`** 模块（`vendor.springboot.wechat[.registrar]` 包），属性绑定由 `WechatAutoConfiguration` 的 `@Bean @ConfigurationProperties(prefix="jaravel.wechat")` 完成。
 
 ## 模块概述
 
@@ -11,7 +11,7 @@
 
 设计原则（对齐 jaravel-vendor 约定）：
 
-1. **声明 > yml > 兜底默认**：配置优先用 `vendor:publish --tag=wechat-sdk` 输出的 `@RegisterWechatOfficialAccount` / `@RegisterWechatMiniApp` 声明类（`WechatPublishableConfig` 模板），yml 作为回退，两者都没有时服务层显式报 `IllegalStateException`，不做静默兜底。
+1. **声明 > yml > 默认回退**：配置优先用 `vendor:publish --tag=wechat-sdk` 输出的 `@RegisterWechatOfficialAccount` / `@RegisterWechatMiniApp` 声明类（`WechatPublishableConfig` 模板），yml 作为回退，两者都没有时服务层显式报 `IllegalStateException`，不做静默回退。
 2. **响应类型化**：所有 API 收敛为 `WeChatResponse`（`isSuccess()` / `requireSuccess()` / `as(Class)` / 类型化取值器），微信业务错误（`errcode != 0`）不再被 warn 日志吞掉。
 3. **消息类族**：11 类客服消息 + 被动回复 6 类共享 `message.Message` 基类（双序列化 `toJsonBody()` / `toXmlArray()` + 构造时快速失败），对齐 EasyWeChat `Kernel/Messages`。
 4. **接收侧完整**：XML 解析（`server.MessageParser`）+ 签名/SHA1 + AES-ECB 加解密（`crypto.WxBizMsgCrypt`，JDK 实现，无三方依赖）+ **洋葱内核** `kernel.WechatKernel`（`WechatRequest` 组装/提取 + `WechatResponse` 组装/返回 + `WechatMiddleware` 洋葱层；`WeChatServer` 为其薄壳）。
@@ -114,6 +114,8 @@ jaravel:
 | `...official-accounts.{name}.oauth.scopes/callback/enforce-https` | - | - | OAuth 配置 |
 | `...mini-apps.{name}.app-id / secret / type` | - | - | 小程序配置 |
 | `...http.timeout / retry` | - | - | HTTP 配置 |
+
+> **明文模式 POST 验签默认为关闭**：`verify-post-signature` 缺省为 `false`，此时明文模式 POST 回调不校验 `signature`，任何能访问回调地址的一方都可以伪造推送。需要校验来源真实性时将其设为 `true`（缺失或不匹配均拒绝），或改用 `message-mode: safe`。GET 接入校验与 `safe` 模式的 `msg_signature` 不受该开关影响，始终校验。
 
 ## 类总览
 
@@ -380,10 +382,10 @@ WeChatResponse up = mini.uploadMedia("default", "D:/a.png", "image", true);  // 
 4. **双模式**：`token-mode: legacy`（GET `cgi-bin/token`）/ `stable`（POST `cgi-bin/stable_token`，官方推荐的高频控凭据接口）。
 5. **强制刷新 / 清理**：`refreshToken(appId, secret)`、`invalidateToken(appId)`、`invalidateAllTokens()`。
 
-> 微信 access_token 每天获取限额 2000 次，务必走缓存。多实例共享可显式 `cache-store: redis` 并引入 `redis-cache` 模块。
+> 微信 access_token 每天获取限额 2000 次，应走缓存。多实例共享可显式 `cache-store: redis` 并引入 `redis-cache` 模块。
 
 ## 版本与契约
 
-- **195 个单测全绿**（含 19 个历史锁定用例 + 42 个洋葱内核/网页授权用例；旧 153 个用例全保留）。
+- **206 个单测全绿**（含 19 个历史锁定用例 + 42 个洋葱内核/网页授权用例；旧 153 个用例全保留）。
 - **旧 Map 裸接口（`getUserData` / `sendMessage(Map)` / `sendTyping(openid, int)` / `jscode2session` / `sendTemplateMessage` / `getMenu→Map` 等）已全部移除**，不再保留过渡期。
 - 设计文档：消息模型 [DESIGN-message-model.md](./DESIGN-message-model.md) · 洋葱内核与网页授权 [DESIGN-web-oauth.md](./DESIGN-web-oauth.md)。

@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 字符串裁剪中间件，对齐 Laravel 的 {@code TrimStrings}。
@@ -31,8 +32,10 @@ public class TrimStrings implements Middleware {
 
     @Override
     public Response handle(Request request, NextFunction next, String... params) {
-        trimQueryParameters(request);
-        trimInputParameters(request);
+        // 排除列表在入口处取一次，避免每个参数都重建数组并包装成 List
+        Set<String> excluded = excludedNames();
+        trimQueryParameters(request, excluded);
+        trimInputParameters(request, excluded);
         return next.apply(request);
     }
 
@@ -45,11 +48,32 @@ public class TrimStrings implements Middleware {
         return new String[0];
     }
 
+    /**
+     * 把 {@link #except()} 转为集合，供一次请求内的所有参数判断复用。
+     *
+     * @return 排除字段名集合
+     */
+    private Set<String> excludedNames() {
+        String[] names = except();
+        if (names == null || names.length == 0) {
+            return Set.of();
+        }
+        return Set.of(names);
+    }
+
     protected void trimQueryParameters(Request request) {
+        trimQueryParameters(request, excludedNames());
+    }
+
+    protected void trimInputParameters(Request request) {
+        trimInputParameters(request, excludedNames());
+    }
+
+    protected void trimQueryParameters(Request request, Set<String> excluded) {
         Map<String, Object> queryParams = request.query();
         if (queryParams != null) {
             queryParams.forEach((key, value) -> {
-                if (!isExcluded(key)) {
+                if (!excluded.contains(key)) {
                     Object trimmedValue = trimValue(value);
                     request.replaceQuery(key, trimmedValue);
                 }
@@ -57,11 +81,11 @@ public class TrimStrings implements Middleware {
         }
     }
 
-    protected void trimInputParameters(Request request) {
+    protected void trimInputParameters(Request request, Set<String> excluded) {
         Map<String, Object> inputParams = request.input();
         if (inputParams != null) {
             inputParams.forEach((key, value) -> {
-                if (!isExcluded(key)) {
+                if (!excluded.contains(key)) {
                     Object trimmedValue = trimValue(value);
                     request.replaceInput(key, trimmedValue);
                 }
@@ -70,7 +94,7 @@ public class TrimStrings implements Middleware {
     }
 
     protected boolean isExcluded(String key) {
-        return Arrays.asList(except()).contains(key);
+        return excludedNames().contains(key);
     }
 
     protected Object trimValue(Object value) {

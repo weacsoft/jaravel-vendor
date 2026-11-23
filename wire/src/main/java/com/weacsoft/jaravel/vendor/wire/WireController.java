@@ -89,6 +89,13 @@ public abstract class WireController {
     ));
 
     /**
+     * 控制器 public 字段缓存：类 → 该类继承链上的 public 字段列表。
+     * <p>
+     * 字段集合在类加载后不再变化，按类缓存可避免每次请求重复遍历类层级。
+     */
+    private static final ConcurrentHashMap<Class<?>, List<Field>> PUBLIC_FIELD_CACHE = new ConcurrentHashMap<>();
+
+    /**
      * 当前请求实例,在 index()/update() 入口保存,供子类 action(如 save())通过
      * {@link #isWireRequest()} 判断本次请求是否为 wire 局部更新请求。
      */
@@ -97,7 +104,7 @@ public abstract class WireController {
      * <p>
      * <b>为什么不能存实例字段</b>：控制器实例会被跨请求复用（Spring 单例 / 注册表复用），
      * 把请求写进实例字段会让并发请求互相覆盖 —— 表现为「A 用户的 action 看到 B 用户的请求」，
-     * 即跨请求/跨用户状态串读（审计 S10）。这里改为请求级 ThreadLocal，并在入口的
+     * 即跨请求/跨用户状态串读。这里改为请求级 ThreadLocal，并在入口的
      * {@code finally} 中清理（与 WireEffects / WIRE_LAYOUT_REPLACEMENTS 同一处）。
      */
     private static final ThreadLocal<Request> CURRENT_REQUEST = new ThreadLocal<>();
@@ -488,13 +495,16 @@ public abstract class WireController {
             collectPublicFields(data);
 
             // 确定要刷新的 sections
+            // 模板名只取一次：getTemplateName() 默认实现会调用 render()，
+            // 重复取值会让同一次请求内执行多次渲染（含数据库查询）。
+            String templateName = getTemplateName();
             List<String> sections = wireReq.getSections();
             if (sections == null || sections.isEmpty()) {
-                sections = WireManager.getSectionNames(getTemplateName());
+                sections = WireManager.getSectionNames(templateName);
             }
 
             // 渲染 sections
-            Map<String, String> sectionHtmls = renderSections(getTemplateName(), sections, data);
+            Map<String, String> sectionHtmls = renderSections(templateName, sections, data);
 
             // 编码新快照
             String newSnapshot = encodeSignedSnapshot(data, request);
@@ -702,18 +712,29 @@ public abstract class WireController {
         return locked;
     }
 
+    /**
+     * 查找控制器自身的 public 字段（含继承链，跳过 WireController 与 Object 的字段）。
+     * <p>
+     * 结果按类缓存：继承链上的字段集合在类加载后不再变化，
+     * 无需每次请求都遍历一次类层级。
+     *
+     * @param clazz 控制器类
+     * @return public 字段列表
+     */
     private List<Field> findPublicFields(Class<?> clazz) {
-        List<Field> result = new ArrayList<>();
-        Class<?> current = clazz;
-        while (current != null && current != WireController.class && current != Object.class) {
-            for (Field f : current.getDeclaredFields()) {
-                if (!Modifier.isStatic(f.getModifiers()) && Modifier.isPublic(f.getModifiers())) {
-                    result.add(f);
+        return PUBLIC_FIELD_CACHE.computeIfAbsent(clazz, key -> {
+            List<Field> result = new ArrayList<>();
+            Class<?> current = key;
+            while (current != null && current != WireController.class && current != Object.class) {
+                for (Field f : current.getDeclaredFields()) {
+                    if (!Modifier.isStatic(f.getModifiers()) && Modifier.isPublic(f.getModifiers())) {
+                        result.add(f);
+                    }
                 }
+                current = current.getSuperclass();
             }
-            current = current.getSuperclass();
-        }
-        return result;
+            return result;
+        });
     }
 
     private Field findPublicField(Class<?> clazz, String name) {
@@ -1107,7 +1128,7 @@ public abstract class WireController {
         if (colon < 0) throw new TamperedSnapshotException("snapshot 格式无效");
         String expectedSig = signed.substring(0, colon);
         String base64 = signed.substring(colon + 1);
-        // 先验签、后解析（审计 L7）：旧实现先把攻击者可控的 base64 交给 decodeSnapshot 解析，
+        // 先验签、后解析：旧实现先把攻击者可控的 base64 交给 decodeSnapshot 解析，
         // 解析器（JSON 反序列化、超大负载）成了验签之前的攻击面。签名不过就绝不解析内容。
         String actualSig = hmac(base64, getOrCreateSessionKey(request));
         if (!MessageDigest.isEqual(
@@ -1123,7 +1144,7 @@ public abstract class WireController {
      * <p>
      * <b>会话不可用时必须用「稳定」密钥</b>：旧实现在异常分支返回
      * {@code "fallback-key-" + UUID.randomUUID()} —— 每次调用都是新值，导致「签发用的钥匙」与
-     * 「校验用的钥匙」必然不同，表现为<b>所有局部更新恒 403</b> 且错误被静默吞掉（审计 M15）。
+     * 「校验用的钥匙」必然不同，表现为<b>所有局部更新恒 403</b> 且错误被静默吞掉。
      * 现在优先回退到全局应用密钥（{@code jaravel.key}）；两者都没有时<b>明确抛错</b>，
      * 让问题在首次请求就暴露，而不是伪装成「快照被篡改」。
      *
@@ -1141,7 +1162,7 @@ public abstract class WireController {
         } catch (Exception e) {
             String stable = globalAppKey();
             if (stable != null && !stable.isBlank()) {
-                // 降级必须可见（审计 F1）：从「按会话绑定」降级为「进程级派生密钥」后，
+                // 降级必须可见：从「按会话绑定」降级为「进程级派生密钥」后，
                 // 任何会话中持有同一快照串的请求都能通过校验；旧实现静默降级、且异常会被
                 // 上层记成「snapshot 篡改」，把配置问题伪装成攻击。
                 if (SESSION_KEY_FALLBACK_WARNED.compareAndSet(false, true)) {
@@ -1160,9 +1181,9 @@ public abstract class WireController {
             new java.util.concurrent.atomic.AtomicBoolean(false);
 
     /**
-     * 从全局应用密钥派生「快照签名专用」密钥（用途分离，审计 F1）。
+     * 从全局应用密钥派生「快照签名专用」密钥（用途分离）。
      * <p>
-     * 直接拿全局密钥当签名密钥会把「一把钥匙多处用」，派生后各用途互不影响。
+     * 直接拿全局密钥当签名密钥会把「一份密钥多处使用」，派生后各用途互不影响。
      *
      * @param appKey 全局应用密钥
      * @return 派生密钥
@@ -1330,10 +1351,10 @@ public abstract class WireController {
 
                         // 注入 data-wire-back-url:供前端 dialog 取消按钮读取,还原地址栏。
                         // 由 action(edit/add)通过 WireEffects.backUrl() 指定,
-                        // 避免 dialog 模板写死返回 URL,与控制器逻辑彻底解耦。
+                        // 避免 dialog 模板硬编码返回 URL,与控制器逻辑彻底解耦。
                         // 注意:这里必须用「非破坏性 peek」而不是 drain —— 组件渲染可能发生在主流程
                         // 读取 effects 之前，一旦在此 drain，主流程（第 529 行附近）就只能拿到 null
-                        // （审计 L11：backUrl 在响应里丢失）。取走留给主流程统一做。
+                        // 否则 backUrl 会在响应里丢失。取走留给主流程统一做。
                         String backUrlAttr = WireEffects.getBackUrl();
                         if (backUrlAttr != null && !backUrlAttr.isEmpty()) {
                             html = injectDataAttr(html, "data-wire-back-url", backUrlAttr);
@@ -1439,7 +1460,7 @@ public abstract class WireController {
      *   <li>本控制器强关联组件注册表 {@link #wireComponents()}(如 admin-form → mdui.admin.admin.item);</li>
      *   <li>全局命名组件注册表 {@link WireManager#resolveComponentTemplate(String)}
      *       (来自 jaravel.wire.components 配置,如 toast → components.toast);</li>
-     *   <li>兜底:组件名即模板名。</li>
+     *   <li>回退:组件名即模板名。</li>
      * </ol>
      * 控制器私有组件(对话框/表单等)必须在 {@link #wireComponents()} 声明,禁止写入配置文件。
      */
@@ -1454,7 +1475,7 @@ public abstract class WireController {
         // 2. 全局命名组件注册表(配置文件 jaravel.wire.components,如 toast/confirm)
         String global = WireManager.resolveComponentTemplate(name);
         if (global != null && !global.isEmpty()) return global;
-        // 3. 兜底:组件名即模板名
+        // 3. 回退:组件名即模板名
         return name;
     }
 

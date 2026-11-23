@@ -44,7 +44,7 @@ import java.util.Map;
  * 因此改为<b>运行时解析</b>——{@link #migrationExecutor} 内部先查注册表再回退 Spring 容器；
  * 若最终一个连接都没有，仅打印告警并注册一个空执行器，<b>不影响应用启动</b>。
  * <p>
- * Spring 装配收口于 springboot 模块（migration 核心模块零 Spring 依赖）。
+ * Spring 装配集中于 springboot 模块（migration 核心模块零 Spring 依赖）。
  */
 @AutoConfiguration
 @AutoConfigureAfter(DataSourceAutoConfiguration.class)
@@ -99,7 +99,7 @@ public class MigrationAutoConfiguration {
             dataSources.forEach(aliasMap::putIfAbsent);
         }
 
-        // 3) 兜底：确保存在 sqlite 别名，指向容器中的主数据源
+        // 3) 回退：确保存在 sqlite 别名，指向容器中的主数据源
         if (!aliasMap.containsKey("sqlite") && dataSources != null && !dataSources.isEmpty()) {
             DataSource fallback = dataSources.containsKey("dataSource")
                     ? dataSources.get("dataSource")

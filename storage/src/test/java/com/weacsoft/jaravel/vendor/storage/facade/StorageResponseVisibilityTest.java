@@ -19,11 +19,11 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * {@code Storage.response(disk, path)} 的可见性与响应头行为（审计 L4 / N2 / N3）。
+ * {@code Storage.response(disk, path)} 的可见性与响应头行为。
  * <p>
  * 修复前：不论文件可见性一律下发 {@code Cache-Control: public, max-age=3600} ——
  * 私有文件（证件照/发票）经 CDN 或共享代理会被缓存给其他人。
- * 修复后：按 {@code fs.visibility(path)} 分流，取不到可见性时按 PRIVATE 兜底（安全默认）。
+ * 修复后：按 {@code fs.visibility(path)} 分流，取不到可见性时按 PRIVATE 回退（安全默认）。
  * <p>
  * 装配要点：{@code Storage} 是静态门面，经 {@code Facade.resolve} 取 {@code StorageManager}；
  * 单测用 {@link GlobalLookup#install} 注入，并在 {@link AfterEach} 卸载（静态全局，避免串测）。
@@ -50,7 +50,7 @@ class StorageResponseVisibilityTest {
                 return Visibility.PUBLIC;
             }
         });
-        // 可见性不可用的盘：visibility() 抛异常 → 必须按私有兜底（安全默认，审计 F4）
+        // 可见性不可用的盘：visibility() 抛异常 → 必须按私有回退（安全默认）
         manager.registerDisk("broken", new com.weacsoft.jaravel.vendor.storage.local.LocalFilesystem(
                 "broken", root.resolve("broken").toString(), null, Visibility.PRIVATE) {
             @Override

@@ -79,15 +79,32 @@ public final class HttpRpcHandler {
      */
     public static String processRequest(BeanResolver beanResolver,
                                         String authToken, String token, String requestBody) {
+        return processRequest(beanResolver, authToken, token, requestBody, RpcMethodGuard.unrestricted());
+    }
+
+    /**
+     * 处理 RPC 请求（带认证与访问控制）。
+     *
+     * @param beanResolver Bean 解析器
+     * @param authToken  预期的认证令牌（null 或空表示不认证）
+     * @param token      请求中携带的令牌（从 HTTP Header 获取）
+     * @param requestBody 请求体 JSON 字符串（{@link ExecuteRequest} 的序列化）
+     * @param guard      方法访问控制
+     * @return 响应 JSON 字符串（{@link ExecuteResponse} 的序列化）
+     */
+    public static String processRequest(BeanResolver beanResolver,
+                                        String authToken, String token, String requestBody,
+                                        RpcMethodGuard guard) {
         // 认证
         if (authToken != null && !authToken.isEmpty()) {
-            if (!authToken.equals(token)) {
+            if (!tokenMatches(authToken, token)) {
                 return toJson(ExecuteResponse.error(null, "认证失败"));
             }
         }
         try {
             ExecuteRequest execRequest = Json.parse(requestBody, ExecuteRequest.class);
-            ExecuteResponse execResponse = executeLocally(beanResolver, execRequest);
+            ExecuteResponse execResponse = executeLocally(beanResolver, execRequest,
+                    guard == null ? RpcMethodGuard.unrestricted() : guard);
             return toJson(execResponse);
         } catch (Exception e) {
             log.error("处理 RPC 请求失败", e);
@@ -111,11 +128,27 @@ public final class HttpRpcHandler {
      */
     private static ExecuteResponse executeLocally(BeanResolver beanResolver,
                                                    ExecuteRequest request) {
+        return executeLocally(beanResolver, request, RpcMethodGuard.unrestricted());
+    }
+
+    /**
+     * 在本地执行插件方法（带访问控制）。
+     */
+    private static ExecuteResponse executeLocally(BeanResolver beanResolver,
+                                                   ExecuteRequest request,
+                                                   RpcMethodGuard guard) {
         try {
             Object bean = beanResolver.getBean(request.getPluginId(), request.getBeanName());
             if (bean == null) {
                 return ExecuteResponse.error(request.getRequestId(),
                         "Bean 未找到: pluginId=" + request.getPluginId() + ", beanName=" + request.getBeanName());
+            }
+            if (!guard.isAllowed(request.getPluginId(), request.getBeanName(), request.getMethodName())) {
+                String reason = guard.rejectReason(request.getPluginId(), request.getBeanName(),
+                        request.getMethodName());
+                log.warn("拒绝未授权的远程调用: pluginId={}, beanName={}, method={}, reason={}",
+                        request.getPluginId(), request.getBeanName(), request.getMethodName(), reason);
+                return ExecuteResponse.error(request.getRequestId(), reason);
             }
             java.lang.reflect.Method targetMethod = findMethod(bean.getClass(),
                     request.getMethodName(), request.getArgTypes());
@@ -180,5 +213,21 @@ public final class HttpRpcHandler {
         } catch (Exception e) {
             return "{\"success\":false,\"error\":\"序列化错误\"}";
         }
+    }
+
+    /**
+     * 令牌比较：常量时间，避免逐字节短路比较泄露时序信息。
+     *
+     * @param expected 期望令牌
+     * @param actual   请求携带的令牌（可为 null）
+     * @return 是否一致
+     */
+    private static boolean tokenMatches(String expected, String actual) {
+        if (actual == null) {
+            return false;
+        }
+        byte[] expectedBytes = expected.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] actualBytes = actual.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        return java.security.MessageDigest.isEqual(expectedBytes, actualBytes);
     }
 }

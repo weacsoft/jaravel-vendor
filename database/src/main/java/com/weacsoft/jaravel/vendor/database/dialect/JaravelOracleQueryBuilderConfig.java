@@ -70,7 +70,7 @@ public class JaravelOracleQueryBuilderConfig implements QueryBuilderConfig {
                 "Database product name [" + databaseProductName + "] not supported.");
         }
         if (!isOracleGroup(detected)) {
-            // 兜底：非 Oracle 家族不应路由到本配置（support() 已拦截），委托官方行为
+            // 回退：非 Oracle 家族不应路由到本配置（support() 已拦截），委托官方行为
             return new DefaultQueryBuilderConfig().forProductName(databaseProductName);
         }
         return new JaravelOracleQueryBuilderConfig(
