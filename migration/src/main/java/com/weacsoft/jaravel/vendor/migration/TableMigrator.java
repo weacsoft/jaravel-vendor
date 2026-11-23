@@ -899,12 +899,11 @@ public class TableMigrator {
      * 删除目标表（如存在）。
      * <p>
      * 对于支持 DROP TABLE IF EXISTS 的方言直接执行；
-     * 对于不支持的方言（Oracle），先通过 hasTable 检查再执行 DROP。
+     * 对于不支持的方言，先通过 hasTable 检查再执行 DROP。
      */
     private void dropTargetTableIfExists(String tableName) {
-        String targetName = targetDialect.getName();
-        if (targetName.contains("oracle")) {
-            // Oracle 不支持 DROP TABLE IF EXISTS
+        if (!targetDialect.supportsDropTableIfExists()) {
+            // 该方言不支持 DROP TABLE IF EXISTS（如 Oracle），先检查表是否存在再删除
             try {
                 String hasSql = targetDialect.hasTableSql();
                 if (hasSql != null) {
@@ -915,7 +914,7 @@ public class TableMigrator {
                     return;
                 }
             } catch (Exception e) {
-                log.warn("[migration] Oracle 检查表存在性失败，尝试直接 DROP: {}", e.getMessage());
+                log.warn("[migration] 检查表存在性失败，尝试直接 DROP: {}", e.getMessage());
             }
             try {
                 targetJdbc.execute("DROP TABLE " + targetDialect.quote(tableName));

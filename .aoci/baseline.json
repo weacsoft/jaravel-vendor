@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-11-23T07:29:29Z",
-  "updated_at": "2026-11-23T19:17:21Z",
+  "updated_at": "2026-11-23T19:25:09Z",
   "files": {
     ".dsh-tmp/test-prepush.sh": {
       "role": "observe",
@@ -89,9 +89,9 @@
     },
     "CHANGELOG.md": {
       "role": "index",
-      "sha256": "daf9256491b4bc5d4bfda6b8ed9923e62b2f0609b1512e3bca6c2ffd778875fa",
-      "size": 93470,
-      "normalized_sha256": "6e07efff9685c5a44e7c42651178ce66d24d7b202bf8611292e2fb0d5fe26ca3"
+      "sha256": "8828b07ccb31903028ad14300e8f5bffa30ab51be87c745b3db9f7c710febc64",
+      "size": 93925,
+      "normalized_sha256": "06a8a9f25b2ea92f642caae023568e8b811f871d52f15dca753125705a193da1"
     },
     "CLUSTER.md": {
       "role": "index",
@@ -287,9 +287,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "133e20d9058f9ac1d0d813e56b1c3c9b14e519dc623ba95e087e77ca75238eee",
-      "size": 498796,
-      "normalized_sha256": "133e20d9058f9ac1d0d813e56b1c3c9b14e519dc623ba95e087e77ca75238eee"
+      "sha256": "87b56deb26b75c33265bb6ac4c7474e0796552a3c8922332e3b6f254cf05db7f",
+      "size": 500197,
+      "normalized_sha256": "87b56deb26b75c33265bb6ac4c7474e0796552a3c8922332e3b6f254cf05db7f"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -2195,9 +2195,9 @@
     },
     "migration/src/main/java/com/weacsoft/jaravel/vendor/migration/Blueprint.java": {
       "role": "index",
-      "sha256": "18de8cee3ac04e2de38b0586f999d270be63e1cb14efc5a584808074e960a21e",
-      "size": 16639,
-      "normalized_sha256": "d10e17891fe20a6b3e6b98d1797dc1b739f98f6ca8301fa9e3710d750c3a61e2"
+      "sha256": "1cf43df7ed1d47b6c632f208603bff97f2c6d28b8cd2a0162f901e19eca7180b",
+      "size": 16912,
+      "normalized_sha256": "380d4af90774079afd31dee052fc3d310162c1a5a1e13d6deed35b6959780392"
     },
     "migration/src/main/java/com/weacsoft/jaravel/vendor/migration/CapturingSchema.java": {
       "role": "index",
@@ -2273,15 +2273,15 @@
     },
     "migration/src/main/java/com/weacsoft/jaravel/vendor/migration/Schema.java": {
       "role": "index",
-      "sha256": "e06db5ad6a39fc5df04f48700a33bd3976eedd0762f8dd916df3f67954d67c89",
-      "size": 13274,
-      "normalized_sha256": "6a79fce12b6a9e881740c97427bf17fcc141bd73e18bda7310be43b8b659491b"
+      "sha256": "3048addcd439138d7cb0d179412bb79074fe4639c73e9ff862bd59a57faa57d8",
+      "size": 13846,
+      "normalized_sha256": "4c2b5f6d3e7da411b94f87e6311870f92920df600a866e1f62241595f200cc34"
     },
     "migration/src/main/java/com/weacsoft/jaravel/vendor/migration/TableMigrator.java": {
       "role": "index",
-      "sha256": "526334c222800a3d2481948a279b7ab0ac5345d57a2f209e16a1728b1b60a999",
-      "size": 50958,
-      "normalized_sha256": "28700a6053dabded7952aedf75e220866575e47ee6e86e251ba94b5445a9d64d"
+      "sha256": "b967b2221032d866eb475c323b2a7720601caacd3600edf8fefe0190ab5ec86f",
+      "size": 50952,
+      "normalized_sha256": "7ebda90e4916dc3a5ae1db44bfe9279d9be0c36c841e16a088cb9c1f54260c8c"
     },
     "migration/src/main/java/com/weacsoft/jaravel/vendor/migration/artisan/MakeModelFromMigrationCommand.java": {
       "role": "index",
@@ -2339,15 +2339,15 @@
     },
     "migration/src/main/java/com/weacsoft/jaravel/vendor/migration/dialect/AbstractDialect.java": {
       "role": "index",
-      "sha256": "2deb7763e1782dc60c95c553a22d37fe5f98dfe0054c9ecc821ee4f77578a05e",
-      "size": 9085,
-      "normalized_sha256": "345f009647841fa392fa7ab7cba2e894db3b06b85f0d56fc4b1f3d740c68e605"
+      "sha256": "d8e2ab03317fc974344b2e8fa3ff11fa8209f968050c820f3a3628c6b80eb05b",
+      "size": 9181,
+      "normalized_sha256": "d1417ac581b72f6df04b3514bc1016031e652f0ab8b24cfe1a5e2ae2688dc190"
     },
     "migration/src/main/java/com/weacsoft/jaravel/vendor/migration/dialect/Dialect.java": {
       "role": "index",
-      "sha256": "7bb0b83fa51f31b16615228b666d7398cb898a9d8a685f66d7bfecc1a45eed74",
-      "size": 8498,
-      "normalized_sha256": "60980604ba15e562e1de4adc5939ace0415f9c2b5668d649ebdeb0aee30b2e0c"
+      "sha256": "908766a92c42cbb60027b0a7831c0fdffe2fee560154efd532f91cbc905e9851",
+      "size": 8817,
+      "normalized_sha256": "1b8397fa37f30ad62859f46f6ff09e6ca923dd193ad990468446b7a57eb17b1a"
     },
     "migration/src/main/java/com/weacsoft/jaravel/vendor/migration/dialect/DialectFactory.java": {
       "role": "index",
@@ -2369,9 +2369,9 @@
     },
     "migration/src/main/java/com/weacsoft/jaravel/vendor/migration/dialect/OracleDialect.java": {
       "role": "index",
-      "sha256": "dbed96ca48dc3fb9ab4b1da17130c7ebaabcdb2625d099b032b1882ca22a5892",
-      "size": 6429,
-      "normalized_sha256": "2857a3ce33d02ac0ce74487b2b296a97d3f644c39123fa1374475d5ff927991f"
+      "sha256": "d41a3e121322588686d62999b0208ce3a48760aeb57c16aa86d00e4a5560416d",
+      "size": 6637,
+      "normalized_sha256": "51fac5742250abe4cab43784d6b2d8142f20e168a95179166dd1de281cc255d3"
     },
     "migration/src/main/java/com/weacsoft/jaravel/vendor/migration/dialect/PostgresqlDialect.java": {
       "role": "index",
@@ -2463,6 +2463,12 @@
       "size": 4230,
       "normalized_sha256": "abe4a667616bd2c57d2e5b06506e3786554e1518d008f2a8efa70bd714b21d98"
     },
+    "migration/src/test/java/com/weacsoft/jaravel/vendor/migration/SchemaDropIfExistsTest.java": {
+      "role": "index",
+      "sha256": "fbddbc274b179d3cffecf577b3ef3806b49637aa398061be97bffe9fa2936a6d",
+      "size": 3156,
+      "normalized_sha256": "fbddbc274b179d3cffecf577b3ef3806b49637aa398061be97bffe9fa2936a6d"
+    },
     "migration/src/test/java/com/weacsoft/jaravel/vendor/migration/TableMigratorTest.java": {
       "role": "index",
       "sha256": "d345d6b08995136f620c72265c6df54bed025d166bcf609df65128c8e118c755",
@@ -2474,6 +2480,12 @@
       "sha256": "e550786085b1a9f1c2538bff3d4f16afc99d6317f8019e769feb906565911c9a",
       "size": 6084,
       "normalized_sha256": "b4b9aa65e056fcdfb7b71fc0a9495c2127bfb1613b2193aabadae1deab4efb40"
+    },
+    "migration/src/test/java/com/weacsoft/jaravel/vendor/migration/dialect/DialectDropTableTest.java": {
+      "role": "index",
+      "sha256": "fb2d14450eadf87b70bd7b01826e548c2f3726461919cb6e69d180b87cb6c0e6",
+      "size": 1346,
+      "normalized_sha256": "fb2d14450eadf87b70bd7b01826e548c2f3726461919cb6e69d180b87cb6c0e6"
     },
     "migration/src/test/java/com/weacsoft/jaravel/vendor/migration/dialect/DialectUpsertTest.java": {
       "role": "index",

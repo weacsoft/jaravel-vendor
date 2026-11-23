@@ -170,6 +170,12 @@ public class OracleDialect extends AbstractDialect {
     }
 
     @Override
+    public boolean supportsDropTableIfExists() {
+        // Oracle 不支持 DROP TABLE IF EXISTS，执行会报 ORA-00900，需先查询系统目录再删除
+        return false;
+    }
+
+    @Override
     public boolean supportsAfterColumn() {
         return false;
     }

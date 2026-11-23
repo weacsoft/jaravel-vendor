@@ -246,10 +246,23 @@ public class Schema {
 
     /**
      * 删除表（如存在），对齐 Laravel Schema::dropIfExists。
+     * <p>
+     * 不支持 {@code DROP TABLE IF EXISTS} 的方言（如 Oracle，执行会报 ORA-00900）
+     * 改为先查询系统目录确认表是否存在，再执行删除。
      *
      * @param table 表名
      */
     public void dropIfExists(String table) {
+        if (!dialect.supportsDropTableIfExists()) {
+            if (!hasTable(table)) {
+                log.info("[migration] DROP: 表不存在，跳过 ({})", table);
+                return;
+            }
+            String sql = "DROP TABLE " + quote(table);
+            log.info("[migration] DROP: {}", sql);
+            jdbc.execute(sql);
+            return;
+        }
         String sql = "DROP TABLE IF EXISTS " + quote(table);
         log.info("[migration] DROP: {}", sql);
         jdbc.execute(sql);

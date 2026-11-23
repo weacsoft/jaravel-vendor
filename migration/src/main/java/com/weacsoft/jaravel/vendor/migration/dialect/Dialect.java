@@ -216,6 +216,15 @@ public interface Dialect {
     boolean supportsColumnComment();
 
     /**
+     * 是否支持 {@code DROP TABLE IF EXISTS} 语法。
+     * <p>
+     * Oracle 不支持该语法（执行报 ORA-00900 无效的 SQL 语句），需要先查询系统目录确认表是否存在再删除。
+     *
+     * @return true 表示支持
+     */
+    boolean supportsDropTableIfExists();
+
+    /**
      * 是否支持 AFTER 子句（ALTER TABLE 时将字段置于指定字段之后，仅 MySQL）。
      *
      * @return true 表示支持

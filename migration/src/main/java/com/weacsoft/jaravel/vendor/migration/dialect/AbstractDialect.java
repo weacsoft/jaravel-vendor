@@ -55,6 +55,11 @@ public abstract class AbstractDialect implements Dialect {
     }
 
     @Override
+    public boolean supportsDropTableIfExists() {
+        return true;
+    }
+
+    @Override
     public boolean supportsAfterColumn() {
         return false;
     }

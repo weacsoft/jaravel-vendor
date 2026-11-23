@@ -478,9 +478,15 @@ public class Blueprint {
         return list;
     }
 
-    /** 生成 DROP TABLE 语句 */
+    /**
+     * 生成 DROP TABLE 语句。
+     * <p>
+     * 不支持 {@code DROP TABLE IF EXISTS} 的方言（如 Oracle）只生成 {@code DROP TABLE}，
+     * 由调用方先确认表是否存在。
+     */
     public String toDropSql() {
-        return "DROP TABLE IF EXISTS " + quote(table);
+        String prefix = getDialect().supportsDropTableIfExists() ? "DROP TABLE IF EXISTS " : "DROP TABLE ";
+        return prefix + quote(table);
     }
 
     /** 生成 ALTER 相关语句（dropColumn/renameColumn/dropIndex） */
