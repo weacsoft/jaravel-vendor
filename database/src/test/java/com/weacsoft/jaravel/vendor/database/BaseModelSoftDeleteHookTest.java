@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *   <li>{@code isSoftDeleted(record)} —— 某记录是否已删除（默认按布尔列判断）</li>
  * </ul>
  * 而 jaravel 的语义是 {@code deleted_at IS NULL}（时间戳列）。
- * <b>不重写这三处，{@code isSoftDeleting()} 恒为 false，AutoRestore 永远不触发</b>——
+ * <b>不重写这三处，{@code isSoftDeleting()} 始终为 false，AutoRestore 永远不触发</b>——
  * 表现为「恢复了个寂寞」：{@code deleted_at} 仍是旧值，只是普通 UPDATE。
  * <p>
  * 正向验证「命中已删除记录时 deleted_at 真的被置 NULL」需要真实数据库 + Spring 上下文

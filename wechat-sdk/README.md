@@ -110,7 +110,7 @@ jaravel:
 | `...official-accounts.{name}.app-id / secret` | string | - | 公众号凭据 |
 | `...official-accounts.{name}.token / aes-key` | string | - | 消息校验与加解密密钥（safe 模式必填） |
 | `...official-accounts.{name}.message-mode` | string | `plain` | 回调模式：`plain`/`safe` |
-| `...official-accounts.{name}.verify-post-signature` | boolean | `false` | 是否校验明文模式 POST 的 `signature`：`false`=完全不校验（缺失/错误都放行）；`true`=缺失或不匹配都拒绝。**GET 接入校验与 `safe` 模式的 `msg_signature` 恒校验，不受本项影响** |
+| `...official-accounts.{name}.verify-post-signature` | boolean | `false` | 是否校验明文模式 POST 的 `signature`：`false`=完全不校验（缺失/错误都放行）；`true`=缺失或不匹配都拒绝。**GET 接入校验与 `safe` 模式的 `msg_signature` 始终校验，不受本项影响** |
 | `...official-accounts.{name}.oauth.scopes/callback/enforce-https` | - | - | OAuth 配置 |
 | `...mini-apps.{name}.app-id / secret / type` | - | - | 小程序配置 |
 | `...http.timeout / retry` | - | - | HTTP 配置 |
@@ -355,7 +355,7 @@ WeChatOAuth.saveToSession(session, "default", user);          // 手工写会话
 | `enforce-https` | `true` | 回跳/redirect_uri 自动 http → https 升级 |
 
 > **会话存储**：中间件使用 `http` 模块的 `SessionStoreHolder`（`auth` 同源 bean）；
-> 未引入会话自动装配时自动降级为「无状态模式」（放行判定恒为未授权，回调不持久化——纯 API 场景仍可用 `WeChatOAuth` 直调）。
+> 未引入会话自动装配时自动降级为「无状态模式」（放行判定始终为未授权，回调不持久化——纯 API 场景仍可用 `WeChatOAuth` 直调）。
 
 ### 10. 小程序
 

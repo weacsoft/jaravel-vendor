@@ -171,8 +171,8 @@ class RequestTest {
 
     @Test
     void testGetTypedConversion() {
-        // 回归:get(key, 非 String 默认值)必须能拿到真实值(类型转换),不能恒返回默认值。
-        // 旧实现用 clazz.isInstance(value) 判断,查询参数是 String/Integer 时对 Long 恒不匹配 → 返回 null → 默认值。
+        // 回归:get(key, 非 String 默认值)必须能拿到真实值(类型转换),不能始终返回默认值。
+        // 旧实现用 clazz.isInstance(value) 判断,查询参数是 String/Integer 时对 Long 始终不匹配 → 返回 null → 默认值。
         Request req = new Request();
         req.addQuery("page", "2");      // URL 查询参数:字符串
         req.addInput("size", 10);       // 表单值:Integer

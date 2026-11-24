@@ -210,7 +210,7 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
      * <p>
      * <b>已知残余</b>：首次并发窗口仍存在（两个线程可能同时进入首次修补），只是从「每请求」
      * 降到「每实例首次」；彻底消除需要在容器启动期由单线程枚举所有实体模型，而本仓库目前
-     * 没有模型注册表，故留待后续专项处理。修补本身是「类常量」变化（恒定移除同一列），
+     * 没有模型注册表，故留待后续专项处理。修补本身是「类常量」变化（始终移除同一列），
      * 因此即使发生并发进入也不会产生错误列集。
      *
      * @param entityMember 实体元数据
@@ -657,7 +657,7 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
      * 因此这里是可靠的接管点，与 {@link #isSoftDeleting()}（同为 true，
      * 供 AutoRestore 系列使用）配套，两者必须保持一致。
      *
-     * @return 恒为 {@code true}（jaravel 统一启用软删除，与 Laravel 的 SoftDeletes 一致）
+     * @return 始终为 {@code true}（jaravel 统一启用软删除，与 Laravel 的 SoftDeletes 一致）
      */
     @Override
     protected boolean softDeleting() {
@@ -672,7 +672,7 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
      * 一类的公开 API 走本方法。两者若不一致，会出现「查询过滤了软删除、
      * 但自动恢复不触发」这类割裂行为。
      *
-     * @return 恒为 {@code true}
+     * @return 始终为 {@code true}
      */
     @Override
     public boolean isSoftDeleting() {

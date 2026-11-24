@@ -204,7 +204,7 @@ public abstract class AbstractCaptcha implements Captcha {
         // 下发实际生效的加密类型与密钥，确保前端加密用户输入时与服务端解密使用同一份密钥
         // （尤其在服务端启用了 jaravel.key 全局密钥回退时，前端必须用下发值而非静态配置）。
         // 这里必须取「crypto 实际使用的」参数，而不是 props（可能是场景级副本）中的值，
-        // 否则前端会拿到一个服务端并未使用的密钥，校验阶段解密必定失败（表现为恒定 403）。
+        // 否则前端会拿到一个服务端并未使用的密钥，校验阶段解密必定失败（表现为始终 403）。
         result.setEncType(encType);
         // RSA 只下发公钥（客户端可加密、不可解密 token）；AES 下发一次性输入密钥。
         // 两者都无法用来解密 captchaKey → 答案不再可被前端/攻击者还原。
@@ -314,7 +314,7 @@ public abstract class AbstractCaptcha implements Captcha {
      * （并发窗口已知，语义等价）。
      * <p>
      * <b>占用即不释放</b>：后续无论解密失败还是比对失败都不再消费/释放 —— 与旧实现
-     * 「失败同样烧 nonce」一致，这是防暴力尝试的关键。
+     * 「失败同样使 nonce 失效」一致，这是防暴力尝试的关键。
      *
      * @param nonce      nonce 标识
      * @param expireTime captchaKey 的过期时间戳（毫秒）
@@ -409,7 +409,7 @@ public abstract class AbstractCaptcha implements Captcha {
      * </ul>
      * 若 generate 时用了 overrides 副本里的密钥（例如场景副本继承了模块出厂默认密钥，
      * 而实例级配置已被 {@code AppKey} 回退成全局 {@code jaravel.key}），
-     * verify 阶段就会用另一个密钥解密，导致校验恒定失败（HTTP 403）且极难排查。
+     * verify 阶段就会用另一个密钥解密，导致校验始终失败（HTTP 403）且极难排查。
      * <p>
      * 因此 overrides 只用于控制验证码的「形态」（尺寸、长度、容差、干扰等），
      * 加解密参数只有两个来源：显式传入的 {@code encryptionKey}，或实例级配置。

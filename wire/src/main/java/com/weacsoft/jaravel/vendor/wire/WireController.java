@@ -1082,7 +1082,7 @@ public abstract class WireController {
      * 获取字段的「有效模板列表」:优先取 {@link #wireQueryTemplates()} 覆盖值,
      * 未覆盖时回退到 {@link WireQuery#templates()} 注解值。
      * <p>
-     * 覆盖映射的<b>键恒为字段名(属性名)</b>,与 {@code @WireQuery.name()} 无关——
+     * 覆盖映射的<b>键始终为字段名(属性名)</b>,与 {@code @WireQuery.name()} 无关——
      * 不同页面(控制器)的后端属性可能不同,但前端 query 名可能相同(如多页都用
      * {@code key});若按前端名做键,同一键会命中多个字段,后端无法区分。而一个字段
      * 最多只有一个 {@code name()}(字段→query 名 1:1),按字段名做键无歧义。
@@ -1164,7 +1164,7 @@ public abstract class WireController {
      * <p>
      * <b>会话不可用时必须用「稳定」密钥</b>：旧实现在异常分支返回
      * {@code "fallback-key-" + UUID.randomUUID()} —— 每次调用都是新值，导致「签发用的钥匙」与
-     * 「校验用的钥匙」必然不同，表现为<b>所有局部更新恒 403</b> 且错误被静默吞掉。
+     * 「校验用的钥匙」必然不同，表现为<b>所有局部更新始终 403</b> 且错误被静默吞掉。
      * 现在优先回退到全局应用密钥（{@code jaravel.key}）；两者都没有时<b>明确抛错</b>，
      * 让问题在首次请求就暴露，而不是伪装成「快照被篡改」。
      *

@@ -97,7 +97,7 @@ public class AuthManager {
     /**
      * 守卫驱动（含 auth 内置的空守卫驱动回退）。
      * <p>
-     * 空驱动放进来是为了「只依赖 auth」也能装配：它 support 恒为 false，不会抢真实驱动的匹配，
+     * 空驱动放进来是为了「只依赖 auth」也能装配：它 support 始终为 false，不会抢真实驱动的匹配，
      * 仅在遍历后仍无匹配时被 {@code createGuard} 显式回退使用。
      */
     private final List<AuthGuardDriver> guardDrivers =
@@ -244,11 +244,11 @@ public class AuthManager {
                 fallback = driver;
             }
         }
-        // auth 是「认证标准」，不应因为未引入具体守卫实现而失败：用内置空守卫回退（恒未登录）。
+        // auth 是「认证标准」，不应因为未引入具体守卫实现而失败：用内置空守卫回退（始终未登录）。
         // 需要真实登录态时引入实现模块（auth-session / jwt / 自定义驱动）。
         //
         // 但回退只应覆盖「默认驱动 + 实现模块缺失」这一种情形（例如只依赖 auth、没引 auth-session）。
-        // 若显式配置了一个没人支持的 driver（拼写错误、忘了引模块），静默变成「恒未登录」会让
+        // 若显式配置了一个没人支持的 driver（拼写错误、忘了引模块），静默变成「始终未登录」会让
         // 业务侧 if (Auth.check()) { ... } else { 放行 } 之类的写法**静默失去鉴权** ——
         // 这类配置错误必须大声失败。
         if (fallback != null && cfg.driver != null

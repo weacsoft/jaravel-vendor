@@ -120,7 +120,7 @@ class UserModelsTest {
     @Test
     void zeroOneIntegerFlagsAreTruthy() {
         // 回归：WeChatUser 曾用 Boolean.TRUE.equals(subscribe) 比较整数 1，
-        // 导致真实 user/info 响应里已关注用户恒被判为未关注
+        // 导致真实 user/info 响应里已关注用户始终被判为未关注
         Map<String, Object> subscribed = Map.of("openid", "o1", "subscribe", 1);
         assertTrue(WeChatUser.from(subscribed).isSubscribed(), "subscribe=1 应判为已关注");
 

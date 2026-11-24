@@ -76,7 +76,7 @@ public class TrustProxies implements Middleware {
     /**
      * 判断某个地址是否为「已声明的受信任代理」。
      * <p>
-     * 供 {@code Request.ip()} / {@code Request.fullUrl()} 使用；未配置任何受信任代理时恒为 false。
+     * 供 {@code Request.ip()} / {@code Request.fullUrl()} 使用；未配置任何受信任代理时始终为 false。
      * <p>
      * 同一进程内存在多个 {@code TrustProxies} 实现时，只要其中任一实现声明该地址受信任，
      * 即视为受信任；每个实现各自声明的信任列表都完整生效。

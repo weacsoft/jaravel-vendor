@@ -52,7 +52,7 @@ public final class WeChatUser {
         this.country = str(raw.get("country"));
         this.headimgUrl = str(raw.get("headimgurl"));
         // 微信 user/info 的 subscribe 是整数 0/1（非 JSON 布尔）；
-        // 用 Boolean.TRUE.equals(...) 比较会恒为 false，导致已关注用户被判成未关注。
+        // 用 Boolean.TRUE.equals(...) 比较会始终为 false，导致已关注用户被判成未关注。
         this.subscribed = truthy(raw.get("subscribe"));
         this.subscribeTime = longVal(raw.get("subscribe_time"));
         this.remark = str(raw.get("remark"));

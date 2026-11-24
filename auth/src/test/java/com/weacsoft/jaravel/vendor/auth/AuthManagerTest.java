@@ -205,7 +205,7 @@ class AuthManagerTest {
     @Test
     void testDefaultDriverFallsBackToBuiltInNullGuardWhenImplementationMissing() {
         // 语义（有意）：auth 是「认证标准」，不应因为未引入具体守卫实现而失败。
-        // 默认驱动（session）没有驱动支持时回退到内置空守卫（恒未登录），
+        // 默认驱动（session）没有驱动支持时回退到内置空守卫（始终未登录），
         // 这样「只依赖 auth、不依赖 auth-session」的应用也能装配起来。
         AuthManager manager = new AuthManager();
         manager.registerProvider("users", new InMemoryProvider());
@@ -226,7 +226,7 @@ class AuthManagerTest {
     @Test
     void testExplicitUnknownDriverFailsLoud() {
         // 显式配置了一个没人支持的 driver（拼写错误/忘引模块）必须抛错：
-        // 静默回退成「恒未登录」会让 if (Auth.check()) {...} else {放行} 的写法静默失去鉴权
+        // 静默回退成「始终未登录」会让 if (Auth.check()) {...} else {放行} 的写法静默失去鉴权
         AuthManager manager = new AuthManager();
         manager.registerProvider("users", new InMemoryProvider());
         manager.registerGuard("web", "weird-driver", "users");
@@ -237,7 +237,7 @@ class AuthManagerTest {
 
     @Test
     void testRegisteredDriverStillWinsOverNullGuardFallback() {
-        // 回退不得抢真实驱动的匹配（NullGuardDriver.support 恒为 false）
+        // 回退不得抢真实驱动的匹配（NullGuardDriver.support 始终为 false）
         AuthManager manager = new AuthManager();
         manager.registerProvider("users", new InMemoryProvider());
         manager.registerGuard("web", "session", "users");

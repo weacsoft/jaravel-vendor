@@ -55,7 +55,7 @@ class TrustedProxyResolutionTest {
         when(servlet.getParameterMap()).thenReturn(new LinkedHashMap<>());
         when(servlet.getCookies()).thenReturn(null);
         // Request.setRequest 会遍历 getHeaderNames() 把请求头拷进内部 map —— 必须给出真实枚举，
-        // 否则 header("X-Forwarded-For") 恒为 null，测试会「假绿/假红」。
+        // 否则 header("X-Forwarded-For") 始终为 null，测试会「假绿/假红」。
         when(servlet.getHeaderNames()).thenReturn(java.util.Collections.enumeration(headers.keySet()));
         when(servlet.getHeaders(anyString())).thenAnswer(invocation -> {
             String value = headers.get(invocation.getArgument(0));

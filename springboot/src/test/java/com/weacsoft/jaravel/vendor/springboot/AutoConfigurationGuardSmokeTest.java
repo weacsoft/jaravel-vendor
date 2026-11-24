@@ -49,7 +49,7 @@ class AutoConfigurationGuardSmokeTest {
     }
 
     /**
-     * 在「模块缺失」的类加载器下注册该自动配置类：应当被条件跳过而不是炸掉。
+     * 在「模块缺失」的类加载器下注册该自动配置类：应当被条件跳过而不是抛出异常。
      *
      * @param autoConfiguration 自动配置类
      * @param hiddenPrefix      被隐藏的模块包前缀

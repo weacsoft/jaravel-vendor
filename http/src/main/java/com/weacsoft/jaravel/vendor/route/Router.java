@@ -374,7 +374,7 @@ public class Router {
     public StaticResourceRoute serveStatic(String urlPrefix, String location, int cacheMaxAge) {
         StaticResourceRoute route = new StaticResourceRoute(urlPrefix, location, cacheMaxAge);
         // 必须用 {*path}（capture-the-rest）而不是 {path}/{**}：
-        // - {path} 只匹配单段 → /static/css/app.css 恒 404；
+        // - {path} 只匹配单段 → /static/css/app.css 始终 404；
         // - /** 在 Spring PathPattern 下不产生 pathVariables → routeParam("path") 为 null → 也 404；
         // {*path} 捕获「含前导 / 的剩余路径」，StaticResourceHandler.sanitizePath 会剥掉前导 /。
         RouteDefinition r = addRoute("GET", urlPrefix + "/{*path}", route);
@@ -508,7 +508,7 @@ public class Router {
      * 结果按<b>全局注册顺序</b>排列：路由在创建时分配单调递增的序号，
      * 因此「先注册的路由」一定排在「后注册的路由」之前，与直接注册和分组注册混用时的直觉一致。
      * <p>
-     * 早期实现先递归所有分组再追加本路由器的路由，分组内路由恒排在直接路由之前；
+     * 早期实现先递归所有分组再追加本路由器的路由，分组内路由始终排在直接路由之前；
      * 下游按列表顺序逐条匹配时（例如 Spring 适配层的 {@code RouterFunctions}），
      * 同路径会优先命中分组内的路由，与注册顺序不符。
      *

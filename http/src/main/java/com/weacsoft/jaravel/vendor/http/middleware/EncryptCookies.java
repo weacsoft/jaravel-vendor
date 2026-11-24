@@ -31,7 +31,7 @@ import java.util.Base64;
  * <ol>
  *   <li><b>失败即丢弃</b>：解密/验签失败时<b>移除</b>该 Cookie，绝不保留请求里带来的原值 ——
  *       否则客户端只要发一个非密文（如 {@code is_admin=1}）就被当成明文接受，加密形同虚设；</li>
- *   <li><b>随机 IV</b>：每次加密使用 {@link SecureRandom} 生成 IV（旧实现 IV 恒为全零 → 确定性密文）；</li>
+ *   <li><b>随机 IV</b>：每次加密使用 {@link SecureRandom} 生成 IV（旧实现 IV 始终为全零 → 确定性密文）；</li>
  *   <li><b>完整性保护</b>：密文带 HMAC-SHA256 且<b>先验签后解密</b>，常量时间比较。
  *       仅有 CBC 而无 MAC 时，攻击者可在不知道密钥的情况下对密文做比特翻转来篡改 Cookie 内容。</li>
  * </ol>
@@ -268,7 +268,7 @@ public class EncryptCookies implements Middleware {
     /**
      * 是否允许读取<b>旧格式</b>（v1）Cookie，子类可覆盖开启，默认 {@code false}。
      * <p>
-     * <b>为什么默认关闭</b>：旧格式是 {@code Base64(IV(16B) || AES-CBC 密文)}，IV 恒为全零、
+     * <b>为什么默认关闭</b>：旧格式是 {@code Base64(IV(16B) || AES-CBC 密文)}，IV 始终为全零、
      * 派生密钥是「UTF-8 字节补零/截断到 32 字节」、且<b>没有 MAC</b>。没有 MAC 就意味着
      * CBC 的比特翻转篡改<b>无法被检测</b>：攻击者用自己账号取得一枚合法旧 Cookie 后，
      * 无需密钥即可可预测地改写相邻分组的明文（例如把 {@code login_web_id} 改成他人 id）→

@@ -72,7 +72,7 @@ class MigrationPropertiesTest {
         props.setAutoRun(true);
         assertTrue(props.isAutoRun());
 
-        // 再次切换布尔值，确认 setter 非恒真
+        // 再次切换布尔值，确认 setter 非始终真
         props.setEnabled(true);
         assertTrue(props.isEnabled());
         props.setPackageInJar(false);

@@ -228,7 +228,7 @@ public class WechatProperties {
          *       代价是任何能访问回调地址的人都能伪造推送，</li>
          *   <li>{@code true}：缺失或错误的 {@code signature} 一律拒绝（需要来源真实性时开启）。</li>
          * </ul>
-         * <b>不受本项影响</b>的两处恒校验：GET 接入校验（URL 验证）、以及 {@code safe} 模式的
+         * <b>不受本项影响</b>的两处始终校验：GET 接入校验（URL 验证）、以及 {@code safe} 模式的
          * {@code msg_signature}（该模式本来就要求加密与验签）。
          * <p>
          * 若业务把推送事件用于账号绑定、发券、积分、登录等<b>身份/授权决策</b>，请开启本项

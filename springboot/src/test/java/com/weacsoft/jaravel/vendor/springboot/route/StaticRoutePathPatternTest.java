@@ -15,7 +15,7 @@ import static org.mockito.Mockito.when;
 /**
  * 静态资源路由的 Spring {@code PathPattern} 语义回归测试。
  * <p>
- * 背景：静态资源路由原先用 {@code /static/{path}}（只匹配单段 → 嵌套资源恒 404）。
+ * 背景：静态资源路由原先用 {@code /static/{path}}（只匹配单段 → 嵌套资源始终 404）。
  * 修复为 {@code /static/{*path}}（capture-the-rest）后有两个必须钉死的性质：
  * <ol>
  *   <li>{@code {*path}} 能匹配多段路径（含前导 {@code /} 的剩余路径）与 {@code /static} 本身；</li>

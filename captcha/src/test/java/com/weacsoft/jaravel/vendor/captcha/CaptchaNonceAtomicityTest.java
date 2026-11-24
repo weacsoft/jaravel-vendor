@@ -112,7 +112,7 @@ class CaptchaNonceAtomicityTest {
         String captchaKey = result.getCaptchaKey();
 
         assertFalse(captcha.verify(captchaKey, "000000"), "错误答案必须失败");
-        // 「失败也烧 nonce」是防暴力尝试的关键：第二次即使答案正确也必须被拒
+        // 「失败也使 nonce 失效」是防暴力尝试的关键：第二次即使答案正确也必须被拒
         var second = captcha.verify(captchaKey, answerOf(props, captchaKey), props, null);
         assertTrue(second.isAlreadyUsed(), "失败尝试后 nonce 应已被占用: " + second);
     }

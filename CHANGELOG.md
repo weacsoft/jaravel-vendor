@@ -64,7 +64,7 @@
 - **插件执行器释放已加载的类字节**：`JarBytesExecutor.close()` 清空缓存的类字节，使插件卸载后字节数组可以被回收。
 - **定时任务的 cron 表达式只解析一次**：`ScheduleRunner` 预先解析并缓存 cron 表达式，不再每分钟重复解析。
 - **分布式锁退化为同步锁时给出提示**：`LockProviderManager` 在回退到同步锁时记录告警，说明多节点部署下该锁不具备互斥能力。
-- **路由列表按注册顺序排列**：`Router.getAllRoutes()` 按全局注册顺序输出路由，不再把分组内的路由统一提前。原先分组路由恒排在直接路由之前，而下游（Spring 适配层按列表顺序逐条注册 `RouterFunctions`）以首个匹配为准，同路径会命中分组内的路由，与注册顺序不符。
+- **路由列表按注册顺序排列**：`Router.getAllRoutes()` 按全局注册顺序输出路由，不再把分组内的路由统一提前。原先分组路由始终排在直接路由之前，而下游（Spring 适配层按列表顺序逐条注册 `RouterFunctions`）以首个匹配为准，同路径会命中分组内的路由，与注册顺序不符。
 - **重定向目标在写入前做结构校验**：新增 `RedirectPolicy`，`ResponseBuilder.redirect(url)` 在写入 `Location` 头前校验目标地址 —— 拒绝空地址、含控制字符的地址（含 `CR`/`LF`，可致响应头注入）、含反斜杠的地址（浏览器把 `\` 当作 `/`）、协议相对写法（`//host`，等价于开放重定向）与 `http`/`https` 以外的协议（`javascript:`、`data:` 等）。`WireController` 的两处跳转在校验不通过时按「不跳转」处理并记录告警，不让异常冒泡为整页错误。
 - **新增对外基础地址配置**：新增 `jaravel.http.base-url`，配置后框架生成绝对地址（`Request.fullUrl()`，OAuth 的 `redirect_uri` 与回跳地址均基于它）以该值为准，不再取自请求的 `Host` 头。原先在未声明受信任代理时 `Host` 头由客户端决定，框架生成的地址会随请求头变化。未配置时行为与原先一致。
 - **Oracle 与 SQL Server 的 UPSERT 语句符合各自语法**：`AbstractDialect.upsertMergeUsing` 原先生成 `MERGE <table> AS t USING ...`，缺少 `MERGE` 后的 `INTO` 关键字，两家数据库都不接受（H2 亦报 `expected "INTO"`）。现按方言分别生成：Oracle 输出 `MERGE INTO "t" t USING (SELECT ? "key", ? "value" FROM DUAL) s ...`（Oracle 的表别名不允许 `AS` 关键字，带 `AS` 会报 ORA-00933），SQL Server 输出 `MERGE INTO [t] AS t USING (SELECT ? AS [key], ? AS [value]) AS s ...;`（SQL Server 要求 `MERGE` 语句以分号结束，缺失时执行报 10713 错误）。该语句用于缓存等模块的写入路径。
@@ -91,16 +91,16 @@
 
 - **存储响应的缓存语义与安全响应头（安全）**：`Storage.response()` 现按 `fs.visibility(path)` 决定缓存语义 —— 私有文件下发 `Cache-Control: private, no-store`（原先一律 `public, max-age=3600`，经 CDN/共享代理会缓存给他人）；内联展示与下载响应统一补 `X-Content-Type-Options: nosniff`（防 `.html`/`.svg` 上传后的同源存储型 XSS）；`Content-Disposition` 增加 CR/LF/引号清洗与 RFC 5987 `filename*`（中文名不再乱码，且无法注入响应头）。
 - **CSRF 令牌校验（安全）**：令牌只接受请求头与请求体字段（改用 `Request.input()`，不再用会合并 query 的 `get()`）；移除同名 Cookie 回退（否则「双提交」退化为「浏览器自动携带即通过」）；比较改 `MessageDigest.isEqual`（常量时间）；query 令牌由显式开关 `allowTokenInQuery()`（默认 false）控制。新增 `VerifyCsrfTokenTest`（8 例）。
-- **验证码一次性消费（安全）**：`CaptchaStore` 新增 `default putIfAbsent(...)`（不使用抽象方法，避免破坏第三方 SPI）；`MemoryCaptchaStore`（`compute` 原子）与 `CacheStoreCaptchaStore`（`CacheStore.add`）提供真原子实现；`AbstractCaptcha` 改为「先原子占用、成功才解密/比对」，占用即不释放（保持「失败也烧 nonce」）。新增 `CaptchaNonceAtomicityTest`（3 例：16 线程并发验证恰好 1 次通过、内存 store 并发占用唯一胜出、失败尝试烧 nonce）。
+- **验证码一次性消费（安全）**：`CaptchaStore` 新增 `default putIfAbsent(...)`（不使用抽象方法，避免破坏第三方 SPI）；`MemoryCaptchaStore`（`compute` 原子）与 `CacheStoreCaptchaStore`（`CacheStore.add`）提供真原子实现；`AbstractCaptcha` 改为「先原子占用、成功才解密/比对」，占用即不释放（保持「失败也使 nonce 失效」）。新增 `CaptchaNonceAtomicityTest`（3 例：16 线程并发验证恰好 1 次通过、内存 store 并发占用唯一胜出、失败尝试同样使 nonce 失效）。
 - **验证码加解密的失败处理（安全）**：加密失败不再下发 `type.null` 凭证（显式抛错，附可操作提示）；`encryptionType=none` 首次使用 WARN（答案随 token 明文下发、可自造 token）；`properties==null` 不再静默降级为 none。
 - **JWT 签发方校验（安全）**：`parse()` 现校验 `iss` —— 缺失或不匹配都拒绝（未配置 issuer 时跳过校验以兼容外部令牌）。新增 `JwtIssuerValidationTest`（4 例）。说明：框架**没有** `aud` 字段、签发端也从未写入 aud，故不做受众校验（只加校验端会拒掉全部自签令牌）。
-- **wire 快照的验签顺序（安全）**：改为**先验签、后解析**（原先先把攻击者可控 base64 交给 JSON 解析器）；会话不可用时不再返回每次随机的 `fallback-key-<uuid>`（那会导致签名恒不通过、全量 403 且无日志），改为回退稳定的全局应用密钥，两者都不可用时抛明确异常。`WireRequest.getData()/getMergedData()` 标记 `@Deprecated`（绕过签名校验）。
+- **wire 快照的验签顺序（安全）**：改为**先验签、后解析**（原先先把攻击者可控 base64 交给 JSON 解析器）；会话不可用时不再返回每次随机的 `fallback-key-<uuid>`（那会导致签名始终不通过、全量 403 且无日志），改为回退稳定的全局应用密钥，两者都不可用时抛明确异常。`WireRequest.getData()/getMergedData()` 标记 `@Deprecated`（绕过签名校验）。
 - **分片写入前的临时文件校验（安全）**：写分片前校验临时文件存在且长度等于声明大小（`prepare` 已 `setLength(size)`）—— 堵住「成品已写入、`saveHeader` 失败 → 客户端重试末片 → 新建零填充文件覆盖正确成品」的数据损坏路径；锁表由「按 resourceId 的 ConcurrentHashMap」（header 不存在时条目在校验前创建且永不回收 → 匿名随机 resourceId 可致无界内存 DoS）改为**定长 256 桶分段锁**，内存 O(1) 且无需生命周期簿记。
 - **BaseModel 共享元数据（安全）**：`patchShadowColumn` 改为「按 `EntityMember` 实例、受锁、只修补一次」，使查询热路径零写入（原先每次 `getModelMember()` 都对 gaarason 容器级共享的 `selectColumnList` 做 `removeIf`，启动后首批并发查询可能 CME）。**已知限制**：首次并发窗口仍在（仓库无模型注册表，无法在启动期单线程枚举所有实体），已在 javadoc 记录。
-- **中间件顺序与静态资源路由（安全）**：中间件解析顺序改为**父级在外、子级在内**（对齐 Laravel 洋葱模型；原先全局最内层，会让「根挂 `EncryptCookies`、组挂 `VerifyCsrfToken`」变成先验 CSRF 再解密 Cookie → 恒定 419）；静态资源路由由 `{path}`（只匹配单段，嵌套资源恒 404）改为 `{*path}`（capture-the-rest），并同步修正 Spring 谓词：URI 含 `{*` 时不再拼接尾斜杠变体（`/static/{*path}/` 违反 PathPattern「capture-the-rest 必须在末尾」语法，有启动失败风险）。新增 `RouterMiddlewareOrderTest`（5 例：三层顺序、enter/exit 洋葱序、两条静态路由使用 `{*path}`）。
+- **中间件顺序与静态资源路由（安全）**：中间件解析顺序改为**父级在外、子级在内**（对齐 Laravel 洋葱模型；原先全局最内层，会让「根挂 `EncryptCookies`、组挂 `VerifyCsrfToken`」变成先验 CSRF 再解密 Cookie → 始终 419）；静态资源路由由 `{path}`（只匹配单段，嵌套资源始终 404）改为 `{*path}`（capture-the-rest），并同步修正 Spring 谓词：URI 含 `{*` 时不再拼接尾斜杠变体（`/static/{*path}/` 违反 PathPattern「capture-the-rest 必须在末尾」语法，有启动失败风险）。新增 `RouterMiddlewareOrderTest`（5 例：三层顺序、enter/exit 洋葱序、两条静态路由使用 `{*path}`）。
 - **存储路径越界防护（安全）**：`resolve()` 增加**真实路径**归属校验（与 `root.toRealPath()` 比较，目标不存在时上溯到最近存在的祖先）—— 词法 `normalize` 挡不住「根内软链接指向外部」；`delete/copy/move` 统一拒绝「解析后等于根目录」的路径（`""`/`"."`/`"a/.."` 都会解析成根，原先 `delete("")` 会删掉整个磁盘根）。**已知限制：仍存在 TOCTOU**（校验后仍以词法路径打开）。
 - **backUrl 的传递（正确性）**：组件渲染循环改用非破坏性 `WireEffects.getBackUrl()`，主流程保持单次 `drainBackUrl()`（原先渲染先 drain → `effects.backUrl` 退化为推断值，多组件时只有一个拿到 backUrl）。
-- **auth 装配**：空守卫回退只覆盖「默认驱动（`session`）缺实现」这一情形（auth 独立可用）；显式声明了无人支持的 driver（拼写错误/忘引模块）**仍然抛异常** —— 否则会静默变成「恒未登录」，让 `if (Auth.check())` 这类写法静默失去鉴权。
+- **auth 装配**：空守卫回退只覆盖「默认驱动（`session`）缺实现」这一情形（auth 独立可用）；显式声明了无人支持的 driver（拼写错误/忘引模块）**仍然抛异常** —— 否则会静默变成「始终未登录」，让 `if (Auth.check())` 这类写法静默失去鉴权。
 - **本组修复项均已完成**：迁移解析收窄 + 命令非零退出（保留「目录缺失 → 回退 classpath」合法路径，`MigrationParserFailureTest` 4 例）；启动期密钥形态校验（分档 + `fail-fast-on-invalid-key`，`CaptchaKeyShapeValidationTest` 7 例）；验证码参数误用改语义护栏 + README 修正（`CaptchaVerifyMisuseGuardTest` 4 例）；`refreshPair` 可选轮换（`refresh()` 语义不变）；模型缓存元素级还原 + 驱逐回源 + 非内存 store 告警（`ModelCacheTypeCoercionTest` 6 例）；`Storage.response` visibility（4 例）、aether `.part` 故障注入（2 例，0 跳过）、LocalFilesystem 根目录/链接（7 例）、Spring `{*path}` 谓词（4 例）。
 
 ### Fixed（修复：低危项）
@@ -115,7 +115,7 @@
 
 - **受信任代理（严重）**：`Request.ip()` 原先<b>无条件</b>采信 `X-Forwarded-For` 并取<b>最左侧</b>值 —— 任何客户端自己塞一个 `X-Forwarded-For: 1.2.3.4` 就能冒充来源 IP（限流/审计/白名单全部失真）；`fullUrl()` 同样无条件采信 `X-Forwarded-Proto/Host`（可伪造协议与 Host，影响回调地址、跳转、Cookie 域）。现在：
   - `TrustProxies` 中间件在处理请求时发布<b>全局受信任代理匹配器</b>，并提供 `isTrustedRemote(addr)`；
-  - `Request.ip()` / `fullUrl()` <b>仅当直连来源已被声明为受信任代理</b>时才采信转发头，否则一律使用 TCP 直连地址与请求自身的协议/Host；未安装 `TrustProxies` 时<b>恒不采信</b>（安全默认）；
+  - `Request.ip()` / `fullUrl()` <b>仅当直连来源已被声明为受信任代理</b>时才采信转发头，否则一律使用 TCP 直连地址与请求自身的协议/Host；未安装 `TrustProxies` 时<b>始终不采信</b>（安全默认）；
   - 转发链改为<b>从右往左</b>解析：跳过受信任代理、取第一个不受信任的地址（旧实现取最左侧，正是客户端可伪造的那一端）；`setTrustedHeaders` 同步修正。
   - 新增 `TrustedProxyResolutionTest`（6 例：默认忽略转发头、非受信任来源忽略、受信任来源采信、伪造最左侧被拒、协议/Host 还原受控）；`http` 测试域补 Mockito。
   - 行为变更提示：部署在反向代理后的应用需要挂 `TrustProxies`（并声明代理网段），否则 `ip()` 会返回代理地址。
@@ -141,12 +141,12 @@
 - **auth ↔ session 解耦（结构性拆分）**：新增两个模块，形成「标准 / 实现」的清晰边界 ——
   - **`session`**（新）：Session 存储<b>标准</b>：`SessionStore` 契约、`CookieSessionStore`（HttpSession 默认实现）、`@RegisterSessionStore` 声明式注册与 `SessionStoreHolder`（全局持有者 + 惰性回退）；原先这些类在 `http` 模块的 `http.session` 包内。
   - **`auth-session`**（新）：把 auth 标准落到 session 存储上的<b>一种实现</b>：`SessionGuard` / `SessionGuardDriver`（原先在 `auth` 模块的 `auth.guard` 包内）。
-  - **`auth`**：只保留「认证标准」——`AuthManager`、`AuthGuard`/`AuthGuardDriver`/`UserProvider` 契约、注解声明式注册、以及**自带的空守卫回退**（`NullGuard` + `NullGuardDriver`）：遍历完所有驱动都没有匹配时不再抛 `IllegalStateException`，而是回退到空守卫（`check()` 恒 false）并告警一次 —— 于是「只依赖 auth、不依赖 session」的应用也能正常装配。`NullGuardDriver.support` 刻意恒为 false，不会与 session/jwt 争抢匹配。
+  - **`auth`**：只保留「认证标准」——`AuthManager`、`AuthGuard`/`AuthGuardDriver`/`UserProvider` 契约、注解声明式注册、以及**自带的空守卫回退**（`NullGuard` + `NullGuardDriver`）：遍历完所有驱动都没有匹配时不再抛 `IllegalStateException`，而是回退到空守卫（`check()` 始终 false）并告警一次 —— 于是「只依赖 auth、不依赖 session」的应用也能正常装配。`NullGuardDriver.support` 刻意始终为 false，不会与 session/jwt 争抢匹配。
   - **装配**：`springboot` 新增 `SessionGuardAutoConfiguration`（**类级** `@ConditionalOnClass` 守卫 `SessionStoreHolder`/`SessionGuardDriver`：缺这两个模块时整类不加载，auth 仍可用）；`HttpSessionAutoConfiguration` 从 `http` 迁到 `springboot.session` 并**补上注册**（此前它未被任何 imports 文件登记，等于死配置 —— 顺带修复 `@RegisterSessionStore` 扫描从未生效的问题）。
   - **`starter`** 聚合 `auth` + `auth-session` + `session`（与拆分前行为一致）；`session-redis` 去掉 `auth` 依赖（原为零 import 的倒挂边）改为依赖 `session`；`wechat-sdk` 补 `session` 依赖（OAuth 的 session 便捷接口）。
   - **测试去 session 化**：`AuthManagerTest` 改用自带的 `TestGuard`（不再 import SessionStore/SessionGuard），从而「auth 的测试不需要 session」；`SessionGuardTest` 迁至 `auth-session`；新增 `SessionStoreHolderTest`（**重点锁定 holder 必须转发 `rotate()`** —— 否则接口默认空实现会静默吞掉会话固定防护）。
 - **`aether-upload` identifier 归属校验（越权修复；该模块尚未被业务使用，故直接改契约）**：identifier 由前端按「文件名+大小+mtime」可预测拼出，原先作为全局键使用 → 知道三要素即可读他人进度、向他人 resourceId 写分片、甚至决定受害者成品内容。现在：①identifier 键按**主体作用域**隔离（`i:<group>:<owner>:<identifier>`）；②`UploadHeader` 记录 `ownerId`，`writeChunk`/`progress`/`abort` 对**跨主体**访问一律拒绝；③**匿名默认禁用 identifier 续传**（新配置 `anonymous-resume-enabled`，默认 false），登录用户不受影响；④新增 `setOwnerResolver(...)` SPI，springboot 侧从认证上下文取用户 id（未引入 auth 时按匿名处理，用反射探测避免强依赖）。新增 `AetherUploadOwnershipTest`（5 例：跨主体不共享续传任务、跨主体写分片/读进度/中止被拒、同主体正常）。
-- **`wechat-sdk` 明文 POST 验签语义改为「开关关闭即完全不验」**：`verify-post-signature=false`（默认）时缺失或错误的 `signature`<b>都放行</b>；`true` 时缺失或不匹配都拒绝。GET 接入校验与 `safe` 模式的 `msg_signature` 仍恒校验（不受本项影响）。默认值与两种语义均有用例锁定。
+- **`wechat-sdk` 明文 POST 验签语义改为「开关关闭即完全不验」**：`verify-post-signature=false`（默认）时缺失或错误的 `signature`<b>都放行</b>；`true` 时缺失或不匹配都拒绝。GET 接入校验与 `safe` 模式的 `msg_signature` 仍始终校验（不受本项影响）。默认值与两种语义均有用例锁定。
 
 ### Fixed（修复：会话固定与 Session 存储加固）
 
@@ -165,7 +165,7 @@
 
 ### Fixed（修复：安全加固与模块解耦）
 
-- **`wechat-sdk` 明文推送验签语义调整（不强制要求携带签名，但携带后必须校验）**：`verify-post-signature` 默认由 `true` 改为 **`false`**（不强制要求携带签名），但**只要请求带了 `signature` 就必须验过**（不匹配即拒绝）。理由：若「默认关闭且带了也不验」，攻击者只需省略签名即可绕过 —— 来源真实性控制形同虚设；而微信自身推送是带签名的（测试号真机联调在 `verify=true` 下通过即为证据），因此该调整对线上流量仍是实际验签，只对未签名的内部调用/调试放行。同步：GET 接入校验与安全模式 `msg_signature` **恒校验**（不受本开关影响，已加回归用例固定）；未携带签名的推送只告警**一次**（原每请求 WARN 会造成日志放大）；`WxBizMsgCrypt.verifyPlainSignature` 改用 `MessageDigest.isEqual` 常量时间比较（原 `equalsIgnoreCase` 短路比较，CWE-208）。
+- **`wechat-sdk` 明文推送验签语义调整（不强制要求携带签名，但携带后必须校验）**：`verify-post-signature` 默认由 `true` 改为 **`false`**（不强制要求携带签名），但**只要请求带了 `signature` 就必须验过**（不匹配即拒绝）。理由：若「默认关闭且带了也不验」，攻击者只需省略签名即可绕过 —— 来源真实性控制形同虚设；而微信自身推送是带签名的（测试号真机联调在 `verify=true` 下通过即为证据），因此该调整对线上流量仍是实际验签，只对未签名的内部调用/调试放行。同步：GET 接入校验与安全模式 `msg_signature` **始终校验**（不受本开关影响，已加回归用例固定）；未携带签名的推送只告警**一次**（原每请求 WARN 会造成日志放大）；`WxBizMsgCrypt.verifyPlainSignature` 改用 `MessageDigest.isEqual` 常量时间比较（原 `equalsIgnoreCase` 短路比较，CWE-208）。
 - **`EncryptCookies` 增加旧格式（v1）兼容开关（用户要求），默认仍安全**：新增 `protected boolean allowLegacyFormat()`（默认 `false`）、`protected String[] legacyFormatCookieNames()`（默认空；`"*"` 表示通配）与严格结构校验的 `decryptLegacy(...)`（Base64 + 长度/块对齐 + PKCS#5 + **严格 UTF-8** + 独立的 v1 密钥派生，不能复用 v2 的 SHA-256 派生）。行为：仅当显式开启且命中白名单、且名字非安全敏感（`*session*`/`*token*`/`*login*`/`XSRF-*`/`X-*`/`__Host*`/`__Secure*`/`JSESSIONID` 一律硬拒绝）时才按旧格式读取；**出站一律写 v2**（只读旧、写新）；失败仍然「失败即丢弃」，绝不保留请求原值（兼容模式下同样如此，已用例固定）。安全代价已写明：v1 无 MAC，兼容期**无法检测 CBC 比特翻转**。**本开关不做硬退场**：开启即长期兼容，由使用方按自身迁移节奏决定何时关闭（框架不会因版本升级而自动失效）。
 - **`http` 新增 `EncryptCookiesTest`（19 例）**：此前该安全关键中间件<b>零测试覆盖</b>。覆盖明文冒充必须移除（v2 与兼容模式各一条）、v2 往返（含 UTF-8）、随机 IV、HMAC 篡改检出、非法 Base64/长度、排除名单透传、出站原地替换且一律 v2、加密失败置空不下发明文、兼容白名单/通配/安全敏感名/非 UTF-8/结构非法等分支。
 - **`aether-upload` 分片 DoS 与溢出**：①`UploadHeader.uploadedChunkList()` 把位图提取到循环外（原循环内每次 `new byte[(totalChunks+7)/8]`，`totalChunks=1e6` 耗时 21.4 秒、1e8 超过 120 秒不返回；空位图直接 O(位图) 返回）；②`prepare` 用 `long` 计算分片数并校验上限后再收窄（原 `(int)` 在 `size=8e9&chunkSize=1` 时得到负数 → 状态机失效、上传永不完成），且**校验全部通过后才创建临时文件**（拒绝路径不产生 `.part`）；③新增 `max-chunks`（默认 10 万，超限时**自动放大分片**而不是拒绝大文件）与 `min/max-chunk-size`（默认 1 字节 / 10MB，客户端值钳制后**回显**，对既有前端透明）；④`tempDir` 增加机会式清理（限频 10 分钟、按记录头 TTL 判定），原实现 `.part` 无任何回收；⑤新增「既未配 `max-size` 又未挂中间件」的一次性告警（该组合下 prepare/chunk 可被匿名调用并预分配磁盘）。新增 `AetherUploadChunkLimitTest`（6 例，含 8e9 溢出等价路径，并保持既有 4 字节分片契约不变）。
@@ -183,14 +183,14 @@
   - `jaravelRouterFunction` 在**零路由**时不再调用 `RouterFunctions.Builder#build()`（原会抛 `IllegalStateException("No routes registered.")`，使应用无法启动），改为返回空 `RouterFunction`；
   - `AutoConfiguration.imports` 第 22 行类名里的反斜杠改为点号（字节级缺陷，仅在 Windows 下可解析，跨平台会失效）；
   - 新增 `AutoConfigurationGuardSmokeTest`（6 例）：用自定义 ClassLoader 隐藏 optional 包 + 反射断言外层配置类签名不引用 optional 类型。
-- **`EncryptCookies` 安全重写（严重）**：①解密/验签失败**移除** Cookie（旧行为保留攻击者提供的原值，发一个明文 Cookie 即被当明文接受）；②IV 改为 `SecureRandom` 随机（旧实现恒为全零 → 确定性密文）；③新增 **HMAC-SHA256（encrypt-then-MAC）** 与先验签后解密（仅有 CBC 时可被比特翻转篡改）；④密钥改为 `SHA-256` 派生、加解密与 MAC 用两把派生密钥；⑤出站**原地替换** Cookie 值，不再同名双下发；⑥线格式升级为 `v2:` 前缀，旧格式一律丢弃（升级后用户会掉一次登录态）。
+- **`EncryptCookies` 安全重写（严重）**：①解密/验签失败**移除** Cookie（旧行为保留攻击者提供的原值，发一个明文 Cookie 即被当明文接受）；②IV 改为 `SecureRandom` 随机（旧实现始终为全零 → 确定性密文）；③新增 **HMAC-SHA256（encrypt-then-MAC）** 与先验签后解密（仅有 CBC 时可被比特翻转篡改）；④密钥改为 `SHA-256` 派生、加解密与 MAC 用两把派生密钥；⑤出站**原地替换** Cookie 值，不再同名双下发；⑥线格式升级为 `v2:` 前缀，旧格式一律丢弃（升级后用户会掉一次登录态）。
 - **请求上下文 ThreadLocal 泄漏（严重，跨用户会话串读）**：`RequestFactory.buildFromHttpServletRequest` 现在也会 `setCurrentRequest(...)`（原先只有 jaravel 路由路径会 set），并新增 `JaravelRequestContextFilter`（最高优先级）在请求结束时 `clearCurrentRequest()`。
 - **验证码（严重）**：①`encKey` 不再下发「能解密 captchaKey 的密钥」——captchaKey 内含答案，拿到它即可绕过；对称模式改为下发**一次性输入密钥**（真实密钥留在 token 内），非对称模式**只下发公钥**；②`RotateCaptcha` 除 NaN 外新增拒绝 `±Infinity`（提交 `1e999` 会让角度差变成 `-Infinity` 从而通过校验）；③新增 `CaptchaSecurityTest`（4 例）锁定以上行为。
 - **Redis 缓存 `flush` 清空整库（严重，不可恢复）**：`RedisCacheDriver` 为所有键加命名空间前缀（`jaravel.redis.prefix`，未配置回退 `jaravel:cache:`），`allKeys()`/`removeAll()` 改为 SCAN + `MATCH <prefix>*`；`allKeys()` 按契约返回去掉前缀的逻辑键。
 - **Redis 分布式锁属主校验（严重）**：`RedisLockProviderImpl.unlock` 由无条件 `DEL` 改为 **Lua compare-and-delete** —— 只删除本实例加过且值未被替换的锁；未持有锁时直接跳过（原实现会删掉别人的锁，导致同一定时任务多实例并发）。
 - **定时任务锁（严重）**：`ScheduleRunner` 抢锁失败时不再在 `finally` 里 `unlock`（原会把获胜者的锁删掉）。
-- **迁移预编译产物恒为空（严重）**：`MigrationPrecompiler.compileMigrationFiles` 改为复制 `MigrationScanner#getCompiledClasses()` 的返回值 —— 原先拿到内部 Map 本体，紧接着 `finish()` 会 `clear()` 掉它，导致预编译 zip/目录只有 manifest、编译计数为 0、迁移静默不执行且退出码为 0。
-- **wechat-sdk**：①明文模式接入校验按官方**三参数** `sha1(sort(token,timestamp,nonce))` 验签（原把 echostr 计入 sha1 → 微信「服务器配置」必然失败）；②明文模式 POST 也校验 `signature`（原先完全不验签，任何人可伪造推送），并新增 `verify-post-signature` 开关（默认 true）；③`WxBizMsgCrypt.decrypt` 填充非法/长度非法时抛 `WechatCryptoException`（原先抛 `StringIndexOutOfBoundsException`）；④`listUserOpenids` 端点由 `POST cgi-bin/user/getall`（不存在，微信回 40066）改为 `GET cgi-bin/user/get`，响应字段 `data.openid_list` → `data.openid`；⑤`WeChatUser.subscribed`、`ChatRecord.valid` 按微信实际返回的 **0/1 整数**判定（原先 `Boolean.TRUE.equals(...)` 恒为 false，已关注用户被判成未关注）；⑥`AccessTokenManager` 的 `errcode` 改用 `Number` 取值，避免 `(Integer)` 强转掩盖真实错误。
+- **迁移预编译产物始终为空（严重）**：`MigrationPrecompiler.compileMigrationFiles` 改为复制 `MigrationScanner#getCompiledClasses()` 的返回值 —— 原先拿到内部 Map 本体，紧接着 `finish()` 会 `clear()` 掉它，导致预编译 zip/目录只有 manifest、编译计数为 0、迁移静默不执行且退出码为 0。
+- **wechat-sdk**：①明文模式接入校验按官方**三参数** `sha1(sort(token,timestamp,nonce))` 验签（原把 echostr 计入 sha1 → 微信「服务器配置」必然失败）；②明文模式 POST 也校验 `signature`（原先完全不验签，任何人可伪造推送），并新增 `verify-post-signature` 开关（默认 true）；③`WxBizMsgCrypt.decrypt` 填充非法/长度非法时抛 `WechatCryptoException`（原先抛 `StringIndexOutOfBoundsException`）；④`listUserOpenids` 端点由 `POST cgi-bin/user/getall`（不存在，微信回 40066）改为 `GET cgi-bin/user/get`，响应字段 `data.openid_list` → `data.openid`；⑤`WeChatUser.subscribed`、`ChatRecord.valid` 按微信实际返回的 **0/1 整数**判定（原先 `Boolean.TRUE.equals(...)` 始终为 false，已关注用户被判成未关注）；⑥`AccessTokenManager` 的 `errcode` 改用 `Number` 取值，避免 `(Integer)` 强转掩盖真实错误。
 
 ### Added（新增）
 
@@ -260,15 +260,15 @@
   - **模板不变**：`QueueDatabasePublishableConfig` 字节级未动（V5 核验）。
 - **core·ACL 锁定遗留文件清理**：`core/pom.xml` 移除 maven-compiler / maven-jar 的 `<excludes>` 排除配置（`CoreAutoConfiguration.java` 与 core imports 资源文件已删除）；`core/README.md` 对应遗留注记移除。至此 core 模块**编译与打包无任何排外逻辑**，Spring 解耦改造完全落地。
 - **storage-database · `allFiles`/`files` 递归列表缺陷修复**：`DatabaseFilesystem.listEntries` 此前仅收集「顶层无斜杠路径」的文件，**任何子目录下的文件在递归文件列表中全部丢失**（`allFiles("")` 对 `uploads/x.txt` 一律空白；目录列表不受影响）——补 `recursive + 文件` 分支后行为正确；新增回归测试 `testRecursiveListingIncludesSubdirectoryFiles`（顶层/二级/三级子目录文件 + 第一级目录断言）。原存储类测试未覆盖 `files/allFiles/directories` 路径，故该缺陷未在测试中暴露。
-- **springboot 装配守护缺陷修复（跨 jar 缺陷）**：5 个引用**可选依赖类**的自动配置在类上补 `@ConditionalOnClass`——未在 classpath 上引入对应可选模块（aether-upload / redis / redis-cache / session-redis）的应用启动时不再因 `@ConditionalOnMissingBean` 类型推断 `ClassNotFoundException` 而无法启动（此前这些装配从可选模块收敛至 springboot 后，springboot 恒在 classpath 上，缺失守护直接启动失败；全模块测试因 optional 依赖齐备未能暴露）：
+- **springboot 装配守护缺陷修复（跨 jar 缺陷）**：5 个引用**可选依赖类**的自动配置在类上补 `@ConditionalOnClass`——未在 classpath 上引入对应可选模块（aether-upload / redis / redis-cache / session-redis）的应用启动时不再因 `@ConditionalOnMissingBean` 类型推断 `ClassNotFoundException` 而无法启动（此前这些装配从可选模块收敛至 springboot 后，springboot 始终在 classpath 上，缺失守护直接启动失败；全模块测试因 optional 依赖齐备未能暴露）：
   - `AetherUploadAutoConfiguration` → `@ConditionalOnClass({AetherUploadManager, AetherUploadProperties})`
   - `AetherUploadPublishAutoConfiguration` → `@ConditionalOnClass({AetherUploadPublishableConfig, AetherUploadStaticPublishable})`
   - `RedisPublishAutoConfiguration` → `@ConditionalOnClass(RedisPublishableConfig)`
   - `RedisCachePublishAutoConfiguration` → `@ConditionalOnClass(RedisCachePublishableConfig)`
   - `SessionRedisPublishAutoConfiguration` → `@ConditionalOnClass(SessionRedisPublishableConfig)`
-- **（续）守护指向错误类的装配修复**：守护必须指向**真正可选的模块类**而非恒在 core/starter 的类，否则守护形同虚设，`@ConditionalOnMissingBean` 类型推断仍会 CNFE：
-  - `QueueDatabaseAutoConfiguration`：原 `@ConditionalOnClass(QueueDriver.class)`（`QueueDriver` 在 **core**，恒在 classpath）→ 补 `{QueueDriver, QueueDatabaseProperties, DatabaseQueueDriver}`（queue-database）
-  - `QueueArtisanAutoConfiguration`：原 `@ConditionalOnClass(ArtisanCommand.class)`（artisan 恒在）→ 补 `{ArtisanCommand, QueueTableCommand}`（queue-database）
+- **（续）守护指向错误类的装配修复**：守护必须指向**真正可选的模块类**而非始终在 core/starter 的类，否则守护形同虚设，`@ConditionalOnMissingBean` 类型推断仍会 CNFE：
+  - `QueueDatabaseAutoConfiguration`：原 `@ConditionalOnClass(QueueDriver.class)`（`QueueDriver` 在 **core**，始终在 classpath）→ 补 `{QueueDriver, QueueDatabaseProperties, DatabaseQueueDriver}`（queue-database）
+  - `QueueArtisanAutoConfiguration`：原 `@ConditionalOnClass(ArtisanCommand.class)`（artisan 始终在）→ 补 `{ArtisanCommand, QueueTableCommand}`（queue-database）
   - `WechatPublishAutoConfiguration`：静态块引用 wechat-sdk 的 `WechatPublishableConfig` → 补守护（原类无任何守护，类加载即触发静态注册）
 - **（续）组合缺口加固**：`RedisQueueAutoConfiguration` → `{RedisManager, RedisQueueDriver, QueueDatabaseProperties}`（防止"redis 在 / queue-database 缺"组合启动失败）；`WechatAutoConfiguration` → `{OkHttpClient, WechatProperties}`（防止"okhttp 在 / wechat-sdk 缺"组合启动失败）；captcha/jblade/jwt/modelcache/session-redis 主装配逐一核对，守护已正确指向各自模块类，无需改动；修复后全仓 34 模块 `clean install`（含测试）BUILD SUCCESS。
 - （附）`DatabaseAutoConfiguration.baseModelDataSourceBindingPostProcessor` 改为 `static` 工厂方法（消除 Spring 对 BeanPostProcessor 非静态工厂的 WARN；行为不变，随 jaravel 应用启动日志核验）。

@@ -20,9 +20,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <ul>
  *   <li><b>顺序</b>：必须与 Laravel 的洋葱模型一致 —— 父级（全局/根）最外层、组次之、路由最内。
  *       旧实现先加自身、后加父级，折叠后全局中间件反而最内层（例如「根挂 EncryptCookies、
- *       组挂 VerifyCsrfToken」会变成先验 CSRF 再解密 Cookie，恒定 419）。</li>
+ *       组挂 VerifyCsrfToken」会变成先验 CSRF 再解密 Cookie，始终 419）。</li>
  *   <li><b>静态资源</b>：必须用 {@code {*path}}（capture-the-rest）才能匹配多段路径；
- *       {@code {path}} 只匹配单段（嵌套资源恒 404），而 Spring PathPattern 下 {@code /**}
+ *       {@code {path}} 只匹配单段（嵌套资源始终 404），而 Spring PathPattern 下 {@code /**}
  *       不产生 pathVariables（同样 404）。</li>
  * </ul>
  * 本仓库此前没有任何中间件顺序断言（既有用例只断言数量），因此顺序修复必须由本类钉死。

@@ -190,8 +190,8 @@ artisan 在各模块的 pom 中均为 `optional`。模块注册命令的方式�
 - `session-redis → session`（存储实现，**不在 starter 内**，按需引入）
 
 > `auth` 默认守卫驱动为 `session`：若 `starter` 中排除了 `auth-session`，`AuthManager` 会回退到内置
-> 空守卫（`check()` 恒 false）并打印一次性 WARN；**显式声明了其它无人支持的 driver 则直接抛错**
-> （避免把配置错误静默变成「恒未登录」）。
+> 空守卫（`check()` 始终 false）并打印一次性 WARN；**显式声明了其它无人支持的 driver 则直接抛错**
+> （避免把配置错误静默变成「始终未登录」）。
 
 > **关于未跟踪文档 `Spring优化方案.md`**：其基线为 `master @ 1d5604d`（版本 0.1.3、starter 10 个模块、
 > 「不得增模块」），**已被后续架构演进取代，不构成约束**；模块与版本事实以本文件、`CHANGELOG.md`、

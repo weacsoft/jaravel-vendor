@@ -89,7 +89,7 @@ final class StreamingServerResponse implements ServerResponse {
      * @param servletRequest  原始请求
      * @param servletResponse 原始响应
      * @param context         Spring 的上下文（本实现不需要）
-     * @return 恒为 {@code null}
+     * @return 始终为 {@code null}
      */
     @Override
     public ModelAndView writeTo(HttpServletRequest servletRequest,
