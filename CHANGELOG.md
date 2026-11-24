@@ -68,6 +68,7 @@
 - **重定向目标在写入前做结构校验**：新增 `RedirectPolicy`，`ResponseBuilder.redirect(url)` 在写入 `Location` 头前校验目标地址 —— 拒绝空地址、含控制字符的地址（含 `CR`/`LF`，可致响应头注入）、含反斜杠的地址（浏览器把 `\` 当作 `/`）、协议相对写法（`//host`，等价于开放重定向）与 `http`/`https` 以外的协议（`javascript:`、`data:` 等）。`WireController` 的两处跳转在校验不通过时按「不跳转」处理并记录告警，不让异常冒泡为整页错误。
 - **新增对外基础地址配置**：新增 `jaravel.http.base-url`，配置后框架生成绝对地址（`Request.fullUrl()`，OAuth 的 `redirect_uri` 与回跳地址均基于它）以该值为准，不再取自请求的 `Host` 头。原先在未声明受信任代理时 `Host` 头由客户端决定，框架生成的地址会随请求头变化。未配置时行为与原先一致。
 - **Oracle 与 SQL Server 的 UPSERT 语句符合各自语法**：`AbstractDialect.upsertMergeUsing` 原先生成 `MERGE <table> AS t USING ...`，缺少 `MERGE` 后的 `INTO` 关键字，两家数据库都不接受（H2 亦报 `expected "INTO"`）。现按方言分别生成：Oracle 输出 `MERGE INTO "t" t USING (SELECT ? "key", ? "value" FROM DUAL) s ...`（Oracle 的表别名不允许 `AS` 关键字，带 `AS` 会报 ORA-00933），SQL Server 输出 `MERGE INTO [t] AS t USING (SELECT ? AS [key], ? AS [value]) AS s ...;`（SQL Server 要求 `MERGE` 语句以分号结束，缺失时执行报 10713 错误）。该语句用于缓存等模块的写入路径。
+- **数据库缓存驱动的取走行锁按方言生成**：`DatabaseCacheDriver.pullValue`（一次性令牌取走）原先对所有非 SQLite 方言一律在 SELECT 句尾拼 `FOR UPDATE`，但 SQL Server 不支持 `FOR UPDATE`（会报语法错误），Oracle 之外的各家写法也不统一。现改为按方言生成（纯函数 `pullSelectSql`，便于单测固定各方言输出）：MySQL / MariaDB / PostgreSQL / H2 / Oracle 用句尾 `FOR UPDATE`，SQL Server 用表提示 `WITH (UPDLOCK)`，SQLite 与未知方言不加锁（SQLite 全库写锁、未知方言不可预期，宁可少一层优化也不产生报错）。新增 `DatabaseCachePullSqlTest`（5 例方言矩阵）。
 - **Oracle 上的删表语句不再使用非法语法**：`Schema.dropIfExists` 原先统一生成 `DROP TABLE IF EXISTS`，Oracle 不支持该语法（执行报 ORA-00900）。现由方言声明是否支持该语法（`Dialect.supportsDropTableIfExists`），不支持时先查询系统目录确认表是否存在再执行 `DROP TABLE`。表迁移的目标表清理（`TableMigrator`）原先按方言名硬编码判断，现改用同一能力声明。
 
 ### Changed（变更：0.1.3 版本定稿与高优先级项）
@@ -128,7 +129,7 @@
   - 新增 `JdbcExecutorTransactionTest`（7 例：提交可见、异常回滚、事务内可见自己的未提交写入、返回值、条件更新抢占模式、拿到底层连接、事务后执行器仍可用）。
 - **`cache-database`：实现 `AtomicCacheDriver` 真原子原语**（原先 `add`/`pull` 是「先查后写 / 先读后删」两步，并发下会静默失效）：
   - `addIfAbsent`：事务 + **主键唯一约束**应对并发（并发 add 只有一个成功，恢复互斥门闩语义），已过期条目视为不存在；
-  - `pullValue`：事务内 `SELECT ... FOR UPDATE` + `DELETE`（一次性令牌只被一个线程取到；SQLite 不支持 `FOR UPDATE`，退化为同事务内「读+删」并在文档声明）；
+  - `pullValue`：事务内「带行锁的 SELECT」+ `DELETE`，行锁按方言生成（MySQL/PostgreSQL/H2/Oracle 句尾 `FOR UPDATE`，SQL Server 表提示 `WITH (UPDLOCK)`，SQLite 无行级锁、退化为同事务内「读+删」并在文档声明）；
   - `incrementAndGet`：**乐观 CAS + 时间预算**（读值→计算→`WHERE value = 读到的原值` 条件更新，失败重读重算），**保留原 `expires_at`**；预算内始终失败时**抛错而不是静默返回 0**（不静默丢失一次自增）。H2 MVStore 下 `FOR UPDATE` 不足以防丢更新，故改用与方言无关的 CAS；
   - 新增 `DatabaseCacheAtomicityTest`（7 例：并发 add 唯一胜出、并发 pull 唯一取到、并发自增不丢更新、过期为不存在、不覆盖已有值、自增保留 TTL、新键带 TTL）。
 - **`storage-database`：`put` 事务化**：「清旧分片 + 清旧元信息 + 写全部分片 + 写元信息」收进同一事务，原实现中途失败会留下「元信息已删、分片只写一半」的半截文件。

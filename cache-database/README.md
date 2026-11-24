@@ -51,9 +51,10 @@ com.weacsoft.jaravel.vendor.cache.database
 | 项 | 说明 |
 | --- | --- |
 | 构造 | `DatabaseCacheDriver(DataSource)` / `DatabaseCacheDriver(DataSource, String table)` |
-| `createTable()` | 创建 `jaravel_cache` 表（经迁移模块 `Schema.createIfAbsent`：方言感知的存在性检查后再生成建表语句，不手写 `CREATE TABLE IF NOT EXISTS`），自动适配 MySQL / PostgreSQL / SQLite / H2 / SQL Server 方言 |
+| `createTable()` | 创建 `jaravel_cache` 表（经迁移模块 `Schema.createIfAbsent`：方言感知的存在性检查后再生成建表语句，不手写 `CREATE TABLE IF NOT EXISTS`），自动适配 MySQL / PostgreSQL / SQLite / H2 / SQL Server / Oracle 方言 |
 | `put/get/exists/remove/removeAll/allKeys` | 标准缓存操作；TTL 单位**秒**（`<= 0` 永不过期）；命中过期记录时返回未命中并**异步删除** |
 | `put` 语义 | 各方言 upsert（MySQL `ON DUPLICATE KEY UPDATE` / PG 与 SQLite `ON CONFLICT` / H2 `MERGE ... KEY` / SQL Server `MERGE ... USING`） |
+| `pull` 行锁 | 一次性令牌取走的读步骤按方言生成行锁：MySQL / PostgreSQL / H2 / Oracle 句尾 `FOR UPDATE`；SQL Server 表提示 `WITH (UPDLOCK)`；SQLite 无行级锁（全库写锁），退化为同事务「读 + 删」 |
 
 > **重要**：使用 database 缓存驱动前，必须先执行 `artisan cache:table` 或调用 `createTable()` 建表。
 
@@ -98,4 +99,6 @@ jaravel:
 
 `DatabaseCacheDriverTest`（H2 内存库）覆盖：建表、put/get 往返、upsert 覆盖、零 TTL 永不过期、
 TTL 过期未命中、exists/remove/removeAll/allKeys、自定义表名、工厂 support/table 配置 / 默认表名 /
-缺失数据源报错。**全程无 spring-jdbc、无网络**。
+缺失数据源报错。`DatabaseCachePullSqlTest` 以纯函数固定取走行锁的方言矩阵（MySQL / PostgreSQL /
+H2 / Oracle 句尾 `FOR UPDATE`，SQL Server 表提示 `WITH (UPDLOCK)`，SQLite 与未知方言无锁）。
+`DatabaseCacheAtomicityTest` 用 H2 验证并发 pull 唯一取到、并发自增减不丢更新。**全程无 spring-jdbc、无网络**。

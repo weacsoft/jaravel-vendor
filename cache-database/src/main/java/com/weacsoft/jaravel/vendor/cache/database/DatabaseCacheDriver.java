@@ -272,22 +272,24 @@ public class DatabaseCacheDriver implements CacheDriver,
     }
 
     /**
-     * 原子取走：同一事务内 {@code SELECT ... FOR UPDATE} + {@code DELETE}。
+     * 原子取走：同一事务内带行锁的 {@code SELECT} + {@code DELETE}。
      * <p>
      * 行锁是「一次性令牌」语义的关键：并发 pull 同一键时，后到的事务会在锁上等待，
      * 拿到锁时该行已被删除 → 读到空 → 返回 null。
      * <p>
-     * SQLite 不支持 {@code FOR UPDATE}（全库写锁），此时退化为「读 + 删」两步
+     * 行锁子句按方言生成（见 {@link #pullSelectSql}）：
+     * MySQL / PostgreSQL / H2 / Oracle 用句尾 {@code FOR UPDATE}，
+     * SQL Server 用表提示 {@code WITH (UPDLOCK)}，
+     * SQLite 不支持行级锁（全库写锁），退化为「读 + 删」两步
      * （仍在同一事务内，但不是行级互斥）—— 该限制已在本驱动文档声明。
      */
     @Override
     public Object pullValue(String key) {
         try {
             String json = jdbc.inTransaction(tx -> {
+                String sql = pullSelectSql(q(table), q(COL_VALUE), q(COL_EXPIRES), q(COL_KEY), dialect());
                 List<Row> rows = tx.queryMapped(
-                        "SELECT " + q(COL_VALUE) + ", " + q(COL_EXPIRES)
-                                + " FROM " + q(table)
-                                + " WHERE " + q(COL_KEY) + " = ?" + rowLockClause(),
+                        sql,
                         rs -> new Row(rs.getString(COL_VALUE), rs.getLong(COL_EXPIRES)),
                         key);
                 if (rows.isEmpty()) {
@@ -307,16 +309,39 @@ public class DatabaseCacheDriver implements CacheDriver,
         }
     }
 
-    /** 行锁子句：不支持的方言（SQLite）返回空串 */
-    private String rowLockClause() {
-        try {
-            Dialect current = dialect();
-            String name = current == null || current.getName() == null
-                    ? "" : current.getName().toLowerCase();
-            return name.contains("sqlite") ? "" : " FOR UPDATE";
-        } catch (Exception e) {
-            return "";
-        }
+    /**
+     * 按方言生成 {@code pullValue} 的取走查询（纯函数，便于单测固定各方言输出）。
+     * <p>
+     * 各方言的行锁写法不一致，且无法在当前测试基建里跑真实 Oracle / SQL Server，
+     * 因此把「生成的 SQL 形状」固定下来（策略与 {@code queue-database} 的抢占 SQL 一致）：
+     * <ul>
+     *   <li>{@code MySQL} / {@code MariaDB} / {@code PostgreSQL} / {@code H2} / {@code Oracle}：
+     *       句尾 {@code FOR UPDATE}（取行锁）；</li>
+     *   <li>{@code SQL Server}：表提示 {@code WITH (UPDLOCK)}（它没有 {@code FOR UPDATE}，
+     *       用表提示取更新锁）；</li>
+     *   <li>{@code SQLite} 与未知方言：不加锁，退化为「读 + 删」两步
+     *       （SQLite 全库写锁、未知方言不可预期，宁可少一层优化也不产生报错）。</li>
+     * </ul>
+     *
+     * @param quotedTable   已加引号的表名
+     * @param quotedValue   已加引号的值列
+     * @param quotedExpires 已加引号的过期列
+     * @param quotedKey     已加引号的键列
+     * @param dialect       当前方言（可空，按未知方言处理）
+     * @return 完整的取走 SELECT 语句
+     */
+    static String pullSelectSql(String quotedTable, String quotedValue, String quotedExpires,
+                                String quotedKey, Dialect dialect) {
+        String name = dialect == null || dialect.getName() == null
+                ? "" : dialect.getName().toLowerCase();
+        boolean sqlServer = name.contains("sql server") || name.contains("microsoft");
+        boolean forUpdate = name.contains("mysql") || name.contains("mariadb")
+                || name.contains("postgres") || name.contains("h2") || name.contains("oracle");
+        String tableHint = sqlServer ? " WITH (UPDLOCK)" : "";
+        String tailLock = forUpdate ? " FOR UPDATE" : "";
+        return "SELECT " + quotedValue + ", " + quotedExpires
+                + " FROM " + quotedTable + tableHint
+                + " WHERE " + quotedKey + " = ?" + tailLock;
     }
 
     /**
