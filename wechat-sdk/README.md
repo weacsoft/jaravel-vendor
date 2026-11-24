@@ -2,7 +2,7 @@
 
 > 包名：`com.weacsoft.jaravel.vendor.wechat`
 > 对齐 PHP 扩展包：`overtrue/laravel-wechat`（EasyWeChat 5.x）
-> 状态：**类型化消息模型（Typed Message Model）已全量实现** —— 旧 Map 裸接口已移除，不再保留。
+> 状态：**类型化消息模型（Typed Message Model）已全量实现** —— 旧 Map 无类型接口已移除。
 > **零 Spring 依赖**：SDK 内核与配置属性（`WechatProperties` 纯 POJO）不依赖 Spring；`WechatAutoConfiguration` / `WechatPublishAutoConfiguration` / 两个 `@Register*` 注册器位于 **`springboot`** 模块（`vendor.springboot.wechat[.registrar]` 包），属性绑定由 `WechatAutoConfiguration` 的 `@Bean @ConfigurationProperties(prefix="jaravel.wechat")` 完成。
 
 ## 模块概述
@@ -12,11 +12,11 @@
 设计原则（对齐 jaravel-vendor 约定）：
 
 1. **声明 > yml > 默认回退**：配置优先用 `vendor:publish --tag=wechat-sdk` 输出的 `@RegisterWechatOfficialAccount` / `@RegisterWechatMiniApp` 声明类（`WechatPublishableConfig` 模板），yml 作为回退，两者都没有时服务层显式报 `IllegalStateException`，不做静默回退。
-2. **响应类型化**：所有 API 收敛为 `WeChatResponse`（`isSuccess()` / `requireSuccess()` / `as(Class)` / 类型化取值器），微信业务错误（`errcode != 0`）不再被 warn 日志吞掉。
+2. **响应类型化**：所有 API 收敛为 `WeChatResponse`（`isSuccess()` / `requireSuccess()` / `as(Class)` / 类型化取值器），微信业务错误（`errcode != 0`）不再被 warn 日志静默忽略。
 3. **消息类族**：11 类客服消息 + 被动回复 6 类共享 `message.Message` 基类（双序列化 `toJsonBody()` / `toXmlArray()` + 构造时快速失败），对齐 EasyWeChat `Kernel/Messages`。
 4. **接收侧完整**：XML 解析（`server.MessageParser`）+ 签名/SHA1 + AES-ECB 加解密（`crypto.WxBizMsgCrypt`，JDK 实现，无三方依赖）+ **洋葱内核** `kernel.WechatKernel`（`WechatRequest` 组装/提取 + `WechatResponse` 组装/返回 + `WechatMiddleware` 洋葱层；`WeChatServer` 为其薄壳）。
 5. **网页授权（OAuth）**：`oauth.WeChatOAuth`（授权 URL 组装 + code 换 openid/用户 + EasyWeChat 兼容会话键）+ `oauth.WeChatOAuthMiddleware`（自动重定向，路由别名 `wechat.oauth`，对齐 overtrue `OAuthAuthenticate`）。
-6. **Token/Ticket 缓存**：`accessTokenManager` 与 jsapi_ticket 均走 core + cache 模块（`CacheManager` / `CacheStore`），多实例可共享 redis store。
+6. **Token/Ticket 缓存**：`accessTokenManager` 与 jsapi_ticket 均经 core + cache 模块（`CacheManager` / `CacheStore`），多实例可共享 redis store。
 7. **测试不联网**：单测一律 mock OkHttp，覆盖 195 个用例。
 
 ## Maven 依赖
@@ -299,8 +299,8 @@ server.handlePost(query, pushXml, (msg, srv) -> new Text("hi").toUser(msg.getFro
 
 行为约定：
 - **验签/解密失败** → `WechatCryptoException`（错误消息指明 `signature` / `msg_signature` 失败原因）。
-- **默认层不回复** → `handlePost` 返回空串 `""`（对齐微信「5 秒超时」语义，不重试）。
-- **旧式 responder 路径**返回 `null` 或抛异常 → 同样按空串应答（`ResponderMiddleware` 承接历史语义）。
+- **默认层不回复** → `handlePost` 返回空字符串 `""`（对齐微信「5 秒超时」语义，不重试）。
+- **旧式 responder 路径**返回 `null` 或抛异常 → 同样按空字符串应答（`ResponderMiddleware` 承接历史语义）。
 - **不支持被动回复的消息类**（如 `WeChatCard`）经 `WechatResponse` 组包时 → `WechatCryptoException` 指明类名。
 - `WechatKernel.middleware(...)` 不可变：返回新内核，原内核行为不变。
 
@@ -386,6 +386,6 @@ WeChatResponse up = mini.uploadMedia("default", "D:/a.png", "image", true);  // 
 
 ## 版本与契约
 
-- **206 个单测全绿**（含 19 个历史锁定用例 + 42 个洋葱内核/网页授权用例；旧 153 个用例全保留）。
-- **旧 Map 裸接口（`getUserData` / `sendMessage(Map)` / `sendTyping(openid, int)` / `jscode2session` / `sendTemplateMessage` / `getMenu→Map` 等）已全部移除**，不再保留过渡期。
+- **206 个单元测试全部通过**（含 19 个历史锁定用例 + 42 个洋葱内核/网页授权用例；旧 153 个用例全部保留）。
+- **旧 Map 无类型接口（`getUserData` / `sendMessage(Map)` / `sendTyping(openid, int)` / `jscode2session` / `sendTemplateMessage` / `getMenu→Map` 等）已全部移除**。
 - 设计文档：消息模型 [DESIGN-message-model.md](./DESIGN-message-model.md) · 洋葱内核与网页授权 [DESIGN-web-oauth.md](./DESIGN-web-oauth.md)。

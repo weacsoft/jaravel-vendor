@@ -22,7 +22,7 @@ WechatKernel.handleGet(query)
   └─ VerifySignatureMiddleware        内置① 验签（plain: signature / safe: msg_signature）
        └─ DecryptParseMiddleware       内置② 解密（safe）+ 解析（WechatRequest.message()）
             └─ 用户 middleware(1..n)    WechatKernel.middleware(...) 追加；**先注册先执行**
-                 └─ 默认沉默层           不回复（空串退避 / ECHO 回包）
+                 └─ 默认沉默层           不回复（空字符串退避 / ECHO 回包）
 ```
 
 - **`WechatRequest`**：组装 + 提取一体。静态工厂 `ofVerify(query, name, account)` /
@@ -40,9 +40,9 @@ WechatKernel.handleGet(query)
 
 - `WeChatServer`（plain/safe 薄壳）的 13 个历史行为用例**逐字保留**：
   验签失败文案（`GET/POST 验签失败（signature|msg_signature 不匹配）`）、
-  responder 返回 null / 抛异常 → 空串、`WeChatCard` → 异常类名提示、safe 全链路 round-trip、
+  responder 返回 null / 抛异常 → 空字符串、`WeChatCard` → 异常类名提示、safe 全链路 round-trip、
   缺配置 `IllegalStateException(未找到公众号配置: ...)` 文案。
-- 内核层异常**直接上抛**（洋葱由开发者控制）；「吞异常→空串」由 `ResponderMiddleware`
+- 内核层异常**直接上抛**（洋葱由开发者控制）；「异常收敛为空字符串应答」由 `ResponderMiddleware`
   承载（仅 `WeChatServer.handlePost(responder)` 旧签名路径），两套语义不混淆。
 
 ### 2.3 与 EasyWeChat Kernel 的对照

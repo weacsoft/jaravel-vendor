@@ -1,6 +1,6 @@
 # captcha 模块
 
-> Jaravel-Vendor 的验证码模块，提供图片数字、算术、滑动、旋转、文字点选五种验证码。核心层为纯 Java 实现（基于 `java.awt` 与 `java.util.Base64`），无 SpringBoot 依赖，可独立使用；同时提供 SpringBoot 3 自动装配适配层，开箱即用。前端提供 `jaravel-captcha.js` 库（零依赖），采用事件驱动模式，用户完成验证操作后触发 `complete` 事件，由业务方决定后续处理。包名统一为 `com.weacsoft.jaravel.vendor.captcha`。
+> Jaravel-Vendor 的验证码模块，提供图片数字、算术、滑动、旋转、文字点选五种验证码。核心层为纯 Java 实现（基于 `java.awt` 与 `java.util.Base64`），无 SpringBoot 依赖，可独立使用；同时提供 SpringBoot 3 自动装配适配层（引入依赖即自动生效）。前端提供 `jaravel-captcha.js` 库（零依赖），采用事件驱动模式，用户完成验证操作后触发 `complete` 事件，由业务方决定后续处理。包名统一为 `com.weacsoft.jaravel.vendor.captcha`。
 
 ---
 
@@ -115,7 +115,7 @@
 
 ### 4.1 独立使用（无 SpringBoot）
 
-通过 `CaptchaManager.createDefault()` 获取开箱即用的管理器，已注册数字、算术、滑动、旋转、文字点选五种验证码：
+通过 `CaptchaManager.createDefault()` 获取已注册五种验证码（数字、算术、滑动、旋转、文字点选）的默认管理器：
 
 ```java
 import com.weacsoft.jaravel.vendor.captcha.CaptchaManager;

@@ -323,9 +323,9 @@ public interface MetadataPersistence {
 | 方法 | 作用 | 空值处理 | 异常处理 |
 |---|---|---|---|
 | `toJson(Set<String>)` | 序列化字符串集合 | `null` 或空集返回 `"[]"` | 记录日志 `序列化 Set<String> 失败`，返回 `"[]"` |
-| `fromJson(String)` | 反序列化字符串集合 | `null` 或空串返回空 `HashSet` | 记录日志 `反序列化 Set<String> 失败: {}`，返回空 `HashSet` |
+| `fromJson(String)` | 反序列化字符串集合 | `null` 或空字符串返回空 `HashSet` | 记录日志 `反序列化 Set<String> 失败: {}`，返回空 `HashSet` |
 | `toJsonRouteInfos(Set<RouteInfo>)` | 序列化路由集合 | `null` 或空集返回 `"[]"` | 记录日志 `序列化 Set<RouteInfo> 失败`，返回 `"[]"` |
-| `fromJsonRouteInfos(String)` | 反序列化路由集合 | `null` 或空串返回空 `HashSet` | 记录日志 `反序列化 Set<RouteInfo> 失败: {}`，返回空 `HashSet` |
+| `fromJsonRouteInfos(String)` | 反序列化路由集合 | `null` 或空字符串返回空 `HashSet` | 记录日志 `反序列化 Set<RouteInfo> 失败: {}`，返回空 `HashSet` |
 
 ### 字段映射关系
 

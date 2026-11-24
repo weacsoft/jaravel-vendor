@@ -1,7 +1,7 @@
 # Storage — 多磁盘文件存储模块
 
 > Jaravel-Vendor 的文件存储核心模块（**零 Spring 依赖**），对齐 Laravel `Storage` Facade 与 `config/filesystems.php`，提供统一的文件系统抽象。
-> 驱动按职责拆分到可选模块：database 磁盘驱动见 **`storage-database`**（走 `database` 模块连接，原生 JDBC，不用 spring-jdbc）。
+> 驱动按职责拆分到可选模块：database 磁盘驱动见 **`storage-database`**（经 `database` 模块连接，原生 JDBC，不用 spring-jdbc）。
 > Spring 自动装配（`StorageAutoConfiguration` / `StorageProperties` / `StorageRegistrar` / 条件装配 / artisan 集成 / vendor:publish）统一位于 **`springboot`** 模块（`vendor.springboot.storage` 包）。
 > 采用与 `auth` 模块一致的**方法注解式注册**（`@RegisterDisk`）+ **驱动工厂 SPI**（`FilesystemDriver`）设计。
 
@@ -12,7 +12,7 @@
 - **驱动 SPI**：实现 `FilesystemDriver` 并注册为 Bean 即自动接入，可扩展 S3/OSS/FTP
 - **流式 IO**：`putStream` / `readStream` / `writeTo` 内存占用恒定，支持任意大小文件
 - **路径穿越防护**：所有路径规范化后校验，`../` 逃逸根目录直接抛异常
-- **开箱即用**：不做任何配置也会回退注册 `local` 磁盘（根目录 `storage/app`）
+- **无需额外配置**：不做任何配置也会回退注册 `local` 磁盘（根目录 `storage/app`）
 
 ## 引入
 
@@ -140,7 +140,7 @@ public class StorageConfig {
 
 **注册优先级**：驱动收集 → 配置式磁盘 → `@RegisterDisk`（覆盖同名）→ 回退 `local`。
 
-### 驱动按需装配（安装 ≠ 启用，用上了才注册）
+### 驱动按需装配（安装 ≠ 启用）
 
 两个磁盘驱动均由 **springboot 模块**（`vendor.springboot.storage` 包）的 `StorageAutoConfiguration`
 装配，且通过 core 的 `OnDriverInUseCondition` 判定，**未配置则不装配**：
@@ -151,7 +151,7 @@ public class StorageConfig {
   因此本条件调用 `matchIfAbsent()` 匹配缺省。
 - `DatabaseFilesystemDriver`：受 `@Conditional(OnDatabaseDiskDriverCondition.class)` 约束，仅当
   任一 `jaravel.storage.disks.*.driver` 显式取值为 `database` 时装配。**`database` 不作为回退**，
-  用户未显式选用时完全不创建，不连数据库。
+  用户未显式选用时完全不创建，不连接数据库。
 
 `StorageAutoConfiguration` 整体仍受 `jaravel.storage.enabled`（默认 true）开关控制（功能型模块），
 但模块一旦启用，只有真正被用到的磁盘驱动才会注册 Bean。

@@ -1,13 +1,13 @@
 # wechat-sdk 消息类封装设计（Typed Message Model）
 
-> 状态：**已实现**（2026-08，153 单测全绿；见 README「版本与契约」）
+> 状态：**已实现**（2026-08，153 个单元测试全部通过；见 README「版本与契约」）
 > 范围：`com.weacsoft.jaravel.vendor.wechat` 模块
 > 参照：微信官方服务端文档（developers.weixin.qq.com，2026-08 快照）、EasyWeChat 5.x（w7corp/easywechat）消息模型
 > 关联：`README.md`（PHP 对齐关系）、`AccessTokenManager.java`、`OfficialAccountService.java`、`MiniProgramService.java`
 
 > **实现说明**：
 > 1. **旧 Map 接口直接移除**（不保留、不标 `@Deprecated`）——由项目所有者明确指示（"还没开始用，直接去掉"）。
-> 2. **配置面采用「声明 > yml > 回退」**：新增 `@RegisterWechatOfficialAccount` / `@RegisterWechatMiniApp` + 注册器 + `vendor:publish --tag=wechat-sdk` 声明模板（`WechatPublishableConfig`），对齐 jaravel-vendor 既有 vendor 装配模式；token/jsapi_ticket 缓存明确走 core + cache 模块（`CacheManager`/`CacheStore`，`WechatCacheResolver` 共享解析）。
+> 2. **配置面采用「声明 > yml > 回退」**：新增 `@RegisterWechatOfficialAccount` / `@RegisterWechatMiniApp` + 注册器 + `vendor:publish --tag=wechat-sdk` 声明模板（`WechatPublishableConfig`），对齐 jaravel-vendor 既有 vendor 装配模式；token/jsapi_ticket 缓存明确经 core + cache 模块（`CacheManager`/`CacheStore`，`WechatCacheResolver` 共享解析）。
 
 ---
 
@@ -56,7 +56,7 @@
 | 接收普通消息（text/image/voice/video/shortvideo/location/link） | 推送 XML（含 MsgId/MsgDataId/Idx） | ❌ 无 | **缺失** |
 | 接收事件推送（subscribe/unsubscribe/SCAN/LOCATION/CLICK/VIEW + EventKey/Ticket） | 推送 XML | ❌ 无 | **缺失** |
 | 订阅通知事件（subscribe_msg_sent_event / subscribe_msg_change_event） | 推送 XML（嵌套 List） | ❌ 无 | **缺失** |
-| 被动回复用户消息 | 返回 XML，5 秒时限，可"回复空串"退避 | ❌ 无 | **缺失** |
+| 被动回复用户消息 | 返回 XML，5 秒时限，可"回复空字符串"退避 | ❌ 无 | **缺失** |
 | 消息加解密（Encrypt/MsgSignature，AES-256-ECB） | GET 验签 + 推送/回复 | ❌ 无（`aes-key` 配置位闲置） | **缺失** |
 | 客服消息 11 种（text/image/voice/video/music/news/mpnews/mpnewsarticle/msgmenu/wxcard/miniprogrampage）+ `customservice` + `aimsgcontext` | POST `message/custom/send` | ⚠️ 仅 `sendMessage(Map)` 裸透传 | **未类型化** |
 | 客服会话管理（创建/关闭会话、聊天记录、输入状态） | `custom/kf/session`、`custom/message/list` | ⚠️ 仅 `sendTyping` | 部分缺失（P4 可选） |
@@ -72,7 +72,7 @@
 
 | 官方能力 | 端点 | SDK 现状 | 结论 |
 |---|---|---|---|
-| 登录凭证校验 `jscode2session`（返回 openid/session_key/unionid；失败仅 errcode/errmsg） | GET `sns/jscode2session` | ⚠️ 返回裸 Map | **未类型化**（需要失败即异常） |
+| 登录凭证校验 `jscode2session`（返回 openid/session_key/unionid；失败仅 errcode/errmsg） | GET `sns/jscode2session` | ⚠️ 返回无类型 Map | **未类型化**（需要失败即异常） |
 | 订阅消息（`subscribe/send`，data→`{value}`，`miniprogram_state`/`lang`） | POST | ⚠️ Map 透传 | **未类型化** |
 | 素材上传/下载（`media/upload` 临时、`material/add_material` 永久、`material/batchget`） | POST | ❌ 无（公众号侧仅图片） | P4 可选 |
 | 小程序码/链接（`getwxacode*`/`generateUrlLink`/`generateScheme`） | POST | ❌ 无 | P4 可选 |
@@ -366,7 +366,7 @@ public class WeChatServer {
 
     /**
      * 处理一次推送（POST）。query: timestamp/nonce/msg_signature; body: XML。
-     * 返回应答字符串（明文模式为回复 XML 或空串""；加密模式为 Encrypt 应答 XML）。
+     * 返回应答字符串（明文模式为回复 XML 或空字符串""；加密模式为 Encrypt 应答 XML）。
      * 注意：微信 5 秒未响应会重试 3 次 —— 处理超时建议直接 return ""。
      */
     public String postHandler(Map<String, String> query, String bodyXml,
@@ -381,7 +381,7 @@ public class WeChatServer {
 
 **被动回复**约定：`responder` 返回的 `Message` 若实现 `toXmlNode()`，则拼成
 `<xml><ToUserName>原from</ToUserName><FromUserName>原to</FromUserName><CreateTime>now</CreateTime><MsgType>…</MsgType>…</xml>`；
-加密模式下整体走 `WxBizMsgCrypt.encrypt` + 签名。**`responder == null` 时按微信规范返回空串**（不触发重试），这是 5 秒时限下的官方推荐退避。
+加密模式下整体经 `WxBizMsgCrypt.encrypt` + 签名。**`responder == null` 时按微信规范返回空字符串**（不触发重试），这是 5 秒时限下的官方推荐退避。
 
 XML 构建细节（`XmlWriter` 小工具，发送侧复用）：
 
@@ -586,7 +586,7 @@ final class WechatTransport {
 2. **行为微调仅一处且向后兼容**：`parseResponse` 对 `errcode!=0` 仍只 warn 不抛 —— 新方法的 `requireSuccess()` 是**调用方主动**开启严格语义，老调用方无感知。
 3. **Bean 签名不变**：4 个 Bean（client/token-manager/oa-service/mini-service）构造依赖不变，`WechatAutoConfiguration` 不需改动即可运行新代码；`WeChatServer` 作为 `OfficialAccountService` 的**方法级**入口（非独立 Bean），避免新增装配面。
 4. **依赖零新增**：不加第三方库；`javax.xml.stream` 属 JDK（`java.xml` 模块，JRE 自带），与模块 "JRE 即可运行" 约束一致。
-5. **测试契约**：现有 19 个 wechat-sdk 测试（`AccessTokenManagerTest`/`WechatPropertiesTest`）必须零改动全绿；新增测试独立成类。
+5. **测试契约**：现有 19 个 wechat-sdk 测试（`AccessTokenManagerTest`/`WechatPropertiesTest`）必须零改动全部通过；新增测试独立成类。
 
 ---
 
@@ -600,10 +600,10 @@ final class WechatTransport {
 | `WeChatServer` | `plain/safe` 双模式 POST 往返（mock responder 返回 Text → 断言 XML 头与 CDATA）；`responder=null` 返回 `""`；GET echo 验签失败拒绝 |
 | `response` | 无 errcode 字段→`isSuccess()==true`；`errcode=40001` → `requireSuccess` 抛异常且异常含 errcode+errmsg+操作名；`as(WeChatUser)` 字段映射 |
 | `menu/template` | `Menu.toJson()` ≤3 顶层校验；`MenuItem.sub()` 两级嵌套；`SubscriptionNotice.toJson()` 的 `data.content` 形状 |
-| `AccessTokenManager` | 现有 19 个全绿 + stable 模式 2 例（POST 方法 + body 断言） |
+| `AccessTokenManager` | 现有 19 个全部通过 + stable 模式 2 例（POST 方法 + body 断言） |
 | 服务层 | 沿用 Mockito mock OkHttp 模式（现有测试已有 `mockWechatResponse` 范式），为每个新服务方法补 1 例请求体形状断言 |
 
-验收命令：`mvn -pl wechat-sdk test`（全绿）+ `mvn -pl wechat-sdk install` + jaravel demo `mvn compile` 冒烟。
+验收命令：`mvn -pl wechat-sdk test`（全部通过）+ `mvn -pl wechat-sdk install` + jaravel demo `mvn compile` 冒烟。
 
 ---
 
@@ -617,7 +617,7 @@ final class WechatTransport {
 | **P3 小程序** | `MiniProgramSession`（失败即异常）；`MiniSubscribeMessage`+`sendSubscribeMessage`；`token-mode`（stable_token） | P0 |
 | **P4 选做**（按需求触发，不排期） | `WeChatUser/Tag` 细化、`user/getall`、`qrcode/create`、素材 `media/upload` 全类型、客服会话管理（create/close session、聊天记录）、OCR | — |
 
-每阶段闭环：设计细化 → 实现 → 单测 → `mvn -pl wechat-sdk test` 全绿 → README 同步（对齐关系表 + 新用法示例）→ 提交。
+每阶段闭环：设计细化 → 实现 → 单元测试 → `mvn -pl wechat-sdk test` 全部通过 → README 同步（对齐关系表 + 新用法示例）→ 提交。
 
 ---
 

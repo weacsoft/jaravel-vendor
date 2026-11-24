@@ -296,7 +296,7 @@ GlobalLookup.install(new MyMapBasedProvider()); // 安装 Bean 提供者
 
 > `SpringContext` 类名/包名为已发布的 stable FQCN（多个 publish 模板代码引用它）；
 > 无直接返回 `ApplicationContext` 的 `get()` 方法——静态 Bean 访问
-> 一律走 `bean(...)` / `beanOrNull(...)`。
+> 一律经 `bean(...)` / `beanOrNull(...)` 获取。
 
 ### 方法文档
 
@@ -634,7 +634,7 @@ Rule evenRule = (field, value, params, data) ->
 
 | 常量 | 说明 |
 | --- | --- |
-| `REQUIRED` | 必填（非 null 且非空串/空集合/空 Map） |
+| `REQUIRED` | 必填（非 null 且非空字符串/空集合/空 Map） |
 | `NULLABLE` | 可为 null（仅占位，校验始终通过） |
 | `STRING` | 必须为字符串 |
 | `INTEGER` | 必须为整数（`Number` 或可解析为 `Long`） |
@@ -900,7 +900,7 @@ public class OnRedisQueueDriverCondition extends OnDriverInUseCondition {
 ```java
 @AutoConfiguration
 @ConditionalOnClass({RedisSessionStore.class, RedisManager.class})
-@Conditional(OnRedisSessionDriverCondition.class)   // 用上了才装配
+@Conditional(OnRedisSessionDriverCondition.class)   // 按需装配
 @ConditionalOnBean(RedisManager.class)              // 回退保护
 public class SessionRedisAutoConfiguration { ... }
 ```
@@ -954,4 +954,4 @@ public class SessionRedisAutoConfiguration { ... }
 Paginator.setDefaultViewProvider(() -> viewManager.defaultView());
 ```
 
-未引入任何模板引擎时，`Paginator.links()` 返回空串，不影响分页数据本身的使用。
+未引入任何模板引擎时，`Paginator.links()` 返回空字符串，不影响分页数据本身的使用。

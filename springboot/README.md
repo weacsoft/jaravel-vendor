@@ -602,7 +602,7 @@ returnValue == null？
 | --- | --- | --- | --- |
 | `SpringBootRouteAutoConfiguration` | `@AutoConfiguration` | imports 文件 | 路由桥接 + 中间件执行 + `@MiddlewareAlias` 别名扫描注册 |
 | `ResponseAutoConfiguration` | `@AutoConfiguration` | imports 文件 | 注入返回值处理器 |
-| `BladeIntegrationConfiguration` | `@AutoConfiguration`（`@ConditionalOnClass(BladeFunctions)`，无 jblade 不加载） | imports 文件 | jblade 集成：`BladeDirectiveRegistrar` Bean + 开箱即用模板函数 `csrf_token()/route()/url()` 注册（自检硬保证） |
+| `BladeIntegrationConfiguration` | `@AutoConfiguration`（`@ConditionalOnClass(BladeFunctions)`，无 jblade 不加载） | imports 文件 | jblade 集成：`BladeDirectiveRegistrar` Bean + 内置模板函数 `csrf_token()/route()/url()` 注册（自检硬保证） |
 | `jblade.ViewAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.jblade`） | imports 文件 | 视图装配：三层优先级收集 `@RegisterView` 声明 → Blade 运行时回退 → `ViewFacade` 绑定；`View::preheat` 模板函数 |
 | `jblade.JbladeArtisanAutoConfiguration` | `@AutoConfiguration`（`vendor.springboot.jblade`，artisan 在场时） | imports 文件 | 注册 `view:cache` / `view:clear` 命令 |
 | `SpringBootRequestMVCResolver` | `@Component` | 组件扫描 | Request 参数注入 |

@@ -1,8 +1,8 @@
 # jblade 模块
 
-> Jaravel-Vendor 的模板引擎模块，提供 Laravel Blade 风格的模板编译与渲染。支持 `{{ }}` 输出、`@if/@foreach/@for/@while` 控制结构、`@extends/@section/@yield` 模板继承、`@component` 组件等特性，通过内存编译（`MemoryClassLoader`）将模板编译为 Java 类后执行。支持预编译模式：开发阶段将模板预编译为字节码（打包文件或散乱 class），生产环境仅需 JRE 即可运行。包名统一为 `com.weacsoft.jaravel.vendor.jblade`。
+> Jaravel-Vendor 的模板引擎模块，提供 Laravel Blade 风格的模板编译与渲染。支持 `{{ }}` 输出、`@if/@foreach/@for/@while` 控制结构、`@extends/@section/@yield` 模板继承、`@component` 组件等特性，通过内存编译（`MemoryClassLoader`）将模板编译为 Java 类后执行。支持预编译模式：开发阶段将模板预编译为字节码（打包文件或未打包的 class），生产环境仅需 JRE 即可运行。包名统一为 `com.weacsoft.jaravel.vendor.jblade`。
 >
-> **零 Spring 依赖**：模板引擎内核不依赖 Spring。`ViewAutoConfiguration` / `JbladeArtisanAutoConfiguration` / `@RegisterView` / `ViewRegistrar` 等装配类位于 **`springboot`** 模块（`vendor.springboot.jblade` 包）；`BladeDirectiveRegistrar` 与开箱即用模板函数注册（`csrf_token()/route()/url()`）位于 `springboot` 根包的 `BladeIntegrationConfiguration`（`@ConditionalOnClass(BladeFunctions)`，无 jblade 时不加载任何 Blade 类）。
+> **零 Spring 依赖**：模板引擎内核不依赖 Spring。`ViewAutoConfiguration` / `JbladeArtisanAutoConfiguration` / `@RegisterView` / `ViewRegistrar` 等装配类位于 **`springboot`** 模块（`vendor.springboot.jblade` 包）；`BladeDirectiveRegistrar` 与内置模板函数注册（`csrf_token()/route()/url()`）位于 `springboot` 根包的 `BladeIntegrationConfiguration`（`@ConditionalOnClass(BladeFunctions)`，无 jblade 时不加载任何 Blade 类）。
 
 ---
 
@@ -33,7 +33,7 @@
 - [14. 内置辅助函数与中间件联动（CSRF / route）](#14-内置辅助函数与中间件联动csrf--route)
   - [14.1 CSRF 防护：csrf_field() / csrf_token() / @csrf](#141-csrf-防护csrf_field--csrf_token--csrf)
   - [14.2 route() 与 url()：按路由名 / 按路径生成 URL](#142-route-与-url按路由名-按路径生成-url)
-  - [14.3 开箱即用与“零注册”保证](#143-开箱即用与零注册保证)
+  - [14.3 内置与“零注册”保证](#143-内置与零注册保证)
 - [15. 自定义扩展：注册 Blade 函数与指令](#15-自定义扩展注册-blade-函数与指令)
   - [15.1 注册自定义 Blade 函数（BladeFunctions）](#151-注册自定义-blade-函数bladefunctions)
   - [15.2 注册自定义指令（BladeDirectives）](#152-注册自定义指令bladedirectives)
@@ -68,7 +68,7 @@
 jblade 支持两种运行模式：
 
 - **运行时编译模式（默认）**：在运行时通过 `javax.tools.JavaCompiler` 将 `.blade.java` 模板编译为字节码并加载，需要完整的 JDK 环境。
-- **预编译模式**：在开发阶段（有 JDK）使用 `BladePrecompiler` 将所有模板预编译为字节码，输出为打包文件（`.jblade.zip`）或散乱 `.class` 文件。生产环境（仅 JRE）通过 `BladeEngine.fromPrecompiledPackage()` 或 `BladeEngine.fromPrecompiledClasses()` 加载预编译产物，无需 JDK，无需运行时编译。详见 [第 13 节：预编译功能](#13-预编译功能)。
+- **预编译模式**：在开发阶段（有 JDK）使用 `BladePrecompiler` 将所有模板预编译为字节码，输出为打包文件（`.jblade.zip`）或未打包的 `.class` 文件。生产环境（仅 JRE）通过 `BladeEngine.fromPrecompiledPackage()` 或 `BladeEngine.fromPrecompiledClasses()` 加载预编译产物，无需 JDK，无需运行时编译。详见 [第 13 节：预编译功能](#13-预编译功能)。
 
 
 ---
@@ -148,7 +148,7 @@ com.weacsoft.jaravel.vendor
 - `core.pagination.Paginator`：Laravel 风格分页器（标准层，不依赖 `jblade`）。
 
 `jblade` 启动时通过 `ViewFacade.bind(manager)` 把默认 `View` 注入 `Paginator` 的 `ViewProvider`，
-使 `database` 返回的 `core.pagination.Paginator` 能渲染分页模板；未引入 `jblade` 时 `links()` 降级为空串。
+使 `database` 返回的 `core.pagination.Paginator` 能渲染分页模板；未引入 `jblade` 时 `links()` 降级为空字符串。
 
 ### 构造器
 
@@ -533,7 +533,7 @@ jblade 的 `BladeCompiler` 原生支持 Blade 模板表达式语法，将其编�
 5. 恢复上下文状态
 
 > **插槽转义语义（对齐 PHP Blade）**：
-> - 插槽内容是「已经渲染好的 HTML 片段」，jblade 会将其包装为 `HtmlString`（`Htmlable`）注入组件。组件内用 `{{ $slot }}` 输出时，`e()` 命中 `Htmlable` 分支**原样输出，不会二次 HTML 转义**（避免你之前遇到的双重编码问题）。
+> - 插槽内容是「已经渲染好的 HTML 片段」，jblade 会将其包装为 `HtmlString`（`Htmlable`）注入组件。组件内用 `{{ $slot }}` 输出时，`e()` 命中 `Htmlable` 分支**原样输出，不会二次 HTML 转义**。
 > - 用户通过 `@component('x', ['foo' => $bar])` 显式传入的**数据**（如 `$foo`）仍然是普通值，组件内 `{{ $foo }}` 会**正常 HTML 转义**（防 XSS），不受插槽语义影响。
 > - 若需主动输出已渲染 HTML 且不受转义约束，也可用 `{!! $html !!}` 原样输出（见下方输出指令表）。
 
@@ -552,7 +552,7 @@ jblade 的 `BladeCompiler` 原生支持 Blade 模板表达式语法，将其编�
 | `session(key)` | `session('key')` | 获取 session 值 |
 | `old(key)` | `old('key')` | 获取旧输入值 |
 | `csrf_field()` | `csrf_field()` / `@csrf` | CSRF 隐藏表单字段。**仅当 `VerifyCsrfToken` 中间件已应用于当前路由时**才输出 `<input type="hidden" name="_token" value="...">`；若未启用该中间件，`csrf_field()` 返回空字符串（等同指令不存在，不输出任何隐藏域）。`{{ csrf_field() }}` 原样输出（不转义） |
-| `csrf_token()` | `csrf_token()` | CSRF token 字符串。**由框架开箱即用内置注册**（SpringBoot 自动配置）：仅当 `VerifyCsrfToken` 中间件已应用于当前路由时返回非空令牌（读取 `VerifyCsrfToken` 存入 `HttpSession` 的 token，无则生成并写回，且与校验同源）；未启用中间件时为空串 |
+| `csrf_token()` | `csrf_token()` | CSRF token 字符串。**由框架内置注册**（SpringBoot 自动配置）：仅当 `VerifyCsrfToken` 中间件已应用于当前路由时返回非空令牌（读取 `VerifyCsrfToken` 存入 `HttpSession` 的 token，无则生成并写回，且与校验同源）；未启用中间件时为空字符串 |
 
 #### 对象与数组操作
 
@@ -672,7 +672,7 @@ jblade 的 `BladeCompiler` 原生支持 Blade 模板表达式语法，将其编�
 | 输出拼接 | `{{ 'Hello, ' . $name }}` | 字符串拼接，编译为 Java `+` |
 | 输出空合并 | `{{ $title ?? 'Default' }}` | 空合并运算符，编译为 `nullCoalescing(...)` |
 | 输出辅助函数 | `{{ asset('css/app.css') }}` | 调用 PHP 辅助函数 |
-| 路由辅助函数 | `{{ route('user.profile') }}` / `{{ route('user.profile', ['id' => 1]) }}` | 调用框架开箱即用内置的 `route()` 生成路由 URL |
+| 路由辅助函数 | `{{ route('user.profile') }}` / `{{ route('user.profile', ['id' => 1]) }}` | 调用框架内置的 `route()` 生成路由 URL |
 | 注释 | `{{-- 注释内容 --}}` | 注释，编译时移除 |
 
 ### 路由指令
@@ -958,7 +958,7 @@ jblade 提供预编译能力，允许在开发阶段（有 JDK）将所有 Blade
 
 传统运行时编译模式依赖 `javax.tools.JavaCompiler`（仅 JDK 包含），生产环境必须安装完整 JDK。预编译模式将编译阶段前置到开发/构建阶段：
 
-- **开发阶段**：使用 `BladePrecompiler` 或命令行工具 `BladePrecompilerMain` 将所有 `.blade.java` 模板编译为字节码，输出为打包文件或散乱 class 文件
+- **开发阶段**：使用 `BladePrecompiler` 或命令行工具 `BladePrecompilerMain` 将所有 `.blade.java` 模板编译为字节码，输出为打包文件或未打包的 class 文件
 - **生产环境**：通过 `BladeEngine.fromPrecompiledPackage()` 或 `BladeEngine.fromPrecompiledClasses()` 加载预编译产物，仅依赖 JRE
 
 这样生产环境无需 JDK，减小部署体积，同时避免运行时编译开销。
@@ -980,7 +980,7 @@ jblade 提供预编译能力，允许在开发阶段（有 JDK）将所有 Blade
 ```java
 public enum CompileMode {
     PACKAGED,  // 打包为单个文件（.jblade.zip 或自定义后缀）
-    CLASSES    // 散乱 class 文件到目录
+    CLASSES    // 未打包的 class 文件到目录
 }
 ```
 
@@ -993,7 +993,7 @@ public enum CompileMode {
 
 `com.weacsoft.jaravel.vendor.jblade.BladePrecompiler`
 
-Blade 模板预编译工具。在开发阶段（有 JDK）将所有 Blade 模板预编译为字节码，支持打包模式（`PACKAGED`）和散乱 class 模式（`CLASSES`）两种输出。内部使用 `BladeCompiler.compileSource()` 编译模板内容，通过 `PrecompiledTemplateLoader` 保存产物。
+Blade 模板预编译工具。在开发阶段（有 JDK）将所有 Blade 模板预编译为字节码，支持打包模式（`PACKAGED`）和未打包的 class 模式（`CLASSES`）两种输出。内部使用 `BladeCompiler.compileSource()` 编译模板内容，通过 `PrecompiledTemplateLoader` 保存产物。
 
 #### 构造器
 
@@ -1007,7 +1007,7 @@ Blade 模板预编译工具。在开发阶段（有 JDK）将所有 Blade 模板
 | --- | --- |
 | `int compileAll(String outputDir, CompileMode mode, String packageName, String fileSuffix)` | 预编译所有模板，返回编译的模板数量。`mode` 指定输出模式，`packageName` 仅 packaged 模式使用，`fileSuffix` 默认 `.jblade.zip` |
 | `int compileAllToZip(String outputDir, String fileName)` | 便利方法：打包模式预编译，输出为指定文件名的 zip 包 |
-| `int compileAllToClasses(String outputDir)` | 便利方法：散乱 class 模式预编译，输出到指定目录 |
+| `int compileAllToClasses(String outputDir)` | 便利方法：未打包的 class 模式预编译，输出到指定目录 |
 
 #### 使用示例
 
@@ -1017,7 +1017,7 @@ BladePrecompiler precompiler = new BladePrecompiler("templates", ".blade.java");
 int count = precompiler.compileAllToZip("precompiled", "templates.jblade.zip");
 System.out.println("预编译了 " + count + " 个模板");
 
-// 散乱 class 模式：预编译所有模板为独立 .class 文件
+// 未打包的 class 模式：预编译所有模板为独立 .class 文件
 int count2 = precompiler.compileAllToClasses("precompiled/classes");
 
 // 完整参数调用
@@ -1035,9 +1035,9 @@ int count3 = precompiler.compileAll("precompiled", CompileMode.PACKAGED, "myapp"
 | 方法签名 | 说明 |
 | --- | --- |
 | `PrecompiledBundle loadFromPackage(String packagePath)` | 从打包文件（`.jblade.zip`）加载预编译模板，返回包含字节码与映射的 bundle |
-| `PrecompiledBundle loadFromDirectory(String dirPath)` | 从目录加载预编译的散乱 `.class` 文件，返回 bundle |
+| `PrecompiledBundle loadFromDirectory(String dirPath)` | 从目录加载预编译的未打包的 `.class` 文件，返回 bundle |
 | `void saveToPackage(String packagePath, Map<String,byte[]> bytecodes, Map<String,String> mapping)` | 将字节码与映射保存到打包文件 |
-| `void saveToDirectory(String dirPath, Map<String,byte[]> bytecodes, Map<String,String> mapping)` | 将字节码与映射保存到目录（散乱 class 文件） |
+| `void saveToDirectory(String dirPath, Map<String,byte[]> bytecodes, Map<String,String> mapping)` | 将字节码与映射保存到目录（未打包的 class 文件） |
 
 #### PrecompiledBundle
 
@@ -1070,7 +1070,7 @@ loader.saveToDirectory("output/classes", bytecodes, mapping);
 
 `com.weacsoft.jaravel.vendor.jblade.BladePrecompilerMain`
 
-预编译命令行工具入口。在开发阶段通过命令行将所有 Blade 模板预编译为字节码，支持打包模式与散乱 class 模式。
+预编译命令行工具入口。在开发阶段通过命令行将所有 Blade 模板预编译为字节码，支持打包模式与未打包的 class 模式。
 
 #### CLI 参数
 
@@ -1095,7 +1095,7 @@ java -cp jblade.jar com.weacsoft.jaravel.vendor.jblade.BladePrecompilerMain \
   --package-name=myapp \
   --file-suffix=.jblade.zip
 
-# 散乱 class 模式：预编译所有模板为独立 .class 文件
+# 未打包的 class 模式：预编译所有模板为独立 .class 文件
 java -cp jblade.jar com.weacsoft.jaravel.vendor.jblade.BladePrecompilerMain \
   --template-dir=templates \
   --suffix=.blade.java \
@@ -1123,7 +1123,7 @@ String html = engine.render("welcome", Map.of("name", "Alice"));
 
 ## 14. 内置辅助函数与中间件联动（CSRF / route）
 
-`jblade` 提供两组与后端运行时强相关、但**由框架自动注册、开发者零配置即可使用**的辅助函数：`csrf_field()/csrf_token()/@csrf`（依赖 `jaravel-http` 的 `VerifyCsrfToken` 中间件）与 `route()` / `url()`（依赖 `jaravel-http` 的 `Router`）。本节讲清它们的使用逻辑与联动关系。
+`jblade` 提供两组与后端运行时强相关、但**由框架自动注册、开发者零配置即可使用**的辅助函数：`csrf_field()/csrf_token()/@csrf`（依赖 `jaravel-http` 的 `VerifyCsrfToken` 中间件）与 `route()` / `url()`（依赖 `jaravel-http` 的 `Router`）。本节说明它们的使用逻辑与联动关系。
 
 ### 14.1 CSRF 防护：csrf_field() / csrf_token() / @csrf
 
@@ -1136,7 +1136,7 @@ CSRF 防护由「**中间件校验**」与「**模板输出令牌**」两部分�
 | `{{ csrf_field() }}` 或 `@csrf` | 输出完整隐藏域 | `csrf_field()` / `csrf()` | `<input type="hidden" name="_token" value="令牌">`（原样输出，不被 HTML 转义） |
 | `{{ csrf_token() }}` | 仅输出令牌字符串 | `csrf_token()` | 令牌字符串（如 `a1b2c3...`） |
 
-#### 启动链路（开箱即用，无需任何注册）
+#### 启动链路（内置，无需任何注册）
 
 1. `jaravel-springboot` 的自动配置在启动时完成两件内置注册：
    - 向 `MiddlewareAliasRegistry` 注册别名 `"VerifyCsrfToken"`（指向 `VerifyCsrfToken.instance()`）。
@@ -1156,7 +1156,7 @@ CSRF 防护由「**中间件校验**」与「**模板输出令牌**」两部分�
   
   之后模板渲染时，`csrf_token()` 依据该标记返回非空令牌，`csrf_field()` 正常输出隐藏域。表单提交时，中间件对 POST/PUT/PATCH/DELETE 校验请求中的 `_token` 与 session 令牌是否一致。
 
-- **未注册（未启用）**：`handle` 不会被调用，请求上**没有**「已启用」标记，`csrf_token()` 返回空串，此时 `csrf_field()` / `@csrf` **返回空字符串、不输出任何 `<input>`**——等同该指令不存在。
+- **未注册（未启用）**：`handle` 不会被调用，请求上**没有**「已启用」标记，`csrf_token()` 返回空字符串，此时 `csrf_field()` / `@csrf` **不输出任何 `<input>`**——等同该指令不存在。
 
   > 设计意图：若开发者没有在某组路由上启用 CSRF 中间件，却仍让模板输出隐藏域，既无用又易误导；因此框架选择「未启用即不输出」。
 
@@ -1274,14 +1274,14 @@ String url5 = RouteHelper.url("/admin/login");
 
 **实现说明**：Java 不允许同一类中静态方法与实例方法签名相同，因此 `RouteHelper` 的方法为静态；`AppConfig.app().route()` 返回 `RouteHelper` 单例，`.route(...)` / `.url(...)` 通过「实例引用调用静态方法」（Java 合法）落到同一实现。启动时 `RouteServiceProvider` 会调用 `RouteHelper.setRouter(rootRouter)` 注入根路由器，故按名解析随时可用。
 
-#### 别名注册（开箱即用）
+#### 别名注册（内置）
 
 `route()` 与 `url()` 均由 `jaravel-springboot` 自动配置注册到 `BladeFunctions`（名为 `"route"` 与 `"url"`），开发者无需任何注册即可在模板中使用；二者同样纳入「注册即自检」保证。
 
-### 14.3 开箱即用与“零注册”保证
+### 14.3 内置与“零注册”保证
 
 - `csrf_token`、`csrf_field`、`@csrf`、`route`、`url` 均由框架在启动时**自动注册并自检**：若任一注册未落地，自动配置会抛出 `IllegalStateException` 使应用启动失败（而不是留下“空 value / 空路由”的不可用状态）。
-- 在请求上下文之外调用 `csrf_token()`（如离线渲染），框架记录 WARN 日志并返回空串。
+- 在请求上下文之外调用 `csrf_token()`（如离线渲染），框架记录 WARN 日志并返回空字符串。
 - **开发者侧**：不需要、也不应该在应用层 `BladeEngineProvider` 或任何 Provider 中重新注册这些内置函数——它们已由框架托管。若你需要自定义函数，见第 16 节。
 
 ---
@@ -1323,7 +1323,7 @@ BladeFunctions.register("gravatar", args -> {
 <img src="{{ gravatar($user.email) }}" alt="avatar">
 ```
 
-> 参数通过 `args[0]`、`args[1]`… 按位置取；`args.length` 可判断可选参。返回值会被模板引擎 `echo` 输出；返回 `null` 会被当作空串。
+> 参数通过 `args[0]`、`args[1]`… 按位置取；`args.length` 可判断可选参。返回值会被模板引擎 `echo` 输出；返回 `null` 会被当作空字符串。
 
 ### 15.2 注册自定义指令（BladeDirectives）
 
@@ -1397,8 +1397,8 @@ public class BladeExtrasProvider extends ServiceProvider {
 
 | 函数名 | 来源模块 | 说明 | 是否依赖中间件/路由启用 |
 | --- | --- | --- | --- |
-| `csrf_field()` / `@csrf` | jblade（运行时 `csrf_field()`） | 输出 `<input type="hidden" name="_token" value="...">` | 是（`VerifyCsrfToken` 未启用时输出空串） |
-| `csrf_token()` | jblade + springboot 注册源 | 返回令牌字符串 | 是（未启用时为空串） |
+| `csrf_field()` / `@csrf` | jblade（运行时 `csrf_field()`） | 输出 `<input type="hidden" name="_token" value="...">` | 是（`VerifyCsrfToken` 未启用时不输出） |
+| `csrf_token()` | jblade + springboot 注册源 | 返回令牌字符串 | 是（未启用时为空字符串） |
 | `route(name[, params])` | jblade + springboot 注册源 | 按路由名解析 URL | 否（始终可用，未匹配回退为 `/` + 名称） |
 | `asset(path)` / `@asset(path)` | jblade | 静态资源 URL（等价于 `url()`） | 否 |
 | `url(path)` | jblade | URL 生成 | 否 |
@@ -1407,4 +1407,4 @@ public class BladeExtrasProvider extends ServiceProvider {
 
 只有**框架未提供、你自行扩展**的函数（如 `gravatar`、`shout` 等）才需要按 15.1 / 15.2 / 15.3 注册。
 
-> 简言之：**内置的用就行，别再注册一遍；自己的自定义函数，用 `BladeFunctions.register` / `BladeDirectives.register` 在 `ServiceProvider.boot()` 里注册一次。**
+> 简言之：**内置函数无需重复注册；自定义函数用 `BladeFunctions.register` / `BladeDirectives.register` 在 `ServiceProvider.boot()` 里注册一次即可。**

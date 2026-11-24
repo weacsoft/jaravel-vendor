@@ -96,7 +96,7 @@ jaravel:
 
 `disk` 未配置（默认）时，完成的文件直接写本地 `save-dir`，不依赖 storage 模块。
 
-配置 `disk` 后，写入文件统一走 [storage](../storage/README.md) 模块的 `Filesystem` 抽象，
+配置 `disk` 后，写入文件统一经 [storage](../storage/README.md) 模块的 `Filesystem` 抽象，
 `save-dir` 变为磁盘内的相对子目录，从而可落到任意驱动：
 
 ```yaml

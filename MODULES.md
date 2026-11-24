@@ -3,7 +3,7 @@
 本文档说明 jaravel-vendor 各模块的**注解式注册机制**、**模块间依赖与回退策略**、
 **artisan / migration 使用要求**以及**数据库表要求**。
 
-> 本文档内容全部依据**实际代码**核对，与代码不一致处以代码为准。
+> 与代码不一致处，以代码为准。
 
 ---
 
@@ -36,7 +36,7 @@
 一个应用可注册任意多个不同名字的实例，通过名称选用，同名后注册者覆盖先注册者。
 
 **全局唯一**（SessionStore / QueueDriver）：这类组件语义上只能有一个
-（"登录态存哪里"、"任务推到哪个队列"）。框架**强制唯一性**，
+（如：会话存储于何处、任务投递到哪个队列）。框架**强制唯一性**，
 扫描到多个时**启动直接报错**，避免隐式歧义。
 
 需要覆盖框架默认时，使用 `override = true`：
@@ -186,16 +186,12 @@ artisan 在各模块的 pom 中均为 `optional`。模块注册命令的方式�
 
 **依赖方向（不可倒置）**：
 - `auth-session → auth + session`（实现依赖两侧契约）
-- `session → core + http`（**`auth` 不依赖 `session`**：只引 `auth` 的应用不会被拖入 Session 装配）
+- `session → core + http`（**`auth` 不依赖 `session`**：仅引入 `auth` 的应用不会连带装配 Session 组件）
 - `session-redis → session`（存储实现，**不在 starter 内**，按需引入）
 
 > `auth` 默认守卫驱动为 `session`：若 `starter` 中排除了 `auth-session`，`AuthManager` 会回退到内置
 > 空守卫（`check()` 始终 false）并打印一次性 WARN；**显式声明了其它无人支持的 driver 则直接抛错**
 > （避免把配置错误静默变成「始终未登录」）。
-
-> **关于未跟踪文档 `Spring优化方案.md`**：其基线为 `master @ 1d5604d`（版本 0.1.3、starter 10 个模块、
-> 「不得增模块」），**已被后续架构演进取代，不构成约束**；模块与版本事实以本文件、`CHANGELOG.md`、
-> `pom.xml` 为准（该文件顶部已加失效横幅）。
 
 ---
 
@@ -209,7 +205,7 @@ artisan 在各模块的 pom 中均为 `optional`。模块注册命令的方式�
 > `artisan vendor:publish --tag=migrations` → `artisan migrate`
 >
 > 三个数据库驱动模块（storage-database / cache-database / queue-database）把各自需要的表结构
-> **打包为内置迁移 Java 源文件**，`vendor:publish --tag=migrations` 一键发布到业务工程迁移目录
+> **打包为内置迁移 Java 源文件**，`vendor:publish --tag=migrations` 一条命令发布到业务工程迁移目录
 > （落点与包名由 `jaravel.artisan.make.*` 决定，包名自动重写为工程迁移包，发布后直接可编译，
 > 已存在的文件默认跳过、`--force` 覆盖），然后 `artisan migrate` 完成建表。
 > 单模块发布用 `--tag=storage-database` / `--tag=cache-database` / `--tag=queue-database`。

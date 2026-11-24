@@ -37,7 +37,7 @@
 - **双注册模式**：支持自动注册（`@PluginMapping`）与手动注册（`@PluginRoute`）两种路由注册模式，通过 `auto-register` 配置项切换。
 - **共享注解**：复用 `plugin-jar-core` 的 `@PluginComponent` / `@PluginMapping` 注解，与 JAR 插件体系保持一致。
 - **线程安全**：使用 `ReadWriteLock` 保护所有状态变更操作（注册、启用、禁用、重载），支持并发读。
-- **Spring Boot AutoConfiguration**：通过 `PluginJavaAutoConfiguration` 开箱即用，引入依赖并配置即可启用。
+- **Spring Boot AutoConfiguration**：通过 `PluginJavaAutoConfiguration` 内置装配，引入依赖并配置即可启用。
 
 ---
 

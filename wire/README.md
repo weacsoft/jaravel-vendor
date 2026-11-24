@@ -421,7 +421,7 @@ public class AdminController extends WireController {
 
 ### 数据量注意
 
-分页模板用 `hasPages()` 决定是否渲染分页控件。若活跃记录数 ≤ 每页大小（如 10 条），`hasPages()` 为 false，`links()` 返回空串、分页器「消失」——这是数据量问题，不是 bug。
+分页模板用 `hasPages()` 决定是否渲染分页控件。若活跃记录数 ≤ 每页大小（如 10 条），`hasPages()` 为 false，`links()` 返回空字符串、分页器「消失」——这是数据量问题，不是 bug。
 
 ---
 
@@ -435,7 +435,7 @@ public class AdminController extends WireController {
 |------|------|------|------|
 | `name()` | `String` | 字段名 | 该参数在 URL 中使用的名字;字段名与 URL 参数名不一致时使用(如字段 `searchKey` → URL 参数 `key`)。**双向生效**：URL 生成时按此名拼接;请求自动绑定时也按此名把 URL 参数赋到字段 |
 | `templates()` | `String[]` | `{}`(所有模板) | 该参数生效的模板名列表;生成 URL 时以 `getTemplateName()` 为上下文匹配,列表非空且当前模板不在列表内 → 不加入。可通过 `wireQueryTemplates()` 集中覆盖(见下) |
-| `defaultValue()` | `String` | `""`(未设置) | 默认值;当前值等于该值或为 `null` 时不加入 URL。默认空串表示「未设置默认值」→ 仅 null(及空串)时不加入 |
+| `defaultValue()` | `String` | `""`(未设置) | 默认值;当前值等于该值或为 `null` 时不加入 URL。默认空字符串表示「未设置默认值」→ 仅 null(及空字符串)时不加入 |
 
 ### 覆盖生效模板（wireQueryTemplates）
 
@@ -488,7 +488,7 @@ protected Map<String, String[]> wireQueryTemplates() {
 1. 有效模板列表非空(优先取 `wireQueryTemplates()` 按**字段名**覆盖值,未覆盖时用注解 `templates()`)且 `getTemplateName()` 不在列表内 → 跳过;
 2. 当前值为 `null` → 跳过;
 3. 当前值等于 `defaultValue()`(defaultValue 非空) → 跳过;
-4. 当前值为空串 → 跳过(与 null 等价处理);
+4. 当前值为空字符串 → 跳过(与 null 等价处理);
 5. 其余按 `name()`(缺省用字段名)加入: `?name=value&...`。
 
 ### 生成时机
@@ -753,7 +753,7 @@ redirectToLogin(loginUrl)
 
 关键设计点：
 
-1. **`fetch` 使用 `redirect: 'manual'`**：不自动跟随重定向，由 wire.js 手动处理，避免 302 被浏览器吞掉。
+1. **`fetch` 使用 `redirect: 'manual'`**：不自动跟随重定向，302 响应交由 wire.js 处理。
 2. **401 优先读 `redirect` 字段**：中间件返回的 401 JSON 中可携带 `redirect` 字段指定登录页 URL。
 3. **携带回跳地址**：`redirectToLogin` 会将当前页面 URL 编码后作为 `redirect` 参数附加到登录页 URL，登录成功后可回跳。
 4. **防重复**：若当前已在登录页则不再跳转，避免死循环。

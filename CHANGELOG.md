@@ -16,7 +16,7 @@
   - **已知限制**：`fail-fast-on-invalid-key` **默认 false**，因此 RSA 误配（只给公钥/只给私钥）**仍表现为每请求 500**，只是启动多一条 ERROR；生产环境请显式置 `true` 以在启动期中止。
   - 核心 `CaptchaCrypto.create` 对「出厂默认 AES 密钥/空密钥」加一次性 WARN，覆盖非 Spring 直连路径。
 - **凭证响应禁止缓存（安全）**：`JwtTokenResponseFilter` 写 `X-New-Token` 时同时下发 `Cache-Control: no-store` 与 `Pragma: no-cache` —— RFC 6749 §5.1 要求令牌响应不可缓存，否则浏览器私有缓存/配置不当的共享缓存会留存凭证。
-- **删除绕过签名的公开入口**：`WireRequest.getData()` / `getMergedData()` 直接调用不验签的 `WireManager.decodeSnapshot`；仓库内**无任何调用方**（主流程走 `WireController` 的「先验签、后解析」），因此直接删除，不保留 `@Deprecated` 警告。
+- **删除绕过签名的公开入口**：`WireRequest.getData()` / `getMergedData()` 直接调用不验签的 `WireManager.decodeSnapshot`；仓库内**无任何调用方**（主流程经 `WireController` 的「先验签、后解析」），因此直接删除，不保留 `@Deprecated` 警告。
 - **共享元数据登记的并发修正**：`BaseModel.PATCHED_ENTITY_MEMBERS` 换成 `WeakHashMap` 后**必须包 `synchronizedMap`** —— `WeakHashMap` 非线程安全，且 `contains` 内部会 `expungeStaleEntries()` 做结构性修改，锁外快路径与锁内 `add` 并发会丢条目/抛异常（同一类并发故障会出现在登记表上）。同时把「登记」移到「变更完成之后」（不变式：在集合中 ⇒ 已修补完成）。
 - **类型还原失败的可观测性**：类型还原失败的告警由「进程级一次」改为**按模型类各一次**（第二个坏模型不再永久静默）；非内存 store 的告警文案改写为「还原可能**有损**（丢懒加载/派生字段）+ 缓存键不含租户维度 + `query` 不做还原」。
 
@@ -57,7 +57,7 @@
 - **OAuth 回调强制校验 state**：`WeChatOAuthMiddleware` 在预期 state 缺失或不匹配时拒绝回调。
 - **回复额度记账改为原子操作**：`AsyncReplyDispatcher` 的额度扣减加锁，避免并发下超发；异步执行器不可用时由独立线程补发，不再占用请求线程。
 - **其它**：`Application.singleton()` 原子化；`ConfigRepository` 使用并发容器；`Str.snake` 的正则元字符转义；`Request` 的类型化访问器统一转换；`Content-Type` 匹配忽略大小写；`EncryptCookies` 加密失败时下发失效 Cookie；分页渲染不再空转；`ConvertEmptyStringsToNull` 与 `TrimStrings` 不再重复拷贝参数表；`ResponseBuilder` 缓存响应头。
-- **WebFlux 的 multipart 解析失败不再被吞掉**：`RequestFactory` 在 WebFlux 分支解析 multipart 失败时记录错误日志并抛出异常，与 MVC 分支的行为一致 —— 原先只打印堆栈，调用方收到的是空文件而非失败原因。
+- **WebFlux 的 multipart 解析失败不再被静默忽略**：`RequestFactory` 在 WebFlux 分支解析 multipart 失败时记录错误日志并抛出异常，与 MVC 分支的行为一致 —— 原先只打印堆栈，调用方收到的是空文件而非失败原因。
 - **上传文件的写入结果不再静默丢失**：`FluxMultipartFile.transferTo` 原为空方法体，调用方以为写入成功，实际没有产生任何文件；现按传入路径写文件，未提供目标路径或写入失败时抛出异常。
 - **静态资源的目录基准不再依赖进程工作目录**：`StaticResourceHandler` 在构造时解析出绝对基准目录并做二次越界检查；路径清洗改为按路径段判定 `..`（原先按子串判定，会误拒 `a..b` 这类合法名称）。
 - **控制器重名注册给出提示**：`ControllerRegistry` 在同名控制器被覆盖时记录告警并指出先后两个类，避免引用方按简单类名取到非预期的实现。
@@ -84,7 +84,7 @@
 - **静态资源路径匹配的验证补齐**：新增 `StaticRoutePathPatternTest`（springboot 测试域补 `spring-webflux` 测试依赖）：`{*path}` 匹配多段与 `/static` 前缀、**`/static/{*path}/` 确实解析失败**（证明「跳过尾斜杠变体」守卫的必要性）、旧 `{path}` 确实漏多段路径。
 - **`MODULES.md` 新增 §2.8**：starter 聚合清单（**13 个**模块）+ 依赖方向（`auth-session → auth + session`、`session → core + http`、`auth` 不依赖 `session`）+ 对未跟踪文档 `Spring优化方案.md` 的「已失效、以本文件为准」声明（该文件顶部亦已加失效横幅）。
 - **`wechat-sdk-demo`**：依赖保持 0.1.3（重新 install 后即为新代码）；`plainConfig()` 显式开启 `verifyPostSignature`（SDK 默认已改为 `false`，严格用例必须自行开启，否则测的是另一条语义）。
-- **已验证用例**：`StorageResponseVisibilityTest`（4 例：private→`no-store`、public→`max-age`、可见性异常→仍 `no-store`、缺失→404）、`LocalFilesystemRootGuardTest`（7 例：根别名拒绝（`""`/`"/"`/`"."`/`"a/.."`）× delete/copy/move/deleteDirectory、父目录穿越、正常操作不受影响、**root 自身为 junction 时正常读写**、**根内 junction 指向外部被拒** —— junction 用例本机实跑通过）、`ModelCacheTypeCoercionTest`（6 例）、`CaptchaVerifyMisuseGuardTest`（4 例：**2 参裸类型名不抛异常**、3/4 参写反抛可操作异常、畸形 key 只失败不抛、正常两参可用）、`MigrationParserFailureTest`（4 例：目录缺失/无 `.java` 为合法回退不误报、`up()` 抛异常被记录且含类名、失败清单每次重置）。
+- **已验证用例**：`StorageResponseVisibilityTest`（4 例：private→`no-store`、public→`max-age`、可见性异常→仍 `no-store`、缺失→404）、`LocalFilesystemRootGuardTest`（7 例：根别名拒绝（`""`/`"/"`/`"."`/`"a/.."`）× delete/copy/move/deleteDirectory、父目录穿越、正常操作不受影响、**root 自身为 junction 时正常读写**、**根内 junction 指向外部被拒** —— junction 用例本机实跑通过）、`ModelCacheTypeCoercionTest`（6 例）、`CaptchaVerifyMisuseGuardTest`（4 例：**2 参调用（裸类型名）不抛异常**、3/4 参写反抛可操作异常、畸形 key 只失败不抛、正常两参可用）、`MigrationParserFailureTest`（4 例：目录缺失/无 `.java` 为合法回退不误报、`up()` 抛异常被记录且含类名、失败清单每次重置）。
 - **aether 末片重放防护**：新增 `AetherUploadReplayGuardTest`（2 例，**0 跳过**）—— 用「`put` 抛异常」的 `CacheStore` 替身在**末片写入前**武装，精确重现「成品已 move、`saveHeader` 失败」；断言重试末片被 `UploadException` 拒绝、且**成品 SHA-256 不变**（零填充覆盖路径已被真实拦住）；另断言随机 resourceId 循环只抛「header 不存在」（定长分段锁不无界增长）。
 
 ### Fixed（修复：安全与正确性）
@@ -107,7 +107,7 @@
 
 - **`json`：`Jackson2JsonCodec(ObjectMapper)` 不再修改调用方的 mapper**：原构造器直接 `configure(FAIL_ON_EMPTY_BEANS,false)`，而传入的通常是 Spring 容器里的<b>共享 Bean</b>，会静默改变整个应用的序列化行为；现改为 `mapper.copy()` 后配置。
 - **`database`：`ConnectionManager` 默认连接选举移入锁内**：原选举赋值在 `synchronized (CONNECTIONS)` 之外，并发注册时两个线程可能都读到 `first=true`（或都读 false）而选错默认连接；同时把 `RAW_DATA_SOURCES` 的写入一并纳入同一临界区（`defaultConnection` / `defaultExplicitlySet` 已是 volatile）。
-- **`migration`：`MigrationRepository.getLastBatchNumber()` 不再吞掉所有异常**：原先 `catch (Exception) { return null; }` 会把权限/连接/语法等真实故障当成「首次运行、批次号 0」继续跑迁移并静默产出错误结果；现只对「表不存在」（按各库措辞识别，含 `no such table` / `invalid object name` / `ORA-00942` 等）返回 null，其余抛出。
+- **`migration`：`MigrationRepository.getLastBatchNumber()` 不再忽略所有异常**：原先 `catch (Exception) { return null; }` 会把权限/连接/语法等真实故障当成「首次运行、批次号 0」继续跑迁移并静默产出错误结果；现只对「表不存在」（按各库措辞识别，含 `no such table` / `invalid object name` / `ORA-00942` 等）返回 null，其余抛出。
 - **`migration`：`SqlServerDialect.upsertSql` 的 javadoc 归位**：原先该方法上方挂的是 `renameTableSql` 的说明（「生成重命名表的 SQL … sp_rename」），现已分别补上正确的 UPSERT 与 RENAME 文档。
 - **`wire`：`getWireJsContent()` 改用 `readAllBytes()`**：原先用 `new byte[is.available()]` 定长读取，而 `available()` 只是估计值（jar/压缩流下可能远小于实际长度），会把 `wire.js` 截断成语法错误的前端脚本且极难定位。
 
@@ -133,7 +133,7 @@
   - `incrementAndGet`：**乐观 CAS + 时间预算**（读值→计算→`WHERE value = 读到的原值` 条件更新，失败重读重算），**保留原 `expires_at`**；预算内始终失败时**抛错而不是静默返回 0**（不静默丢失一次自增）。H2 MVStore 下 `FOR UPDATE` 不足以防丢更新，故改用与方言无关的 CAS；
   - 新增 `DatabaseCacheAtomicityTest`（7 例：并发 add 唯一胜出、并发 pull 唯一取到、并发自增不丢更新、过期为不存在、不覆盖已有值、自增保留 TTL、新键带 TTL）。
 - **`storage-database`：`put` 事务化**：「清旧分片 + 清旧元信息 + 写全部分片 + 写元信息」收进同一事务，原实现中途失败会留下「元信息已删、分片只写一半」的半截文件。
-- **`queue-database`：抢占切换为方言感知的 `SKIP LOCKED`**：`pop` 优先走「`SELECT … FOR UPDATE SKIP LOCKED` + 同一事务内 UPDATE」的无竞争抢占（依赖上一项的 `JdbcExecutor.inTransaction`），候选行被锁住时其他实例直接跳过，不再有竞争重试与空转；按数据库产品名生成方言语句：MySQL/MariaDB/PostgreSQL/H2 用 `LIMIT 1 FOR UPDATE SKIP LOCKED`、Oracle 用 `FETCH FIRST 1 ROWS ONLY FOR UPDATE SKIP LOCKED`、SQL Server 用 `TOP 1 … WITH (UPDLOCK, READPAST)`；**SQLite 与未知方言返回 null 直接走乐观锁**（该路径在任何标准 SQL 库上都正确，宁可少一层优化也不要不可预期报错），方言判断失误时运行期也会降级并告警。新增 `DatabaseQueueClaimSqlTest`（6 例方言矩阵：各方言 SQL 形状 + 未知方言降级 + 自定义表名）；H2 上 8 线程 × 40 任务并发用例走 SKIP LOCKED（日志无降级告警）且无重复预约。
+- **`queue-database`：抢占切换为方言感知的 `SKIP LOCKED`**：`pop` 优先采用「`SELECT … FOR UPDATE SKIP LOCKED` + 同一事务内 UPDATE」的无竞争抢占（依赖上一项的 `JdbcExecutor.inTransaction`），候选行被锁住时其他实例直接跳过，不再有竞争重试与空转；按数据库产品名生成方言语句：MySQL/MariaDB/PostgreSQL/H2 用 `LIMIT 1 FOR UPDATE SKIP LOCKED`、Oracle 用 `FETCH FIRST 1 ROWS ONLY FOR UPDATE SKIP LOCKED`、SQL Server 用 `TOP 1 … WITH (UPDLOCK, READPAST)`；**SQLite 与未知方言返回 null 直接回退乐观锁**（该路径在任何标准 SQL 库上都正确，宁可少一层优化也不要不可预期报错），方言判断失误时运行期也会降级并告警。新增 `DatabaseQueueClaimSqlTest`（6 例方言矩阵：各方言 SQL 形状 + 未知方言降级 + 自定义表名）；H2 上 8 线程 × 40 任务并发用例走 SKIP LOCKED（日志无降级告警）且无重复预约。
 - **`core/queue/QueueDriver` 补齐逐方法契约文档**（「接口逐方法零 javadoc」正是「javadoc 说 SKIP LOCKED 而实现没有」这类文档漂移的根因）：明确 `push`/`pop`/`delete`/`release` 的语义、**投递保证为「至少一次」且消费方必须幂等**、`pop` 返回 null 只应表示「没有可执行任务」而不得混入抢占竞争失败、以及 `size()` 的口径（只统计就绪任务，不含延迟与预约中，驱动间可能略有差异）。
 
 ### Changed（变更：auth/session 模块拆分、归属校验与 wechat 语义调整）
@@ -142,9 +142,9 @@
   - **`session`**（新）：Session 存储<b>标准</b>：`SessionStore` 契约、`CookieSessionStore`（HttpSession 默认实现）、`@RegisterSessionStore` 声明式注册与 `SessionStoreHolder`（全局持有者 + 惰性回退）；原先这些类在 `http` 模块的 `http.session` 包内。
   - **`auth-session`**（新）：把 auth 标准落到 session 存储上的<b>一种实现</b>：`SessionGuard` / `SessionGuardDriver`（原先在 `auth` 模块的 `auth.guard` 包内）。
   - **`auth`**：只保留「认证标准」——`AuthManager`、`AuthGuard`/`AuthGuardDriver`/`UserProvider` 契约、注解声明式注册、以及**自带的空守卫回退**（`NullGuard` + `NullGuardDriver`）：遍历完所有驱动都没有匹配时不再抛 `IllegalStateException`，而是回退到空守卫（`check()` 始终 false）并告警一次 —— 于是「只依赖 auth、不依赖 session」的应用也能正常装配。`NullGuardDriver.support` 刻意始终为 false，不会与 session/jwt 争抢匹配。
-  - **装配**：`springboot` 新增 `SessionGuardAutoConfiguration`（**类级** `@ConditionalOnClass` 守卫 `SessionStoreHolder`/`SessionGuardDriver`：缺这两个模块时整类不加载，auth 仍可用）；`HttpSessionAutoConfiguration` 从 `http` 迁到 `springboot.session` 并**补上注册**（此前它未被任何 imports 文件登记，等于死配置 —— 顺带修复 `@RegisterSessionStore` 扫描从未生效的问题）。
+  - **装配**：`springboot` 新增 `SessionGuardAutoConfiguration`（**类级** `@ConditionalOnClass` 守卫 `SessionStoreHolder`/`SessionGuardDriver`：缺这两个模块时整类不加载，auth 仍可用）；`HttpSessionAutoConfiguration` 从 `http` 迁到 `springboot.session` 并**补上注册**（此前它未被任何 imports 文件登记，等于死配置 —— 同时修复 `@RegisterSessionStore` 扫描从未生效的问题）。
   - **`starter`** 聚合 `auth` + `auth-session` + `session`（与拆分前行为一致）；`session-redis` 去掉 `auth` 依赖（原为零 import 的倒挂边）改为依赖 `session`；`wechat-sdk` 补 `session` 依赖（OAuth 的 session 便捷接口）。
-  - **测试去 session 化**：`AuthManagerTest` 改用自带的 `TestGuard`（不再 import SessionStore/SessionGuard），从而「auth 的测试不需要 session」；`SessionGuardTest` 迁至 `auth-session`；新增 `SessionStoreHolderTest`（**重点锁定 holder 必须转发 `rotate()`** —— 否则接口默认空实现会静默吞掉会话固定防护）。
+  - **测试去 session 化**：`AuthManagerTest` 改用自带的 `TestGuard`（不再 import SessionStore/SessionGuard），从而「auth 的测试不需要 session」；`SessionGuardTest` 迁至 `auth-session`；新增 `SessionStoreHolderTest`（**重点锁定 holder 必须转发 `rotate()`** —— 否则接口默认空实现会静默忽略会话固定防护）。
 - **`aether-upload` identifier 归属校验（越权修复；该模块尚未被业务使用，故直接改契约）**：identifier 由前端按「文件名+大小+mtime」可预测拼出，原先作为全局键使用 → 知道三要素即可读他人进度、向他人 resourceId 写分片、甚至决定受害者成品内容。现在：①identifier 键按**主体作用域**隔离（`i:<group>:<owner>:<identifier>`）；②`UploadHeader` 记录 `ownerId`，`writeChunk`/`progress`/`abort` 对**跨主体**访问一律拒绝；③**匿名默认禁用 identifier 续传**（新配置 `anonymous-resume-enabled`，默认 false），登录用户不受影响；④新增 `setOwnerResolver(...)` SPI，springboot 侧从认证上下文取用户 id（未引入 auth 时按匿名处理，用反射探测避免强依赖）。新增 `AetherUploadOwnershipTest`（5 例：跨主体不共享续传任务、跨主体写分片/读进度/中止被拒、同主体正常）。
 - **`wechat-sdk` 明文 POST 验签语义改为「开关关闭即完全不验」**：`verify-post-signature=false`（默认）时缺失或错误的 `signature`<b>都放行</b>；`true` 时缺失或不匹配都拒绝。GET 接入校验与 `safe` 模式的 `msg_signature` 仍始终校验（不受本项影响）。默认值与两种语义均有用例锁定。
 
@@ -156,8 +156,8 @@
 
 ### Fixed（修复：队列与缓存原子性）
 
-- **`RedisQueueDriver` 迁移/领取/释放原子化 + 索引 O(1)（此前零测试）**：①到期延迟任务与超时预约任务的迁移由「`ZREM` 后再 `LPUSH`」两步改为 **Lua 脚本**（每个成员的 `ZREM`+`LPUSH` 在同一脚本内原子完成）—— 原实现若进程死在两步之间，任务已从 ZSET 移除却未进就绪队列 → **永久丢失**；②领取由「`RPOP` 后再 `ZADD`」改为 **Lua 领取脚本**，避免「已取出未预约」时异常导致任务丢失，随后用第二个脚本**原子替换**预约成员（写入递增后的 attempts/reservedAt）并刷新索引 —— 异常退出时原始成员仍在预约集合，语义是「至少一次」而非丢失；③`release` 同样改为单个 Lua 脚本（`ZREM` + 入队 + 刷新索引）；④索引值由「只存队列名」改为 **`queue<US>member`**，`delete/release` 变为 O(1)（原实现每次 `ZRANGE 0 -1` 全量扫描并逐条反序列化，是热路径 O(N)），旧格式索引仍回退到扫描以兼容滚动升级；⑤`push` 改为**先写索引再入队**（后者最坏留一条无害孤儿索引，前者会导致定位不到队列）；⑥索引缺失不再静默 debug，改为告警并说明任务将由超时迁移重新投递。新增 `RedisQueueDriverTest`（8 例，Mockito mock `RedisCommands`；含「新格式不再扫描」「旧格式回退扫描」「迁移/领取走 eval 且不再用两步命令」等断言）。**Lua 的原子语义本身需真实 Redis 才能验证，已列为未验证项。**
-- **`cache` 原子原语**：新增可选能力接口 `AtomicCacheDriver`（`addIfAbsent` / `pullValue` / `incrementAndGet`），内存驱动与 Redis 驱动实现，`DefaultCacheStore` 优先走原子路径：
+- **`RedisQueueDriver` 迁移/领取/释放原子化 + 索引 O(1)（此前零测试）**：①到期延迟任务与超时预约任务的迁移由「`ZREM` 后再 `LPUSH`」两步改为 **Lua 脚本**（每个成员的 `ZREM`+`LPUSH` 在同一脚本内原子完成）—— 原实现若进程死在两步之间，任务已从 ZSET 移除却未进就绪队列 → **永久丢失**；②领取由「`RPOP` 后再 `ZADD`」改为 **Lua 领取脚本**，避免「已取出未预约」时异常导致任务丢失，随后用第二个脚本**原子替换**预约成员（写入递增后的 attempts/reservedAt）并刷新索引 —— 异常退出时原始成员仍在预约集合，语义是「至少一次」而非丢失；③`release` 同样改为单个 Lua 脚本（`ZREM` + 入队 + 刷新索引）；④索引值由「只存队列名」改为 **`queue<US>member`**，`delete/release` 变为 O(1)（原实现每次 `ZRANGE 0 -1` 全量扫描并逐条反序列化，是热路径 O(N)），旧格式索引仍回退到扫描以兼容滚动升级；⑤`push` 改为**先写索引再入队**（后者最坏留一条无害孤儿索引，前者会导致定位不到队列）；⑥索引缺失不再静默 debug，改为告警并说明任务将由超时迁移重新投递。新增 `RedisQueueDriverTest`（8 例，Mockito mock `RedisCommands`；含「新格式不再扫描」「旧格式回退扫描」「迁移/领取经 eval 且不再用两步命令」等断言）。**Lua 的原子语义本身需真实 Redis 才能验证，已列为未验证项。**
+- **`cache` 原子原语**：新增可选能力接口 `AtomicCacheDriver`（`addIfAbsent` / `pullValue` / `incrementAndGet`），内存驱动与 Redis 驱动实现，`DefaultCacheStore` 优先采用原子路径：
   - 内存侧：`SimpleMemoryCache.add` 由 `exists→put` 改为 `ConcurrentHashMap.compute`（并发 add 只有一个成功，恢复「互斥门闩」语义）；`increment` 由读改写改为 `compute`（**消除丢失更新**并保留 `expiryAt`），新增带「键不存在时 TTL」的重载；
   - Redis 侧：`addIfAbsent` 用 `SET NX [EX]`、`pullValue` 用 Lua `GET+DEL`（兼容 Redis 6.2 以下，不依赖 `GETDEL`）、`incrementAndGet` 用 `INCRBY`（原子且**原生保留 TTL**），键不存在且要求 TTL 时先 `SET NX EX` 建 0；
   - `add`/`pull` 在无能力驱动上仍是两步实现，接口契约按「尽力而为」表述，不承诺原子性；数据库驱动的原子 add/pull 依赖 `JdbcExecutor.inTransaction`（待办）。
@@ -171,7 +171,7 @@
 - **`aether-upload` 分片 DoS 与溢出**：①`UploadHeader.uploadedChunkList()` 把位图提取到循环外（原循环内每次 `new byte[(totalChunks+7)/8]`，`totalChunks=1e6` 耗时 21.4 秒、1e8 超过 120 秒不返回；空位图直接 O(位图) 返回）；②`prepare` 用 `long` 计算分片数并校验上限后再收窄（原 `(int)` 在 `size=8e9&chunkSize=1` 时得到负数 → 状态机失效、上传永不完成），且**校验全部通过后才创建临时文件**（拒绝路径不产生 `.part`）；③新增 `max-chunks`（默认 10 万，超限时**自动放大分片**而不是拒绝大文件）与 `min/max-chunk-size`（默认 1 字节 / 10MB，客户端值钳制后**回显**，对既有前端透明）；④`tempDir` 增加机会式清理（限频 10 分钟、按记录头 TTL 判定），原实现 `.part` 无任何回收；⑤新增「既未配 `max-size` 又未挂中间件」的一次性告警（该组合下 prepare/chunk 可被匿名调用并预分配磁盘）。新增 `AetherUploadChunkLimitTest`（6 例，含 8e9 溢出等价路径，并保持既有 4 字节分片契约不变）。
 - **`cache` 自增/自减不再抹掉 TTL**：新增可选能力接口 `TtlAwareCacheDriver`（三态 `OptionalLong`：empty=键不存在或不可判定 / 0=永不过期 / 正数=剩余秒数），`ArrayCacheDriver`（含 `SimpleMemoryCache.remainingTtlSeconds`）与 `RedisCacheDriver`（`TTL` 命令）实现；`DefaultCacheStore.increment/decrement` 按原键剩余 TTL 写回。**不采用「退化为短 TTL」方案**：那会让限流计数/缓存版本键中途重置 —— 例如 `model-cache` 版本键过期会让旧版本缓存条目集体复活，属数据正确性问题；驱动不支持该能力时按无 TTL 写入并**每个驱动类告警一次**。`CacheStore` 补齐 TTL 与「原子性为尽力而为」的契约文档。新增 `CacheTtlPreservationTest`（7 例，含非能力驱动回退、真实过期、反复自增不延长 TTL）。
 - **`auth` 与 `session` 解耦（auth 是标准，session 是其中一种实现）**：①删除 `session-redis → auth` 的**倒挂依赖**（该模块源码与测试对 `vendor.auth` 的 import 命中数为 0，属纯多余依赖边）；②把 `AuthRegistrar` 里硬编码的 `"session"` 回退值改为可配置项 `jaravel.auth.fallback-driver`（默认仍 `session`，**默认行为不变**）—— 「auth 默认绑定 session」由隐式代码改为显式配置；③修正 `SessionStore` 中指向 `auth.AuthGuardDriver` 的失效 `{@link}`（真实类型在 `auth.contract`），并补上「auth 是契约、session 存储只是实现之一」的定位说明。可插拔机制此前已具备（`AuthGuardDriver` SPI + `@RegisterGuard` + 独立 `jwt` 模块以及 `AuthManagerTest` 中不使用任何 Session 存储的自定义驱动用例），本次消除的是「实现归属与默认绑定」上的耦合。
-- **`queue-database` 抢占可移植性、竞争语义与背压**：①`DatabaseQueueDriver.pop` 由 `ORDER BY id ASC LIMIT 1`（Oracle/SQL Server 不合法）改为可移植的 `id = (SELECT MIN(id) ...)`，并**移除 javadoc 中与实现不符的 `FOR UPDATE SKIP LOCKED` 承诺**（该实现要求 SELECT/UPDATE 同事务，而 `JdbcExecutor` 尚无事务 API）—— 文档现写明「乐观锁预约 + 至少一次投递 + 消费方须幂等」；②抢锁失败不再直接 `return null`（上层会当成空队列 sleep → 高并发空转/延迟），改为最多 3 次退避重试；③`DatabaseQueueWorker` 由无界 `newFixedThreadPool` 改为 `ThreadPoolExecutor + ArrayBlockingQueue` 并用 `Semaphore` 先取许可再 `pop`，保证「已 reserve 但未执行」的任务数有上界；④`executeJob` 的 catch 内再调 `release/fail` 时补一层 try/catch + ERROR 日志（原异常会逃进被丢弃返回值的 Future 而被静默吞掉）。新增 `DatabaseQueueConcurrencyTest`（8 线程 × 40 任务：同一 jobId 不得被重复预约、任务最终全部取出）。
+- **`queue-database` 抢占可移植性、竞争语义与背压**：①`DatabaseQueueDriver.pop` 由 `ORDER BY id ASC LIMIT 1`（Oracle/SQL Server 不合法）改为可移植的 `id = (SELECT MIN(id) ...)`，并**移除 javadoc 中与实现不符的 `FOR UPDATE SKIP LOCKED` 承诺**（该实现要求 SELECT/UPDATE 同事务，而 `JdbcExecutor` 尚无事务 API）—— 文档现写明「乐观锁预约 + 至少一次投递 + 消费方须幂等」；②抢锁失败不再直接 `return null`（上层会当成空队列 sleep → 高并发空转/延迟），改为最多 3 次退避重试；③`DatabaseQueueWorker` 由无界 `newFixedThreadPool` 改为 `ThreadPoolExecutor + ArrayBlockingQueue` 并用 `Semaphore` 先获取许可再 `pop`，保证「已 reserve 但未执行」的任务数有上界；④`executeJob` 的 catch 内再调 `release/fail` 时补一层 try/catch + ERROR 日志（原异常会逃进被丢弃返回值的 Future 而被静默忽略）。新增 `DatabaseQueueConcurrencyTest`（8 线程 × 40 任务：同一 jobId 不得被重复预约、任务最终全部取出）。
 
 ### Fixed（修复）
 
@@ -183,7 +183,7 @@
   - `jaravelRouterFunction` 在**零路由**时不再调用 `RouterFunctions.Builder#build()`（原会抛 `IllegalStateException("No routes registered.")`，使应用无法启动），改为返回空 `RouterFunction`；
   - `AutoConfiguration.imports` 第 22 行类名里的反斜杠改为点号（字节级缺陷，仅在 Windows 下可解析，跨平台会失效）；
   - 新增 `AutoConfigurationGuardSmokeTest`（6 例）：用自定义 ClassLoader 隐藏 optional 包 + 反射断言外层配置类签名不引用 optional 类型。
-- **`EncryptCookies` 安全重写（严重）**：①解密/验签失败**移除** Cookie（旧行为保留攻击者提供的原值，发一个明文 Cookie 即被当明文接受）；②IV 改为 `SecureRandom` 随机（旧实现始终为全零 → 确定性密文）；③新增 **HMAC-SHA256（encrypt-then-MAC）** 与先验签后解密（仅有 CBC 时可被比特翻转篡改）；④密钥改为 `SHA-256` 派生、加解密与 MAC 用两把派生密钥；⑤出站**原地替换** Cookie 值，不再同名双下发；⑥线格式升级为 `v2:` 前缀，旧格式一律丢弃（升级后用户会掉一次登录态）。
+- **`EncryptCookies` 安全重写（严重）**：①解密/验签失败**移除** Cookie（旧行为保留攻击者提供的原值，发一个明文 Cookie 即被当明文接受）；②IV 改为 `SecureRandom` 随机（旧实现始终为全零 → 确定性密文）；③新增 **HMAC-SHA256（encrypt-then-MAC）** 与先验签后解密（仅有 CBC 时可被比特翻转篡改）；④密钥改为 `SHA-256` 派生、加解密与 MAC 用两把派生密钥；⑤出站**原地替换** Cookie 值，不再同名双下发；⑥线格式升级为 `v2:` 前缀，旧格式一律丢弃（升级后用户会丢失一次登录态）。
 - **请求上下文 ThreadLocal 泄漏（严重，跨用户会话串读）**：`RequestFactory.buildFromHttpServletRequest` 现在也会 `setCurrentRequest(...)`（原先只有 jaravel 路由路径会 set），并新增 `JaravelRequestContextFilter`（最高优先级）在请求结束时 `clearCurrentRequest()`。
 - **验证码（严重）**：①`encKey` 不再下发「能解密 captchaKey 的密钥」——captchaKey 内含答案，拿到它即可绕过；对称模式改为下发**一次性输入密钥**（真实密钥留在 token 内），非对称模式**只下发公钥**；②`RotateCaptcha` 除 NaN 外新增拒绝 `±Infinity`（提交 `1e999` 会让角度差变成 `-Infinity` 从而通过校验）；③新增 `CaptchaSecurityTest`（4 例）锁定以上行为。
 - **Redis 缓存 `flush` 清空整库（严重，不可恢复）**：`RedisCacheDriver` 为所有键加命名空间前缀（`jaravel.redis.prefix`，未配置回退 `jaravel:cache:`），`allKeys()`/`removeAll()` 改为 SCAN + `MATCH <prefix>*`；`allKeys()` 按契约返回去掉前缀的逻辑键。
@@ -194,34 +194,34 @@
 
 ### Added（新增）
 
-- **wechat-sdk：回复额度软限制 + 一次问答自动拆分为多条下发**：`WechatResponse.messages(...)`/`texts(...)` 一次交多条；`ReplyPlan` 纯函数拆分（第 1 条且支持被动回复时走被动回复，其余走客服消息，**不改变消息顺序**）；`AsyncReplyDispatcher` 做额度记账（CacheStore，键 `wechat:reply_quota:{account}:{openid}`，48h 窗口）+ 单线程守护池异步补发 + 微信返回 `45047`/`45015` 时自动清零止血；新增 `passive-reply-limit`(1)、`customer-service-reply-limit`(5)、`reply-quota-reset-per-interaction`、`reply-overflow-policy`(drop\|merge)、`reply-quota-window-seconds` 配置项；单测 9 例覆盖拆分/额度/merge/止血/重置语义。
+- **wechat-sdk：回复额度软限制 + 一次问答自动拆分为多条下发**：`WechatResponse.messages(...)`/`texts(...)` 一次交多条；`ReplyPlan` 纯函数拆分（第 1 条且支持被动回复时采用被动回复，其余采用客服消息，**不改变消息顺序**）；`AsyncReplyDispatcher` 做额度记账（CacheStore，键 `wechat:reply_quota:{account}:{openid}`，48h 窗口）+ 单线程守护池异步补发 + 微信返回 `45047`/`45015` 时自动清零止血；新增 `passive-reply-limit`(1)、`customer-service-reply-limit`(5)、`reply-quota-reset-per-interaction`、`reply-overflow-policy`(drop\|merge)、`reply-quota-window-seconds` 配置项；单测 9 例覆盖拆分/额度/merge/止血/重置语义。
 
 ### Added（新增 · 0.1.3 主线）
 
-- **架构对齐：数据库操作统一归入 database 模块 + 建表统一走迁移能力 + `vendor:publish --tag=migrations`**：
+- **架构对齐：数据库操作统一归入 database 模块 + 建表统一采用迁移能力 + `vendor:publish --tag=migrations`**：
   - **database 模块新增 `JdbcExecutor`**（连接 + 参数化 SQL 执行底座：execute/update/queryMapped/queryFor*List/Map/queryForObject/insertReturningKey）——驱动类模块不再各自维护一套私有「JDBC 四件套（executeUpdate/queryRows/executeSql/bind）+ 方言判断 + 建表 DDL」；`migration` 模块原 `JdbcExecutor` 保留为等价兼容子类（标注 `@Deprecated`），既有代码与外部引用不受影响（`migration` 由此新增对 `database` 的依赖，无循环）。
   - **migration 模块新增 `Schema.createIfAbsent(table, def)`**：方言感知的存在性检查 + DDL 生成，作为驱动「幂等建表」标准入口（SQL Server / Oracle 不支持 `CREATE TABLE IF NOT EXISTS`，旧驱动内置 DDL 在这些库上直接失败；SQLite 的 AUTO_INCREMENT 硬编码同样消除）。
   - **migration 模块新增 `Dialect#upsertSql(...)`**（default = MySQL 变体）+ `AbstractDialect` 五个静态变体（MySQL `ON DUPLICATE KEY UPDATE` / PostgreSQL·SQLite `ON CONFLICT` / H2 `MERGE ... KEY` / SQL Server·Oracle `MERGE ... USING`）；六个方言类全部重写。`cache-database` 的驱动级 upsert 方言判断（`isMysql()/upsertSql()/textType()/quote()` 私有套）整体移除，改由 `DialectFactory.detect` + `Dialect` 统一提供。
   - **三个数据库驱动收敛**：`DatabaseCacheDriver`（cache-database）、`DatabaseFilesystem`（storage-database）、`DatabaseQueueDriver`（queue-database）全部改为经由 `JdbcExecutor` 执行 SQL；`createTable()` 全部改为 `Schema.createIfAbsent` + Blueprint DSL（`cache-database` 的私有建表 DDL 与 `queue-database` 的 `AUTO_INCREMENT` 硬编码 DDL 移除，queue-database 由此新增 `database` 模块依赖）；驱动暴露单一事实来源的 `defineXxxTable(Blueprint)` 定义，与内置迁移文件一致。
   - **core 模块新增 `PublishableMigration` SPI + `PublishType.MIGRATION`**：与 `PublishableConfig`/`PublishableStatic` 平行的第三种可发布项——发布模块自带的**迁移 Java 源文件**到业务工程迁移源代码目录（`MakeCodeProperties#getMigrationSourceDir`，默认 `src/main/java/<basePackage>/database/migrations`，包名自动重写为 `<basePackage>.database.migrations`，发布后直接可编译，含目录穿越防护）。
   - **三个模块自带建表迁移并声明发布**：`cache-database`（`jaravel_cache`）、`storage-database`（`storage_file`/`storage_file_chunk`）、`queue-database`（`jobs`/`failed_jobs`）各打包一份内置迁移 Java 源（`jaravel/migrations/Migration_20240101_*.java`，与驱动 `defineXxxTable` 一致）+ `XxxDatabaseMigrationPublishable` 声明；springboot 侧以 `@ConditionalOnClass` 守卫的 `XxxDatabasePublishAutoConfiguration` 注册（queue 侧并入既有 `QueueDatabaseAutoConfiguration` 静态块）——未引入可选模块的应用不受影响。
-  - **`vendor:publish` 命令扩展**：新保留标签 `--tag=migrations`（一键发布**所有模块**的建表迁移，对齐 Laravel `vendor:publish --tag=migrations`）；各模块 tag（`--tag=cache-database` 等）同时发布其配置与迁移；`--all` 包含迁移文件；`--list` 展示迁移清单（类型 migration + 文件名列出）。
+  - **`vendor:publish` 命令扩展**：新保留标签 `--tag=migrations`（一条命令发布**所有模块**的建表迁移，对齐 Laravel `vendor:publish --tag=migrations`）；各模块 tag（`--tag=cache-database` 等）同时发布其配置与迁移；`--all` 包含迁移文件；`--list` 展示迁移清单（类型 migration + 文件名列出）。
   - **`xxx:table` 生成命令对齐**：`cache:table` / `storage:table` / `queue:table` 的生成目录与包名改为注入 `MakeCodeProperties`（与 `vendor:publish` 落点一致：`getMigrationSourceDir()` / `getMigrationPackage()`），消除「命令写 `database/migrations` 包 `database.migrations`、发布写源码树包 `<basePackage>.database.migrations`」的不一致。
   - **推荐工作流（新）**：`artisan vendor:publish --tag=migrations` → `artisan migrate`，一条链完成所有模块建表；原有 `xxx:table` + `migrate` 工作流继续可用。
   - springboot 装配对齐：`QueueDatabaseAutoConfiguration.databaseQueueDriver` 数据源解析顺序改为「先 `ConnectionManager` 注册表、后 Spring `DataSource` Bean」，与 cache/storage 驱动一致（装配条件与 sync 回退语义不变）。
 
 - **core · `core.lookup` Bean 提供者 SPI（Spring 解耦）**：`BeanLookup` / `GlobalBeanProvider` / `GlobalLookup` 三个纯 Java 接口/类——Spring 宿主由 `jaravel-springboot` 的 `CoreSpringConfiguration` 自动安装 `ContextBeanProvider`（`ApplicationContext` 适配器），非 Spring 宿主一行 `GlobalLookup.install(...)` 即可让 `SpringContext` / `Facade` / `App` / `Config` / 各 `@Register*` 注解扫描全链路开箱可用（发布模板 stable FQCN 不变）。
 - **springboot · `CoreSpringConfiguration` + `ContextBeanProvider`**：解耦适配层（imports 首行注册）；业务方可用自定义 `GlobalBeanProvider` Bean 覆盖（`@ConditionalOnMissingBean`）。
-- **wechat-sdk · 类型化消息模型（Typed Message Model）**：旧 Map 裸接口全量移除。
+- **wechat-sdk · 类型化消息模型（Typed Message Model）**：旧 Map 裸接口（无类型包装的 Map 取值）全量移除。
   - `OfficialAccountService` 64 个类型化 API；`MiniProgramService` 全量重写。
   - `message.Message` 消息基类 + 11 类客服消息 / 被动回复消息（双序列化 `toJsonBody()` / `toXmlArray()`，构造即校验）。
   - 接收侧：`server.ServerMessage` 10 类 + `MessageParser`；`crypto.WxBizMsgCrypt`（SHA1 签名 + AES-ECB 加解密，JDK 实现无三方依赖）；`WeChatServer` plain/safe 双回调模式。
   - `menu.Menu`（fluent + 结构校验）、`template.TemplateMessage` / `SubscriptionNotice`、`user.WeChatUser` 等用户域模型、`jsdk.JssdkConfig`、`mini` 小程序域。
-  - 响应统一 `WeChatResponse`（`isSuccess()` / `requireSuccess()` / 类型化取值器，业务错误不再被日志吞掉）。
+  - 响应统一 `WeChatResponse`（`isSuccess()` / `requireSuccess()` / 类型化取值器，业务错误不再被日志静默忽略）。
   - Token 双模式（`legacy` GET `cgi-bin/token` / `stable` POST `cgi-bin/stable_token`）+ core+cache 模块缓存（可共享 redis store）。
 - **wechat-sdk · 洋葱内核（Onion Kernel）**：`kernel.WechatKernel` + `WechatMiddleware` + `WechatRequest`（静态组装/提取一体）+ `WechatResponse`（静态组装/返回一体，Kind 判别 + 方向互换 + 被动回复能力守卫）；内置 `VerifySignatureMiddleware`（验签）→ `DecryptParseMiddleware`（解密/解析）两层，业务层可任意追加、短路；`WeChatServer` 变为其薄壳（历史行为 1:1 保留）。
 - **wechat-sdk · 网页授权（公众号 OAuth）**：`oauth.WeChatOAuth`（授权 URL 组装 + code 换 openid/用户 + EasyWeChat 兼容会话键 `easywechat.oauth_user.{account}`）；`oauth.WeChatOAuthMiddleware` 自动重定向（已授权放行 / 回调换码存会话回跳 / state 防 CSRF / `enforce-https`），路由别名 `wechat.oauth`（冒号参数 `account[,scope]`）。
-- **cache-database 模块（新）**：数据库缓存驱动独立模块（对齐 `queue-database` 拆分惯例）——`DatabaseCacheDriver`（原生 JDBC，替代 spring-jdbc `JdbcTemplate`，方言适配 MySQL/PostgreSQL/SQLite/H2/SQL Server）、`DatabaseCacheDriverFactory`（数据源走 `database` 模块 `ConnectionManager` 注册表 + 惰性 `Supplier<DataSource>` 可注入 Spring 回退）、`CacheTableCommand`（cache:table 命令）。**零 Spring 依赖**，纯 JVM 可直接使用。
+- **cache-database 模块（新）**：数据库缓存驱动独立模块（对齐 `queue-database` 拆分惯例）——`DatabaseCacheDriver`（原生 JDBC，替代 spring-jdbc `JdbcTemplate`，方言适配 MySQL/PostgreSQL/SQLite/H2/SQL Server）、`DatabaseCacheDriverFactory`（数据源经 `database` 模块 `ConnectionManager` 注册表 + 惰性 `Supplier<DataSource>` 可注入 Spring 回退）、`CacheTableCommand`（cache:table 命令）。**零 Spring 依赖**，纯 JVM 可直接使用。
 - **wechat-sdk · `vendor:publish --tag=wechat-sdk`**：静态注册 `WechatSdkConfig` 声明式配置模板（`@RegisterWechatOfficialAccount` / `@RegisterWechatMiniApp` + OAuth 配置块），发布不再受运行期条件（OkHttp/`enabled` 开关）牵连。
 - **database · Oracle 方言**（`jaravel-oracle`）：schema 限定表名 SQL 生成修复；Oracle 别名去 `AS` 关键字。
 - **wire · v2.0 组件系统重构**：`WireController` 声明式契约（fill/mount/render/wireView）、`wire:pagination` / `wire:nav` / `wire:key` / `wire:lazy` 组件级局部刷新、`@WireQuery` 注解与带参 URL 还原（翻页→修改→取消不错位）、URL 状态恢复机制、`Wire.call()` 命名参数、`wire.xsd` 命名空间校验、`refresh()` 生命周期、wire-dialog-close、透明导航事件总线（beforeRequest/afterRequest/beforeUpdate/afterUpdate）、栈式嵌套 section 解析（夜间模式丢失根因修复）。
@@ -236,7 +236,7 @@
 - **artisan**：命令注册改注解驱动；`make` 系列命令（迁移/模型/控制器）生成到应用子包；`make:model-from-migration` 反向生成。
 - **starter**：storage 纳入基础必选聚合（对齐 Laravel Storage）。
 - **json**：JsonCodec SPI（SB3/SB4 双 Jackson 支持）。
-- **storage-database 模块（新）**：storage 的 database 磁盘驱动独立模块（对齐 `cache-database` / `queue-database` 拆分惯例）——`DatabaseFilesystem`（原生 JDBC，替代 spring-jdbc `JdbcTemplate`，分片组装/自定义内容列/二进制·base64 双模式）、`DatabaseFilesystemDriver`（纯工厂，`Supplier<DataSource>` 惰性解析 + `connection` 别名走 `database` 模块 `ConnectionManager`，缺失连接时给出可操作提示）、`StorageTableCommand`（`storage:table` 命令，生成建表迁移而非直接建表）。**零 Spring 依赖**，纯 JVM + `database` 模块即可工作；Spring 装配由 `springboot` 模块的 `vendor.springboot.storage` 条件装配（`storage-database` 为 springboot 的 optional 依赖，"jar 在 classpath = 驱动可装配"）。
+- **storage-database 模块（新）**：storage 的 database 磁盘驱动独立模块（对齐 `cache-database` / `queue-database` 拆分惯例）——`DatabaseFilesystem`（原生 JDBC，替代 spring-jdbc `JdbcTemplate`，分片组装/自定义内容列/二进制·base64 双模式）、`DatabaseFilesystemDriver`（纯工厂，`Supplier<DataSource>` 惰性解析 + `connection` 别名经 `database` 模块 `ConnectionManager`，缺失连接时给出可操作提示）、`StorageTableCommand`（`storage:table` 命令，生成建表迁移而非直接建表）。**零 Spring 依赖**，纯 JVM + `database` 模块即可工作；Spring 装配由 `springboot` 模块的 `vendor.springboot.storage` 条件装配（`storage-database` 为 springboot 的 optional 依赖，"jar 在 classpath = 驱动可装配"）。
 - **http · 上传文件写入助手（UploadFile）**：`com.weacsoft.jaravel.vendor.http.upload.UploadFile` + 函数式 `Target` 接口（`store(MultipartFile, dir, Target)` / `storeAs(...)` / `baseName(...)`），把 `MultipartFile` 的文件写入能力收敛到 http 模块——storage 契约与门面不再引用 `MultipartFile`，核心层继续零 Spring；`Target (path, bytes) -> ...` 可直接适配 storage `Filesystem::put` 或任意目标（内存/远端），http 不反向依赖 storage。
 
 ### Changed（变更）
@@ -254,7 +254,7 @@
   - **行为保真**：原 `DatabaseAutoConfiguration` / `EloquentUserProviderAutoConfiguration` 的 `@AutoConfigureAfter`/`@ConditionalOnClass`/`@ConditionalOnMissingBean` 语义逐条保留（两配置类均无 before/after 字符串，全仓库无 FQCN 字符串引用——迁移前已核查）；gaarason 运行期所需的 Spring JDBC/AOP 由宿主（starter/springboot）提供。
 - **queue-database 驱动本体 JDBC 化**：queue-database 成为**零 Spring import** 模块（§4.4 验收清单的最后一个例外项消除；pom 的 `spring-jdbc` / `spring-context` 编译依赖移除，仅测试态保留 `spring-jdbc`）：
   - **`DatabaseQueueDriver`**：JdbcTemplate SQL 全改为原生 JDBC（`executeUpdate` / `executeSql` / `queryRows` + `RowMapper<T>` 四件套，完全复刻 `cache-database` 驱动模板；`RETURN_GENERATED_KEYS` 取自增键；DDL/索引降级逻辑与日志、push/pop/release/fail 语义逐条保持）。
-  - **`DatabaseQueueDispatcher` / `DatabaseQueueWorker`**：监听器 bean 解析改经 **`core.lookup.BeanLookup` SPI**（core 纯接口）——`beansOfType` 枚举 bean 名 / `contains` + `bean(name|class)` 回退；SPI 传 `null` 时 worker 走"找不到监听器→归档失败队列"原路径（语义安全）。
+  - **`DatabaseQueueDispatcher` / `DatabaseQueueWorker`**：监听器 bean 解析改经 **`core.lookup.BeanLookup` SPI**（core 纯接口）——`beansOfType` 枚举 bean 名 / `contains` + `bean(name|class)` 回退；SPI 传 `null` 时 worker 回退"找不到监听器→归档失败队列"原路径（语义安全）。
   - **springboot 侧接线**：`QueueDatabaseAutoConfiguration` 的 `databaseQueueWorker` / `databaseQueueDispatcher` Bean 改传 `new ContextBeanProvider(applicationContext)`（`ContextBeanProvider` 即 `ApplicationContext` 适配器），行为与改造前一致。
   - **测试同步**：`DatabaseQueueDispatcherTest` 的 `GenericApplicationContext` 桩改为空 Map 版 `BeanLookup` 适配器（断言逐行保留）；`DatabaseQueueDriverTest` 构造签名未变（仍为 `DataSource` 入参）零改动通过。
   - **模板不变**：`QueueDatabasePublishableConfig` 字节级未动（V5 核验）。
@@ -289,10 +289,10 @@
   - **redis-cache**：`RedisCacheAutoConfiguration`/`RedisCacheProperties`/`OnRedisCacheStoreCondition`/`RedisCachePublishAutoConfiguration` 迁 **`springboot`**（`vendor.springboot.rediscache`），`@AutoConfigureAfter` 类引用更新为新坐标。
   - **session-redis**：`SessionRedisAutoConfiguration`/`SessionRedisProperties`/`OnRedisSessionDriverCondition`/`SessionRedisPublishAutoConfiguration` 迁 **`springboot`**（`vendor.springboot.sessionredis`），`@AutoConfigureAfter(RedisAutoConfiguration)` 类引用同步更新。
   - 三者均为 springboot 的 **optional** 依赖（不在 starter 基础集）。保留于原模块的纯 Java 类（`RedisManager`/`RedisConfig`/`RedisPublishableConfig`、`RedisCacheDriver`/`RedisCacheDriverFactory`/`RedisCachePublishableConfig`、`RedisSessionStore`/`SessionRedisPublishableConfig`）行为不变。
-- **cache 模块纯化（去 Spring 化）**：cache 核心模块移除 `spring-boot-autoconfigure` / `spring-jdbc` / `spring-boot-configuration-processor` 全部直接依赖与 `autoconfigure` 装配类——Spring 装配（`CacheAutoConfiguration` / `CacheProperties` / `CacheStoreRegistrar` / `OnDatabaseCacheStoreCondition` / `CacheArtisanAutoConfiguration`）统一迁入 **`springboot` 模块**（`vendor.springboot.cache` 包）；database 驱动迁入 **`cache-database` 模块**（走 `database` 模块连接）。`CacheManager.initFromConfig` 改收纯 Java `CacheConfig`（Spring `CacheProperties` 经 `toCacheConfig()` 映射）。`vendor:publish` 注册（`CachePublishableConfig`）、`@RegisterCacheStore` 契约、`artisan cache:table` 行为不变。
-- **storage 模块纯化（去 Spring 化）**：storage 核心模块移除 `spring-web` / `spring-jdbc` / `spring-boot-autoconfigure` / `spring-boot-configuration-processor` 全部直接依赖与 `autoconfigure` 装配类、`database` 驱动子类、`artisan` 命令——Spring 装配（`StorageAutoConfiguration` / `StorageProperties` / `StorageRegistrar` / `OnLocalDiskDriverCondition` / `OnDatabaseDiskDriverCondition` / `StorageArtisanAutoConfiguration` / `StoragePublishAutoConfiguration`）统一迁入 **`springboot` 模块**（`vendor.springboot.storage` 包，`storage-database` 为 optional 依赖）；database 驱动迁入 **`storage-database` 模块**（原生 JDBC 走 `database` 模块连接）；`MultipartFile` 上传文件写入能力拆入 **`http` 模块**（`UploadFile`）。保留于 storage 的 `StoragePublishableConfig`（`vendor:publish` 发布声明，纯 core 契约）、`@RegisterDisk` 契约、`Filesystem` 契约、local 驱动 SPI 与 `Storage` 门面行为不变。`Filesystem` 不再出现 `MultipartFile`（上传文件写入改用 `UploadFile.store(file, dir, fs::put)`）。
+- **cache 模块纯化（去 Spring 化）**：cache 核心模块移除 `spring-boot-autoconfigure` / `spring-jdbc` / `spring-boot-configuration-processor` 全部直接依赖与 `autoconfigure` 装配类——Spring 装配（`CacheAutoConfiguration` / `CacheProperties` / `CacheStoreRegistrar` / `OnDatabaseCacheStoreCondition` / `CacheArtisanAutoConfiguration`）统一迁入 **`springboot` 模块**（`vendor.springboot.cache` 包）；database 驱动迁入 **`cache-database` 模块**（经 `database` 模块连接）。`CacheManager.initFromConfig` 改收纯 Java `CacheConfig`（Spring `CacheProperties` 经 `toCacheConfig()` 映射）。`vendor:publish` 注册（`CachePublishableConfig`）、`@RegisterCacheStore` 契约、`artisan cache:table` 行为不变。
+- **storage 模块纯化（去 Spring 化）**：storage 核心模块移除 `spring-web` / `spring-jdbc` / `spring-boot-autoconfigure` / `spring-boot-configuration-processor` 全部直接依赖与 `autoconfigure` 装配类、`database` 驱动子类、`artisan` 命令——Spring 装配（`StorageAutoConfiguration` / `StorageProperties` / `StorageRegistrar` / `OnLocalDiskDriverCondition` / `OnDatabaseDiskDriverCondition` / `StorageArtisanAutoConfiguration` / `StoragePublishAutoConfiguration`）统一迁入 **`springboot` 模块**（`vendor.springboot.storage` 包，`storage-database` 为 optional 依赖）；database 驱动迁入 **`storage-database` 模块**（原生 JDBC 经 `database` 模块连接）；`MultipartFile` 上传文件写入能力拆入 **`http` 模块**（`UploadFile`）。保留于 storage 的 `StoragePublishableConfig`（`vendor:publish` 发布声明，纯 core 契约）、`@RegisterDisk` 契约、`Filesystem` 契约、local 驱动 SPI 与 `Storage` 门面行为不变。`Filesystem` 不再出现 `MultipartFile`（上传文件写入改用 `UploadFile.store(file, dir, fs::put)`）。
 - 中间件不再注册为 Spring Bean：classpath 扫描 + 继承式配置，支持 Class 对象/类名/字符串别名三种引用；自动扫描跳过已手动注册的实例。
-- `csrf_field`/`@csrf`/`csrf_token`/`@csor`… 改为框架开箱即用内置注册（注册后自检，失败可见而非静默空值）；`VerifyCsrfToken` 未启用时输出空串。
+- `csrf_field`/`@csrf`/`csrf_token`/`@csor`… 改为框架内置注册（注册后自检，失败可见而非静默空值）；`VerifyCsrfToken` 未启用时输出空字符串。
 - `asset()` 与 `url()` 语义一致（移除 `/assets` 前缀）；`@route` 指令编译目标修正为 `route`。
 - 驱动型模块统一按需装配 + 回退默认值（cache/queue/database/auth/jwt 工厂模式改造）。
 - SessionStore 全局配置化（移除 `support()` 与 session-store guard 配置）。
@@ -321,8 +321,57 @@
 - 全量清理文档中兼容性说明/设计思路/流程详解类内容（保持 README 聚焦「怎么用」）。
 - 新增 `CHANGELOG.md`（本文件）。
 
+### 0.1.3 发布后修复（2026-11-24 增补）
+
+0.1.3 标签打完后，按构建日志与全模块代码扫描逐项修复的缺陷清单（随下一次标签一并发布）。
+
+#### 构建日志清洁
+
+- **slf4j 版本属性更名（根因修复）**：根 `pom.xml` 原属性 `slf4j.version=1.7.36` 与 `spring-boot-dependencies` 的同名属性冲突，其 dependencyManagement 覆盖导致**全部 SB3 模块**在 1.7.36 与 logback 1.5.18（SLF4J 2.x API）之间绑定失败，构建日志出现 27 次 `Failed to load class "org.slf4j.impl.StaticLoggerBinder"` / NOP 日志。现属性更名为 `slf4j17.version`（仅 `plugin-jar-core` / `plugin-java-core` 两个 SB2.7 模块显式引用 1.7.36），其余模块继承 Boot 的 2.0.16；同时移除 dependencyManagement 中的全局 slf4j-api 条目。
+- **测试期 SLF4J provider 缺失**：SB3 模块测试类路径原先只有 slf4j-api 2.x 而无 provider（27 次 `No SLF4J providers were found`）。根 `pom.xml` 全局新增 `logback-classic` 测试依赖（版本继承 Boot 1.5.18）；SB2.7 插件模块新增 `logback-classic 1.2.12` 测试依赖（与 1.7.36 配对）。
+- **javac 批注处理提示**：原构建输出 142 次「批注处理已启用」提示。`maven-compiler-plugin` 配置 `<proc>full</proc>` 后消除。
+- **ByteBuddy 动态代理告警**：测试期 12 次 `A Java agent has been loaded dynamically` WARNING。`maven-surefire-plugin` 统一配置 `<argLine>-XX:+EnableDynamicAgentLoading</argLine>` 后消除。
+
+#### deprecation 清理
+
+- **`StreamingServerResponse.rawStatusCode()`**：Spring 6.1.21 将其标记 `@Deprecated(forRemoval)` 且为抽象方法（必须实现），保留覆盖并标注 `@SuppressWarnings({"deprecation","removal"})`。
+- **`migration.JdbcExecutor`**：0.1.3 架构对齐时保留为兼容 shim，但模块内部 5 处（`Schema` / `TableMigrator` / `MigrationRepository` 及 2 个测试类）改为直接使用 `database.JdbcExecutor`，构建日志的 deprecation 告警消除。
+- **`OnDriverInUseConditionTest`**：`StandardAnnotationMetadata` 单参构造器弃用 → 双参构造器。
+- **`RedisQueueDriverTest`**：Lettuce `zrangebyscore(K,double,double)` 弃用 → `Score` 重载。
+- **unchecked 警告**：`database.TimestampFill`（`CreatedTimeStringFill` / `UpdatedTimeStringFill` 两处类型转换）与 `wechat-sdk.XmlUtil`（`appendFields` / `appendScalar`）标注 `@SuppressWarnings("unchecked")`。
+
+#### 关键缺陷修复
+
+- **plugin-jar-core · 插件路由 beanName 恒为 null（严重）**：`SharedDependencyScanner` 依赖 ASM 类访问器的 `visitEnd` 时序写入 `currentBeanName`，但所有 `RouteScanInfo.setBeanName(...)` 调用发生在类 `visitEnd` 之前，导致扫描到的**全部插件路由 beanName 为 null**，分发时 `getBean(null)` 必然 500。改为在 `@PluginComponent` 注解访问器自身 `visitEnd` 计算；新增回归测试 `SharedDependencyScannerBeanNameTest`。
+- **captcha · 发布模板 import 路径不存在**：`CaptchaPublishableConfig` 生成的模板引用不存在的 `com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties`，`vendor:publish` 会把无法编译的文件交付给使用者；修正为真实坐标 `com.weacsoft.jaravel.vendor.springboot.captcha.CaptchaProperties`。
+- **captcha · AES 固定 IV**：`CaptchaCrypto` 原以密钥字节作为 CBC IV，同一密钥下密文可关联。改为 `AES_MAGIC‖随机 IV‖密文` 新格式，兼容旧格式（0.1.2 已签发令牌仍可验签），前后端（`jaravel-captcha.js`）同步更新；新增 `CaptchaCryptoAesFormatTest`。
+- **wechat-sdk · `WxBizMsgCrypt` 解密长度溢出**：`msgStart + msgLen` 为 int 运算，伪造 `msgLen` 可回绕越过缓冲边界触发 `StringIndexOutOfBoundsException`；改为 long 运算并越界即抛 `WechatCryptoException`。
+- **wechat-sdk · 旧版 token 接口 URL 未编码**：`AccessTokenManager` 的 legacy `/cgi-bin/token` 路径对 appId/secret 做 URL 编码。
+- **wechat-sdk · `JssdkConfig` 输出非法 JavaScript**：原以 `Map.toString()` 拼接 JS 对象字面量；改为 Jackson JSON 序列化。
+- **wechat-sdk · `AsyncReplyDispatcher` 无界锁表**：`quotaLocks` 按 `account:openid` 无界增长；改为 64 条固定分段锁。
+- **plugin-jar-remote · `TcpTransport` 并发帧**：同一连接上的帧写入无同步，可能交错；改为按 `host:port` 分段加锁（连接内帧严格串行）。
+- **plugin-jar-remote · 本地执行失败被误报为子节点不可用**：客户端 `RequestCoordinator` 与服务器 `RemotePluginServer` 的 `tryLocalExecute` 原先吞掉 `InvocationTargetException`（方法真实抛异常）与基础设施失败（节点不可达）的区分，导致方法抛异常时错误地转发子节点并返回「所有子节点均不可用」；现本地方法异常返回 `ExecuteResponse.error("本地执行失败：…")`，基础设施失败保持原转发语义。重载方法无参数匹配时一次性告警。
+- **plugin-jar-multi-tenant · 租户上下文误清**：`TenantAwareHotPluginManager` 4 处 `finally` 无条件 `TenantContext.clear()`，清掉调用方外层租户；改为恢复进入前的租户。
+- **springboot · 500 响应体信息泄露**：`SpringBootRouteAutoConfiguration` 路由异常处理器原先把异常类名与消息返回客户端；改为固定 `{"error":"internal","message":"内部处理失败"}`，完整堆栈仅入日志。
+- **springboot · JWT 出厂默认密钥告警**：未配置 `jaravel.key` 且 `jaravel.jwt.secret` 为出厂默认值时，启动时一次性警告（默认值随 jar 发布、可被用于伪造令牌）。
+- **springboot · `BladeEngine` 字节码缓存从未命中**：缓存键以 `Template_` 前缀写入，而 `BladeCompiler` 实际生成类名为 `Blade_` 前缀，缓存加载路径永远不命中；改为优先使用编译期实际类名。
+- **jblade · `BladeContext.endSection` 嵌套空指针**：内层 section 结束时外层 section 尚未入栈，`new StringBuilder(sections.get(peek()))` NPE；改为回退当前 section 缓冲。
+- **core · `Str.is` 通配符失效**：原实现 `Pattern.quote` 后替换 `*` 永远不命中（整个模式被 `\Q...\E` 包裹），`is("*.php")` 退化为精确匹配；重写为分段引用后 `*` 正确展开为 `.*`。
+- **event · `EventDispatcher` 队列派发中断**：`dispatchToQueue` 抛出的异常（如数据库不可用）会中断整个 `dispatch()`，内存监听器不再执行；改为捕获后退化为内存队列派发。
+- **migration · `pathToClassName` 包根识别**：原取**最深**的包根目录（`src`/`app` 等非包根也会命中）生成错误的 FQN；改为向顶层遍历取**最浅**包根，无包根时返回 null。
+- **migration · H2 方言类型映射**：`H2Dialect.mapType` 原输出 MySQL 专用类型（`TINYINT(1)`/`YEAR`/`UNSIGNED`），裸 H2 2.x 建表失败（既有测试强制 `MODE=MySQL` 掩盖了该问题）；改为 H2 原生类型。
+- **queue-database · `RedisQueueDriver.clear` 条件永假**：原以 `queueName.equals(value)` 判断成员归属，而 value 实际为 `queueName + 分隔符 + 成员`，清空操作永远无效果；改为前缀匹配。
+- **utils · `IpMatcher` DNS 重绑定**：CIDR/网段匹配原先先解析主机名再比较，allow-list 可被 DNS 重绑定绕过；改为先校验字面量 IP 才做解析匹配。
+- **artisan · `KeyGenerateCommand` 嵌套键误提升**：`writeYaml` 重写时把嵌套的 `jaravel.key` 键提升为顶层；现仅处理缩进为 0 的键。
+- **artisan · `MakeGenerator` 迁移目录**：`make:migration` 原写入 `.../database/migration`（单数），与 `vendor:publish --tag=migrations` 及 Laravel 约定的 `database/migrations` 不一致；统一为复数。
+- **cache · `FileCacheDriver` 增量丢失 TTL**：increment 路径原先把带 TTL 的键重写为永久键；现实现 `TtlAwareCacheDriver.remainingTtlSeconds()`，增量保留剩余 TTL。
+
+#### 文档
+
+- 书面语统一与防御性表述清理：根 `README.md` / `MODULES.md` / `CLUSTER.md` / `CHANGELOG.md`、全部 22 个模块 `README.md` 及 wechat-sdk 两份 DESIGN 文档。移除仅用于自证/防质疑的叙述（如「与代码不一致处以代码为准」类免责说明、对未跟踪文档的指涉），口语化措辞（空串/全绿/吞掉/开箱即用/走 X 等）改为书面表述；保留承载真实设计约束与对外契约的说明。
+
 ### Tests（测试）
 
 - 0.1.3 架构对齐新增用例：`DialectUpsertTest`（6 方言 × upsert SQL 形状 + default 回退 + 未知产品名回退）、`VendorPublishCommandTest` 迁移发布 4 例（`--tag=migrations` / 模块 tag / 包名重写 / skip + `--force` / `--all` 含迁移）、`CacheDatabaseMigrationPublishableTest`（内置资源打包核对）、`BundledMigrationE2ETest`（内置迁移 → 内存编译 → H2 上 migrate → 驱动读写 → rollback 全链路）。
-- 全模块单测保持全绿：**1311 个用例全部通过**（0 失败 / 0 错误 / 0 跳过）；wechat-sdk 由历史 19 个锁定用例扩展到 **206 个**（类型化消息模型 134 + 洋葱内核/网页授权 42 + 发布模板回归 3 + 状态与票据并发用例），无一联网（mock OkHttp/Servlet）。
+- 全模块单测全部通过：**1311 个用例全部通过**（0 失败 / 0 错误 / 0 跳过）；wechat-sdk 由历史 19 个锁定用例扩展到 **206 个**（类型化消息模型 134 + 洋葱内核/网页授权 42 + 发布模板回归 3 + 状态与票据并发用例），无一联网（mock OkHttp/Servlet）。
 - **非 Spring 可用性冒烟（§5.4 门禁）**：core 新增 `NonSpringAvailabilitySmokeTest`——不 import 任何 Spring 类型，手动安装 Map 版 `GlobalBeanProvider` 后验证 `Facade`/`App.app()`/`Application` 三种注册（bind/single/default）/`publishToSpring` 全链路可用；移除提供者后 `beanOrNull` 空安全降级、强依赖路径给出含 `GlobalLookup.install` 指引的异常（不再抛 Spring 类加载异常）。

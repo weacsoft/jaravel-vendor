@@ -588,7 +588,7 @@ public class OperationLog extends BaseModel<OperationLog, Long> {
 ### 解析逻辑
 
 `BaseModel.getGaarasonDataSource()` 先由 `getConnectionAlias()` 决定别名（默认读 `@DataSource`，
-业务 Model 可重写），随后**先查 `ConnectionManager` 注册表，找不到再回退 Spring 容器**：
+业务 Model 可重写），随后**先查 `ConnectionManager` 注册表，未命中再回退 Spring 容器**：
 
 ```java
 @Override
@@ -758,7 +758,7 @@ jaravel:
 gaarason 在 SpringBoot 环境下，**每个 `GaarasonDataSource` 都必须携带 `ContainerBootstrap`**，
 且所有数据源必须**共用同一个实例**。不同实例会导致 Model 注册表、类型转换器分裂到不同容器，查询报错。
 
-发布出来的 `DatabaseConfig` 遵循此约定：`containerBootstrap()` 创建唯一实例并存入
+发布的 `DatabaseConfig` 遵循此约定：`containerBootstrap()` 创建唯一实例并存入
 `ConnectionManager`，其余连接方法只需声明 `ContainerBootstrap` 参数即可复用，**切勿另行 `build()`**。
 
 ```java
@@ -852,7 +852,7 @@ public JaravelDataSource jaravelDataSource() {
 **默认连接的确定规则**：
 
 1. 标记了 `@RegisterConnection(value = "x", defaultConnection = true)` 的连接；
-2. **若一个都没标记，则第一个注册的连接自动成为默认连接。**
+2. **若均未标记，则第一个注册的连接自动成为默认连接。**
 
 **为什么是惰性的**：`JaravelDataSource` 只是一个委托，构造时不解析任何东西，
 直到真正 `getConnection()` 才去 `ConnectionManager` 取默认连接，
@@ -1085,7 +1085,7 @@ public Response login(@RequestBody LoginRequest req, UserProvider provider) {
   （模板中可直接 `@foreach($list as $item)`）与 `Htmlable`（实现后 `{{ $list }}` 免转义输出 HTML）。
 - **`links(viewName)` 的渲染解耦**：`Paginator` 仅依赖 `core.view.View`（标准接口）。视图引擎（jblade）
   在启动时通过 `ViewFacade.bind()` 注入默认 `View`；若未引入 jblade（无默认视图），
-  `links()` 返回空串——即「没有分页视图时该方法等同于未执行」。
+  `links()` 返回空字符串——即「没有分页视图时该方法等同于未执行」。
 
 ```java
 // 返回 core.pagination.Paginator，不耦合模板引擎

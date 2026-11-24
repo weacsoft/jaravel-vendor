@@ -89,7 +89,7 @@ public class ArtisanRunner {
 
 ## 配置
 
-本模块无需额外配置，开箱即用。命令通过实现 `ArtisanCommand` 并注册为 Spring bean 即可被自动发现。
+本模块无需额外配置即可使用。命令通过实现 `ArtisanCommand` 并注册为 Spring bean 即可被自动发现。
 
 ## 使用示例
 
@@ -172,7 +172,7 @@ artisan 模块内置 8 个代码生成命令，对齐 Laravel `php artisan make:
 | `make:command` | `make:command {name} {--force}` | 生成 ArtisanCommand 类 | `SyncDataCommand` | `{base-package}.console.commands` |
 | `make:event` | `make:event {name} {--force}` | 生成 Event 类 | `UserRegisteredEvent` | `{base-package}.events` |
 | `make:listener` | `make:listener {name} {--event=} {--force}` | 生成 Listener 类 | `SendWelcomeEmailListener` | `{base-package}.listeners` |
-| `make:all` | `make:all {name} {--force}` | 一键生成以上全部 | 全部 7 类 | 各自目录 |
+| `make:all` | `make:all {name} {--force}` | 一次性生成以上全部 | 全部 7 类 | 各自目录 |
 
 ### 命名约定
 
@@ -282,7 +282,7 @@ java -jar app.jar artisan make:event UserRegistered
 java -jar app.jar artisan make:listener SendWelcomeEmail --event=UserRegisteredEvent
 # => SendWelcomeEmailListener.java → {base-package}.listeners
 
-# 一键生成全部
+# 一次性生成全部
 java -jar app.jar artisan make:all User
 ```
 

@@ -3,7 +3,7 @@
 > 包名：`com.weacsoft.jaravel.vendor.plugin.jar`
 > artifactId：`plugin-jar-core`
 
-JAR 插件系统核心库，提供动态加载/卸载 JAR 插件、三级 ClassLoader 隔离、ASM 字节码扫描依赖与路由、动态路由注册/注销、元数据持久化等能力。基于 Spring Boot AutoConfiguration 开箱即用，引入依赖即可自动装配完整的插件管理基础设施。
+JAR 插件系统核心库，提供动态加载/卸载 JAR 插件、三级 ClassLoader 隔离、ASM 字节码扫描依赖与路由、动态路由注册/注销、元数据持久化等能力。基于 Spring Boot AutoConfiguration 内置装配，引入依赖即可自动装配完整的插件管理基础设施。
 
 本模块是 Jaravel 插件体系的核心，不包含任何 REST API 控制器（出于安全考虑），所有插件管理操作通过 `HotPluginManager` 的公开方法完成。如需对外暴露 HTTP 管理接口，由应用层自行实现并做好鉴权。
 
@@ -57,7 +57,7 @@ JAR 插件系统核心库，提供动态加载/卸载 JAR 插件、三级 ClassL
 - **元数据持久化**：重启后自动恢复插件状态。支持 JSON 文件（默认）和数据库两种持久化模式，仅写入文件的实现可自动持久化恢复。
 - **内存 JAR 加载**：支持从内存字节（`byte[]`）直接加载插件 JAR，不要求 `.jar` 写入文件。但仅写入文件的实现（`persist=true`）可自动持久化恢复。
 - **字节数组模式**：从内存中的 JAR 二进制数据直接热加载，无需写入插件目录。
-- **Spring Boot AutoConfiguration 开箱即用**：引入依赖后自动装配 `HotPluginManager`、`PluginBeanRegistrar`、`PluginRouteRegistrar`、`MetadataPersistence` 等核心组件。
+- **Spring Boot AutoConfiguration 内置装配**：引入依赖后自动装配 `HotPluginManager`、`PluginBeanRegistrar`、`PluginRouteRegistrar`、`MetadataPersistence` 等核心组件。
 - **线程安全**：核心管理器使用 `ReadWriteLock` + `ConcurrentHashMap` 保证并发安全，插件注册/卸载与路由查询可安全并发。
 
 ---
@@ -593,7 +593,7 @@ String result = service.greet("World");
 
 | 注解 | 作用 | 属性 |
 |---|---|---|
-| `@PluginComponent` | 标注插件组件类，被标注的类将自动注册为 Spring Bean | `value`（Bean 名称，可选，默认空串） |
+| `@PluginComponent` | 标注插件组件类，被标注的类将自动注册为 Spring Bean | `value`（Bean 名称，可选，默认空字符串） |
 | `@PluginMapping` | 标注方法为 HTTP 路由，被标注的方法将自动注册为可访问的 HTTP 端点 | `path`（路径，必填）、`method`（HTTP 方法，默认 `GET`）、`produces`（Content-Type，默认 `application/json`） |
 | `@PluginRoute` | 标记方法为可注册路由（手动注册模式）。仅将方法列为"可用路由"，不自动注册，需通过 `registerAvailableRoute()` 手动注册 | `path`（路径）、`method`（HTTP 方法，默认 `GET`）、`produces`（Content-Type，默认 `application/json`） |
 | `@SharedService` | 标记共享服务接口，被标注的接口将被 ASM 扫描器识别为共享依赖 | 无（标记注解） |

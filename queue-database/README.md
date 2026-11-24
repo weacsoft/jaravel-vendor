@@ -8,7 +8,7 @@
 - `event` — 队列驱动由 `EventDispatcher` 在监听器实现 `ShouldQueue` 时调用
 - `jackson-databind` — 任务负载 JSON 序列化
 - `slf4j-api` — 日志
-- `redis`（**optional**）— Redis 驱动按需依赖，未引入时 `RedisQueueDriver` 根本不装配（严格按需，不回退到 database）
+- `redis`（**optional**）— Redis 驱动按需依赖，未引入时 `RedisQueueDriver` 不装配（严格按需，不回退到 database）
 
 > **Spring 解耦**：本模块主源码零 Spring import（pom 不含
 > `spring-jdbc` / `spring-context` 编译依赖，仅测试态保留 `spring-jdbc`）：
@@ -29,7 +29,7 @@
 
 **sync 模式（默认）**：当 `driver=sync`（或完全不配置 `jaravel.queue.driver`）时，不创建任何 `QueueDriver` Bean，`EventDispatcher` 自动降级为内存队列（`QueueManager`），不会创建数据库表，无需额外配置。对齐 Laravel 的 `sync` 队列驱动。
 
-**用上了才注册（安装 ≠ 启用）**：`redis` 与 `database` 两种持久化驱动均通过 core 的 `OnDriverInUseCondition`
+**按需注册（安装 ≠ 启用）**：`redis` 与 `database` 两种持久化驱动均通过 core 的 `OnDriverInUseCondition`
 **严格按需**装配——仅当 `jaravel.queue.driver` 显式取值为 `redis` / `database` 时才创建对应 `QueueDriver` Bean，
 且依然受 `@ConditionalOnBean(RedisManager.class)` / `@ConditionalOnBean(DataSource.class)` 约束。
 不存在「redis 不可用回退 database」逻辑：redis 与 database 各自独立按需装配，sync 始终作为无驱动时的内存回退。

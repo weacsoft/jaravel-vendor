@@ -4,7 +4,7 @@
 > 对齐 Laravel 特性：`Illuminate\Auth`（AuthManager、Guard、UserProvider、Auth 门面、auth 中间件）
 >
 > **零 Spring 依赖**：本模块保留纯 Java 的 `AuthManager` / `AuthContext` / `contract/*` / `facade/Auth` / `guard/*` / `middleware/Authenticate` / `@RegisterGuard` / `@RegisterProvider` 与 `AuthPublishableConfig`。
-> Spring 装配收尾于 **springboot** 模块（`vendor.springboot.auth` 包）：`AuthAutoConfiguration` / `AuthProperties` / `AuthRegistrar` / `OnSessionGuardDriverCondition` / `AuthLifecycleFilter` / `AuthPublishAutoConfiguration`。
+> Spring 装配在 **springboot** 模块（`vendor.springboot.auth` 包）中完成：`AuthAutoConfiguration` / `AuthProperties` / `AuthRegistrar` / `OnSessionGuardDriverCondition` / `AuthLifecycleFilter` / `AuthPublishAutoConfiguration`。
 
 ## 目录
 

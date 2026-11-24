@@ -36,7 +36,7 @@ JWT 模块是 Jaravel 框架的 JWT 认证插件，对齐 Laravel 的 `tymon/jwt
 - **登出黑名单**：开启黑名单后，登出时将 token 加入缓存黑名单，即使 token 仍在有效期内也无法再次通过校验。
 - **宽限期续期**：开启黑名单并设置宽限期后，过期 token 在宽限期内仍可请求一次，响应 header 自动携带新 token，旧 token 被加入黑名单。
 - **Refresh Token 换取**：使用 refresh token 换取新的 access token。
-- **插件式集成**：引入 `jwt` 模块后，**仅当用户显式把某个 guard 的 `driver` 设为 `jwt` 时**才装配 `JwtGuardDriver` 启用 JWT 认证能力（遵循 vendor「安装 ≠ 启用，用上了才注册」原则，`jwt` **不在任何默认回退列表**中，不会因缺省而误启用）；未引入或没有 guard 选用 `jwt` 时，`AuthManager` 不会识别 `"jwt"` 驱动，且完全不连接任何资源。
+- **插件式集成**：引入 `jwt` 模块后，**仅当用户显式把某个 guard 的 `driver` 设为 `jwt` 时**才装配 `JwtGuardDriver` 启用 JWT 认证能力（遵循 vendor「安装 ≠ 启用，按需注册」原则，`jwt` **不在任何默认回退列表**中，不会因缺省而误启用）；未引入或没有 guard 选用 `jwt` 时，`AuthManager` 不会识别 `"jwt"` 驱动，且完全不连接任何资源。
 
 ### 与 auth 模块的关系
 
@@ -826,7 +826,7 @@ public class JwtAutoConfiguration {
 - Servlet Web 应用环境
 - classpath 同时存在 `AuthManager` 与 `JwtService` 类
 - **驱动条件**：`jwtGuardDriver` 受 `@Conditional(OnJwtGuardDriverCondition.class)` 约束，仅当
-  `jaravel.auth.guards.*.driver` 出现 `jwt` 时装配（严格按需，不认缺省）
+  `jaravel.auth.guards.*.driver` 出现 `jwt` 时装配（严格按需，仅显式配置生效）
 - 其余 Bean（`jwtConfig` / `jwtService` / `jwtTokenResponseFilter`）保持 `@ConditionalOnMissingBean` 注册
 
 > 注意区分：`JwtService` / `JwtConfig` 等 Bean 与「JWT 守卫驱动是否启用」解耦。驱动是否装配
@@ -951,7 +951,7 @@ jaravel:
 
 ### 用途
 
-标准 JWT 一旦签发，在过期前无法主动失效。黑名单功能用于在服务端主动踢掉 token，适用于：
+标准 JWT 一旦签发，在过期前无法主动失效。黑名单功能用于在服务端主动失效 token，适用于：
 
 - 用户主动登出，要求旧 token 立即失效；
 - 用户修改密码，要求已签发的 token 失效；
@@ -999,7 +999,7 @@ jaravel:
 
 ### 用途
 
-宽限期模式解决 access token 过期瞬间的"硬中断"问题：token 一过期就返回 401，导致用户体验中断。开启宽限期后，过期 token 在宽限期内仍可请求一次，服务端在响应 header 中返回新 token，客户端可无感续期。
+宽限期模式解决 access token 过期瞬间的"硬中断"问题：token 过期后立即返回 401，导致用户体验中断。开启宽限期后，过期 token 在宽限期内仍可请求一次，服务端在响应 header 中返回新 token，客户端可无感续期。
 
 ### 前置条件
 
@@ -1228,10 +1228,10 @@ public Response logout() {
 }
 ```
 
-> 当 `blacklistEnabled=false`（标准 JWT）时，`logout()` 仅清理请求级状态，不会真正踢掉 token（标准 JWT 无服务端失效能力）。
+> 当 `blacklistEnabled=false`（标准 JWT）时，`logout()` 仅清理请求级状态，不会真正失效 token（标准 JWT 无服务端失效能力）。
 
 ## 使用注意
 
-- `JwtGuard` 实例**必须**经 `AuthManager.guard(String)` 获取，它是请求级对象，**不可**跨请求缓存或共享（其内部可变状态会串态）。
+- `JwtGuard` 实例**必须**经 `AuthManager.guard(String)` 获取，它是请求级对象，**不可**跨请求缓存或共享（其内部可变状态会在请求之间共享，导致会话错乱）。
 - `JwtService` 与 `JwtTokenResponseFilter` 是无状态单例，可安全地在任意线程共享调用。
 - 黑名单存储委托给 `CacheStore`，跨实例部署请选用 `file` / `redis` 驱动，而非 `array`（仅单机有效）。

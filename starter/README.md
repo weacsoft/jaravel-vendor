@@ -1,6 +1,6 @@
 # starter 模块
 
-> Jaravel-Vendor 的 Spring Boot Starter，一键引入基础必选的 Laravel 风格组件。只需添加一个 Maven 依赖，即可获得中间件、Auth、Validation、Config、Eloquent ORM、迁移、缓存、事件等全套能力（Blade 模板引擎 `jblade` 为可选模块，按需引入）。包名统一为 `com.weacsoft.jaravel.vendor.springboot`。
+> Jaravel-Vendor 的 Spring Boot Starter，一个依赖引入基础必选的 Laravel 风格组件。只需添加一个 Maven 依赖，即可获得中间件、Auth、Validation、Config、Eloquent ORM、迁移、缓存、事件等全套能力（Blade 模板引擎 `jblade` 为可选模块，按需引入）。包名统一为 `com.weacsoft.jaravel.vendor.springboot`。
 
 ---
 
@@ -20,7 +20,7 @@
 
 ## 1. 模块概述
 
-`starter` 模块是 Jaravel-Vendor 框架的聚合入口，对齐 Spring Boot Starter 的设计理念：**约定优于配置，开箱即用**。
+`starter` 模块是 Jaravel-Vendor 框架的聚合入口，对齐 Spring Boot Starter 的设计理念：**约定优于配置，内置即用**。
 
 引入 `jaravel-starter` 后，框架自动完成以下工作：
 
@@ -288,7 +288,7 @@ router.post("/users", request -> {
 
 ## 7. JWT 可选模块说明
 
-**JWT 模块（`io.github.lijialong1313:jwt`）不在 starter 中聚合**，属于可选模块。这是有意设计：
+**JWT 模块（`io.github.lijialong1313:jwt`）不在 starter 中聚合**，属于可选模块。设计说明：
 
 - JWT 依赖 `jjwt` 库，并非所有应用都需要 JWT 认证。
 - 不强制引入可减少不必要的依赖体积。

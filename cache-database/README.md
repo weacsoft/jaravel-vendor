@@ -4,7 +4,7 @@
 
 设计原则（对齐 `queue-database` 的拆分惯例）：
 
-- **走 database 模块**：数据源解析直接调用 `database` 模块的 `ConnectionManager` 连接注册表
+- **经 database 模块**：数据源解析直接调用 `database` 模块的 `ConnectionManager` 连接注册表
   （`@RegisterConnection` 声明的连接 / `defaultRawDataSource()`），SQL 用**原生 JDBC** 执行——
   **不依赖 spring-jdbc / JdbcTemplate**；
 - **零 Spring 依赖**：本模块没有任何 Spring 注解或 Bean，可以在纯 JVM 环境直接使用
@@ -41,7 +41,7 @@
 ```
 com.weacsoft.jaravel.vendor.cache.database
 ├── DatabaseCacheDriver           // 数据库缓存驱动（原生 JDBC，方言适配，不自动建表）
-├── DatabaseCacheDriverFactory    // database 驱动工厂（Supplier<DataSource> 惰性解析；别名走 ConnectionManager）
+├── DatabaseCacheDriverFactory    // database 驱动工厂（Supplier<DataSource> 惰性解析；别名经 ConnectionManager 解析）
 └── artisan/
     └── CacheTableCommand         // cache:table 命令（生成建表迁移文件，不直接建表）
 ```
@@ -64,7 +64,7 @@ com.weacsoft.jaravel.vendor.cache.database
 | --- | --- |
 | `DatabaseCacheDriverFactory(DataSource)` | 固定数据源（测试 / 显式指定） |
 | `DatabaseCacheDriverFactory(Supplier<DataSource>)` | 惰性解析（springboot 自动装配注入「注册表 + 容器回退」解析器） |
-| `static fromConnectionManager()` | 标准纯 jaravel 用法：默认走 `ConnectionManager.defaultRawDataSource()` |
+| `static fromConnectionManager()` | 标准纯 jaravel 用法：默认经 `ConnectionManager.defaultRawDataSource()` 解析 |
 
 - `support("database")` 为 true；
 - `create(config)` 读取 `table` / `connection` 配置：`connection` 别名经 `ConnectionManager.rawDataSource(alias)` 解析；

@@ -109,7 +109,7 @@ com.weacsoft.jaravel.vendor
 │   ├── MiddlewareAliasRegistry        // 中间件别名注册表（对齐 Laravel $routeMiddleware，支持别名与类双映射）
 │   ├── ClassMiddlewareSpec            // 类引用中间件规格（Class + params，内部类）
 │   ├── TrimStrings                    // 字符串裁剪（普通类，继承式配置）
-│   ├── ConvertEmptyStringsToNull      // 空串转 null（普通类，继承式配置）
+│   ├── ConvertEmptyStringsToNull      // 空字符串转 null（普通类，继承式配置）
 │   ├── EncryptCookies                 // Cookie 加解密（普通类，继承式配置）
 │   ├── TrustProxies                   // 信任代理（普通类，继承式配置）
 │   └── VerifyCsrfToken                // CSRF 校验（普通类，继承式配置）
@@ -239,7 +239,7 @@ router.get("/users", action).middleware(AppTrimStrings.class);
 
 | 方法 | 说明 |
 | --- | --- |
-| `Response handle(Request, NextFunction, String...)` | 转换空串后传递给下一层 |
+| `Response handle(Request, NextFunction, String...)` | 转换空字符串后传递给下一层 |
 | `protected String[] except()` | 返回排除字段数组（默认排除密码类字段），子类覆盖以自定义 |
 | `private boolean isExcluded(String name)` | 是否在排除列表中（大小写不敏感） |
 
@@ -636,8 +636,8 @@ Laravel 风格请求对象，封装 query、input、file、header、cookie、ses
 | `boolean has(String key)` | query 或 input 是否包含该 key |
 
 > **使用注意（2026-08-16）**：`query(key)` / `input(key)` / `header(key)` / `session(key)` /
-> `cookie(key)` 等<b>单参数重载缺省时返回 `null`</b>（不是空串）——配合
-> `ConvertEmptyStringsToNull` 中间件（空串已转 null），可直接 `if (request.query("key") != null)` 判断。
+> `cookie(key)` 等<b>单参数重载缺省时返回 `null`</b>（不是空字符串）——配合
+> `ConvertEmptyStringsToNull` 中间件（空字符串已转 null），可直接 `if (request.query("key") != null)` 判断。
 > 泛型重载（`query(key, T defaultValue)`）传 `null` 默认值<b>不抛 NPE</b>，按「缺省返回 null」处理；
 > 传非 null 默认值（如 `query("page", "1")`）时缺省仍返回该默认值。
 
@@ -1388,7 +1388,7 @@ router.serveStatic("/assets", "file:./public/", 7200);
 ```java
 Router router = new Router();
 
-// 先在文件系统 public 目录查找，找不到再回退到 classpath
+// 先在文件系统 public 目录查找，未命中再回退到 classpath
 router.serveStatic("/static", List.of(
     "file:./public/",         // 优先：外部目录（可热更新）
     "classpath:/static/"      // 回退：打包在 JAR 内的默认资源
@@ -1597,7 +1597,7 @@ public interface StreamTarget {
 | `String storeStream(MultipartFile file, String dir, StreamTarget target)` | 以流式方式写入文件，内容不整体载入内存，返回相对路径 |
 | `String storeAsStream(MultipartFile file, String dir, String name, StreamTarget target)` | 以流式方式使用指定文件名写入文件，返回相对路径 |
 
-`dir` 支持相对目录（`null`/空串=根），并规范化前导/结尾斜杠与反斜杠。
+`dir` 支持相对目录（`null`/空字符串=根），并规范化前导/结尾斜杠与反斜杠。
 
 ### 与 storage 集成
 

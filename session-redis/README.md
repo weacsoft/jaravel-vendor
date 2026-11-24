@@ -80,7 +80,7 @@ public class SessionRedisProperties {
 ```yaml
 jaravel:
   session:
-    driver: redis      # ← 必须显式声明，否则本模块完全不装配
+    driver: redis      # ← 必须显式声明，否则本模块不装配
 ```
 
 未选用时，本模块**不创建任何 Bean、不连接 Redis**，Session 回退到 http 模块的

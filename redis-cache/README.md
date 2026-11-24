@@ -216,7 +216,7 @@ Redis 缓存自动装配。当 `RedisManager` 存在时，创建 `RedisCacheDriv
 | `@Conditional(OnRedisCacheStoreCondition.class)` | **配置里确实声明了 `driver: redis` 的缓存 store**（安装 ≠ 启用） |
 | `@ConditionalOnBean(RedisManager.class)` | 容器中存在 `RedisManager` bean（回退保护） |
 
-> **装配原则：用上了才注册。** 仅把 `jaravel-redis-cache` 放进 classpath **不会**触发装配，
+> **装配原则：按需注册。** 仅把 `jaravel-redis-cache` 放进 classpath **不会**触发装配，
 > 必须在 `jaravel.cache.stores.*.driver` 中显式选用 `redis`。
 > 未选用时本模块不创建任何 Bean、不连接 Redis，**无 Redis 环境也能正常启动**。
 >
@@ -247,7 +247,7 @@ jaravel:
       # auto-register: true      # 可选，覆盖开关（true 强制启用 / false 强制关闭）
     stores:
       redis:
-        driver: redis            # ← 本模块的启用开关，不写则完全不装配
+        driver: redis            # ← 本模块的启用开关，不写则不装配
         connection: cache        # 可覆盖顶层 jaravel.cache.redis.connection 配置
 ```
 
