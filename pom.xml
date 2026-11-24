@@ -110,7 +110,10 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <gaarason.database.version>7.1.3</gaarason.database.version>
         <jjwt.version>0.12.6</jjwt.version>
-        <slf4j.version>1.7.36</slf4j.version>
+        <!-- 仅 plugin-jar-core / plugin-java-core（SB2.7 目标）使用；不得命名为 slf4j.version，
+             否则会覆盖 spring-boot-dependencies 的同名属性，使所有 SB3 模块的
+             slf4j-api 被降级为 1.7.36（与 logback 1.5.x 的 SLF4J 2.x API 不兼容，测试期退化为 NOP 日志） -->
+        <slf4j17.version>1.7.36</slf4j17.version>
         <asm.version>9.7</asm.version>
         <okhttp.version>4.12.0</okhttp.version>
         <jackson3.version>3.0.2</jackson3.version>
@@ -344,12 +347,7 @@
                 <version>${jjwt.version}</version>
             </dependency>
 
-            <!-- SLF4J（plugin-jar-core/plugin-java-core 兼容 SB2.7，使用 1.7.x） -->
-            <dependency>
-                <groupId>org.slf4j</groupId>
-                <artifactId>slf4j-api</artifactId>
-                <version>${slf4j.version}</version>
-            </dependency>
+
 
             <!-- ASM 字节码扫描（plugin-jar-core） -->
             <dependency>
@@ -410,9 +408,38 @@
             <artifactId>lombok</artifactId>
             <optional>true</optional>
         </dependency>
+        <!-- 全局 test : Logback。
+             仅测试作用域：保证各模块测试期 SLF4J 能绑定到日志实现，
+             消除 "No SLF4J providers were found" / NOP 提示；不进入发布构件。
+             版本继承 spring-boot-dependencies 的 logback.version（1.5.18）。
+             SB2.7 兼容模块（plugin-jar-core / plugin-java-core）在各自 pom
+             中以 logback 1.2.x 覆盖（其 slf4j-api 为 1.7.x，无法绑定 1.5.x）。 -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
+        <plugins>
+            <!-- 显式启用批注处理（JDK 21+ 默认警告），消除 "批注处理" 提示 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <proc>full</proc>
+                </configuration>
+            </plugin>
+            <!-- 允许动态加载 Java Agent（Mockito/ByteBuddy 测试需要），消除 JVM WARNING -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <argLine>-XX:+EnableDynamicAgentLoading</argLine>
+                </configuration>
+            </plugin>
+        </plugins>
     </build>
 
     <profiles>

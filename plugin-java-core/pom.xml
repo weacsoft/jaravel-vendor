@@ -63,10 +63,11 @@
             <version>${spring-boot.version}</version>
             <scope>provided</scope>
         </dependency>
-        <!-- Logging (provided by host application) -->
+        <!-- Logging (provided by host application; SB2.7 使用 1.7.x) -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
+            <version>${slf4j17.version}</version>
             <scope>provided</scope>
         </dependency>
         <!-- Jackson (provided by host application) -->
@@ -76,6 +77,14 @@
             <scope>provided</scope>
         </dependency>
 
+        <!-- 测试日志：覆盖全局 test 依赖的 logback 1.5.x（SLF4J 2.x API）为 1.2.x，
+             与 SB2.7 / slf4j-api 1.7.36 兼容，避免测试期退化为 NOP 日志 -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>1.2.12</version>
+            <scope>test</scope>
+        </dependency>
         <!-- 测试依赖 -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
