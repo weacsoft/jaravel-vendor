@@ -190,14 +190,17 @@ public final class MakeGenerator {
     /**
      * 生成 Migration 类。
      * <p>
-     * 迁移文件生成到 Java 源码树中（{@code output-dir/基包/database/migration/}），
+     * 迁移文件生成到 Java 源码树中（{@code output-dir/基包/database/migrations/}），
      * 与 Controller、Model 等保持一致的生成方式，确保能被编译器编译并由 CLASSPATH 模式加载。
+     * 包名取 {@link MakeCodeProperties#getMigrationPackage()}（{@code 基包.database.migrations}，
+     * 对齐 Laravel 的 {@code database/migrations} 约定），与 {@code vendor:publish}、
+     * {@code make:model-from-migration} 的落点保持一致。
      */
     public static String generateMigration(MakeCodeProperties properties, String name, boolean force) throws IOException {
         String datePrefix = LocalDate.now().format(DATE_FORMATTER);
         String pascalName = toPascalCase(name);
         String className = "Migration_" + datePrefix + "_" + pascalName;
-        String packageName = properties.getBasePackage() + ".database.migration";
+        String packageName = properties.getMigrationPackage();
         String content = buildMigrationSource(packageName, className, name);
         return writeJavaFile(properties.getOutputDir(), packageName, className, content, force);
     }

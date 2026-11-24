@@ -3,7 +3,7 @@ package com.weacsoft.jaravel.vendor.artisan.make;
 import com.weacsoft.jaravel.vendor.artisan.ArtisanCommand;
 
 /**
- * make:all 命令 — 一键生成 Controller + Middleware + Model + Migration + Command + Event + Listener。
+ * make:all 命令 — 一次性生成 Controller、Middleware、Model、Migration、Command、Event、Listener。
  * <p>
  * 使用方式：{@code java -jar app.jar artisan make:all User}
  * <p>

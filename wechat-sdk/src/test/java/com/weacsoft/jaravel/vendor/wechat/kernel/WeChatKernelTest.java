@@ -232,8 +232,8 @@ class WeChatKernelTest {
 
     @Test
     void testKernelBareMiddlewareExceptionPropagates() {
-        // 裸洋葱层的异常直接向上抛（由开发者控制）；
-        // 「吞异常按空串应答」的旧语义由 ResponderMiddleware（WeChatServer.handlePost 的 responder 路径）承载，
+        // 未包裹 ResponderMiddleware 的洋葱层，其异常直接向上抛（由开发者控制）；
+        // 「忽略异常并按空字符串应答」的语义由 ResponderMiddleware（WeChatServer.handlePost 的 responder 路径）承载，
         // 见 WeChatServerTest.testHandlePostResponderExceptionYieldsEmpty。
         WechatKernel kernel = new WechatKernel("default", cfg("plain", false))
                 .middleware((req, next) -> {

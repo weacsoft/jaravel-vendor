@@ -134,17 +134,17 @@ public abstract class OnDriverInUseCondition implements Condition {
      * <h3>为什么需要</h3>
      * jaravel 的声明式注册（{@code @RegisterGuard} / {@code @RegisterCacheStore} /
      * {@code @RegisterSessionStore} / {@code @RegisterDisk} 等）只在注解里写<b>名字</b>，
-     * 真正的驱动名在方法体返回的定义对象里，例如：
+     * 真正的驱动名是方法体返回的定义对象里的运行时值，例如：
      * <pre>
      * &#64;RegisterGuard("api")
      * public GuardDefinition apiGuard() {
      *     return GuardDefinition.of("jwt", "users");   // ← 驱动名是运行时值
      * }
      * </pre>
-     * Spring {@link Condition} 在 Bean 定义阶段求值，<b>无法执行方法体</b>，因此仅凭
-     * 配置属性（{@code jaravel.auth.guards.*.driver}）无法判定 jwt 是否被用上。
-     * 结果就是：用注解声明 jwt 守卫的应用，驱动 Bean 永远不装配，
-     * 所有 jwt 守卫路由在运行期抛「未知 guard driver: jwt」。
+     * Spring {@link Condition} 在 Bean 定义阶段求值，<b>无法执行方法体</b>，仅凭
+     * 配置属性（{@code jaravel.auth.guards.*.driver}）无法判定驱动是否被声明式使用——
+     * 用注解声明 jwt 守卫时驱动 Bean 不会装配，所有 jwt 守卫路由在运行期抛
+     * 「未知 guard driver: jwt」。
      *
      * <h3>判定策略</h3>
      * 一旦发现容器中存在被这些注解标注的方法，说明<b>驱动是以声明式方式配置的</b>，

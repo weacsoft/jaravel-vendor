@@ -10,6 +10,7 @@ import java.security.KeyPairGenerator;
 import java.security.MessageDigest;
 import java.security.PrivateKey;
 import java.security.PublicKey;
+import java.security.SecureRandom;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
@@ -29,9 +30,14 @@ import java.util.Base64;
  * <h3>AES 模式</h3>
  * <ol>
  *   <li>对用户自定义密钥做 SHA-256 哈希，取前 16 字节作为 AES-128 密钥</li>
- *   <li>使用固定 IV（与密钥相同的前 16 字节）进行 AES/CBC/PKCS5Padding 加密</li>
- *   <li>将密文 Base64 编码后返回</li>
+ *   <li>每次加密使用<b>随机 IV</b>（16 字节）进行 AES/CBC/PKCS5Padding 加密，
+ *       密文 = IV ‖ AES密文，整体 Base64 编码后返回</li>
+ *   <li>解密时先取前 16 字节 IV，其余为密文；并保留旧格式兼容
+ *       （IV 恒等于密钥派生值、无 IV 前缀），以支持升级前由旧版前端加密的数据</li>
  * </ol>
+ * <p>
+ * 随机 IV 保证相同明文每次产生不同密文（消除 CBC 固定 IV 导致的密文关联），
+ * 且 IV 与密钥无关，泄露密文无法反推密钥派生输入。
  * <p>
  * <h3>RSA 模式</h3>
  * <ul>
@@ -75,9 +81,12 @@ public class CaptchaCrypto {
     // ==================== 加密状态 ====================
     private final Type type;
 
-    /** AES 密钥与 IV */
+    /** AES 密钥（SHA-256(用户密钥) 前 16 字节） */
     private final SecretKeySpec aesKeySpec;
-    private final IvParameterSpec aesIvSpec;
+    /** 旧格式固定 IV（与密钥相同），仅用于解密升级前的旧数据；新加密不再使用 */
+    private final IvParameterSpec aesLegacyIvSpec;
+    /** 每次加密生成随机 IV 用的安全随机源 */
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     /** RSA 公钥与私钥（至少有一个非 null） */
     private final PublicKey rsaPublicKey;
@@ -91,7 +100,7 @@ public class CaptchaCrypto {
     public CaptchaCrypto() {
         this.type = Type.NONE;
         this.aesKeySpec = null;
-        this.aesIvSpec = null;
+        this.aesLegacyIvSpec = null;
         this.rsaPublicKey = null;
         this.rsaPrivateKey = null;
     }
@@ -110,7 +119,8 @@ public class CaptchaCrypto {
         byte[] keyBytes = new byte[16];
         System.arraycopy(hash, 0, keyBytes, 0, 16);
         this.aesKeySpec = new SecretKeySpec(keyBytes, AES_ALGORITHM);
-        this.aesIvSpec = new IvParameterSpec(keyBytes);
+        // 旧数据兼容：IV 恒等于密钥派生值（升级前前端使用此约定）
+        this.aesLegacyIvSpec = new IvParameterSpec(keyBytes);
         this.rsaPublicKey = null;
         this.rsaPrivateKey = null;
     }
@@ -124,7 +134,7 @@ public class CaptchaCrypto {
     public CaptchaCrypto(String publicKeyBase64, String privateKeyBase64) {
         this.type = Type.RSA;
         this.aesKeySpec = null;
-        this.aesIvSpec = null;
+        this.aesLegacyIvSpec = null;
         this.rsaPublicKey = publicKeyBase64 != null ? parsePublicKey(publicKeyBase64) : null;
         this.rsaPrivateKey = privateKeyBase64 != null ? parsePrivateKey(privateKeyBase64) : null;
     }
@@ -137,7 +147,7 @@ public class CaptchaCrypto {
     public CaptchaCrypto(KeyPair keyPair) {
         this.type = Type.RSA;
         this.aesKeySpec = null;
-        this.aesIvSpec = null;
+        this.aesLegacyIvSpec = null;
         this.rsaPublicKey = keyPair != null ? keyPair.getPublic() : null;
         this.rsaPrivateKey = keyPair != null ? keyPair.getPrivate() : null;
     }
@@ -301,17 +311,58 @@ public class CaptchaCrypto {
 
     // ==================== AES 实现 ====================
 
+    /** 新格式 AES 密文版本标记（1 字节版本号 + "JV1"），后接 16 字节随机 IV 与密文 */
+    private static final byte[] AES_MAGIC = { 0x01, 0x4A, 0x56, 0x31 };
+    private static final int AES_IV_LEN = 16;
+
+    private static boolean startsWith(byte[] data, byte[] prefix) {
+        if (data.length < prefix.length) {
+            return false;
+        }
+        for (int i = 0; i < prefix.length; i++) {
+            if (data[i] != prefix[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private String encryptAes(String plaintext) throws Exception {
+        byte[] iv = new byte[AES_IV_LEN];
+        SECURE_RANDOM.nextBytes(iv);
         Cipher cipher = Cipher.getInstance(AES_TRANSFORMATION);
-        cipher.init(Cipher.ENCRYPT_MODE, aesKeySpec, aesIvSpec);
+        cipher.init(Cipher.ENCRYPT_MODE, aesKeySpec, new IvParameterSpec(iv));
         byte[] encrypted = cipher.doFinal(plaintext.getBytes(StandardCharsets.UTF_8));
-        return Base64.getEncoder().encodeToString(encrypted);
+        byte[] out = new byte[AES_MAGIC.length + AES_IV_LEN + encrypted.length];
+        System.arraycopy(AES_MAGIC, 0, out, 0, AES_MAGIC.length);
+        System.arraycopy(iv, 0, out, AES_MAGIC.length, AES_IV_LEN);
+        System.arraycopy(encrypted, 0, out, AES_MAGIC.length + AES_IV_LEN, encrypted.length);
+        return Base64.getEncoder().encodeToString(out);
     }
 
     private String decryptAes(String ciphertext) throws Exception {
-        Cipher cipher = Cipher.getInstance(AES_TRANSFORMATION);
-        cipher.init(Cipher.DECRYPT_MODE, aesKeySpec, aesIvSpec);
         byte[] decoded = Base64.getDecoder().decode(ciphertext);
+        // 新格式 = 4 字节版本标记 + 16 字节随机 IV + 至少 1 个 AES 块，
+        // 总长度 ≡ 4 (mod 16)；旧格式为纯 AES 块，长度 ≡ 0 (mod 16)。两者互斥，
+        // 再叠加版本标记前缀判断，确保不会把旧密文误判为新格式。
+        if (decoded.length % 16 == 4
+                && decoded.length >= AES_MAGIC.length + AES_IV_LEN + 16
+                && startsWith(decoded, AES_MAGIC)) {
+            int ivOffset = AES_MAGIC.length;
+            Cipher cipher = Cipher.getInstance(AES_TRANSFORMATION);
+            cipher.init(Cipher.DECRYPT_MODE, aesKeySpec,
+                    new IvParameterSpec(decoded, ivOffset, AES_IV_LEN));
+            byte[] decrypted = cipher.doFinal(decoded, ivOffset + AES_IV_LEN,
+                    decoded.length - ivOffset - AES_IV_LEN);
+            String result = new String(decrypted, StandardCharsets.UTF_8);
+            if (result.indexOf('\uFFFD') < 0) {
+                return result;
+            }
+            // 极小概率旧密文首字节恰好匹配标记：落到下方旧格式路径重试
+        }
+        // 旧格式：IV 恒等于密钥派生值（无 IV 前缀），兼容升级前前端加密的数据
+        Cipher cipher = Cipher.getInstance(AES_TRANSFORMATION);
+        cipher.init(Cipher.DECRYPT_MODE, aesKeySpec, aesLegacyIvSpec);
         byte[] decrypted = cipher.doFinal(decoded);
         return new String(decrypted, StandardCharsets.UTF_8);
     }

@@ -147,11 +147,10 @@ public class SpringBootRouteAutoConfiguration {
     /**
      * auth 模块在场时才生效的配置（独立内部类 + <b>类级</b>条件）。
      * <p>
-     * <b>为什么必须单独放一个内部配置类</b>：{@code @ConditionalOnClass} 挂在<b>方法</b>上
-     * 保护不了「声明类自身能否被加载」—— 只要方法形参引用了 optional 依赖里的类型，
-     * Spring 内省外层配置类的方法签名时就会抛 {@code NoClassDefFoundError}
-     * （经验证：只引 {@code springboot} 而不引 {@code auth}，应用直接启动失败）。
-     * 移入独立的内部类并加类级条件后，条件不满足时这个类根本不会被加载。
+     * {@code @ConditionalOnClass} 挂在<b>方法</b>上保护不了「声明类自身能否被加载」：
+     * 方法形参引用 optional 依赖里的类型时，Spring 内省方法签名就会抛
+     * {@code NoClassDefFoundError}。移入独立的内部类并加类级条件后，
+     * 条件不满足时该类根本不会被加载。
      */
     @org.springframework.context.annotation.Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(name = "com.weacsoft.jaravel.vendor.auth.AuthManager")
@@ -178,7 +177,7 @@ public class SpringBootRouteAutoConfiguration {
             RouteAuthHandler routeAuthHandler, ApplicationContext applicationContext) {
         // 扫描 @MiddlewareAlias 注解的中间件类（classpath 扫描，非 Bean），注册到全局别名注册表
         scanMiddlewareAliases(applicationContext);
-        // 框架级开箱即用注册：CSRF 校验中间件别名 + 模板辅助函数（无需应用层自定义子类或额外注册）
+        // 框架级内置注册：CSRF 校验中间件别名 + 模板辅助函数（无需应用层自定义子类或额外注册）
         registerBuiltinMiddlewareAndHelpers(router);
         // 扫描控制器并注册到 ControllerRegistry（支持 Controllers 接口和 Spring @Controller/@RestController）
         scanControllers(applicationContext);
@@ -300,9 +299,9 @@ public class SpringBootRouteAutoConfiguration {
                         "[builtin] 内置中间件别名 VerifyCsrfToken 注册失败，CSRF 校验将不可用。"
                                 + "请检查 MiddlewareAliasRegistry 是否被异常清空。");
             }
-            log.info("[builtin] 已注册内置中间件别名 VerifyCsrfToken（开箱即用）");
+            log.info("[builtin] 已注册内置中间件别名 VerifyCsrfToken");
         } else {
-            log.info("[builtin] 检测到应用已自定义 VerifyCsrfToken 别名，框架不覆盖（开箱即用）");
+            log.info("[builtin] 检测到应用已自定义 VerifyCsrfToken 别名，框架不覆盖");
         }
     }
 
@@ -545,10 +544,12 @@ public class SpringBootRouteAutoConfiguration {
                     routeAuthHandler.clearAuth();
                 }
             } catch (Exception e) {
+                // 完整堆栈仅记录到服务端日志；响应只返回通用错误，
+                // 避免异常类型与内部消息（路径、SQL、驱动信息等）泄露给客户端
                 log.error("路由处理异常 [{} {}]", route.getMethod(), route.generateFullUri(), e);
                 return ServerResponse.status(500).body(
-                        Map.of("error", e.getClass().getSimpleName(),
-                               "message", e.getMessage() != null ? e.getMessage() : "no message"));
+                        Map.of("error", "internal",
+                               "message", "内部处理失败"));
             }
         };
     }

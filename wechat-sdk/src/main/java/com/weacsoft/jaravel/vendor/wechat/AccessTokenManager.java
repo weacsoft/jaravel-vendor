@@ -12,6 +12,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 /**
@@ -253,8 +255,10 @@ public class AccessTokenManager {
                     .post(RequestBody.create(Json.stringify(tokenBody), JSON_MEDIA_TYPE))
                     .build();
         } else {
+            // legacy 模式走 URL 查询参数：appid/secret 必须 URL 编码，
+            // 否则 AppSecret 中的 &、=、空格等字符会截断或破坏参数
             String url = API_BASE_URL + "/cgi-bin/token?grant_type=client_credential"
-                    + "&appid=" + appId + "&secret=" + secret;
+                    + "&appid=" + encodeQuery(appId) + "&secret=" + encodeQuery(secret);
             request = new Request.Builder().url(url).get().build();
         }
 
@@ -286,6 +290,11 @@ public class AccessTokenManager {
             logger.error("[wechat] 获取 AccessToken 网络异常: appId={}", appId, e);
             throw new RuntimeException("获取 AccessToken 网络异常: " + e.getMessage(), e);
         }
+    }
+
+    /** URL 查询参数值编码（UTF-8） */
+    private static String encodeQuery(String value) {
+        return value == null ? "" : URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
 }

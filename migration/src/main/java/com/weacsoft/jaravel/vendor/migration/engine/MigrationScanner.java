@@ -769,21 +769,35 @@ public class MigrationScanner {
         }
         String simpleName = fileName.substring(0, fileName.length() - ".class".length());
 
-        // 从文件路径向上回溯，拼接包名
+        // 从文件路径向上回溯，收集所有包根候选目录，取最浅（最靠近文件系统根）的一个
+        // 作为包名前缀的起点。旧实现停在第一个（最深）命中的根目录，
+        // 例如 .../com/example/app/Foo.class 会停在 "app" 而丢失 "com.example"；
+        // 若整条路径未命中任何根目录则走到驱动器根，拼出含盘符的垃圾类名。
+        // 取最浅的根可保证 com.example.app.Foo 这类嵌套目录得到完整 FQN。
         List<String> parts = new ArrayList<>();
         parts.add(simpleName);
         File current = parentDir;
-        File root = parentDir;
+        int rootDepth = -1;
+        int depth = 0;
         while (current != null) {
             String dirName = current.getName();
-            // 常见包名根目录：com, org, cn, io, net, app 等
-            if (isPackageRoot(dirName)) {
-                parts.add(dirName);
-                root = current;
+            if (dirName.isEmpty()) {
                 break;
             }
             parts.add(dirName);
+            if (rootDepth < 0 && isPackageRoot(dirName)) {
+                rootDepth = depth;
+            }
+            depth++;
             current = current.getParentFile();
+        }
+        if (rootDepth < 0) {
+            // 整条路径未找到任何包根，无法可靠推导 FQN
+            return null;
+        }
+        // 仅保留根目录及其以下（depth > rootDepth 的部分）
+        while (parts.size() - 1 > rootDepth) {
+            parts.remove(parts.size() - 2);
         }
         // 反转并拼接
         java.util.Collections.reverse(parts);

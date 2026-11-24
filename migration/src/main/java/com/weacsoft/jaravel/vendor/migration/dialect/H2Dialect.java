@@ -67,24 +67,26 @@ public class H2Dialect extends AbstractDialect {
                 return "VARCHAR(" + (length != null ? length : 255) + ")";
             case "char":
                 return "CHAR(" + (length != null ? length : 255) + ")";
+            // H2 原生类型（不使用 UNSIGNED / MySQL 专属类型）：
+            // 保证在 H2 默认模式与 MODE=MySQL 下均可建表
             case "integer":
-                return unsigned ? "INT UNSIGNED" : "INT";
+                return "INT";
             case "bigInteger":
-                return unsigned ? "BIGINT UNSIGNED" : "BIGINT";
+                return "BIGINT";
             case "tinyInteger":
-                return unsigned ? "TINYINT UNSIGNED" : "TINYINT";
+                return "TINYINT";
             case "smallInteger":
-                return unsigned ? "SMALLINT UNSIGNED" : "SMALLINT";
+                return "SMALLINT";
             case "mediumInteger":
-                return unsigned ? "MEDIUMINT UNSIGNED" : "MEDIUMINT";
+                return "INT";
             case "text":
                 return "TEXT";
             case "mediumText":
-                return "MEDIUMTEXT";
+                return "CLOB";
             case "longText":
-                return "LONGTEXT";
+                return "CLOB";
             case "boolean":
-                return "TINYINT(1)";
+                return "BOOLEAN";
             case "decimal":
                 return "DECIMAL(" + (precision != null ? precision : 8) + "," + (scale != null ? scale : 2) + ")";
             case "float":
@@ -100,9 +102,9 @@ public class H2Dialect extends AbstractDialect {
             case "timestamp":
                 return "TIMESTAMP";
             case "year":
-                return "YEAR";
+                return "INT";
             case "binary":
-                return "LONGBLOB";
+                return "BLOB";
             case "json":
                 return "JSON";
             default:
@@ -123,10 +125,13 @@ public class H2Dialect extends AbstractDialect {
 
     @Override
     public String createRepositoryTableSql(String table) {
+        // UNIQUE(migration, batch)：同一批次内同一条迁移只记录一次（多节点并发跑迁移时防止重复记录）；
+        // 回滚后再次迁移会写入新的 batch，不受此约束影响
         return "CREATE TABLE IF NOT EXISTS `" + table + "` ("
             + "`id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY, "
             + "`migration` VARCHAR(255) NOT NULL, "
-            + "`batch` INT NOT NULL"
+            + "`batch` INT NOT NULL, "
+            + "UNIQUE (`migration`, `batch`)"
             + ")";
     }
 

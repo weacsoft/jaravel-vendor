@@ -47,9 +47,24 @@ public final class AsyncReplyDispatcher {
     private final WechatProperties properties;
     private final AtomicInteger threadSeq = new AtomicInteger();
 
-    /** 按额度键的串行锁：保证「读剩余额度 → 扣减 → 写回」不并发交错 */
-    private final java.util.concurrent.ConcurrentHashMap<String, Object> quotaLocks =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    /** 条纹锁数量（固定 64）：额度键按哈希分桶，桶内读改写串行 */
+    private static final int STRIPE_COUNT = 64;
+
+    /** 条纹锁：键（account:openid）可能随活跃用户增长，固定大小的桶避免锁对象长期堆积 */
+    private final Object[] quotaLocks = newLockStripes();
+
+    private static Object[] newLockStripes() {
+        Object[] stripes = new Object[STRIPE_COUNT];
+        for (int i = 0; i < STRIPE_COUNT; i++) {
+            stripes[i] = new Object();
+        }
+        return stripes;
+    }
+
+    private Object lockFor(String key) {
+        int h = key.hashCode();
+        return quotaLocks[(h & 0x7fffffff) % STRIPE_COUNT];
+    }
 
     private volatile Executor executor;
 
@@ -135,7 +150,7 @@ public final class AsyncReplyDispatcher {
         }
         String key = key(account, openid);
         // 读改写必须串行：并发消耗会各自读到同一基数，超发的额度被放行
-        Object lock = quotaLocks.computeIfAbsent(key, k -> new Object());
+        Object lock = lockFor(key);
         synchronized (lock) {
             Integer remaining = read(key);
             int base = remaining == null ? remainingDefault(account) : remaining;

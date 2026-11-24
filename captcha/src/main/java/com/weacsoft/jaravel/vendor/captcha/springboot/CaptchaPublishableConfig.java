@@ -45,7 +45,7 @@ public class CaptchaPublishableConfig implements PublishableConfig {
                 + "import com.weacsoft.jaravel.vendor.captcha.generator.NumberCaptcha;\n"
                 + "import com.weacsoft.jaravel.vendor.captcha.generator.RotateCaptcha;\n"
                 + "import com.weacsoft.jaravel.vendor.captcha.generator.SliderCaptcha;\n"
-                + "import com.weacsoft.jaravel.vendor.captcha.springboot.CaptchaProperties;\n"
+                + "import com.weacsoft.jaravel.vendor.springboot.captcha.CaptchaProperties;\n"
                 + "import com.weacsoft.jaravel.vendor.captcha.store.CacheStoreCaptchaStore;\n"
                 + "import com.weacsoft.jaravel.vendor.captcha.store.CaptchaStore;\n"
                 + "import com.weacsoft.jaravel.vendor.captcha.store.MemoryCaptchaStore;\n"

@@ -51,10 +51,10 @@ class TableMigratorTest {
         // H2 内存库在连接关闭后自动销毁
     }
 
-    /** 创建 H2 内存数据源 */
+    /** 创建 H2 内存数据源（默认模式，建表 DDL 均为 H2 原生语法） */
     private DataSource createH2DataSource(String dbName) {
         org.h2.jdbcx.JdbcConnectionPool pool = org.h2.jdbcx.JdbcConnectionPool.create(
-            "jdbc:h2:mem:" + dbName + ";DB_CLOSE_DELAY=-1;MODE=MySQL", "sa", "");
+            "jdbc:h2:mem:" + dbName + ";DB_CLOSE_DELAY=-1", "sa", "");
         return pool;
     }
 

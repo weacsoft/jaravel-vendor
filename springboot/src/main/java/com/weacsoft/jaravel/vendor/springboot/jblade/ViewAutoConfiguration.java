@@ -36,12 +36,11 @@ import org.springframework.core.annotation.AnnotationUtils;
  * </p>
  */
 // 本类在 META-INF 的自动装配 imports 文件里注册，因此必须是 @AutoConfiguration
-// （原先误用 @Configuration，导致它不参与自动装配的排序与条件语义）。
+// （@Configuration 不参与自动装配的排序与条件语义）。
 @org.springframework.boot.autoconfigure.AutoConfiguration
 // 类级守卫：jblade 是 optional 依赖，且 starter 并不聚合它。本类的静态块会在类加载时
 // new JbladePublishableConfig()，方法签名又用到 ViewManager/BladeView/ViewFacade/BladeFunctions，
-// 缺 jblade 时不守卫会直接 NoClassDefFoundError（经验证，缺 jblade 启动报
-// NoClassDefFoundError: com/weacsoft/jaravel/vendor/jblade/view/ViewManager）。
+// 缺 jblade 时不守卫会直接 NoClassDefFoundError。
 @ConditionalOnClass(name = "com.weacsoft.jaravel.vendor.jblade.view.ViewManager")
 public class ViewAutoConfiguration {
     static {

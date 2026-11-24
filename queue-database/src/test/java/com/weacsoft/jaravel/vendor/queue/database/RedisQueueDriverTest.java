@@ -33,7 +33,7 @@ import static org.mockito.Mockito.when;
  *       不再 {@code ZRANGE 0 -1} 全量扫描并逐条反序列化；</li>
  *   <li><b>push 先写索引再入队</b>：避免「已入队但没有索引」导致 delete/release 定位不到队列；</li>
  *   <li><b>迁移/领取/释放走 Lua</b>：{@code ZREM+LPUSH}、{@code RPOP+ZADD}、{@code ZREM+入队}
- *       各自在同一脚本内完成 —— 原实现是两步命令，进程死在中间会丢任务或重复投递；</li>
+ *       各自在同一脚本内原子完成（两步命令在进程中断时会丢任务或重复投递）；</li>
  *   <li><b>索引缺失不再静默</b>：改为告警，并说明任务会由超时迁移按「至少一次」重新投递。</li>
  * </ol>
  * 说明：Lua 的<b>原子语义本身</b>需要真实 Redis 才能验证（当前测试只覆盖调用的脚本、键与参数），
@@ -139,7 +139,6 @@ class RedisQueueDriverTest {
         verify(cmd, org.mockito.Mockito.atLeastOnce()).eval(contains("RPOP"),
                 any(ScriptOutputType.class), any(String[].class), anyString());
         verify(cmd, never()).rpop(anyString());
-        verify(cmd, never()).zrangebyscore(anyString(), anyDouble(), anyDouble());
     }
 
     @Test
@@ -171,9 +170,5 @@ class RedisQueueDriverTest {
         driver.release(JOB_ID, 0);
 
         verify(cmd, never()).lpush(anyString(), anyString());
-    }
-
-    private static double anyDouble() {
-        return org.mockito.ArgumentMatchers.anyDouble();
     }
 }

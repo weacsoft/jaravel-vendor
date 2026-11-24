@@ -117,8 +117,7 @@ public final class WxBizMsgCrypt {
         if (signature == null || signature.isEmpty() || timestamp == null || nonce == null) {
             return false;
         }
-        // 常量时间比较（与 wire 快照校验一致）：equalsIgnoreCase 短路比较会泄露逐字节的时序信息，
-        // 而本签名的三个输入（token 除外）都是公开参数，理论上可被用来做时序预言。
+        // 常量时间比较（与 wire 快照校验一致），避免时序侧信道。
         byte[] expected = signPlain(timestamp, nonce)
                 .getBytes(java.nio.charset.StandardCharsets.US_ASCII);
         byte[] actual = signature.toLowerCase(java.util.Locale.ROOT)
@@ -140,7 +139,7 @@ public final class WxBizMsgCrypt {
         if (expected == null || msgSignature == null || msgSignature.isEmpty()) {
             return false;
         }
-        // 常量时间比较（与 verifyPlainSignature 一致）：equalsIgnoreCase 短路比较会泄露逐字节的时序信息。
+        // 常量时间比较（与 verifyPlainSignature 一致），避免时序侧信道。
         byte[] expectedBytes = expected.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
         byte[] actualBytes = msgSignature.toLowerCase(java.util.Locale.ROOT)
                 .getBytes(java.nio.charset.StandardCharsets.US_ASCII);
@@ -170,12 +169,15 @@ public final class WxBizMsgCrypt {
         }
         int msgLen = readBigEndianInt(plainBytes, RANDOM_LENGTH);
         int msgStart = RANDOM_LENGTH + 4;
-        if (msgLen < 0 || msgStart + msgLen > plainBytes.length) {
+        // 用 long 计算边界：int 加法下伪造的大 msgLen 会溢出回绕，
+        // 使检查通过并触发原始 StringIndexOutOfBoundsException
+        long msgEnd = (long) msgStart + msgLen;
+        if (msgLen < 0 || msgEnd > plainBytes.length) {
             throw new WechatCryptoException("明文长度声明非法: msgLen=" + msgLen
                     + "，明文长度=" + plainBytes.length);
         }
         String msg = new String(plainBytes, msgStart, msgLen, StandardCharsets.UTF_8);
-        String receiveId = new String(plainBytes, msgStart + msgLen, plainBytes.length - msgStart - msgLen, StandardCharsets.UTF_8);
+        String receiveId = new String(plainBytes, msgStart + msgLen, (int) (plainBytes.length - msgEnd), StandardCharsets.UTF_8);
         if (!appId.equals(receiveId)) {
             throw new WechatCryptoException("receiveid 不匹配: 期望 " + appId + "，实际 " + receiveId);
         }

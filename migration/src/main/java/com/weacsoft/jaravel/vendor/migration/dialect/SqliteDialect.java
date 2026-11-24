@@ -134,10 +134,13 @@ public class SqliteDialect extends AbstractDialect {
 
     @Override
     public String createRepositoryTableSql(String table) {
+        // UNIQUE(migration, batch)：同一批次内同一条迁移只记录一次（多节点并发跑迁移时防止重复记录）；
+        // 回滚后再次迁移会写入新的 batch，不受此约束影响
         return "CREATE TABLE IF NOT EXISTS `" + table + "` ("
             + "`id` INTEGER PRIMARY KEY AUTOINCREMENT, "
             + "`migration` VARCHAR(255) NOT NULL, "
-            + "`batch` INT NOT NULL"
+            + "`batch` INT NOT NULL, "
+            + "UNIQUE (`migration`, `batch`)"
             + ")";
     }
 

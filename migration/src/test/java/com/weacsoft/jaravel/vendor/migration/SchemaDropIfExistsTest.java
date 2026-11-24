@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SchemaDropIfExistsTest {
 
     /** 只记录 SQL、不真正执行的执行器 */
-    private static final class RecordingJdbcExecutor extends JdbcExecutor {
+    private static final class RecordingJdbcExecutor extends com.weacsoft.jaravel.vendor.database.JdbcExecutor {
         private final List<String> executed = new ArrayList<>();
         /** 表存在性查询返回的表数量 */
         private final int tableCount;

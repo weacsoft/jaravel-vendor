@@ -89,11 +89,11 @@ class AccessTokenManagerStableTokenTest {
     @Test
     void testUnknownTokenModeFallsBackToLegacy() {
         mockWechatResponse(200, "{\"access_token\":\"x\",\"expires_in\":7200}");
-        // 拼写错误/未知值：不得静默走 stable，应回退 legacy GET
+        // 拼写错误/未知值：不得静默采用 stable，应回退 legacy GET
         AccessTokenManager manager = new AccessTokenManager(mockHttpClient, null, "", "LEGACY");
         assertNotNull(manager.getToken("wx789", "s"));
 
         Request captured = firstRequestSent();
-        assertEquals("GET", captured.method(), "legacy（大小写不敏感）应走 GET");
+        assertEquals("GET", captured.method(), "legacy（大小写不敏感）应采用 GET");
     }
 }

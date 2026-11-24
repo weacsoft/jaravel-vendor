@@ -57,8 +57,7 @@ public class RedisQueueDriver implements QueueDriver {
     /**
      * 索引值分隔符：索引里存 {@code queue<US>member}（JSON 内不含控制字符，安全）。
      * <p>
-     * 历史实现只存队列名，于是 {@code delete/release} 必须 {@code ZRANGE 0 -1} 遍历整个预约 ZSET
-     * 并逐条反序列化（O(N) 热路径）；索引里带上成员后，删除/释放变成 O(1)，也不再依赖扫描回退。
+     * 索引携带成员后，删除/释放可按成员定位，无需遍历整个预约 ZSET（O(N) 扫描回退）。
      */
     private static final char INDEX_SEPARATOR = '\u0001';
 
@@ -87,7 +86,7 @@ public class RedisQueueDriver implements QueueDriver {
      * 原子释放：ZREM 预约成员 + 入队（就绪 / 延迟）+ 刷新索引。
      * <p>
      * KEYS = [reserved, ready, delayed, index]；ARGV = [旧成员, 新成员, availableAt, 是否延迟, jobId, 索引值]。
-     * 原实现是「先 zrem 再 lpush」两步，进程死在中间会让任务彻底消失。
+     * ZREM 与重新入队必须原子执行：两步之间进程中断会让任务彻底消失。
      */
     private static final String RELEASE_SCRIPT =
             "redis.call('ZREM', KEYS[1], ARGV[1]) "
@@ -327,7 +326,10 @@ public class RedisQueueDriver implements QueueDriver {
             MapScanCursor<String, String> scan = cmd.hscan(indexKey(), cursor);
             List<String> toRemove = new ArrayList<>();
             for (Map.Entry<String, String> entry : scan.getMap().entrySet()) {
-                if (queueName.equals(entry.getValue())) {
+                // 索引值形如 queue<US>member（见 indexValue），按「队列名 + 分隔符」前缀匹配，
+                // 旧实现用 equals 比较，与 queue<US>member 永不相等，导致清空后索引残留无限增长
+                if (entry.getValue() != null
+                        && entry.getValue().startsWith(queueName + INDEX_SEPARATOR)) {
                     toRemove.add(entry.getKey());
                 }
             }

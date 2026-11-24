@@ -292,10 +292,11 @@ class OnDriverInUseConditionTest {
 
     @Test
     @DisplayName("声明式 @RegisterGuard 风格注册存在时装配（驱动名在返回值里读不到）")
+    @SuppressWarnings("deprecation")
     void matchWhenDeclarativeRegistrationPresent() {
         StubRegistry registry = new StubRegistry();
         AnnotatedBeanDefinition bd =
-                new AnnotatedGenericBeanDefinition(new StandardAnnotationMetadata(GuardConfig.class));
+                new AnnotatedGenericBeanDefinition(new StandardAnnotationMetadata(GuardConfig.class, false));
         registry.add("guardConfig", bd);
         ConditionContext ctx = new DeclarativeStubContext(registry);
         assertTrue(new DeclarativeCondition().matches(ctx, metadata),

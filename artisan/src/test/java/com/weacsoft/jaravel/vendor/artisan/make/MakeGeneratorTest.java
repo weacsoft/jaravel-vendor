@@ -143,7 +143,7 @@ class MakeGeneratorTest {
                 "Migration 文件名应以日期前缀 '" + expectedPrefix + "' 开头，实际: " + fileName);
 
         String content = Files.readString(file, StandardCharsets.UTF_8);
-        assertTrue(content.contains("package com.example.test.database.migration;"), "应包含 package 声明");
+        assertTrue(content.contains("package com.example.test.database.migrations;"), "应包含 package 声明（对齐 Laravel database/migrations 约定）");
         assertTrue(content.contains("implements Migration"), "应 implements Migration");
     }
 

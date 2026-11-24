@@ -35,12 +35,22 @@ public final class Str {
 
     /**
      * Laravel {@code Str::is()} 通配符匹配，支持 {@code *}。
+     * <p>
+     * 将 pattern 按 {@code *} 拆分后对每段做正则转义，再以 {@code .*} 拼接，
+     * 实现 {@code "*.php"} 匹配任意 {@code .php} 结尾字符串的语义。
      */
     public static boolean is(String pattern, String value) {
         if (pattern == null || value == null) return false;
         if (pattern.equals(value)) return true;
-        String regex = "^" + java.util.regex.Pattern.quote(pattern).replace("\\*", "\\E.*\\Q") + "$";
-        return value.matches(regex);
+        if (!pattern.contains("*")) return false;
+        String[] segments = pattern.split("\\*", -1);
+        StringBuilder regex = new StringBuilder("^");
+        for (int i = 0; i < segments.length; i++) {
+            if (i > 0) regex.append(".*");
+            regex.append(java.util.regex.Pattern.quote(segments[i]));
+        }
+        regex.append("$");
+        return value.matches(regex.toString());
     }
 
     public static String camel(String value) {

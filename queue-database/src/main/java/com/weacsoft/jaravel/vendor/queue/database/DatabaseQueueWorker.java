@@ -106,10 +106,8 @@ public class DatabaseQueueWorker {
         this.retryDelayMs = retryDelayMs;
         this.pollIntervalMs = pollIntervalMs;
         int capacity = Math.max(1, queues.size() * workerThreads);
-        // 背压：有界队列 + 许可（inFlight）双重约束。
-        // 原实现用 newFixedThreadPool = 无界 LinkedBlockingQueue，而 workLoop 不受执行进度约束地
-        // pop 并丢弃 submit 返回值 —— 会提前 reserve 大量任务（进程重启后它们在 visibility timeout
-        // 内无人可消费），内存也随 pop 线性增长。
+        // 背压：有界队列 + 许可（inFlight）双重约束，避免无界 pop 导致任务提前 reserve、
+        // 内存随提交线性增长。
         this.executor = new java.util.concurrent.ThreadPoolExecutor(
                 capacity, capacity, 0L, java.util.concurrent.TimeUnit.MILLISECONDS,
                 new java.util.concurrent.ArrayBlockingQueue<>(capacity),
@@ -247,8 +245,8 @@ public class DatabaseQueueWorker {
 
         } catch (Exception e) {
             logger.error("[queue-worker] 任务执行失败: {} - {}", job, e.getMessage(), e);
-            // 重试或归档到失败队列。这里必须再包一层 try/catch：原先 release/fail 自身抛异常时
-            // 会逃出本 catch，被丢弃返回值的 Future 吞掉且无人 get() → 任务状态不变、日志缺失。
+            // 重试或归档到失败队列。release/fail 自身可能抛异常，必须再包一层 try/catch，
+            // 否则会逃出本 catch 且无人消费该异常 → 任务状态不变、日志缺失。
             try {
                 if (job.getAttempts() < maxAttempts) {
                     driver.release(job.getId(), retryDelayMs);

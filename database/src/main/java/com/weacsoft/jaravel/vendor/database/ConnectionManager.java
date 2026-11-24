@@ -240,6 +240,15 @@ public final class ConnectionManager {
 
     /**
      * 按别名取底层原始 {@link javax.sql.DataSource}：先注册表，后 Spring 容器。
+     * <p>
+     * 与 {@link #connection(String)} 的解析规则一致：
+     * <ul>
+     *   <li>非默认别名只解析同名 Spring bean；找不到时返回 {@code null}（由调用方按
+     *       「该连接不存在」处理），<b>不会</b>静默回退到容器中的主数据源，避免拼错的
+     *       {@code @DataSource} 别名把流量误导向主库；</li>
+     *   <li>默认别名（{@code null}/空串或 {@code DEFAULT_CONNECTION}）在找不到同名 bean 时
+     *       回退到容器中的主 {@link javax.sql.DataSource}。</li>
+     * </ul>
      *
      * @param name 连接别名，{@code null} 或空表示默认连接
      * @return 原始数据源，找不到返回 {@code null}
@@ -260,9 +269,10 @@ public final class ConnectionManager {
                 return raw;
             }
         }
-        // 回退 Spring 容器：同名 bean → 任意/主 DataSource（但要排除框架自身的委托，避免自引用死循环）
+        // 回退 Spring 容器：同名 bean；仅默认别名额外回退到主 DataSource
+        // （但要排除框架自身的委托，避免自引用死循环）
         javax.sql.DataSource fromSpring = SpringContext.beanOrNull(alias, javax.sql.DataSource.class);
-        if (fromSpring == null) {
+        if (fromSpring == null && DEFAULT_CONNECTION.equals(alias)) {
             fromSpring = SpringContext.beanOrNull(javax.sql.DataSource.class);
         }
         if (fromSpring instanceof JaravelDataSource) {

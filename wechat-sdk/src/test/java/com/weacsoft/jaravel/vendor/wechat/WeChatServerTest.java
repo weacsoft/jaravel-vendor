@@ -195,7 +195,7 @@ class WeChatServerTest {
                 (m, s) -> {
                     throw new IllegalStateException("业务异常");
                 });
-        assertEquals(ok, "", "业务异常应吞掉并按空串应答，避免微信重试 3 次");
+        assertEquals(ok, "", "业务异常应忽略并按空字符串应答，避免微信重试 3 次");
     }
 
     @Test

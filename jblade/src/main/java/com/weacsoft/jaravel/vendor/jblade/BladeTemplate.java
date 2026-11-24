@@ -858,10 +858,9 @@ public abstract class BladeTemplate {
 
     /**
      * @yield：输出 section 内容或默认值。
-     * <ul>
-     *   <li>仅当 __wire_mode 为“真值”时输出 wire 分段标记；</li>
-         * </ul>
-     * （修复：以前使用 != null 判断，传入 false 也会输出标记。）
+     * wire 分段标记无条件输出：Wire 透明导航依赖 DOM 中的
+     * {@code <!--wire:section-start:NAME-->} / {@code <!--wire:section-end:NAME-->}
+     * 注释作为局部替换锚点，直接访问请求同样携带这些标记（注释不影响渲染）。
      */
     protected void yieldSection(Writer writer, String name, Object defaultValue) throws Exception {
         // 记录 yield 区域名，供编译期区域分析使用

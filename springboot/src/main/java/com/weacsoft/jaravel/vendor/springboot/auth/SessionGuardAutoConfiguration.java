@@ -13,17 +13,17 @@ import org.springframework.context.annotation.Conditional;
  * Session 守卫装配：把「用 Session 保存登录态」这一种实现接到 auth 标准上。
  * <p>
  * <b>为什么单独成类且条件写在类上</b>：{@code auth-session} 与 {@code session} 都是<b>可选</b>模块
- * （只依赖 auth 的应用不该被迫带上 session 能力）。只要本类的方法签名引用了它们，
- * Spring 内省本类时就会在缺模块的情况下抛 {@code NoClassDefFoundError} ——
- * 方法级条件保护不了「声明类自身的类加载」，所以条件和类型都必须收在这个类里。
+ * （只依赖 auth 的应用不应被迫带上 session 能力）。方法级条件保护不了「声明类自身的类加载」——
+ * 方法签名引用缺模块类型时 Spring 内省即抛 {@code NoClassDefFoundError}，
+ * 所以条件与类型引用都必须收在这个类里。
  * <p>
  * 缺失这两个模块时：auth 仍可正常装配（登录态不具备存储后端，由 auth 内置的空守卫回退），
  * 只是不会注册 {@code session} 驱动。
  * <p>
  * <b>本类只消费、不定义 {@link SessionStoreHolder}</b>：holder 的唯一声明点是
- * {@code springboot.session.HttpSessionAutoConfiguration}。历史上两处都定义同名 bean，
- * 同时装配会抛 {@code BeanDefinitionOverrideException} 直接启动失败；
- * 按「同一个 bean 只留一个声明点」的原则，这里改为纯 {@code @Bean} 参数注入。
+ * {@code springboot.session.HttpSessionAutoConfiguration}——同一 bean 只留一个声明点，
+ * 否则同名 bean 重复装配会抛 {@code BeanDefinitionOverrideException} 导致启动失败；
+ * 这里以 {@code @Bean} 参数注入方式消费。
  */
 @AutoConfiguration
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)

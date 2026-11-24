@@ -6,6 +6,7 @@ import com.weacsoft.jaravel.vendor.utils.memory.MemoryClassLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.io.Writer;
@@ -592,6 +593,9 @@ public class BladeEngine {
 
     /**
      * 从外部 CacheStore 加载模板字节码（异常安全版本）。
+     * <p>
+     * 类名推断与 {@code BladeCompiler} 的命名规则一致（前缀 {@code Blade_}，
+     * 模板名中的 /、.、- 替换为 _），保证写入外部缓存的字节码能被正确回读。
      */
     private Class<?> safeLoadFromCacheStore(String templateName) {
         try {
@@ -601,14 +605,12 @@ public class BladeEngine {
                 return null;
             }
             byte[] bytecode = (byte[]) cached;
-            // 尝试从字节码中提取类名（简化：使用 templateName 推断类名）
-            String className = compiler.getClassLoader().getCompiledClasses().keySet().stream()
-                    .filter(k -> k.contains(templateName.replace(".", "_")))
-                    .findFirst().orElse(null);
+            // 优先使用编译期记录的真实类名
+            String className = templateClassNameCache.get(templateName);
             if (className == null) {
-                // 直接尝试加载，字节码中应包含完整类信息
-                memoryClassLoader.getCompiledClasses().put("Template_" + templateName.replace(".", "_"), bytecode);
-                return memoryClassLoader.loadClass("Template_" + templateName.replace(".", "_"));
+                // 兜底：按 BladeCompiler 的命名规则推断
+                className = "Blade_" + templateName.replace(File.separator, "_").replace("/", "_")
+                        .replace("\\", "_").replace(".", "_").replace("-", "_");
             }
             memoryClassLoader.getCompiledClasses().put(className, bytecode);
             return memoryClassLoader.loadClass(className);

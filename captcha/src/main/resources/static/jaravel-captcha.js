@@ -98,12 +98,19 @@ const JaravelCaptcha = (function () {
     }
 
     // ========== AES 模式 ==========
-    // 后端: AES/CBC/PKCS5Padding, key = SHA-256(userKey)[0:16], IV = same 16 bytes
+    // 后端: AES/CBC/PKCS5Padding, key = SHA-256(userKey)[0:16]
+    // 新版密文 = 4 字节版本标记(0x01,'J','V','1') + 16 字节随机 IV + 密文；
+    // 旧版密文 = 纯 AES 块，IV 恒等于密钥派生值（保留解密兼容）。
+
+    const AES_MAGIC = new Uint8Array([0x01, 0x4A, 0x56, 0x31]); // "JV1" 版本标记
+    const AES_IV_LEN = 16;
 
     async function encryptAes(plaintext, key) {
         const hash = await sha256(key || 'jaravel-captcha-default-key');
         const aesKeyBytes = hash.slice(0, 16); // AES-128
-        const iv = aesKeyBytes; // IV = same as key (first 16 bytes of SHA-256)
+
+        const iv = new Uint8Array(AES_IV_LEN);
+        crypto.getRandomValues(iv); // 每次加密使用独立随机 IV
 
         const cryptoKey = await crypto.subtle.importKey(
             'raw', aesKeyBytes, { name: 'AES-CBC' }, false, ['encrypt']
@@ -114,21 +121,41 @@ const JaravelCaptcha = (function () {
             { name: 'AES-CBC', iv: iv }, cryptoKey, data
         );
 
-        return bytesToBase64(new Uint8Array(encrypted));
+        const out = new Uint8Array(AES_MAGIC.length + AES_IV_LEN + encrypted.byteLength);
+        out.set(AES_MAGIC, 0);
+        out.set(iv, AES_MAGIC.length);
+        out.set(new Uint8Array(encrypted), AES_MAGIC.length + AES_IV_LEN);
+        return bytesToBase64(out);
     }
 
     async function decryptAes(ciphertext, key) {
         const hash = await sha256(key || 'jaravel-captcha-default-key');
         const aesKeyBytes = hash.slice(0, 16);
-        const iv = aesKeyBytes;
 
         const cryptoKey = await crypto.subtle.importKey(
             'raw', aesKeyBytes, { name: 'AES-CBC' }, false, ['decrypt']
         );
 
         const data = base64ToBytes(ciphertext);
+        // 新版：长度 ≡ 4 (mod 16) 且带版本标记 → 取前 16 字节 IV；
+        // 旧版：纯 AES 块（长度 ≡ 0 (mod 16)），IV 恒等于密钥派生值
+        const isNew = data.length % 16 === 4
+            && data.length >= AES_MAGIC.length + AES_IV_LEN + 16
+            && data.subarray(0, AES_MAGIC.length).every((b, i) => b === AES_MAGIC[i]);
+
+        let iv, offset, length;
+        if (isNew) {
+            iv = data.subarray(AES_MAGIC.length, AES_MAGIC.length + AES_IV_LEN);
+            offset = AES_MAGIC.length + AES_IV_LEN;
+            length = data.length - offset;
+        } else {
+            iv = aesKeyBytes;
+            offset = 0;
+            length = data.length;
+        }
+
         const decrypted = await crypto.subtle.decrypt(
-            { name: 'AES-CBC', iv: iv }, cryptoKey, data
+            { name: 'AES-CBC', iv: iv }, cryptoKey, data.subarray(offset, offset + length)
         );
 
         return new TextDecoder().decode(decrypted);

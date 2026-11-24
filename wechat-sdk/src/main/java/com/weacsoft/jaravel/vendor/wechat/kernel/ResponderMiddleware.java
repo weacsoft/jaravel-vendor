@@ -43,8 +43,8 @@ public final class ResponderMiddleware implements WechatMiddleware {
             Message outgoing = responder.apply(req.message(), server);
             return (outgoing == null) ? next.handle(req) : WechatResponse.message(outgoing);
         } catch (RuntimeException e) {
-            // 业务异常不应让微信重试 3 次：应答空串并记录
-            logger.error("[wechat-server] 回复逻辑异常，按空串应答以避免微信重试: {}", e.getMessage(), e);
+            // 业务异常不应让微信重试 3 次：应答空字符串并记录
+            logger.error("[wechat-server] 回复逻辑异常，按空字符串应答以避免微信重试: {}", e.getMessage(), e);
             return WechatResponse.empty();
         }
     }

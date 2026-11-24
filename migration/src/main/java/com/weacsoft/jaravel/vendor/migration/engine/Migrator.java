@@ -47,6 +47,15 @@ public class Migrator {
     private final MigrationScanner scanner;
 
     /**
+     * {@link #sortedMigrations()} 的结果缓存。
+     * <p>
+     * 迁移类清单在扫描器编译完成后即固定，{@code run()/rollback()/reset()/refresh()/status()}
+     * 会反复调用 {@code findMigration}，逐次重新实例化全部迁移类是 O(n²) 的浪费；
+     * 编译产物在 {@link #finish()} 释放时一并清除缓存。
+     */
+    private volatile List<Migration> sortedCache;
+
+    /**
      * 构造迁移引擎。
      *
      * @param dataSources     连接别名 → DataSource 映射（应至少包含 {@code sqlite}）
@@ -104,15 +113,20 @@ public class Migrator {
         return executed;
     }
 
-    /** 回滚指定步数（批次），返回已回滚的迁移名称列表 */
+    /**
+     * 回滚指定步数（批次），返回已回滚的迁移名称列表。
+     * <p>
+     * {@code steps > 0}：按迁移记录中的批次顺序，最多回滚 {@code steps} 批（每个连接别名各取其最近一批）；
+     * {@code steps <= 0}：回滚每个连接别名的最近一整批迁移（不限步数）。
+     */
     public List<String> rollback(int steps) {
         List<String> rolledBack = new ArrayList<>();
-        int count = 0;
-        // 按别名分别处理其最后一批（整体步数控制）
+        // 按别名分别处理其最后一批，步数限制按别名独立计数
         for (String alias : dataSources.keySet()) {
             MigrationRepository repository = repositoryFor(alias);
             repository.createRepository();
             List<String> last = repository.getLast();
+            int count = 0;
             for (String name : last) {
                 if (steps > 0 && count >= steps) {
                     break;
@@ -205,6 +219,8 @@ public class Migrator {
         if (scanner != null) {
             scanner.finish();
         }
+        // 同步清除迁移实例缓存，释放反射实例持有的内存
+        this.sortedCache = null;
     }
 
     /**
@@ -213,10 +229,19 @@ public class Migrator {
      * 遍历 {@link MigrationScanner#getAllMigrationClassNames()}，
      * 反射加载每个类，检查是否标注 {@link MigrationAnnotation}，
      * 若是则通过 {@code clazz.getDeclaredConstructor().newInstance()} 实例化为 {@link Migration}。
+     * <p>
+     * 结果被缓存（{@link #sortedCache}）：迁移清单在扫描器编译完成后即固定，
+     * 而 {@code run/rollback/reset/refresh/status} 会反复查找迁移，避免每次重新实例化。
+     * 单个迁移类加载失败（含 {@code NoClassDefFoundError}、{@code ExceptionInInitializerError}
+     * 等 {@link Throwable}）仅告警并跳过，不中断整批迁移。
      *
      * @return 排序后的迁移实例列表
      */
     private List<Migration> sortedMigrations() {
+        List<Migration> cached = this.sortedCache;
+        if (cached != null) {
+            return cached;
+        }
         List<Migration> list = new ArrayList<>();
         for (String className : scanner.getAllMigrationClassNames()) {
             try {
@@ -250,11 +275,14 @@ public class Migrator {
                 } else {
                     list.add(migration);
                 }
-            } catch (Exception e) {
+            } catch (Throwable e) {
+                // 捕获 Throwable：类加载失败 / 静态初始化失败属 Error 而非 Exception，
+                // 仅 Exception 时一个坏类会中断整批迁移
                 log.warn("[migration] 无法加载迁移类 {}: {}", className, e.getMessage());
             }
         }
         list.sort(Comparator.comparing(Migration::getName));
+        this.sortedCache = list;
         return list;
     }
 

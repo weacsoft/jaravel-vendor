@@ -108,7 +108,7 @@ public class TableMigrator {
     private final DataSource targetDataSource;
     private final Dialect sourceDialect;
     private final Dialect targetDialect;
-    private final JdbcExecutor targetJdbc;
+    private final com.weacsoft.jaravel.vendor.database.JdbcExecutor targetJdbc;
     private final int batchSize;
 
     /**
@@ -133,7 +133,7 @@ public class TableMigrator {
         this.targetDataSource = targetDataSource;
         this.sourceDialect = sourceDataSource != null ? DialectFactory.detect(sourceDataSource) : null;
         this.targetDialect = targetDataSource != null ? DialectFactory.detect(targetDataSource) : null;
-        this.targetJdbc = targetDataSource != null ? new JdbcExecutor(targetDataSource) : null;
+        this.targetJdbc = targetDataSource != null ? new com.weacsoft.jaravel.vendor.database.JdbcExecutor(targetDataSource) : null;
         this.batchSize = batchSize;
     }
 
@@ -375,20 +375,10 @@ public class TableMigrator {
             dos.writeUTF(pk);
         }
 
-        // 先查询行数（DataOutputStream 不支持 seek 回补，所以先查再写）
+        // 行数与数据读取使用同一连接（DataOutputStream 不支持 seek 回补，
+        // 须先查行数再写数据）：两个连接之间源表行数可能变化，
+        // 导致导出的行数与实际写入不一致，导入端按 rowCount 读取会错流
         String countSql = "SELECT COUNT(*) FROM " + sourceDialect.quote(meta.tableName);
-        int rowCount;
-        try (Connection conn = sourceDataSource.getConnection();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(countSql)) {
-            rs.next();
-            rowCount = rs.getInt(1);
-        }
-
-        // 写行数
-        dos.writeInt(rowCount);
-
-        // 读源表数据并写入
         String quotedCols = meta.columns.stream()
             .map(c -> sourceDialect.quote(c.name))
             .collect(Collectors.joining(", "));
@@ -396,17 +386,26 @@ public class TableMigrator {
 
         int written = 0;
         try (Connection conn = sourceDataSource.getConnection();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(selectSql)) {
-
-            while (rs.next()) {
-                for (int i = 0; i < meta.columns.size(); i++) {
-                    writeValue(dos, rs, meta.columns.get(i), i + 1);
-                }
-                written++;
+             Statement stmt = conn.createStatement()) {
+            // 先查询行数并写入
+            int rowCount;
+            try (ResultSet rs = stmt.executeQuery(countSql)) {
+                rs.next();
+                rowCount = rs.getInt(1);
             }
+            dos.writeInt(rowCount);
+
+            // 同一连接上读取源表数据并写入
+            try (ResultSet rs = stmt.executeQuery(selectSql)) {
+                while (rs.next()) {
+                    for (int i = 0; i < meta.columns.size(); i++) {
+                        writeValue(dos, rs, meta.columns.get(i), i + 1);
+                    }
+                    written++;
+                }
+            }
+            log.debug("[migration] 导出表 {}: 写入 {} 行 (预期 {})", meta.tableName, written, rowCount);
         }
-        log.debug("[migration] 导出表 {}: 写入 {} 行 (预期 {})", meta.tableName, written, rowCount);
     }
 
     /** 从 ResultSet 写入单个值到 DataOutputStream */

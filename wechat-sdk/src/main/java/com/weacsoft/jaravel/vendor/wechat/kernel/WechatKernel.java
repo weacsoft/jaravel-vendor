@@ -24,7 +24,7 @@ import java.util.concurrent.ThreadLocalRandom;
  *   <li>{@link VerifySignatureMiddleware} —— 验签；验签请求（GET）在此短路应答</li>
  *   <li>{@link DecryptParseMiddleware} —— 解密 + 解析类型化消息</li>
  *   <li>…业务洋葱层（{@link #middleware(WechatMiddleware)} 按注册顺序）…</li>
- *   <li>默认层 —— 不回复（空串退避）</li>
+ *   <li>默认层 —— 不回复（空字符串退避）</li>
  * </ol>
  *
  * <h3>使用示例</h3>

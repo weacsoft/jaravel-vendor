@@ -15,10 +15,9 @@ import java.lang.annotation.Target;
  * {@link CacheManager}。
  *
  * <h3>为什么不用 {@code @Bean}？</h3>
- * {@code @Bean("admin")} 的 bean name 在整个 Spring 容器内必须唯一。如果另一处也有
- * {@code @Bean("admin")}（返回不同类型），Spring Boot 会抛出
- * {@code BeanDefinitionOverrideException}。使用本注解后，store 名称与 bean name 解耦，
- * 不会注册为 Spring Bean，因此不会与同名 bean 冲突。
+ * {@code @Bean} 的 bean name 在 Spring 容器内必须唯一，同 name 不同类型会抛出
+ * {@code BeanDefinitionOverrideException}；本注解使 store 名称与 bean name 解耦、
+ * 不注册为 Spring Bean，避免同名冲突。
  *
  * <h3>使用示例</h3>
  * <pre>

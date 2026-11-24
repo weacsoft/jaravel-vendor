@@ -87,6 +87,11 @@ public final class IpMatcher {
         if (ip == null || ip.isEmpty()) {
             return false;
         }
+        // 仅接受 IP 字面量。域名等非字面量一律拒绝，避免
+        // InetAddress.getByName 触发 DNS 解析，导致 IP 允许列表被 DNS 重绑定绕过。
+        if (!isIpLiteral(ip)) {
+            return false;
+        }
         try {
             InetAddress addr = InetAddress.getByName(ip);
             byte[] bytes = addr.getAddress();
@@ -99,6 +104,40 @@ public final class IpMatcher {
             return false;
         }
         return false;
+    }
+
+    /**
+     * 判断字符串是否为 IP 地址字面量（不含域名）。
+     * <p>
+     * 判据：IPv6 含冒号且仅由十六进制字符与冒号构成；IPv4 为点分四段、各段为纯数字。
+     * 域名（含连字符、下划线、非十六进制字母等）不满足上述任一形式，返回 {@code false}。
+     */
+    private static boolean isIpLiteral(String s) {
+        if (s.indexOf(':') >= 0) {
+            for (int i = 0; i < s.length(); i++) {
+                char c = s.charAt(i);
+                if (c != ':' && Character.digit(c, 16) < 0) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        String[] parts = s.split("\\.", -1);
+        if (parts.length != 4) {
+            return false;
+        }
+        for (String part : parts) {
+            if (part.isEmpty() || part.length() > 3) {
+                return false;
+            }
+            for (int i = 0; i < part.length(); i++) {
+                char c = part.charAt(i);
+                if (c < '0' || c > '9') {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     /**

@@ -21,14 +21,14 @@ import static org.junit.jupiter.api.Assertions.*;
 class JdbcExecutorTest {
 
     private DataSource dataSource;
-    private JdbcExecutor jdbcExecutor;
+    private com.weacsoft.jaravel.vendor.database.JdbcExecutor jdbcExecutor;
 
     @BeforeEach
     void setUp() {
         // H2 内存数据库，MySQL 兼容模式；DB_CLOSE_DELAY=-1 保证连接关闭后库仍存活
         dataSource = new org.h2.jdbcx.JdbcDataSource();
         ((org.h2.jdbcx.JdbcDataSource) dataSource).setUrl("jdbc:h2:mem:testdb;MODE=MySQL;DB_CLOSE_DELAY=-1");
-        jdbcExecutor = new JdbcExecutor(dataSource);
+        jdbcExecutor = new com.weacsoft.jaravel.vendor.database.JdbcExecutor(dataSource);
     }
 
     // ==================== testExecute ====================

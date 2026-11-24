@@ -75,7 +75,7 @@ class ReplyQuotaTest {
                 "pages/index", "THUMB_MEDIA");
         ReplyPlan plan = ReplyPlan.plan(cfg(), List.of(card, new Text("第二部")), 5);
         assertNull(plan.passiveReply(), "第 1 条不支持被动回复时不做被动回复（不把后面的消息提到前面）");
-        assertEquals(2, plan.customerMessages().size(), "两条都应按原顺序走客服消息");
+        assertEquals(2, plan.customerMessages().size(), "两条都应按原顺序经客服消息下发");
         assertEquals("miniprogrampage", plan.customerMessages().get(0).getType(), "顺序不能被打乱");
     }
 

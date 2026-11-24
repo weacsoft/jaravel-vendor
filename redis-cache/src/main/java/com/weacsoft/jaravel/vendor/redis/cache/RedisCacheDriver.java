@@ -29,8 +29,8 @@ import java.util.List;
  * 注意不是 {@code jaravel.redis.prefix}），未配置时回退为 {@link #DEFAULT_KEY_PREFIX}。
  * <p>
  * <b>为什么必须有前缀</b>：{@link #allKeys()} 用 SCAN + MATCH 前缀遍历，{@link #removeAll()}
- * 只删除这些键。历史缺陷是 SCAN 时<b>没带 MATCH</b>，于是 {@code Cache::flush()} 会把整个
- * Redis 库的键全部删掉 —— 连同会话、队列、限流计数、同实例其它应用的数据，且不可恢复。
+ * 只删除带前缀的键；SCAN 必须携带 MATCH，否则 {@code Cache::flush()} 会清空整个 Redis 库
+ * （会话、队列、限流计数等不可恢复）。
  *
  * <h3>序列化策略</h3>
  * <ul>

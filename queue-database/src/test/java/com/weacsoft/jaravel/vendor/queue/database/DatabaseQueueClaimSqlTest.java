@@ -59,7 +59,7 @@ class DatabaseQueueClaimSqlTest {
     void sqliteAndUnknownDialectsFallBackToNull() {
         assertNull(DatabaseQueueDriver.claimSqlFor("SQLite", "jobs"), "SQLite 无行级锁 → 乐观锁");
         assertNull(DatabaseQueueDriver.claimSqlFor(null, "jobs"), "产品名缺失 → 乐观锁");
-        assertNull(DatabaseQueueDriver.claimSqlFor("", "jobs"), "产品名空串 → 乐观锁");
+        assertNull(DatabaseQueueDriver.claimSqlFor("", "jobs"), "产品名为空字符串 → 乐观锁");
         assertNull(DatabaseQueueDriver.claimSqlFor("SomeExoticDB", "jobs"), "未知方言 → 乐观锁");
     }
 

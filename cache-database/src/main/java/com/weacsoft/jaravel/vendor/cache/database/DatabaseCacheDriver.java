@@ -131,10 +131,10 @@ public class DatabaseCacheDriver implements CacheDriver,
             return t;
         });
         // 方言不在构造期探测（连接可能尚未就绪）；也不自动建表：
-        // 建表走迁移能力（vendor:publish --tag=migrations / cache:table / Schema）
+        // 建表采用迁移能力（vendor:publish --tag=migrations / cache:table / Schema）
     }
 
-    // ==================== 表结构定义与建表（建表统一走 migration 能力） ====================
+    // ==================== 表结构定义与建表（建表统一经 migration 能力） ====================
 
     /**
      * 声明缓存表结构——{@link #createTable()} 与模块内置迁移文件共用的一致定义
@@ -348,8 +348,8 @@ public class DatabaseCacheDriver implements CacheDriver,
      * 原子自增（乐观 CAS，可移植）：读当前值 → 计算 → 条件更新（{@code WHERE value = 读到的原值}），
      * 更新 0 行说明期间被别人改过 → 重读重算；键不存在/已过期时尝试插入（主键冲突则重试）。
      * <p>
-     * 为什么不用 {@code SELECT ... FOR UPDATE}：各家 MVCC/行锁实现细节不同（H2 MVStore 下验证
-     * {@code FOR UPDATE} 不足以防丢更新），CAS 的语义在所有方言上一致。
+     * 为什么不用 {@code SELECT ... FOR UPDATE}：各家 MVCC/行锁实现细节不同，部分方言下
+     * {@code FOR UPDATE} 不足以防丢更新；CAS 的语义在所有方言上一致。
      * <p>
      * TTL：已存在的键<b>保留原 expires_at</b>；新键使用 {@code ttlIfAbsentSeconds}。
      */

@@ -17,7 +17,7 @@ import java.util.List;
  *       且该消息类必须支持被动回复（{@link Message#toXmlArray()} 不抛异常，
  *       即 text/image/voice/video/music/news）；</li>
  *   <li>第 1 条不支持被动回复（小程序卡片、卡券、菜单消息…）或配置
- *       {@code passive-reply-limit=0} 时，本次<b>不做被动回复</b>（回空串），全部走客服消息
+ *       {@code passive-reply-limit=0} 时，本次<b>不做被动回复</b>（回空字符串），全部经客服消息
  *       —— 不会把后面的消息悄然提到前面；</li>
  *   <li><b>客服消息</b>：其余消息走 {@code message/custom/send}，条数受
  *       {@code customer-service-reply-limit}（默认 5）与<b>该用户剩余额度</b>双重约束；</li>
@@ -40,7 +40,7 @@ public final class ReplyPlan {
     }
 
     /**
-     * @param passiveReply     作为被动回复返回给微信的消息（null 表示回空串）
+     * @param passiveReply     作为被动回复返回给微信的消息（null 表示回空字符串）
      * @param customerMessages 需要异步补发的客服消息
      * @param dropped          因额度不足被放弃的消息
      * @return 计划

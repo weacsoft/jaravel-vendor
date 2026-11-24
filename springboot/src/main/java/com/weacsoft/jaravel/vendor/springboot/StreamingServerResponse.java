@@ -17,9 +17,8 @@ import java.util.List;
 /**
  * 把 jaravel 的 {@link StreamingResponse} 原样写进 servlet 输出流的 {@link ServerResponse}。
  * <p>
- * <b>为什么必须自己实现，而不是用 Spring 现成的入口</b>：三处经验证都走不通，
- * 根因是 {@code RouterFunction} 这条链路不具备 {@code @RequestMapping} 那种
- * 返回值处理器链：
+ * <b>为什么必须自己实现，而不是用 Spring 现成的入口</b>：根因是 {@code RouterFunction}
+ * 这条链路不具备 {@code @RequestMapping} 那种返回值处理器链，三条现成路径均不可用：
  * <ol>
  *   <li>{@code ServerResponse.BodyBuilder.body(自定义对象)}
  *       —— 交给消息转换器，抛
@@ -57,6 +56,7 @@ final class StreamingServerResponse implements ServerResponse {
     }
 
     @Override
+    @SuppressWarnings({"deprecation", "removal"})
     public int rawStatusCode() {
         return delegate.getStatus();
     }

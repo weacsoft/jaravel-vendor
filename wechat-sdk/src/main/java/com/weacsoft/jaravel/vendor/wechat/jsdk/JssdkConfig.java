@@ -1,5 +1,7 @@
 package com.weacsoft.jaravel.vendor.wechat.jsdk;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -13,6 +15,9 @@ import java.util.Map;
  * @author weacsoft
  */
 public final class JssdkConfig {
+
+    /** 用于把配置对象渲染为 JSON 的共享映射器（不可变，线程安全）。 */
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     private final String appId;
     private final String timestamp;
@@ -107,14 +112,22 @@ public final class JssdkConfig {
 
     /**
      * 渲染为可直接粘贴到前端的 {@code wx.config(...)} JS 片段。
+     * <p>
+     * 参数对象以 JSON 形式输出（键带双引号、列表为 JSON 数组、字符串转义），
+     * 与 JavaScript 对象字面量语法兼容，可直接被 {@code wx.config} 消费。
      *
      * @return JS 代码片段
      */
     public String toJavascript() {
-        StringBuilder sb = new StringBuilder(256);
-        sb.append("wx.config(").append(toJsonBody().toString()).append(");\n");
-        sb.append("wx.error(function (e) { console.error('微信 JSSDK 配置失败', e); });");
-        return sb.toString();
+        try {
+            String json = JSON.writeValueAsString(toJsonBody());
+            StringBuilder sb = new StringBuilder(256);
+            sb.append("wx.config(").append(json).append(");\n");
+            sb.append("wx.error(function (e) { console.error('微信 JSSDK 配置失败', e); });");
+            return sb.toString();
+        } catch (Exception e) {
+            throw new IllegalStateException("JSSDK 配置无法序列化为 JSON", e);
+        }
     }
 
     @Override

@@ -115,10 +115,16 @@ public class EventDispatcher implements Dispatcher {
      */
     private void dispatchToQueue(String queueName, Listener<Event> listener, Event event,
                                  String listenerName, long delayMs) {
-        // 优先使用持久化队列分发器
+        // 优先使用持久化队列分发器；入队失败仅记录日志，不中断其余监听器的分发
+        // （持久化队列不可用时由内存队列降级承接，保证事件至少一次投递的语义不变）
         if (queueDispatcher != null && queueDispatcher.isAvailable()) {
-            queueDispatcher.dispatch(queueName, listener, event, delayMs);
-            return;
+            try {
+                queueDispatcher.dispatch(queueName, listener, event, delayMs);
+                return;
+            } catch (Exception e) {
+                logger.error("事件 [{}] 的监听器 [{}] 入队队列 [{}] 失败，已降级为内存队列",
+                        event.getClass().getSimpleName(), listenerName, queueName, e);
+            }
         }
         // 降级为内存队列
         if (delayMs > 0) {

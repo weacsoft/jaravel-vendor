@@ -151,9 +151,8 @@ public class DefaultCacheStore implements CacheStore {
         if (driver instanceof com.weacsoft.jaravel.vendor.cache.AtomicCacheDriver atomic) {
             return atomic.incrementAndGet(key(key), amount, 0L);
         }
-        // 回退：get-then-put 仍非原子，但必须保留原 TTL ——
-        // 原实现硬编码 put(key,next,0)，会把「有期限」的键变成永不过期：
-        // 限流计数永久生效、model-cache 版本键无限堆积。
+        // 回退：get-then-put 仍非原子，但必须保留原 TTL（有期限的键不得变为永不过期：
+        // 限流计数将永久生效、model-cache 版本键无限堆积）。
         long current = toLong(get(key));
         long next = current + amount;
         put(key, next, resolveTtlForRewrite(key));
@@ -170,7 +169,7 @@ public class DefaultCacheStore implements CacheStore {
      *   <li>键不存在：按无 TTL 写入（与原行为一致，新建计数键）；</li>
      *   <li>驱动不支持该能力：沿用无 TTL + <b>每个驱动类告警一次</b>。</li>
      * </ul>
-     * <b>禁止「退化为短 TTL」</b>：把一个长期计数器悄然变成会中途过期的计数器会引发正确性问题 ——
+     * <b>禁止「退化为短 TTL」</b>：把一个长期计数器改为中途过期的计数器会引发正确性问题 ——
      * 例如 model-cache 的版本键一旦过期，版本号回落会让旧版本的缓存条目集体「复活」，造成陈旧读。
      *
      * @param key 逻辑键

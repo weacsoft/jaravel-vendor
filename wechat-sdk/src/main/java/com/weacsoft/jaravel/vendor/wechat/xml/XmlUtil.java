@@ -50,6 +50,7 @@ public final class XmlUtil {
         return sb.toString();
     }
 
+    @SuppressWarnings("unchecked")
     private static void appendFields(StringBuilder sb, Map<String, Object> fields) {
         for (Map.Entry<String, Object> entry : fields.entrySet()) {
             String name = entry.getKey();
@@ -75,6 +76,7 @@ public final class XmlUtil {
         }
     }
 
+    @SuppressWarnings("unchecked")
     private static void appendScalar(StringBuilder sb, Object value) {
         if (value instanceof Number || value instanceof Boolean) {
             sb.append(value);

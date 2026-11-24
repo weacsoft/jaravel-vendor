@@ -147,10 +147,33 @@ public class OracleDialect extends AbstractDialect {
 
     @Override
     public String createRepositoryTableSql(String table) {
-        // Oracle 不支持 IF NOT EXISTS，由 needsCheckTableExistsBeforeCreateRepository() 控制先检查
+        // Oracle 不支持 IF NOT EXISTS，由 needsCheckTableExistsBeforeCreateRepository() 控制先检查。
+        // UNIQUE(migration, batch)：同一批次内同一条迁移只记录一次（多节点并发跑迁移时防止重复记录）；
+        // 回滚后再次迁移会写入新的 batch，不受此约束影响
         return "CREATE TABLE " + quote(table) + " (" + quote("id")
                 + " NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY, " + quote("migration")
-                + " VARCHAR2(255) NOT NULL, " + quote("batch") + " NUMBER(10) NOT NULL)";
+                + " VARCHAR2(255) NOT NULL, " + quote("batch") + " NUMBER(10) NOT NULL, "
+                + "CONSTRAINT " + uniqueConstraintName(table) + " UNIQUE (" + quote("migration") + ", " + quote("batch") + "))";
+    }
+
+    /**
+     * 生成迁移记录表唯一约束名（Oracle 标识符长度上限 30）。
+     * <p>
+     * 表名超过 26 个字符时截断并追加 4 位哈希，避免超长导致约束名重复或非法。
+     *
+     * @param table 迁移记录表名
+     * @return 约束名
+     */
+    private static String uniqueConstraintName(String table) {
+        String base = table.toUpperCase().replaceAll("[^A-Z0-9_]", "");
+        if (base.isEmpty()) {
+            base = "T";
+        }
+        // 截断到 23 字符 + 4 位哈希 + "_UQ" = 30，满足 Oracle 标识符长度上限
+        if (base.length() > 23) {
+            base = base.substring(0, 23) + String.format("%04X", Math.abs(base.hashCode()) & 0xFFFF);
+        }
+        return base + "_UQ";
     }
 
     @Override

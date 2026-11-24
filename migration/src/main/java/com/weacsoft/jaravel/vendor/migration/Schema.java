@@ -34,12 +34,12 @@ public class Schema {
 
     private static final Logger log = LoggerFactory.getLogger(Schema.class);
 
-    private final JdbcExecutor jdbc;
+    private final com.weacsoft.jaravel.vendor.database.JdbcExecutor jdbc;
     /** 当前数据库方言 */
     private final Dialect dialect;
 
     public Schema(DataSource dataSource) {
-        this.jdbc = new JdbcExecutor(dataSource);
+        this.jdbc = new com.weacsoft.jaravel.vendor.database.JdbcExecutor(dataSource);
         this.dialect = DialectFactory.detect(dataSource);
     }
 
@@ -172,6 +172,8 @@ public class Schema {
      *   <li>删除原表；</li>
      *   <li>将临时表重命名为原表名。</li>
      * </ol>
+     * 上述「建临时表 → 复制 → 删原表 → 重命名」四步在<b>单个事务</b>内完成（SQLite 的 DDL
+     * 支持事务回滚），避免任一步失败后原表被删除而临时表未重命名导致整张表丢失。
      * 注意：此流程会丢失原表上的索引与外键，如需保留请在迁移中重新声明。
      */
     private void sqliteRecreateTableForModify(String table, Blueprint blueprint, List<ColumnDefinition> modifyColumns) {
@@ -228,20 +230,31 @@ public class Schema {
 
         createSql.append(String.join(", ", colDefs)).append(")");
         log.info("[migration] SQLite 重建临时表: {}", createSql);
-        jdbc.execute(createSql.toString());
-
         String cols = colNames.stream().map(this::quote).collect(Collectors.joining(", "));
         String copySql = "INSERT INTO " + quote(tempTable) + " (" + cols + ") SELECT " + cols + " FROM " + quote(table);
         log.info("[migration] SQLite 复制数据: {}", copySql);
-        jdbc.execute(copySql);
-
         String dropSql = "DROP TABLE " + quote(table);
         log.info("[migration] SQLite 删除原表: {}", dropSql);
-        jdbc.execute(dropSql);
-
         String renameSql = "ALTER TABLE " + quote(tempTable) + " RENAME TO " + quote(table);
         log.info("[migration] SQLite 重命名临时表: {}", renameSql);
-        jdbc.execute(renameSql);
+
+        // 四步 DDL 在同一事务内执行：任一步失败整体回滚，
+        // 避免原表已删除而临时表未重命名的中间态（整张表丢失）。
+        // 无数据源时（仅采集表结构的场景）退化为顺序执行。
+        if (jdbc.getDataSource() != null) {
+            jdbc.inTransaction(tx -> {
+                tx.execute(createSql.toString());
+                tx.execute(copySql);
+                tx.execute(dropSql);
+                tx.execute(renameSql);
+                return null;
+            });
+        } else {
+            jdbc.execute(createSql.toString());
+            jdbc.execute(copySql);
+            jdbc.execute(dropSql);
+            jdbc.execute(renameSql);
+        }
     }
 
     /**
@@ -327,9 +340,5 @@ public class Schema {
         } catch (Exception e) {
             return false;
         }
-    }
-
-    JdbcExecutor getJdbcExecutor() {
-        return jdbc;
     }
 }

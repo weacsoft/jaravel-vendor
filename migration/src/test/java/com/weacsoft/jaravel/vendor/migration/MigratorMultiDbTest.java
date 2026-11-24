@@ -25,9 +25,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class MigratorMultiDbTest {
 
     private DataSource h2(String name) throws Exception {
-        // 使用 MySQL 兼容模式以支持 LONGBLOB / LONGTEXT 等方言语法
+        // 使用 H2 默认模式：H2Dialect.mapType 输出 H2 原生类型，
+        // 无需 MySQL 兼容模式即可建表
         org.h2.jdbcx.JdbcDataSource ds = new org.h2.jdbcx.JdbcDataSource();
-        ds.setURL("jdbc:h2:mem:" + name + ";MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1");
+        ds.setURL("jdbc:h2:mem:" + name + ";DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1");
         ds.setUser("sa");
         ds.setPassword("");
         return ds;

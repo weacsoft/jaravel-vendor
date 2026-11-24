@@ -81,7 +81,9 @@ public class SqlServerDialect extends AbstractDialect {
      */
     @Override
     public String renameTableSql(String from, String to) {
-        return "sp_rename '" + from + "', '" + to + "'";
+        // 表名直接拼接进 sp_rename 字符串，单引号须按 T-SQL 规则翻倍转义，
+        // 否则含 ' 的表名会破坏语句
+        return "sp_rename '" + from.replace("'", "''") + "', '" + to.replace("'", "''") + "'";
     }
 
     /**
@@ -281,7 +283,9 @@ public class SqlServerDialect extends AbstractDialect {
      */
     @Override
     public String createRepositoryTableSql(String table) {
-        return "CREATE TABLE [" + table + "] ([id] INT IDENTITY(1,1) PRIMARY KEY, [migration] VARCHAR(255) NOT NULL, [batch] INT NOT NULL)";
+        // UNIQUE(migration, batch)：同一批次内同一条迁移只记录一次（多节点并发跑迁移时防止重复记录）；
+        // 回滚后再次迁移会写入新的 batch，不受此约束影响
+        return "CREATE TABLE [" + table + "] ([id] INT IDENTITY(1,1) PRIMARY KEY, [migration] VARCHAR(255) NOT NULL, [batch] INT NOT NULL, UNIQUE ([migration], [batch]))";
     }
 
     /**

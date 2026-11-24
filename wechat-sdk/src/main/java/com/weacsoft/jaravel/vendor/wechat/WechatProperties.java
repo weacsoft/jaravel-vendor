@@ -325,7 +325,7 @@ public class WechatProperties {
         }
 
         /**
-         * @return 是否校验明文模式 POST 推送签名（默认 true）
+         * @return 是否校验明文模式 POST 推送签名（默认 false）
          */
         public boolean isVerifyPostSignature() {
             return verifyPostSignature;

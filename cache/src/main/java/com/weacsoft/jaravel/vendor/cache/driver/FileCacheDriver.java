@@ -1,6 +1,7 @@
 package com.weacsoft.jaravel.vendor.cache.driver;
 
 import com.weacsoft.jaravel.vendor.cache.CacheDriver;
+import com.weacsoft.jaravel.vendor.cache.TtlAwareCacheDriver;
 import com.weacsoft.jaravel.vendor.json.Json;
 
 import java.io.File;
@@ -9,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.OptionalLong;
 
 /**
  * 基于文件系统的缓存驱动，对齐 Laravel {@code "file"} 缓存驱动。
@@ -19,12 +21,11 @@ import java.util.List;
  * <p>
  * <b>TTL 单位为秒</b>：{@code expiryAt = System.currentTimeMillis() + ttlSeconds * 1000}，
  * {@code ttlSeconds <= 0} 时 {@code expiryAt = 0}（永不过期）。
- * <b>已修复旧版 TTL 单位混乱的 bug</b>（旧实现曾把秒当毫秒或重复乘 1000，现统一为秒）。
  * <p>
  * 缓存键通过 UTF-8 十六进制编码作为文件名，保证可逆且文件系统安全，
  * 因此 {@link #allKeys()} 能还原出原始键。
  */
-public class FileCacheDriver implements CacheDriver {
+public class FileCacheDriver implements TtlAwareCacheDriver {
 
     private static final String SUFFIX = ".cache";
 
@@ -39,7 +40,7 @@ public class FileCacheDriver implements CacheDriver {
     /**
      * 指定目录构造器。
      *
-     * @param dir 缓存目录，{@code null} 或空串则回退到默认临时目录
+     * @param dir 缓存目录，{@code null} 或空字符串则回退到默认临时目录
      */
     public FileCacheDriver(String dir) {
         this(dir == null || dir.isEmpty()
@@ -61,7 +62,7 @@ public class FileCacheDriver implements CacheDriver {
 
     @Override
     public boolean put(String key, Object value, long ttlSeconds) {
-        // 修复旧版 bug：TTL 统一为秒，expiryAt 使用毫秒时间戳
+        // TTL 单位为秒，expiryAt 使用毫秒时间戳
         long expiryAt = ttlSeconds > 0 ? System.currentTimeMillis() + ttlSeconds * 1000L : 0L;
         try {
             Json.writeToFile(fileFor(key), new CacheEntry(value, expiryAt));
@@ -112,6 +113,22 @@ public class FileCacheDriver implements CacheDriver {
         for (File f : files) {
             f.delete();
         }
+    }
+
+    @Override
+    public OptionalLong remainingTtlSeconds(String key) {
+        CacheEntry entry = readEntry(key);
+        if (entry == null) {
+            // 键不存在（或文件已损坏）
+            return OptionalLong.empty();
+        }
+        long expiryAt = entry.getExpiryAt();
+        if (expiryAt <= 0) {
+            // 永不过期
+            return OptionalLong.of(0);
+        }
+        long remainingMs = expiryAt - System.currentTimeMillis();
+        return OptionalLong.of(Math.max(1L, (remainingMs + 999L) / 1000L));
     }
 
     @Override

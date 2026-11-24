@@ -81,6 +81,7 @@ public class TenantAwareHotPluginManager extends HotPluginManager {
      */
     @Override
     public boolean enablePlugin(String pluginId) {
+        String previous = TenantContext.getCurrentTenant();
         String tenantId = TenantNaming.extractTenant(pluginId, separator);
         if (tenantId != null) {
             TenantContext.setCurrentTenant(tenantId);
@@ -89,7 +90,7 @@ public class TenantAwareHotPluginManager extends HotPluginManager {
         try {
             return super.enablePlugin(pluginId);
         } finally {
-            TenantContext.clear();
+            restoreTenant(previous);
         }
     }
 
@@ -104,6 +105,7 @@ public class TenantAwareHotPluginManager extends HotPluginManager {
      */
     @Override
     public boolean disablePlugin(String pluginId) {
+        String previous = TenantContext.getCurrentTenant();
         String tenantId = TenantNaming.extractTenant(pluginId, separator);
         if (tenantId != null) {
             TenantContext.setCurrentTenant(tenantId);
@@ -112,7 +114,7 @@ public class TenantAwareHotPluginManager extends HotPluginManager {
         try {
             return super.disablePlugin(pluginId);
         } finally {
-            TenantContext.clear();
+            restoreTenant(previous);
         }
     }
 
@@ -209,6 +211,7 @@ public class TenantAwareHotPluginManager extends HotPluginManager {
     @Override
     public boolean registerRouteAlias(String pluginId, String existingPath,
                                        String aliasPath, String httpMethod) {
+        String previous = TenantContext.getCurrentTenant();
         String tenantId = TenantNaming.extractTenant(pluginId, separator);
         if (tenantId != null) {
             TenantContext.setCurrentTenant(tenantId);
@@ -216,7 +219,7 @@ public class TenantAwareHotPluginManager extends HotPluginManager {
         try {
             return super.registerRouteAlias(pluginId, existingPath, aliasPath, httpMethod);
         } finally {
-            TenantContext.clear();
+            restoreTenant(previous);
         }
     }
 
@@ -225,6 +228,7 @@ public class TenantAwareHotPluginManager extends HotPluginManager {
      */
     @Override
     public boolean registerRouteAlias(String pluginId, String existingPath, String aliasPath) {
+        String previous = TenantContext.getCurrentTenant();
         String tenantId = TenantNaming.extractTenant(pluginId, separator);
         if (tenantId != null) {
             TenantContext.setCurrentTenant(tenantId);
@@ -232,6 +236,22 @@ public class TenantAwareHotPluginManager extends HotPluginManager {
         try {
             return super.registerRouteAlias(pluginId, existingPath, aliasPath);
         } finally {
+            restoreTenant(previous);
+        }
+    }
+
+    /**
+     * 恢复调用前的租户上下文（在 finally 块中使用）。
+     * <p>
+     * 若调用前线程已持有外层租户（嵌套调用），恢复该外层租户；
+     * 否则清空当前线程的租户，避免 ThreadLocal 泄漏。
+     *
+     * @param previous 调用前捕获的租户 ID（可为 null）
+     */
+    private static void restoreTenant(String previous) {
+        if (previous != null) {
+            TenantContext.setCurrentTenant(previous);
+        } else {
             TenantContext.clear();
         }
     }

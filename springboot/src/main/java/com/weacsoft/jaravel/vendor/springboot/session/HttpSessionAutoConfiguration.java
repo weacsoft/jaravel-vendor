@@ -24,10 +24,9 @@ import org.springframework.context.annotation.Bean;
  * {@code @ConditionalOnClass} 守住——方法级条件保护不了「声明类自身的类加载」，
  * 缺模块时内省会先抛 {@code NoClassDefFoundError}。
  * <p>
- * 历史上 {@code auth.SessionGuardAutoConfiguration} 曾重复定义同名 {@code sessionStoreHolder}，
- * 两处同时装配会抛 {@code BeanDefinitionOverrideException} 直接启动失败。
- * 职责重复的根因是「同一个 bean 有两个声明点」，已改为：<b>本类独占定义</b>，
- * {@code SessionGuardAutoConfiguration} 只做 {@code @Bean} 参数注入消费。
+ * <b>本类独占定义</b> {@code sessionStoreHolder}，{@code SessionGuardAutoConfiguration}
+ * 只做 {@code @Bean} 参数注入消费——同一个 bean 只留一个声明点，
+ * 两处同时定义会抛 {@code BeanDefinitionOverrideException} 导致启动失败。
  */
 @AutoConfiguration
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)

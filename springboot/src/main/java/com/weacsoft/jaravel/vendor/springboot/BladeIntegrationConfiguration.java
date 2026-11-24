@@ -24,7 +24,7 @@ import org.springframework.context.annotation.Bean;
  * <ul>
  *   <li>注册 {@link BladeDirectiveRegistrar}：扫描 {@code @RegisterDirective} 注解方法，
  *       把自定义指令注册到 {@code BladeDirectives}；</li>
- *   <li>向模板引擎注册开箱即用辅助函数 {@code csrf_token()} / {@code route()} / {@code url()}，
+ *   <li>向模板引擎注册内置辅助函数 {@code csrf_token()} / {@code route()} / {@code url()}，
  *       注册后立即自检（硬保证：任一注册未落地则启动失败，而非静默不可用）。</li>
  * </ul>
  */
@@ -58,9 +58,9 @@ public class BladeIntegrationConfiguration {
     }
 
     /**
-     * 开箱即用模板辅助函数注册（依赖 jblade {@link BladeFunctions}）。
+     * 内置模板辅助函数注册（依赖 jblade {@link BladeFunctions}）。
      * <p>
-     * <b>硬保证（注册即可用）</b>：注册后立即自检——只要走了注册流程，模板辅助函数
+     * <b>硬保证（注册即可用）</b>：注册后立即自检——只要进入注册流程，模板辅助函数
      * 就必须确实生效；任一注册未落地将抛出 {@link IllegalStateException} 使应用启动失败
      * （而非悄然留下“空 value / 空路由”的不可用状态），
      * 从而满足“一旦注册就必须自动可用、开发者零额外代码”的契约。
@@ -74,7 +74,7 @@ public class BladeIntegrationConfiguration {
                 Request req = RequestFactory.getCurrentRequest();
                 return VerifyCsrfToken.currentToken(req);
             } catch (Exception e) {
-                // 失败可见：记录 ERROR 而非静默吞掉，避免开发者拿到空 value 却无感知
+                // 失败可见：记录 ERROR 而非静默忽略，避免开发者拿到空 value 却无感知
                 log.error("[builtin] csrf_token() 生成令牌失败", e);
                 return "";
             }
@@ -103,7 +103,7 @@ public class BladeIntegrationConfiguration {
             throw new IllegalStateException("[builtin] 模板辅助函数 url() 注册失败，url() 将不可用。");
         }
 
-        log.info("[builtin] 已注册模板辅助函数 csrf_token() / csrf_field() / route() / url()（开箱即用，自检通过）");
+        log.info("[builtin] 已注册模板辅助函数 csrf_token() / csrf_field() / route() / url()（内置，自检通过）");
         return () -> { };
     }
 }

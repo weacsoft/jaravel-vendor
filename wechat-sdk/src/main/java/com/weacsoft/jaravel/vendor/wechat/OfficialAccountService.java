@@ -93,8 +93,7 @@ public class OfficialAccountService {
     /**
      * 获取用户列表端点（官方：GET，单页最多返回 10000 个 openid）。
      * <p>
-     * 注意：官方端点就是 {@code cgi-bin/user/get}；不存在 {@code user/getall}
-     * （曾误用该路径，微信返回 {@code errcode=40066 invalid url}）。
+     * 注意：官方端点为 {@code cgi-bin/user/get}（不存在 {@code user/getall} 路径）。
      */
     private static final String USER_GET_PATH = "cgi-bin/user/get";
 
@@ -272,7 +271,6 @@ public class OfficialAccountService {
         String nextOpenid = null;
         for (int page = 0; page < GETALL_MAX_PAGES && count < maxCount; page++) {
             // 官方接口：GET /cgi-bin/user/get?access_token=…&next_openid=…
-            // （不是 cgi-bin/user/getall —— 那会返回 errcode=40066 invalid url）
             Map<String, String> query = new LinkedHashMap<>(tokenQuery(configName));
             if (nextOpenid != null && !nextOpenid.isEmpty()) {
                 query.put("next_openid", nextOpenid);

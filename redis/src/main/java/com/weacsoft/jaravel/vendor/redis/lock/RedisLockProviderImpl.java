@@ -16,15 +16,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * 只有当锁的持有者令牌与本实例记录的一致时才删除。
  *
  * <h3>为什么解锁必须校验属主</h3>
- * 历史实现是直接 {@code DEL key}，于是：
- * <ol>
- *   <li>任务执行超过 TTL 后锁自动过期、另一个实例抢到锁，此时前一个实例执行完
- *       {@code unlock} 会把<b>别人的</b>锁删掉 → 第三个实例又能抢到 → 同一任务并发执行；</li>
- *   <li>任何未持有锁的实例调用 {@code unlock} 都会破坏锁语义。</li>
- * </ol>
- * 现在这样：本实例只删除「自己确实加过、且值未被他人替换」的锁；没加过锁的 key
- * 不会被删。注意：若业务执行时间可能超过 TTL，仍应调大 TTL 或续租，
- * 因为「锁已过期后被他人接管」这个窗口对 CAS 删除同样是不可见的。
+ * 直接 {@code DEL key} 会在锁过期后被其他实例抢走时误删他人的锁，破坏互斥；
+ * 因此本实例只删除「自己加过、且值未被替换」的锁。注意：若业务执行时间可能超过
+ * TTL，仍应调大 TTL 或续租——「锁过期后被他人接管」的窗口对 CAS 删除同样不可见。
  */
 public class RedisLockProviderImpl implements RedisLockProvider {
 

@@ -30,11 +30,23 @@ public class TcpTransport implements RemoteTransport {
     private static final Logger log = LoggerFactory.getLogger(TcpTransport.class);
 
     private final Map<String, Socket> connections = new ConcurrentHashMap<>();
+    /** 每个 host:port 一把锁：帧协议是严格串行的，同一连接上的读写不能并发交错 */
+    private final Map<String, Object> connLocks = new ConcurrentHashMap<>();
     private static final long DEFAULT_TIMEOUT_MS = 30000;
+
+    private Object lockFor(String key) {
+        return connLocks.computeIfAbsent(key, k -> new Object());
+    }
 
     @Override
     public ExecuteResponse send(String host, int port, String authToken, ExecuteRequest request) {
         String key = connKey(host, port);
+        synchronized (lockFor(key)) {
+            return sendUnlocked(key, host, port, authToken, request);
+        }
+    }
+
+    private ExecuteResponse sendUnlocked(String key, String host, int port, String authToken, ExecuteRequest request) {
         Socket socket = connections.get(key);
         if (socket == null || socket.isClosed()) {
             try {
@@ -62,21 +74,27 @@ public class TcpTransport implements RemoteTransport {
 
     @Override
     public boolean connect(String host, int port, String authToken) {
-        try {
-            Socket socket = createAndHandshake(host, port, authToken);
-            Socket old = connections.put(connKey(host, port), socket);
-            if (old != null) closeQuietly(old);
-            return true;
-        } catch (Exception e) {
-            log.error("连接失败: {}:{}", host, port, e);
-            return false;
+        String key = connKey(host, port);
+        synchronized (lockFor(key)) {
+            try {
+                Socket socket = createAndHandshake(host, port, authToken);
+                Socket old = connections.put(key, socket);
+                if (old != null) closeQuietly(old);
+                return true;
+            } catch (Exception e) {
+                log.error("连接失败: {}:{}", host, port, e);
+                return false;
+            }
         }
     }
 
     @Override
     public void disconnect(String host, int port) {
-        Socket socket = connections.remove(connKey(host, port));
-        if (socket != null) closeQuietly(socket);
+        String key = connKey(host, port);
+        synchronized (lockFor(key)) {
+            Socket socket = connections.remove(key);
+            if (socket != null) closeQuietly(socket);
+        }
     }
 
     @Override
@@ -93,7 +111,9 @@ public class TcpTransport implements RemoteTransport {
     /** 断开所有连接 */
     public void disconnectAll() {
         for (Map.Entry<String, Socket> entry : connections.entrySet()) {
-            closeQuietly(entry.getValue());
+            synchronized (lockFor(entry.getKey())) {
+                closeQuietly(entry.getValue());
+            }
         }
         connections.clear();
     }

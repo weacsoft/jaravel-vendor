@@ -186,8 +186,10 @@ public class KeyGenerateCommand extends ArtisanCommand {
             if (trimmed.startsWith("#")) {
                 continue;
             }
-            // 已存在 jaravel.key（扁平写法）
-            if (trimmed.startsWith("jaravel.key:")) {
+            // 已存在 jaravel.key（顶层扁平写法）。仅匹配缩进 0 的行：
+            // 若 "jaravel.key:" 带缩进，说明它是某个父节点下的嵌套键，
+            // 并非全局密钥，不应改写，避免误将其提升为顶层键。
+            if (indentOf(line) == 0 && trimmed.startsWith("jaravel.key:")) {
                 if (!force) {
                     return WriteResult.SKIPPED_EXISTS;
                 }

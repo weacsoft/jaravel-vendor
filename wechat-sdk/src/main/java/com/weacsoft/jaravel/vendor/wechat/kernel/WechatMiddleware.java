@@ -9,7 +9,7 @@ package com.weacsoft.jaravel.vendor.wechat.kernel;
  *   <li><b>短路</b>：直接返回 {@link WechatResponse}（如验签失败、业务已处理完毕）</li>
  *   <li><b>放行</b>：调用 {@link Next#handle(WechatRequest)} 进入下一层</li>
  * </ul>
- * 链的最内层是内核默认应答（被动回复为空串，对齐微信 5 秒时限下「不回复空串」的退避约定）。
+ * 链的最内层是内核默认应答（被动回复为空字符串，对齐微信 5 秒时限下「不回复」的退避约定）。
  *
  * <h3>内置洋葱层（由 {@link WechatKernel} 固定排布，先于业务层执行）</h3>
  * <ol>

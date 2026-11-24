@@ -435,6 +435,15 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
      * <p>
      * 当主键为 null 时执行 INSERT（新增），当主键已有值时执行 UPDATE（更新）。
      * 通过反射检测 {@link Primary} 注解字段判断主键是否已设值。
+     * <p>
+     * <b>写入语义</b>：UPDATE 时写入实体上<b>全部</b>已映射列（含值为 null 的列）。
+     * 因此本方法适用于“加载完整实体后修改并保存”的常规流程，此时将某列显式置 null
+     * 即可清除该列。若只希望更新个别列（部分更新），请改用查询构造器：
+     * <pre>
+     * user.newQuery().where("id", 5).data("name", "新值").update();
+     * </pre>
+     * 不要用本方法保存一个只设置了少量字段的手工构造实例——未设值（null）的列
+     * 会被一并写入，从而覆盖数据库中的原有数据。
      *
      * @return 保存后的实体；INSERT 时返回含生成主键的实体，UPDATE 时返回当前实体
      */

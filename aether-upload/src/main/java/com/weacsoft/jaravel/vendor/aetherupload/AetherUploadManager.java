@@ -147,10 +147,9 @@ public class AetherUploadManager {
     /**
      * 分段锁桶数：按 resourceId 哈希取模映射到定长桶。
      * <p>
-     * 旧实现用 {@code ConcurrentHashMap<String,Object>} 按 resourceId 建锁，并在「全部完成 / abort」
-     * 时 remove；但 <b>header 不存在时（匿名请求携带随机 resourceId）锁在校验之前就已创建且永不回收</b>，
-     * 形成无界内存增长（无需认证即可触发）。定长分段锁把内存固定为 O(桶数)，
-     * 且不需要任何生命周期簿记；代价只是极小概率两个上传共用同一把锁（仅串行化写入，无正确性问题）。
+     * 定长分段锁把内存固定为 O(桶数)，且不需要任何生命周期簿记（按 resourceId 建锁/回收的方案
+     * 在校验前即可被匿名请求制造无界锁增长）；代价只是极小概率两个上传共用同一把锁
+     * （仅串行化写入，无正确性问题）。
      */
     private static final int LOCK_SEGMENTS = 256;
 
@@ -331,8 +330,8 @@ public class AetherUploadManager {
         if (chunkSize < minChunkForCap) {
             chunkSize = minChunkForCap;
         }
-        // 关键：先用 long 计算再收窄。原先直接 (int)((size + chunkSize - 1) / chunkSize)，
-        // size=8e9 & chunkSize=1 时会得到 -589934592（负），分片状态机随之失效、上传永不完成。
+        // 关键：先用 long 计算再收窄到 int——直接 (int) 强转会在大 size 下溢出为负，
+        // 使分片状态机失效、上传永不完成。
         long totalChunksLong = (size + chunkSize - 1) / chunkSize;
         if (totalChunksLong <= 0 || totalChunksLong > maxChunks || totalChunksLong > Integer.MAX_VALUE) {
             throw UploadException.invalid("分片数超出上限（" + totalChunksLong + " > " + maxChunks

@@ -38,11 +38,11 @@ import java.util.Map;
  * <p>
  * 通过 {@link AutoConfigureAfter} 显式声明在 {@link DataSourceAutoConfiguration} 之后装配。
  *
- * <h3>不再使用 {@code @ConditionalOnBean(DataSource.class)}</h3>
- * 迁移模块不应与 Spring 的 {@code DataSource} Bean 强绑定：jaravel 的连接可能只存在于
+ * <h3>不使用 {@code @ConditionalOnBean(DataSource.class)}</h3>
+ * 迁移模块不与 Spring 的 {@code DataSource} Bean 强绑定：jaravel 的连接可能只存在于
  * database 模块的 {@code ConnectionManager} 注册表中（由 {@code @RegisterConnection} 声明）。
- * 因此改为<b>运行时解析</b>——{@link #migrationExecutor} 内部先查注册表再回退 Spring 容器；
- * 若最终一个连接都没有，仅打印告警并注册一个空执行器，<b>不影响应用启动</b>。
+ * 因此采用<b>运行时解析</b>——{@link #migrationExecutor} 内部先查注册表再回退 Spring 容器；
+ * 若最终无可用连接，仅打印告警并注册空执行器，<b>不影响应用启动</b>。
  * <p>
  * Spring 装配集中于 springboot 模块（migration 核心模块零 Spring 依赖）。
  */

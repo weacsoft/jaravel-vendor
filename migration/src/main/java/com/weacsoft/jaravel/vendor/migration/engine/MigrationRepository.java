@@ -1,7 +1,7 @@
 package com.weacsoft.jaravel.vendor.migration.engine;
 
 
-import com.weacsoft.jaravel.vendor.migration.JdbcExecutor;
+import com.weacsoft.jaravel.vendor.database.JdbcExecutor;
 import com.weacsoft.jaravel.vendor.migration.dialect.Dialect;
 import com.weacsoft.jaravel.vendor.migration.dialect.DialectFactory;
 import org.slf4j.Logger;

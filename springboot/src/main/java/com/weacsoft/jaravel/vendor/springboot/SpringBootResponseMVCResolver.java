@@ -50,6 +50,8 @@ public class SpringBootResponseMVCResolver implements ResponseBodyAdvice<Object>
         }
 
         if (body == null) {
+            // 控制器返回 null 表示未产生响应体：与 Spring MVC 默认行为一致
+            // （200 + 空正文），保持对外兼容性
             response.setStatusCode(HttpStatus.OK);
             return "";
         }

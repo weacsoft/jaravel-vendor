@@ -325,6 +325,18 @@ public class SharedDependencyScanner {
                         }
                         super.visit(name, value);
                     }
+
+                    @Override
+                    public void visitEnd() {
+                        // 在方法扫描之前确定 Bean 名称。
+                        // ASM 调用顺序：类注解 → 各方法（visitMethod）→ 类 visitEnd，
+                        // 因此必须在此处（类注解 visitEnd）而非类 visitEnd 中设置，
+                        // 否则 MethodScannerVisitor 读取时 currentBeanName 仍为 null。
+                        currentBeanName = (componentBeanName != null && !componentBeanName.isEmpty())
+                                ? componentBeanName
+                                : decapitalize(simpleName(className));
+                        super.visitEnd();
+                    }
                 };
             }
             return super.visitAnnotation(descriptor, visible);
@@ -340,10 +352,6 @@ public class SharedDependencyScanner {
         public void visitEnd() {
             if (isComponent) {
                 result.getComponentClasses().add(className);
-                // 记录 Bean 名称到当前类的映射（通过 MethodScannerVisitor 使用）
-                currentBeanName = (componentBeanName != null && !componentBeanName.isEmpty())
-                        ? componentBeanName
-                        : decapitalize(simpleName(className));
             }
             if (isSharedService) {
                 result.getSharedClassDependencies().add(className);
@@ -351,7 +359,7 @@ public class SharedDependencyScanner {
             super.visitEnd();
         }
 
-        /** 当前类的 Bean 名称（供方法扫描器使用） */
+        /** 当前类的 Bean 名称（由 {@code @PluginComponent} 注解访问器的 visitEnd 提前设置） */
         String currentBeanName;
 
         private String simpleName(String className) {
@@ -407,7 +415,7 @@ public class SharedDependencyScanner {
             if (PLUGIN_MAPPING_DESC.equals(descriptor)) {
                 RouteScanInfo info = new RouteScanInfo();
                 info.setMethodName(methodName);
-                // Bean 名称由类扫描器在 visitEnd 时设置；此处先取当前值
+                // Bean 名称由 @PluginComponent 注解访问器的 visitEnd 提前设置（早于任何 visitMethod）
                 info.setBeanName(classVisitor.currentBeanName);
                 currentMethodAvailable = false;
                 hasPrimaryRoute = true;

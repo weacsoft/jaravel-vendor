@@ -27,10 +27,10 @@ import java.util.List;
  * 再用条件 {@code UPDATE ... WHERE id = ? AND (reserved_at IS NULL OR reserved_at < ?)} 原子预约，
  * 确保同一任务在同一时间只被一个实例处理。
  * <p>
- * <b>为什么不走 {@code FOR UPDATE SKIP LOCKED}</b>：那一版实现要求 SELECT 与 UPDATE 处于同一事务，
- * 而 {@link JdbcExecutor} 目前不提供事务 API（{@code inTransaction} 为待办）；此外
- * {@code LIMIT} 在 Oracle / SQL Server 上不合法。候选抢占失败时本实现会<b>短暂退避重试</b>，
- * 而不是把「抢失败」当成「队列为空」。
+ * <b>为什么不用 {@code FOR UPDATE SKIP LOCKED}</b>：该方案要求 SELECT 与 UPDATE 处于同一事务，
+ * 而 {@link JdbcExecutor} 当前未提供事务 API；此外
+ * {@code LIMIT} 在 Oracle / SQL Server 上不合法。候选抢占失败时本实现<b>短暂退避重试</b>，
+ * 不把「抢占失败」解释为「队列为空」。
  * <p>
  * 因此投递保证为<b>至少一次</b>：异常退出或超过 {@code retryAfterSeconds} 后任务会被重新取出，
  * 消费方必须<u>幂等</u>。

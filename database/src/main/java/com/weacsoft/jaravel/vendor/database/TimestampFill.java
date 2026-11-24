@@ -61,6 +61,7 @@ public final class TimestampFill {
      * <p>
      * 对齐 Laravel Eloquent 中 {@code created_at} 的行为 — 仅在 INSERT 时设置，UPDATE 时不变。
      */
+    @SuppressWarnings("unchecked")
     public static class CreatedTimeStringFill implements FieldFill {
 
         @Nullable
@@ -91,6 +92,7 @@ public final class TimestampFill {
      * 与 gaarason 内置 {@link gaarason.database.contract.support.FieldFill.UpdatedTimeFill} 不同，
      * 本实现也在插入时填充（内置的 UpdatedTimeFill 插入时返回原值）。
      */
+    @SuppressWarnings("unchecked")
     public static class UpdatedTimeStringFill implements FieldFill {
 
         @Nullable

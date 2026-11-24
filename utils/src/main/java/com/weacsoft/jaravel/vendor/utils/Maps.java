@@ -9,7 +9,7 @@ import java.util.Map;
  * <p>与 {@code Map.of} 的区别：{@code Map.of} 遇到 {@code null} 键或 {@code null} 值会直接抛
  * {@link NullPointerException}，且最多只支持 10 个键值对。本工具在构造时更为宽松：</p>
  * <ul>
- *     <li><b>允许空键值</b>：传入的 {@code null} 键或空字符串键会被视为「没有这条数据」直接跳过；
+ *     <li><b>允许空键值</b>：传入的 {@code null} 键或空字符串键视为条目缺失，直接跳过；
  *         传入的 {@code null}/空字符串值会被保留，以便调用方（如模板引擎）仍能做判空、条件渲染。</li>
  *     <li><b>保持插入顺序</b>：底层使用 {@link LinkedHashMap}，迭代顺序与放入顺序一致。</li>
  *     <li><b>返回不可变 Map</b>：结果与 {@code Map.of} 一样不可修改（{@code put/remove} 等会抛异常）。</li>
@@ -22,7 +22,7 @@ import java.util.Map;
  * <p><b>语义约定（对齐 jblade 模板引擎对空值的处理）</b>：</p>
  * <ul>
  *     <li>键为 {@code null} 或空字符串 → 跳过该条目（当作没有这条数据）。</li>
- *     <li>值为 {@code null} 或空字符串 → 保留该条目（渲染为空串，{@code @if} 判空为假）。</li>
+ *     <li>值为 {@code null} 或空字符串 → 保留该条目（渲染为空字符串，{@code @if} 判空为假）。</li>
  * </ul>
  */
 public final class Maps {

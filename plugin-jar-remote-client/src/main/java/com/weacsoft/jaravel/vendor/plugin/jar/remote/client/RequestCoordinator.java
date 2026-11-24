@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * 请求协调器（CS 中心化架构核心）。
@@ -131,6 +132,13 @@ public class RequestCoordinator {
             String resultJson = result != null ? Json.stringify(result) : null;
             String resultType = result != null ? result.getClass().getName() : null;
             return ExecuteResponse.ok(request.getRequestId(), resultJson, resultType);
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            // 目标方法确实执行了但抛出异常：这是真实的执行失败，不应再转发
+            //（子节点持有同一 Bean，会得到同样的失败），直接返回真实错误
+            Throwable cause = e.getTargetException() != null ? e.getTargetException() : e;
+            log.warn("本地执行失败: {}#{}: {}", request.getPluginId(), request.getMethodName(), cause.getMessage());
+            return ExecuteResponse.error(request.getRequestId(),
+                    "本地执行失败: " + (cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName()));
         } catch (Exception e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             log.debug("本地执行失败，将尝试远程转发: {}", cause.getMessage());
@@ -281,10 +289,16 @@ public class RequestCoordinator {
         return maxHops;
     }
 
+    /** 已就「方法名存在多个重载且未提供参数类型」告警过的方法名（避免重复刷日志） */
+    private final Set<String> warnedAmbiguousMethods = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     private java.lang.reflect.Method findMethod(Class<?> beanClass, String methodName, List<String> argTypes) {
         for (java.lang.reflect.Method method : beanClass.getMethods()) {
             if (!method.getName().equals(methodName)) continue;
-            if (argTypes == null || argTypes.isEmpty()) return method;
+            if (argTypes == null || argTypes.isEmpty()) {
+                warnIfOverloaded(beanClass, methodName);
+                return method;
+            }
             Class<?>[] paramTypes = method.getParameterTypes();
             if (paramTypes.length != argTypes.size()) continue;
             boolean match = true;
@@ -299,9 +313,30 @@ public class RequestCoordinator {
         }
         // 回退：按方法名匹配
         for (java.lang.reflect.Method method : beanClass.getMethods()) {
-            if (method.getName().equals(methodName)) return method;
+            if (method.getName().equals(methodName)) {
+                warnIfOverloaded(beanClass, methodName);
+                return method;
+            }
         }
         return null;
+    }
+
+    /**
+     * 方法名对应多个重载且请求未提供参数类型时，按声明顺序取第一个，
+     * 可能选错重载——就方法名告警一次，提示调用方补全 argTypes。
+     */
+    private void warnIfOverloaded(Class<?> beanClass, String methodName) {
+        long count = 0;
+        for (java.lang.reflect.Method m : beanClass.getMethods()) {
+            if (m.getName().equals(methodName)) count++;
+            if (count > 1) break;
+        }
+        if (count > 1) {
+            if (warnedAmbiguousMethods.add(beanClass.getName() + "#" + methodName)) {
+                log.warn("方法 {}#{} 存在多个重载且请求未提供参数类型，按声明顺序匹配，可能选错重载；建议调用方补全 argTypes",
+                        beanClass.getName(), methodName);
+            }
+        }
     }
 
     private Object[] resolveArguments(List<String> args, List<String> argTypes,

@@ -47,7 +47,7 @@ import java.util.List;
  * </ul>
  * 注解声明优先于配置式（同名时覆盖）。
  *
- * <h3>装配原则：用上了才注册</h3>
+ * <h3>装配原则：按需注册</h3>
  * 需要外部资源的驱动（database、redis 等）一律遵循「显式选用才装配」：
  * 只有 {@code jaravel.cache.stores.*.driver} 里出现了该驱动名，对应的工厂才会被注册。
  * 这样「引入依赖」与「启用驱动」彻底解耦，未启用的驱动不会拖累启动，
@@ -147,16 +147,16 @@ public class CacheAutoConfiguration {
     }
 
     /**
-     * 数据库缓存驱动工厂装配（cache-database 模块，走 database 模块连接）。
+     * 数据库缓存驱动工厂装配（cache-database 模块，经 database 模块连接）。
      *
-     * <h3>装配条件：用上了才装配</h3>
+     * <h3>装配条件：按需装配</h3>
      * 仅当<b>确实声明了</b> {@code driver: database} 的 store 时才注册工厂，由
      * {@link OnDatabaseCacheStoreCondition} 直接读取 {@code jaravel.cache.stores.*.driver}
      * 判定。没用数据库缓存的应用，这里完全不装配。
      *
      * <h3>数据源解析顺序</h3>
      * 优先取 database 模块 {@link ConnectionManager} 的连接注册表（{@code @RegisterConnection}
-     * 声明的连接），找不到再回退 Spring 容器中的 {@code DataSource} Bean。
+     * 声明的连接），未命中再回退 Spring 容器中的 {@code DataSource} Bean。
      * 缓存驱动不与 Spring {@code DataSource} Bean 强绑定，也不会因
      * {@code @ConditionalOnBean} 的求值时序误判。
      * <p>

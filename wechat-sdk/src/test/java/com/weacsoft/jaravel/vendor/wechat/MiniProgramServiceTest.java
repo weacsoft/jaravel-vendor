@@ -222,7 +222,7 @@ class MiniProgramServiceTest {
             service.uploadMedia("default", tmp.getAbsolutePath(), "image", true);
             Request req = firstRequestSent();
             assertEquals("/cgi-bin/material/add_material", req.url().encodedPath(),
-                    "永久素材应走 material/add_material");
+                    "永久素材应使用 material/add_material");
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -237,7 +237,7 @@ class MiniProgramServiceTest {
             service.uploadMedia("default", tmp.getAbsolutePath(), "image", false);
             Request req = firstRequestSent();
             assertEquals("/cgi-bin/media/upload", req.url().encodedPath(),
-                    "临时素材应走 media/upload（24h 时效）");
+                    "临时素材应使用 media/upload（24h 时效）");
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

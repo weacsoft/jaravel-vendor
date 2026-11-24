@@ -44,6 +44,10 @@ public class JwtAutoConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(JwtAutoConfiguration.class);
 
+    /** 出厂默认密钥告警只输出一次，避免启动期重复日志 */
+    private static final java.util.concurrent.atomic.AtomicBoolean DEFAULT_SECRET_WARNED =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
     /**
      * 创建 JwtConfig。
      * <p>
@@ -66,6 +70,11 @@ public class JwtAutoConfiguration {
                 log.info("[JWT] 未配置 jaravel.jwt.secret，签名密钥回退到全局应用密钥 jaravel.key");
             }
             secret = resolved;
+        } else if (JwtConfig.DEFAULT_SECRET.equals(secret) && DEFAULT_SECRET_WARNED.compareAndSet(false, true)) {
+            // 两级配置都缺省时仍在使用出厂默认密钥：该值是公开的常量，
+            // 任何持有本库的一方都能伪造令牌，生产环境必须显式配置
+            log.warn("[JWT] 未配置 jaravel.jwt.secret，且不存在全局应用密钥 jaravel.key，"
+                    + "签名密钥仍为出厂默认值——生产环境必须显式配置其一");
         }
         return new JwtConfig()
                 .setSecret(secret)
