@@ -1,8 +1,14 @@
 {
   "version": 1,
   "created_at": "2026-11-23T07:29:29Z",
-  "updated_at": "2026-11-23T19:25:09Z",
+  "updated_at": "2026-11-24T01:25:49Z",
   "files": {
+    ".dsh-tmp/full-release-test.sh": {
+      "role": "observe",
+      "sha256": "5108e652783dbac57078cf0596ee16da3148c7e4f4d322aa517fec884df07040",
+      "size": 453,
+      "normalized_sha256": "5108e652783dbac57078cf0596ee16da3148c7e4f4d322aa517fec884df07040"
+    },
     ".dsh-tmp/test-prepush.sh": {
       "role": "observe",
       "sha256": "ffdf3187024fccc8f273ed3d3cf167345d76b604145ef987fadee2330ec233df",
@@ -89,9 +95,9 @@
     },
     "CHANGELOG.md": {
       "role": "index",
-      "sha256": "8828b07ccb31903028ad14300e8f5bffa30ab51be87c745b3db9f7c710febc64",
-      "size": 93925,
-      "normalized_sha256": "06a8a9f25b2ea92f642caae023568e8b811f871d52f15dca753125705a193da1"
+      "sha256": "bfc78496a96b826db25349d6b5a7b9282d3fb9a2d24ada892770e4dac68e10d5",
+      "size": 94679,
+      "normalized_sha256": "45204467125122fb40f243803f3fa8138bb003389cea6062b78551786d3eeb55"
     },
     "CLUSTER.md": {
       "role": "index",
@@ -287,9 +293,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "87b56deb26b75c33265bb6ac4c7474e0796552a3c8922332e3b6f254cf05db7f",
-      "size": 500197,
-      "normalized_sha256": "87b56deb26b75c33265bb6ac4c7474e0796552a3c8922332e3b6f254cf05db7f"
+      "sha256": "83644d29721d5d5a65de7636f8ac24b0437103caf8633307bea01a715490fcff",
+      "size": 500874,
+      "normalized_sha256": "83644d29721d5d5a65de7636f8ac24b0437103caf8633307bea01a715490fcff"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -575,9 +581,9 @@
     },
     "cache-database/README.md": {
       "role": "index",
-      "sha256": "f1520f6409a14a4eb451e6358a30af0dc3ebe20f337a8d33477c2df73de62278",
-      "size": 5315,
-      "normalized_sha256": "98ea87639fa84f470a8b0c78a949a52bbfa80c33c150c237d92a703d82ed71ac"
+      "sha256": "ea69022164188d26222af2c2920bfb33a38a65a1b9960324603affe83e73a027",
+      "size": 5877,
+      "normalized_sha256": "228ea00f96066d91054b12e7209c2d09f9f67d65fe18f598af5c64fec7b509cb"
     },
     "cache-database/pom.xml": {
       "role": "index",
@@ -593,9 +599,9 @@
     },
     "cache-database/src/main/java/com/weacsoft/jaravel/vendor/cache/database/DatabaseCacheDriver.java": {
       "role": "index",
-      "sha256": "d53793e15f8856265b792fa43ed5fd1d5acf9c09f249e8f94f435de9d2f87530",
-      "size": 21517,
-      "normalized_sha256": "242a4a7479c98206d283e57bf650d41a72645126a61466ed2224a540162f767c"
+      "sha256": "386cfc18ebbd3cd93259e556eb4a03459b74328dec6f48ca923a911c08a62cdc",
+      "size": 23306,
+      "normalized_sha256": "11a00326aee966e7897ffb5a1e28da47d237737b33c7cf38158754ec70845096"
     },
     "cache-database/src/main/java/com/weacsoft/jaravel/vendor/cache/database/DatabaseCacheDriverFactory.java": {
       "role": "index",
@@ -638,6 +644,12 @@
       "sha256": "f7141d4d484fcb0b6e252601242d5f4a772066176ca3c8eb877b81da529bff49",
       "size": 6176,
       "normalized_sha256": "f73c91f55dbff9dc2c96672144ad31569d5c0569d6db582c43dad7c63d8d6b97"
+    },
+    "cache-database/src/test/java/com/weacsoft/jaravel/vendor/cache/database/DatabaseCachePullSqlTest.java": {
+      "role": "index",
+      "sha256": "9052908c0b64cd6e6d5f8eff0816d28e4354e47c477acc850b5597ca95d219c0",
+      "size": 3075,
+      "normalized_sha256": "9052908c0b64cd6e6d5f8eff0816d28e4354e47c477acc850b5597ca95d219c0"
     },
     "captcha/README.md": {
       "role": "index",
