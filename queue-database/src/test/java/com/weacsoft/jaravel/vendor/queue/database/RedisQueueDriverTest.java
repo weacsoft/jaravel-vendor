@@ -32,9 +32,9 @@ import static org.mockito.Mockito.when;
  *   <li><b>索引带成员</b>：{@code jobId -> queue<US>member}，使 delete/release 变成 O(1)、
  *       不再 {@code ZRANGE 0 -1} 全量扫描并逐条反序列化；</li>
  *   <li><b>push 先写索引再入队</b>：避免「已入队但没有索引」导致 delete/release 定位不到队列；</li>
- *   <li><b>迁移/领取/释放走 Lua</b>：{@code ZREM+LPUSH}、{@code RPOP+ZADD}、{@code ZREM+入队}
+ *   <li><b>迁移/领取/释放经 Lua 脚本</b>：{@code ZREM+LPUSH}、{@code RPOP+ZADD}、{@code ZREM+入队}
  *       各自在同一脚本内原子完成（两步命令在进程中断时会丢任务或重复投递）；</li>
- *   <li><b>索引缺失不再静默</b>：改为告警，并说明任务会由超时迁移按「至少一次」重新投递。</li>
+ *   <li><b>索引缺失不再无提示</b>：改为告警，并说明任务会由超时迁移按「至少一次」重新投递。</li>
  * </ol>
  * 说明：Lua 的<b>原子语义本身</b>需要真实 Redis 才能验证（当前测试只覆盖调用的脚本、键与参数），
  * 已作为未验证项记录在 CHANGELOG。

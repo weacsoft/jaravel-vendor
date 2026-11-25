@@ -41,7 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code SessionGuardAutoConfiguration} 只做 {@code @Bean} 参数注入消费。
  * <p>
  * <b>测试策略</b>：springboot 模块的测试依赖里没有 {@code spring-boot-test}
- * （不为一个测试去动模块依赖），也不该用裸 {@code AnnotationConfigApplicationContext}——
+ * （不为一个测试去动模块依赖），也不该用未加 Web 上下文的 {@code AnnotationConfigApplicationContext}——
  * 那不是 Web 上下文，{@code @ConditionalOnWebApplication(SERVLET)} 不成立，两个配置根本不装配，
  * 撞名测不出来；且缺 jaravel 的 {@code GlobalBeanProvider} 桥接时
  * {@code SessionStoreRegistrar} 会直接抛 {@code RegistrarException}。

@@ -102,7 +102,7 @@ public abstract class WireController {
     /**
      * 请求级「当前请求」。
      * <p>
-     * <b>为什么不能存实例字段</b>：控制器实例会被跨请求复用（Spring 单例 / 注册表复用），
+     * <b>不存实例字段</b>：控制器实例会被跨请求复用（Spring 单例 / 注册表复用），
      * 把请求写进实例字段会让并发请求互相覆盖 —— 表现为「A 用户的 action 看到 B 用户的请求」，
      * 即跨请求/跨用户状态串读。这里改为请求级 ThreadLocal，并在入口的
      * {@code finally} 中清理（与 WireEffects / WIRE_LAYOUT_REPLACEMENTS 同一处）。
@@ -153,7 +153,7 @@ public abstract class WireController {
      * 把单个键值对直接赋值到 Controller 自己的 public 属性。
      * <p>
      * 语义极其简单:等同于 {@code this.<key> = value}(按属性类型做基础类型转换)。
-     * 不做任何业务重写,也不递归处理嵌套对象。找不到对应 public 属性时静默忽略。
+     * 不做任何业务重写,也不递归处理嵌套对象。找不到对应 public 属性时忽略。
      *
      * @param key   属性名(区分大小写)
      * @param value 属性值(为 null 时直接置 null)
@@ -974,7 +974,7 @@ public abstract class WireController {
         String basePath = inferBasePath(request);
         if (basePath == null) return null;
         // 基于 @WireQuery 注解字段附加查询参数(如 ?page=2),当前值等于 defaultValue 或
-        // 为 null(或空串)时不加入;templates() 非空时仅当 getTemplateName() 命中才加入。
+        // 为 null(或空字符串)时不加入;templates() 非空时仅当 getTemplateName() 命中才加入。
         return buildQueryUrl(basePath, getTemplateName());
     }
 
@@ -1033,7 +1033,7 @@ public abstract class WireController {
      * 基于 {@link WireQuery} 注解字段生成「带查询串的 URL」:
      * <ul>
      *   <li>只收集被 {@code @WireQuery} 标记的 public 字段;</li>
-     *   <li>当前值为 null 或空串,或 equals(defaultValue)(defaultValue 非空)时跳过;</li>
+     *   <li>当前值为 null 或空字符串,或 equals(defaultValue)(defaultValue 非空)时跳过;</li>
      *   <li>URL 参数名取 {@code name()} 属性,为空时用字段名;</li>
      *   <li>templates() 非空时,仅当 {@code template} 命中列表才加入(空数组=所有模板);</li>
      *   <li>无匹配参数时原样返回 basePath,不附加多余的 {@code ?}。</li>
@@ -1065,7 +1065,7 @@ public abstract class WireController {
                 // 默认值过滤:值等于 defaultValue(且 defaultValue 非空) → 跳过
                 String def = wq.defaultValue();
                 if (def != null && !def.isEmpty() && def.equals(s)) continue;
-                // 空串过滤:控制器字段可能为 ""(如 mount 里 request.query(key,"") 的默认值),
+                // 空字符串过滤:控制器字段可能为 ""(如 mount 里 request.query(key,"") 的默认值),
                 // 空参数没有意义,一并跳过(与 null 等价处理)。
                 if (s.isEmpty()) continue;
                 String paramName = (wq.name() != null && !wq.name().isEmpty()) ? wq.name() : f.getName();
@@ -1164,7 +1164,7 @@ public abstract class WireController {
      * <p>
      * <b>会话不可用时必须用「稳定」密钥</b>：旧实现在异常分支返回
      * {@code "fallback-key-" + UUID.randomUUID()} —— 每次调用都是新值，导致「签发用的钥匙」与
-     * 「校验用的钥匙」必然不同，表现为<b>所有局部更新始终 403</b> 且错误被静默吞掉。
+     * 「校验用的钥匙」必然不同，表现为<b>所有局部更新始终 403</b> 且错误无提示地被忽略。
      * 现在优先回退到全局应用密钥（{@code jaravel.key}）；两者都没有时<b>明确抛错</b>，
      * 让问题在首次请求就暴露，而不是伪装成「快照被篡改」。
      *
@@ -1183,7 +1183,7 @@ public abstract class WireController {
             String stable = globalAppKey();
             if (stable != null && !stable.isBlank()) {
                 // 降级必须可见：从「按会话绑定」降级为「进程级派生密钥」后，
-                // 任何会话中持有同一快照串的请求都能通过校验；旧实现静默降级、且异常会被
+                // 任何会话中持有同一快照串的请求都能通过校验；旧实现无提示地降级、且异常会被
                 // 上层记成「snapshot 篡改」，把配置问题伪装成攻击。
                 if (SESSION_KEY_FALLBACK_WARNED.compareAndSet(false, true)) {
                     log.error("[wire] 会话不可用，快照签名密钥降级为进程级派生密钥（不再按会话绑定）。"

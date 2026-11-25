@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * 软删除扩展点契约测试（上游 issue gaarason/database-all#63）。
  * <p>
- * <b>为什么需要这几个扩展点</b>：gaarason 7.1.2 起提供
+ * <b>扩展点重写说明</b>：gaarason 7.1.2 起提供
  * {@code updateOrCreateAutoRestore} / {@code updateByPrimaryKeyOrCreateAutoRestore}
  * 等「命中已软删除记录时，在同一条 SQL 内恢复并更新」的官方 API。
  * 但它的判断<b>全部</b>走模型自身的三个扩展点：

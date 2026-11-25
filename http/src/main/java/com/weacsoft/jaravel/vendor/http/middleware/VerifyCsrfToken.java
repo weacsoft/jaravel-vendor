@@ -14,7 +14,7 @@ import java.util.List;
  * <p>
  * 对非安全方法（非 GET/HEAD/OPTIONS/TRACE）的请求校验 CSRF 令牌。
  * <p>
- * <b>开箱即用</b>：框架启动（SpringBoot 自动配置）会自动将其以别名
+ * <b>默认配置下即可使用</b>：框架启动（SpringBoot 自动配置）会自动将其以别名
  * {@code "VerifyCsrfToken"} 注册到中间件别名表，并在模板引擎注册
  * {@code csrf_token()}/{@code csrf_field()} 辅助函数，无需应用层自定义子类或额外注册。
  * 应用只需在路由组中引用该别名即可启用校验（如 {@code Route.group(Map.of(MIDDLEWARE, new
@@ -180,7 +180,7 @@ public class VerifyCsrfToken implements Middleware {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
-    // ========== 框架级（开箱即用）便捷方法 ==========
+    // ========== 框架级（默认配置下即可使用）便捷方法 ==========
     // 以下方法供 SpringBoot 自动配置在启动时注册别名与模板辅助函数使用，
     // 使应用层无需自定义 VerifyCsrfToken 子类即可使用 CSRF 能力。
 
@@ -197,11 +197,11 @@ public class VerifyCsrfToken implements Middleware {
      * 供模板 {@code csrf_token()}/{@code csrf_field()} 渲染隐藏域 value 使用。
      * <p>
      * <b>失败可见性</b>：若 {@code request} 为 {@code null}（例如在请求生命周期之外渲染模板），
-     * 不会静默返回空串导致隐藏域 {@code value=""}，而是记录 WARN 并返回空串，
+     * 不会无提示地返回空字符串导致隐藏域 {@code value=""}，而是记录 WARN 并返回空字符串，
      * 使开发者能立刻发现“CSRF 未处于有效请求上下文”的误用，而非得到不可用的空令牌。
      *
      * @param request 当前请求
-     * @return 非空 token 字符串；request 不可用时返回空串（并打 WARN）
+     * @return 非空 token 字符串；request 不可用时返回空字符串（并记录 WARN）
      */
     public static String currentToken(Request request) {
         if (request == null) {
@@ -224,7 +224,7 @@ public class VerifyCsrfToken implements Middleware {
     }
 
     /**
-     * 获取一个开箱即用的 {@link VerifyCsrfToken} 实例，用于框架自动注册别名。
+     * 获取一个默认配置下即可使用的 {@link VerifyCsrfToken} 实例，用于框架自动注册别名。
      */
     public static VerifyCsrfToken instance() {
         return new VerifyCsrfToken();

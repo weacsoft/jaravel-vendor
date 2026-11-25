@@ -225,8 +225,8 @@ class AuthManagerTest {
 
     @Test
     void testExplicitUnknownDriverFailsLoud() {
-        // 显式配置了一个没人支持的 driver（拼写错误/忘引模块）必须抛错：
-        // 静默回退成「始终未登录」会让 if (Auth.check()) {...} else {放行} 的写法静默失去鉴权
+        // 显式配置了一个无人支持的 driver（拼写错误/忘引模块）必须抛错：
+        // 回退成「始终未登录」会让 if (Auth.check()) {...} else {放行} 的写法失去鉴权而不可察觉
         AuthManager manager = new AuthManager();
         manager.registerProvider("users", new InMemoryProvider());
         manager.registerGuard("web", "weird-driver", "users");

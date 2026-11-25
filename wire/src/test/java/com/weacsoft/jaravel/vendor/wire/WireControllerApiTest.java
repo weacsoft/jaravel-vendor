@@ -277,7 +277,7 @@ class WireControllerApiTest {
         Request r = new Request(); // 无 servlet,uri() 返回 ""
         String url = c.pubBuildUpdateUrl(r);
         assertNotNull(url);
-        assertEquals("", url); // 无路由名时回退当前 URI(此处为空串)
+        assertEquals("", url); // 无路由名时回退当前 URI(此处为空字符串)
     }
 
     // ===== @WireLocked 排除 =====

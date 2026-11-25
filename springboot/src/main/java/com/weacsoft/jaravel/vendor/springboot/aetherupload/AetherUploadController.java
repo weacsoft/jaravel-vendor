@@ -90,7 +90,11 @@ public class AetherUploadController implements Controllers {
             if (resourceId == null || indexStr == null) {
                 throw UploadException.invalid("缺少参数 resourceId / index");
             }
-            int index = (int) parseLong(indexStr, "index");
+            long indexLong = parseLong(indexStr, "index");
+            if (indexLong < 0 || indexLong > Integer.MAX_VALUE) {
+                throw UploadException.invalid("参数 index 超出范围: " + indexStr);
+            }
+            int index = (int) indexLong;
             byte[] data = readChunkData(request);
             UploadResult result = manager.writeChunk(group, resourceId, index, data);
             return ResponseBuilder.json(ok(result.toMap()));

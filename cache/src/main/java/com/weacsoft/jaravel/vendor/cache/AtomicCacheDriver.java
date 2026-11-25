@@ -3,7 +3,7 @@ package com.weacsoft.jaravel.vendor.cache;
 /**
  * 可选能力接口：驱动提供<b>原子</b>的写入/取走/自增原语。
  * <p>
- * <b>为什么需要它</b>：{@code CacheStore.add/pull} 的默认实现是「先检查后写入 / 先读后删」两步，
+ * <b>存在理由</b>：{@code CacheStore.add/pull} 的默认实现是「先检查后写入 / 先读后删」两步，
  * {@code increment} 是「读改写」。并发下会出现：
  * <ul>
  *   <li>{@code add} 两个线程都返回 true → 「单次执行 / 互斥门闩」语义失效；</li>

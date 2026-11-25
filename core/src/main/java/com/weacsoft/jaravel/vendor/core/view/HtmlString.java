@@ -21,7 +21,7 @@ public final class HtmlString implements Htmlable {
     /**
      * 工厂方法：包裹一段原始 HTML（不会再次转义）。
      *
-     * @param value 原始 HTML，可为 null（输出空串）
+     * @param value 原始 HTML，可为 null（输出空字符串）
      * @return HtmlString 实例
      */
     public static HtmlString raw(String value) {

@@ -17,7 +17,7 @@ import java.util.Map;
  * <h3>为什么迁移也要走 vendor:publish</h3>
  * 使用 database / storage(database) / queue(database) 等驱动的模块都需要先建表。
  * 对齐 Laravel 的做法：模块把自己需要的表结构<b>以迁移文件形式打进 jar</b>，
- * 开发者执行 {@code artisan vendor:publish --tag=migrations} 一键发布
+ * 开发者执行 {@code artisan vendor:publish --tag=migrations} 一次调用发布
  * <b>所有模块</b>的迁移文件到业务工程迁移目录，再执行 {@code artisan migrate} 完成建表——
  * 而不是每个模块各自一套 {@code xxx:table} + 手动 SQL 的割裂体验。
  * <p>
@@ -59,7 +59,7 @@ public interface PublishableMigration extends Publishable {
     /**
      * 迁移文件用途描述，用于 {@code --list} 输出。
      *
-     * @return 描述文本，默认空串
+     * @return 描述文本，默认空字符串
      */
     @Override
     default String description() {

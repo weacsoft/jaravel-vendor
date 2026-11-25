@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * {@link DatabaseCacheDriver} 的<b>原子原语</b>回归测试（依赖 {@code JdbcExecutor.inTransaction}）。
  * <p>
- * 这些语义在改动前都是「两步实现」，并发下会静默失效：
+ * 这些语义若采用「两步实现」，并发下会失效且无告警：
  * <ul>
  *   <li>{@code add} 是 has→put：并发可双双成功（互斥门闩失效）；</li>
  *   <li>{@code pull} 是 get→forget：一次性令牌可被两个线程同时取到；</li>

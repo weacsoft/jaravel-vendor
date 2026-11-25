@@ -62,7 +62,7 @@ public class DatabaseCacheDriver implements CacheDriver,
     /** 默认缓存表名 */
     private static final String DEFAULT_TABLE = "jaravel_cache";
 
-    /** 原子自增（乐观 CAS）的最长等待时间：预算内持续重试，超时即抛错（绝不静默丢一次自增） */
+    /** 原子自增（乐观 CAS）的最长等待时间：预算内持续重试，超时即抛错（绝不无告警地丢失一次自增） */
     private static final long INCREMENT_MAX_WAIT_MS = 3000L;
 
     /** 自增重试退避毫秒（第 n 次退避 = n × 本值） */
@@ -116,7 +116,7 @@ public class DatabaseCacheDriver implements CacheDriver,
      * 构造数据库缓存驱动。
      *
      * @param dataSource 数据源（database 模块连接或任意 JDBC 数据源）
-     * @param table      缓存表名，{@code null} 或空串使用默认 {@code jaravel_cache}
+     * @param table      缓存表名，{@code null} 或空字符串使用默认 {@code jaravel_cache}
      */
     public DatabaseCacheDriver(DataSource dataSource, String table) {
         if (dataSource == null) {
@@ -348,7 +348,7 @@ public class DatabaseCacheDriver implements CacheDriver,
      * 原子自增（乐观 CAS，可移植）：读当前值 → 计算 → 条件更新（{@code WHERE value = 读到的原值}），
      * 更新 0 行说明期间被别人改过 → 重读重算；键不存在/已过期时尝试插入（主键冲突则重试）。
      * <p>
-     * 为什么不用 {@code SELECT ... FOR UPDATE}：各家 MVCC/行锁实现细节不同，部分方言下
+     * 不使用 {@code SELECT ... FOR UPDATE} 的原因：各家 MVCC/行锁实现细节不同，部分方言下
      * {@code FOR UPDATE} 不足以防丢更新；CAS 的语义在所有方言上一致。
      * <p>
      * TTL：已存在的键<b>保留原 expires_at</b>；新键使用 {@code ttlIfAbsentSeconds}。
@@ -405,7 +405,7 @@ public class DatabaseCacheDriver implements CacheDriver,
                         attempt, key, e.getMessage());
             }
         }
-        // 绝不静默丢一次自增：CAS 在预算内始终没成功就让调用方看到失败
+        // 绝不无告警地丢失一次自增：CAS 在预算内始终未成功时让调用方看到失败
         throw new IllegalStateException("原子自增失败：键 " + key + " 在 " + INCREMENT_MAX_WAIT_MS
                 + "ms 内被持续修改（尝试 " + attempt + " 次）");
     }

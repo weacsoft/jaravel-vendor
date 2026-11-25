@@ -18,19 +18,25 @@ import java.util.List;
  * <p>
  * <b>架构对齐（0.1.3）</b>：SQL 操作统一经由 database 模块的
  * {@link JdbcExecutor} 执行（连接来自 {@code ConnectionManager} 注册表或业务方显式传入），
- * 不再依赖 spring-jdbc，也不再自带一套私有 JDBC 工具；建表统一走 migration 模块
+ * 不再依赖 spring-jdbc，也不再自带一套私有 JDBC 工具；建表统一经由 migration 模块的
  * 迁移能力（{@code vendor:publish --tag=migrations} 发布内置迁移 + {@code artisan migrate}，
  * 或 {@code artisan queue:table} 生成迁移文件）。
  *
  * <h3>多实例消费</h3>
- * 使用<b>乐观锁预约</b>实现抢占式消费：先按可移植的 {@code id = (SELECT MIN(id) ...)} 选出候选任务，
- * 再用条件 {@code UPDATE ... WHERE id = ? AND (reserved_at IS NULL OR reserved_at < ?)} 原子预约，
- * 确保同一任务在同一时间只被一个实例处理。
- * <p>
- * <b>为什么不用 {@code FOR UPDATE SKIP LOCKED}</b>：该方案要求 SELECT 与 UPDATE 处于同一事务，
- * 而 {@link JdbcExecutor} 当前未提供事务 API；此外
- * {@code LIMIT} 在 Oracle / SQL Server 上不合法。候选抢占失败时本实现<b>短暂退避重试</b>，
- * 不把「抢占失败」解释为「队列为空」。
+ * 通过<b>两路抢占</b>保证同一任务在同一时刻只被一个实例处理：
+ * <ul>
+ *   <li><b>主路径</b>：方言感知的 {@code FOR UPDATE SKIP LOCKED} 抢占（{@code MySQL}/{@code MariaDB}/
+ *       {@code PostgreSQL}/{@code H2} 用 {@code ... LIMIT 1 FOR UPDATE SKIP LOCKED}，
+ *       {@code Oracle} 用 {@code ... FETCH FIRST 1 ROWS ONLY FOR UPDATE SKIP LOCKED}，
+ *       {@code SQL Server} 用 {@code TOP 1 ... WITH (UPDLOCK, READPAST)}）。
+ *       候选 SELECT 与预约 UPDATE 处于同一 {@link JdbcExecutor#inTransaction} 事务，
+ *       候选行被锁、其他实例跳过，无竞争重试。</li>
+ *   <li><b>降级路径</b>：不支持行级 {@code SKIP LOCKED} 的方言（{@code SQLite} 及未知/第三方库）
+ *       回退为<b>乐观锁预约</b>：先按可移植的 {@code id = (SELECT MIN(id) ...)} 选出候选
+ *       （{@code LIMIT} 在 {@code Oracle}/{@code SQL Server} 上不合法，故用 {@code MIN(id)} 子查询），
+ *       再用条件 {@code UPDATE ... WHERE id = ? AND (reserved_at IS NULL OR reserved_at < ?)} 原子预约；
+ *       抢占失败时短暂退避重试，不把「抢占失败」解释为「队列为空」。</li>
+ * </ul>
  * <p>
  * 因此投递保证为<b>至少一次</b>：异常退出或超过 {@code retryAfterSeconds} 后任务会被重新取出，
  * 消费方必须<u>幂等</u>。

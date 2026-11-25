@@ -5,7 +5,7 @@ import java.util.Locale;
 /**
  * 重定向目标（{@code Location} 响应头）的结构校验。
  *
- * <h3>为什么需要这层校验</h3>
+ * <h3>校验的必要性</h3>
  * <p>
  * {@code Location} 头的值会被浏览器直接解释：协议决定了浏览器的行为形态，
  * 而协议由目标字符串自身决定，不受服务端控制。因此若业务代码把未经校验的字符串
@@ -49,7 +49,7 @@ public final class RedirectPolicy {
         if (url == null) {
             throw new IllegalArgumentException("重定向地址不能为 null");
         }
-        // 控制字符检查在去空白之前执行：String.trim() 会静默丢弃首尾的控制字符
+        // 控制字符检查在去空白之前执行：String.trim() 会丢弃首尾的控制字符
         // （含 NUL），先检查才能把这类地址当作非法输入拒绝，而不是悄悄改写。
         for (int i = 0; i < url.length(); i++) {
             char c = url.charAt(i);

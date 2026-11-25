@@ -125,13 +125,35 @@ public class ModelMetadataPersistence implements MetadataPersistence {
         info.setPluginId(model.getPluginId());
         info.setVersion(model.getVersion());
         info.setJarPath(model.getJarPath());
-        info.setState(model.getState() != null ? PluginInfo.State.valueOf(model.getState()) : null);
+        info.setState(parseState(model.getState()));
         info.setSharedClassDependencies(fromJson(model.getSharedClassDependencies()));
         info.setComponentClasses(fromJson(model.getComponentClasses()));
         info.setRouteMappings(fromJsonRouteInfos(model.getRouteMappings()));
         info.setErrorMessage(model.getErrorMessage());
         info.setPersisted(model.getPersisted() != null && model.getPersisted());
         return info;
+    }
+
+    /**
+     * 解析持久化的状态字段。
+     * <p>
+     * 数据库行可能被人手改过或残留旧值：遇到未知值时记日志并回退为 {@link PluginInfo.State#UPLOADED}
+     * （最保守状态，避免脏值直接让加载抛出 {@link IllegalArgumentException}），
+     * 而不是让整次加载中断。
+     *
+     * @param state 数据库中的状态字符串（可空）
+     * @return 状态枚举；空返回 null（保持模型默认），未知值返回 {@link PluginInfo.State#UPLOADED}
+     */
+    private PluginInfo.State parseState(String state) {
+        if (state == null) {
+            return null;
+        }
+        try {
+            return PluginInfo.State.valueOf(state);
+        } catch (IllegalArgumentException e) {
+            log.error("插件元数据状态值无法识别，回退为 UPLOADED: state={}", state);
+            return PluginInfo.State.UPLOADED;
+        }
     }
 
     // ==================== JSON 序列化辅助方法 ====================

@@ -16,7 +16,7 @@ import java.util.Set;
  * 因此这里通过反射做「软依赖」桥接：
  * <ul>
  *   <li>类路径上存在 database 模块 → 取出注册表中的别名，与 Spring 的 DataSource bean 合并；</li>
- *   <li>不存在 → 静默返回空表，退化为原有的「bean 名即别名」行为。</li>
+ *   <li>不存在 → 返回空表，退化为原有的「bean 名即别名」行为。</li>
  * </ul>
  * 由此保证 {@code Migration#connection()} 与 Model 的 {@code @DataSource} 使用同一套别名语义。
  * <p>

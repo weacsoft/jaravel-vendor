@@ -219,7 +219,7 @@ public class RedisQueueDriver implements QueueDriver {
                 new String[]{reserved, ready}, Long.toString(now));
 
         // 3. 原子领取：RPOP + ZADD reserved 在同一脚本内完成。
-        //    原实现是 rpop 之后再 zadd，进程若死在两步之间，任务既不在就绪也不在预约集合 → 彻底丢失。
+        //    若分两步执行（rpop 之后再 zadd），进程若死在两步之间，任务既不在就绪也不在预约集合 → 彻底丢失。
         long deadline = now + retryAfterSeconds * 1000;
         String json = cmd.eval(CLAIM_SCRIPT, io.lettuce.core.ScriptOutputType.VALUE,
                 new String[]{ready, reserved}, Long.toString(deadline));
@@ -255,7 +255,7 @@ public class RedisQueueDriver implements QueueDriver {
         String raw = cmd().hget(indexKey(), Long.toString(jobId));
         if (raw == null) {
             // 索引缺失时无法定位成员；该任务若仍在预约集合，会在 retryAfter 到期后被迁移回就绪队列
-            // 重新消费（至少一次语义），因此这里只告警、不再静默 debug。
+            // 重新消费（至少一次语义），因此这里只告警、不再仅以 debug 级别记录。
             logger.warn("[queue-redis] 删除任务：索引中不存在 jobId={}（若仍在预约集合，将由超时迁移重新投递）", jobId);
             return;
         }
@@ -463,7 +463,7 @@ public class RedisQueueDriver implements QueueDriver {
     /**
      * 构造索引值：{@code queue<US>member}。
      * <p>
-     * 带上成员后，{@code delete/release} 无需遍历预约 ZSET（原实现是 O(N) 反序列化热路径），
+     * 带上成员后，{@code delete/release} 无需遍历预约 ZSET（避免 O(N) 反序列化热路径），
      * 也不再需要「扫描回退」。
      *
      * @param queue  队列名

@@ -316,7 +316,7 @@ public final class RuntimeClasspath {
     }
 
     /**
-     * 递归删除目录，失败时静默忽略（仅用于临时目录清理）。
+     * 递归删除目录，失败时忽略且不记录日志（仅用于临时目录清理）。
      *
      * @param file 待删除文件或目录
      */

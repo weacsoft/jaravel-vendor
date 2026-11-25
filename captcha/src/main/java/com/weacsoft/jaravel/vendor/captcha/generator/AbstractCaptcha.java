@@ -329,8 +329,8 @@ public abstract class AbstractCaptcha implements Captcha {
             return false;
         }
         consumeNonce(nonce, expireTime);
-        // 兼容路径必须可见：存储不支持原子占用时，「一次性」会静默退回
-        // 「先查后写」，并发下两个请求可同时通过 —— 与 M5 的原始缺陷等价。
+        // 兼容路径必须可见：存储不支持原子占用时，「一次性」会退回
+        // 「先查后写」而不可察觉，并发下两个请求可同时通过 —— 与 M5 的原始缺陷等价。
         if (NON_ATOMIC_CLAIM_WARNED.compareAndSet(false, true)) {
             log.warn("[captcha] 当前 CaptchaStore 未实现 putIfAbsent（不支持原子占用），"
                     + "「验证码一次性」在并发下存在窗口，退回「先查后写」。"
@@ -421,8 +421,8 @@ public abstract class AbstractCaptcha implements Captcha {
     protected CaptchaCrypto createCrypto(CaptchaProperties props, String encryptionKey) {
         CaptchaProperties cryptoProps = this.properties != null ? this.properties : props;
         String type = cryptoProps != null ? cryptoProps.getEncryptionType() : "none";
-        // properties 为 null 时不能静默降级为 "none"：那等于「装配缺失 → 明文下发答案」，
-        // 且调用方毫无察觉。这里显式告警一次，让问题可被发现。
+        // properties 为 null 时不能无提示地降级为 "none"：那等于「装配缺失 → 明文下发答案」，
+        // 且调用方不会得到任何提示。这里显式告警一次，让问题可被发现。
         if (type == null || "none".equalsIgnoreCase(type)) {
             warnNoneEncryptionOnce();
         }
@@ -561,7 +561,7 @@ public abstract class AbstractCaptcha implements Captcha {
                 }
             }
         } catch (Exception e) {
-            // 加载失败静默处理
+            // 加载失败时忽略且不记录日志
         }
         return null;
     }
@@ -813,7 +813,7 @@ public abstract class AbstractCaptcha implements Captcha {
                 byte[] bytes = decodeBase64Image(b64);
                 src = ImageIO.read(new ByteArrayInputStream(bytes));
             } catch (Exception e) {
-                // 加载失败静默处理，后续回退到随机背景
+                // 加载失败时忽略且不记录日志，随后回退到随机背景
             }
         }
 
@@ -873,7 +873,7 @@ public abstract class AbstractCaptcha implements Captcha {
                 }
             }
         } catch (Exception e) {
-            // 加载失败静默处理
+            // 加载失败时忽略且不记录日志
         }
         return null;
     }
@@ -977,7 +977,7 @@ public abstract class AbstractCaptcha implements Captcha {
                 g.dispose();
             }
         } catch (Exception e) {
-            // 图片水印加载失败静默处理
+            // 图片水印加载失败时忽略且不记录日志
         }
     }
 

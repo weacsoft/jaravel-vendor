@@ -182,9 +182,8 @@ public class SimpleMemoryCache {
      */
     public boolean add(String key, Object value, long ttlSeconds) {
         long expiryAt = ttlSeconds > 0 ? System.currentTimeMillis() + ttlSeconds * 1000L : 0L;
-        // compute 对同一 key 是原子的：并发 add 只有一个能成功。
-        // 原实现是 exists→put 两步（先检查后写入），两个线程可能同时通过检查而都返回 true，
-        // 「单次执行/互斥门闩」语义因此失效；已过期条目在此视为不存在。
+        // compute 对同一 key 是原子的：并发 add 只有一个能成功，
+        // 保证「单次执行/互斥门闩」语义；已过期条目在此视为不存在。
         boolean[] written = {false};
         store.compute(key, (k, existing) -> {
             if (existing != null && !existing.isExpired()) {

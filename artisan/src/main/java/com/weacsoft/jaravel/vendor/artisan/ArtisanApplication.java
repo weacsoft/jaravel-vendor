@@ -104,12 +104,16 @@ public class ArtisanApplication {
 
     /**
      * 调度命令执行。
+     * <p>
+     * 命令实例为进程级共享（{@link #commands}），其解析后的参数 / 选项保存在实例字段上；
+     * 并发调度同一命令会相互覆盖参数，因此 {@code call} 整体加锁串行化执行
+     * （artisan 属低频管理命令，串行化对吞吐无实际影响）。
      *
      * @param commandName 命令名
      * @param args        命令行参数（不含命令名本身）
      * @return 退出码，0 表示成功
      */
-    public int call(String commandName, String[] args) {
+    public synchronized int call(String commandName, String[] args) {
         scanCommands();
         ArtisanCommand command = commands.get(commandName);
         if (command == null) {

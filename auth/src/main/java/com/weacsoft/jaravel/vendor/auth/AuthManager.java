@@ -248,8 +248,8 @@ public class AuthManager {
         // 需要真实登录态时引入实现模块（auth-session / jwt / 自定义驱动）。
         //
         // 但回退只应覆盖「默认驱动 + 实现模块缺失」这一种情形（例如只依赖 auth、没引 auth-session）。
-        // 若显式配置了一个没人支持的 driver（拼写错误、忘了引模块），静默变成「始终未登录」会让
-        // 业务侧 if (Auth.check()) { ... } else { 放行 } 之类的写法**静默失去鉴权** ——
+        // 若显式配置了一个无人支持的 driver（拼写错误、忘了引模块），回退成「始终未登录」会让
+        // 业务侧 if (Auth.check()) { ... } else { 放行 } 之类的写法**失去鉴权而不可察觉** ——
         // 这类配置错误必须大声失败。
         if (fallback != null && cfg.driver != null
                 && cfg.driver.equalsIgnoreCase(fallbackAllowedDriver)) {

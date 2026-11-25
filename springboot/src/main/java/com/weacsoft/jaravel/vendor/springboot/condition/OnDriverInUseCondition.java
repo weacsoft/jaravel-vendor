@@ -20,7 +20,7 @@ import java.util.Set;
  * <h3>设计原则</h3>
  * jaravel 的模块化对齐 Laravel：<b>安装（放进 classpath）≠ 启用</b>。
  * 一个驱动型模块（redis 缓存、redis session、database 缓存、redis 队列……）
- * 只有在用户<b>显式选用</b>它时才应该注册与配置；否则应当完全静默，
+ * 只有在用户<b>显式选用</b>它时才应该注册与配置；否则应当完全无提示，
  * 不创建任何 Bean、不连接任何外部服务、不影响应用启动。
  * <p>
  * 典型反例：项目引入了 {@code session-redis} 依赖但 {@code jaravel.session.driver} 配的是
@@ -131,7 +131,7 @@ public abstract class OnDriverInUseCondition implements Condition {
     /**
      * 「声明式注册在用即命中」标志，用于<b>驱动名写在方法返回值里、注解属性中读不到</b>的场景。
      *
-     * <h3>为什么需要</h3>
+     * <h3>存在理由</h3>
      * jaravel 的声明式注册（{@code @RegisterGuard} / {@code @RegisterCacheStore} /
      * {@code @RegisterSessionStore} / {@code @RegisterDisk} 等）只在注解里写<b>名字</b>，
      * 真正的驱动名是方法体返回的定义对象里的运行时值，例如：

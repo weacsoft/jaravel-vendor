@@ -159,7 +159,7 @@ public final class WechatKernel {
      *
      * @param query  回调 query 参数
      * @param rawXml 推送 XML 原文（safe 模式含 {@code <Encrypt>}）
-     * @return 应答字符串：明文 XML / 加密应答 XML / 不回复时的空串
+     * @return 应答字符串：明文 XML / 加密应答 XML / 不回复时的空字符串
      * @throws com.weacsoft.jaravel.vendor.wechat.crypto.WechatCryptoException 验签/解密/消息类不支持被动回复
      */
     public String handlePost(Map<String, String> query, String rawXml) {
@@ -189,7 +189,7 @@ public final class WechatKernel {
      *
      * @param req  请求
      * @param resp 多条应答
-     * @return 被动回复 XML（或加密包）；没有被动回复时为空串
+     * @return 被动回复 XML（或加密包）；没有被动回复时为空字符串
      */
     private String handleMulti(WechatRequest req, WechatResponse resp) {
         String openid = req.openid();

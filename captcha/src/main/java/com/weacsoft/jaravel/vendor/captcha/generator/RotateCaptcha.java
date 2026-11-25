@@ -135,7 +135,7 @@ public class RotateCaptcha extends AbstractCaptcha {
         double input = TrajectoryValidator.extractValue(userInput);
 
         // 必须是有限数：既要挡 NaN，也要挡 ±Infinity。
-        // 历史缺陷：只挡了 NaN，提交 1e999 会得到 input=+Infinity，
+        // 若 ±Infinity 进入比较（如提交 1e999 解析为 +Infinity），
         // 角度差 diff 变成 -Infinity，使 `diff > 180` 与 `diff > tolerance` 全为 false，
         // 于是无需知道角度即可通过旋转验证码。
         if (!Double.isFinite(input) || !Double.isFinite(target)) {

@@ -485,7 +485,7 @@ public class WireManager {
      *
      * @param html 已渲染（含 wire:section 标记）的 HTML
      * @param name wire:section 属性值
-     * @return 该 wire:section 块的内部 HTML；若找不到返回空串
+     * @return 该 wire:section 块的内部 HTML；若找不到返回空字符串
      */
     public static String extractWireSection(String html, String name) {
         if (html == null || name == null || name.isEmpty()) {
@@ -536,7 +536,7 @@ public class WireManager {
         }
 
         // 3) 结构不闭合（模板异常）时，退化为返回剩余全部内容，
-        //    这比返回被截断的片段或空串更安全。
+        //    这比返回被截断的片段或空字符串更安全。
         return html.substring(contentStart);
     }
 }

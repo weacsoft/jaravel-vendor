@@ -169,7 +169,7 @@ public interface Filesystem {
     // ==================== 删除 / 移动 / 复制 ====================
 
     /**
-     * 删除文件，不存在时静默返回 false。
+     * 删除文件，不存在时返回 false（不记录日志）。
      *
      * @param path 相对路径
      * @return 实际删除返回 true
@@ -270,7 +270,7 @@ public interface Filesystem {
     /**
      * 列举目录下的文件（不含子目录中的文件）。
      *
-     * @param directory 目录相对路径，{@code null} 或空串表示根目录
+     * @param directory 目录相对路径，{@code null} 或空字符串表示根目录
      * @return 文件元信息列表（不含目录项）
      */
     List<FileInfo> files(String directory);
@@ -278,7 +278,7 @@ public interface Filesystem {
     /**
      * 递归列举目录下所有文件（含所有子目录中的文件）。
      *
-     * @param directory 目录相对路径，{@code null} 或空串表示根目录
+     * @param directory 目录相对路径，{@code null} 或空字符串表示根目录
      * @return 文件元信息列表（不含目录项）
      */
     List<FileInfo> allFiles(String directory);
@@ -286,13 +286,13 @@ public interface Filesystem {
     /**
      * 列举目录下的直接子目录。
      *
-     * @param directory 目录相对路径，{@code null} 或空串表示根目录
+     * @param directory 目录相对路径，{@code null} 或空字符串表示根目录
      * @return 目录元信息列表
      */
     List<FileInfo> directories(String directory);
 
     /**
-     * 创建目录（含所有必需的父目录），已存在时静默返回。
+     * 创建目录（含所有必需的父目录），已存在时返回（不记录日志）。
      *
      * @param directory 目录相对路径
      * @throws StorageException 创建失败

@@ -120,7 +120,7 @@ public class StorageRegistrar extends AnnotationDrivenRegistrar<RegisterDisk> {
     }
 
     /**
-     * 若一个磁盘都没注册，回退注册默认 local 磁盘，保证开箱即用。
+     * 若一个磁盘都没注册，回退注册默认 local 磁盘，默认配置下即可使用。
      */
     private void registerFallbackDisk() {
         if (manager.hasDisks()) {

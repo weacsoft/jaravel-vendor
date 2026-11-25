@@ -5,7 +5,7 @@ import java.util.OptionalLong;
 /**
  * 可选能力接口：驱动能报告键的剩余 TTL。
  * <p>
- * <b>为什么需要它</b>：{@code CacheStore.increment/decrement} 是「读改写」语义
+ * <b>存在理由</b>：{@code CacheStore.increment/decrement} 是「读改写」语义
  * （读取当前值 → 加/减 → 写回）。若写回时不带 TTL，键就从「有期限」变成「永不过期」——
  * 限流计数会永久生效、缓存版本键（如 model-cache）会无限堆积。
  * <p>

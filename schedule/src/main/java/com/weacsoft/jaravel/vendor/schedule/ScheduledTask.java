@@ -100,11 +100,34 @@ public class ScheduledTask {
         return cron("0 " + minute + " * * * *");
     }
 
-    /** 每天指定时间执行 */
+    /**
+     * 每天指定时间执行。
+     *
+     * @param time 时间，格式 {@code HH:mm}（24 小时制）或 {@code HH}
+     * @throws IllegalArgumentException 时间格式非法（非 {@code HH:mm}、超出 0-23 / 0-59 范围）
+     */
     public ScheduledTask dailyAt(String time) {
+        if (time == null) {
+            throw new IllegalArgumentException("dailyAt 时间不能为 null");
+        }
         String[] parts = time.split(":");
-        int hour = Integer.parseInt(parts[0]);
-        int minute = parts.length > 1 ? Integer.parseInt(parts[1]) : 0;
+        if (parts.length > 2 || parts[0].isEmpty()
+                || (parts.length > 1 && parts[1].isEmpty())) {
+            throw new IllegalArgumentException("dailyAt 时间格式非法（应为 HH:mm 或 HH）: " + time);
+        }
+        int hour;
+        int minute = 0;
+        try {
+            hour = Integer.parseInt(parts[0]);
+            if (parts.length > 1) {
+                minute = Integer.parseInt(parts[1]);
+            }
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("dailyAt 时间格式非法（应为 HH:mm 或 HH）: " + time);
+        }
+        if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+            throw new IllegalArgumentException("dailyAt 时间超出范围（0-23:00-59）: " + time);
+        }
         return cron("0 " + minute + " " + hour + " * * *");
     }
 

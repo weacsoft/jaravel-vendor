@@ -622,8 +622,8 @@ public class BladeEngine {
     /**
      * 编译模板并存入缓存。
      * <p>
-     * <b>关键修复</b>：不再静默吞掉编译异常，而是抛出包含完整诊断信息的 RuntimeException，
-     * 避免 "Failed to load template" 这种误导性的错误信息掩盖真实原因。
+     * 编译异常时抛出包含完整诊断信息的 RuntimeException，
+     * 避免 "Failed to load template" 这类误导性错误信息掩盖真实原因。
      */
     private Class<?> safeCompileAndCache(String templateName) {
         try {

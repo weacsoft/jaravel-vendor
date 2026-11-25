@@ -118,7 +118,7 @@ public final class BladeDirectives {
     }
 
     /**
-     * 运行时执行输出指令。未注册时返回空串。
+     * 运行时执行输出指令。未注册时返回空字符串。
      */
     public static Object evaluateDirective(String name, Object... args) {
         Handler h = HANDLERS.get(name);

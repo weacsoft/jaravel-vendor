@@ -19,13 +19,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * 软删除<b>作用域过滤</b>的生效性测试（真实数据库，非 mock）。
  * <p>
- * <b>为什么必须有这个测试</b>：{@code BaseModel} 之前覆盖了 {@code scopeSoftDelete} 等
- * 一系列方法，看起来「软删除已经做好了」，但 {@code newQuery()} 里真正决定是否调用
- * {@code scopeSoftDelete} 的是 {@code softDeleting()}，而它没被覆盖、默认返回 {@code false}。
- * 结果是：<b>所有覆盖都成了死代码</b>，{@code newQuery()} 查出来含全部已删除数据，
- * 且不报任何错。这类失效只能靠「造一条软删除记录，看默认查询是否还能查到」才发现。
- * <p>
- * 用 H2 内存库跑真实 SQL：只有真库才能证明 {@code whereNull(deleted_at)} 真的拼进了语句。
+ * <b>本测试的目的</b>：{@code newQuery()} 是否调用 {@code scopeSoftDelete} 由
+ * {@code softDeleting()} 决定，其默认实现返回 {@code false}；未覆盖时 {@code newQuery()}
+ * 会查出全部已删除数据且不报错，此类失效只能靠造一条软删除记录、检查默认查询是否仍能
+ * 查到它才能发现。故用 H2 内存库跑真实 SQL，验证 {@code whereNull(deleted_at)} 确实拼进了语句。
  */
 class BaseModelSoftDeleteScopeTest {
 

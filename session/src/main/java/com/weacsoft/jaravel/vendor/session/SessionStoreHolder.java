@@ -10,7 +10,7 @@ package com.weacsoft.jaravel.vendor.session;
  *
  * <h3>回退策略</h3>
  * 若扫描结束后仍未设置任何实现，{@link #get()} 会惰性回退到
- * {@link CookieSessionStore}（基于 Servlet HttpSession），保证开箱即用。
+ * {@link CookieSessionStore}（基于 Servlet HttpSession），默认配置下即可使用。
  */
 public class SessionStoreHolder implements SessionStore {
 
@@ -72,7 +72,7 @@ public class SessionStoreHolder implements SessionStore {
     /**
      * 轮换 Session ID：<b>必须转发给真实实现</b>。
      * <p>
-     * 若这里不覆盖，接口默认的空实现会生效 —— 表现为「登录时的会话固定防护被静默跳过」，
+     * 若这里不覆盖，接口默认的空实现会生效 —— 表现为「登录时的会话固定防护被跳过而不可察觉」，
      * 而守卫侧看到 holder 覆盖了 rotate 便不会再告警，风险会被完全掩盖。
      */
     @Override

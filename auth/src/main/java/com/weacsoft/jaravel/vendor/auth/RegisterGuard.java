@@ -13,7 +13,7 @@ import java.lang.annotation.Target;
  * 会在所有 Bean 初始化完成后扫描此注解，调用方法并按 {@link #value()} 指定的名称注册到
  * {@link AuthManager}。
  *
- * <h3>为什么不用 {@code @Bean}？</h3>
+ * <h3>与 {@code @Bean} 的关系</h3>
  * {@code @Bean("admin")} 的 bean name 在整个 Spring 容器内必须唯一。如果另一处也有
  * {@code @Bean("admin")}（返回不同类型），Spring Boot 会抛出
  * {@code BeanDefinitionOverrideException}。使用本注解后，guard 名称与 bean name 解耦，

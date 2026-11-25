@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@link SessionStoreHolder} 回归测试。
  * <p>
  * 重点是 <b>rotate 转发</b>：holder 是守卫实际持有的对象，若它不覆盖 {@code rotate()}，
- * 接口的默认空实现就会生效 —— 表现为「登录时的会话固定防护被静默跳过」，
+ * 接口的默认空实现就会生效 —— 表现为「登录时的会话固定防护被跳过而不可察觉」，
  * 而且守卫侧因为「holder 覆盖了 rotate」不再告警，风险被完全掩盖。
  */
 class SessionStoreHolderTest {

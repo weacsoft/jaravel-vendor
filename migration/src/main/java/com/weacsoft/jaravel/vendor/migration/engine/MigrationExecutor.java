@@ -136,7 +136,7 @@ public class MigrationExecutor {
             // 创建 Migrator（按迁移 connection() 选择对应的 DataSource）
             Migrator migrator = new Migrator(dataSources, properties.getTable(), scanner);
 
-            // 执行命令（兼容 --jaravel.xxx 和裸命令两种格式）
+            // 执行命令（兼容 --jaravel.xxx 和未加前缀命令两种格式）
             if (argList.contains("migrate") || argList.contains("--jaravel.migrate")) {
                 migrator.run();
             }

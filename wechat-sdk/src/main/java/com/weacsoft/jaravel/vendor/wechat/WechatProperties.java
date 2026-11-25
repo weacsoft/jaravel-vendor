@@ -149,7 +149,7 @@ public class WechatProperties {
     /**
      * 按名称获取公众号配置，不存在则回退到 default，仍不存在返回 null。
      *
-     * @param configName 配置名，null 或空串使用 default
+     * @param configName 配置名，null 或空字符串使用 default
      * @return 公众号配置
      */
     public OfficialAccountConfig getOfficialAccount(String configName) {
@@ -164,7 +164,7 @@ public class WechatProperties {
     /**
      * 按名称获取小程序配置，不存在则回退到 default，仍不存在返回 null。
      *
-     * @param configName 配置名或 appId，null 或空串使用 default
+     * @param configName 配置名或 appId，null 或空字符串使用 default
      * @return 小程序配置
      */
     public MiniAppConfig getMiniApp(String configName) {
@@ -225,7 +225,7 @@ public class WechatProperties {
          * <ul>
          *   <li>{@code false}（默认）：<b>完全不校验</b>明文 POST 签名 —— 缺失或错误都放行。
          *       微信官方并不强制要求校验该签名，因此默认关闭以避免「未签名推送被拒」；
-         *       代价是任何能访问回调地址的人都能伪造推送，</li>
+         *       代价是任何能访问回调地址的人都能伪造推送。</li>
          *   <li>{@code true}：缺失或错误的 {@code signature} 一律拒绝（需要来源真实性时开启）。</li>
          * </ul>
          * <b>不受本项影响</b>的两处始终校验：GET 接入校验（URL 验证）、以及 {@code safe} 模式的
@@ -242,7 +242,7 @@ public class WechatProperties {
          * 一次互动允许的<b>被动回复</b>条数，默认 1。
          * <p>
          * 微信协议本身只给一次被动回复机会（5 秒内返回一个 XML），所以本值只应是 1 或 0；
-         * 设 0 表示「全部改走客服消息」（适合首条是不支持被动回复的类型，如小程序卡片）。
+         * 设 0 表示「全部改经客服消息」（适合首条是不支持被动回复的类型，如小程序卡片）。
          */
         private int passiveReplyLimit = 1;
 

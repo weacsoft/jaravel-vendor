@@ -45,7 +45,7 @@ public @interface RegisterWechatOfficialAccount {
      * 配置名（如 {@code default}）。与 yml 中 {@code jaravel.wechat.official-accounts.<name>} 对齐；
      * 重名时声明覆盖 yml。
      *
-     * @return 配置名，空串表示 default
+     * @return 配置名，空字符串表示 default
      */
     String value() default "";
 

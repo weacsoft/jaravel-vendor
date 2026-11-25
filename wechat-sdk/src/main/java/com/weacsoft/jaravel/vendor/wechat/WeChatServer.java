@@ -24,7 +24,7 @@ import java.util.function.BiFunction;
  * <h3>两套 API</h3>
  * <ul>
  *   <li><b>单应答函数</b>（既有便捷 API）：{@link #handlePost(Map, String, BiFunction)}，
- *       responder 返回 {@link Message} 即被动回复，返回 {@code null} 按空串应答</li>
+ *       responder 返回 {@link Message} 即被动回复，返回 {@code null} 按空字符串应答</li>
  *   <li><b>洋葱模型</b>（新）：{@link #kernel()} 拿 {@link WechatKernel}，
  *       {@code .middleware((req, next) -&gt; ...)} 逐层追加业务洋葱（鉴权/限频/路由/应答），
  *       {@link WechatRequest} 负责组装与提取（Laravel Request 风格），
@@ -43,7 +43,7 @@ import java.util.function.BiFunction;
  *     if (msg instanceof com.weacsoft.jaravel.vendor.wechat.server.TextMessage) {
  *         return new com.weacsoft.jaravel.vendor.wechat.message.Text("你说了: ...");
  *     }
- *     return null;   // 不回复（微信不会对空串重试）
+ *     return null;   // 不回复（微信不会对空字符串重试）
  * });
  *
  * // POST（洋葱模型，多层）：
@@ -55,8 +55,8 @@ import java.util.function.BiFunction;
  *
  * <h3>5 秒时限约定</h3>
  * 微信服务器 5 秒内收不到响应会断连并<b>重试 3 次</b>。业务处理超过 5 秒时
- * 应让洋葱层尽快返回 {@link WechatResponse#empty()}（本类将其应答为空串 {@code ""}，官方明确
- * "直接回复空串不会发起重试"），把耗时逻辑转入异步任务后用<b>客服消息</b>补发。
+ * 应让洋葱层尽快返回 {@link WechatResponse#empty()}（本类将其应答为空字符串 {@code ""}，官方明确
+ * "直接回复空字符串不会发起重试"），把耗时逻辑转入异步任务后用<b>客服消息</b>补发。
  *
  * @author weacsoft
  */
@@ -170,13 +170,13 @@ public class WeChatServer {
     /**
      * 处理一次推送并生成被动回复（单应答函数字形）。
      * <p>
-     * responder 返回 {@code null} 或无 responder 时按微信规范应答<b>空串</b>
-     * （微信不会对空串重试，这是 5 秒时限下的官方推荐退避）。
+     * responder 返回 {@code null} 或无 responder 时按微信规范应答<b>空字符串</b>
+     * （微信不会对空字符串重试，这是 5 秒时限下的官方推荐退避）。
      *
      * @param query     query 参数
      * @param bodyXml   请求体 XML
      * @param responder 回复逻辑（入参：解析出的消息、本服务端；返回：被动回复消息，null 表示不回复）
-     * @return 应答字符串（明文 XML 或加密应答 XML；不回复时为空串）
+     * @return 应答字符串（明文 XML 或加密应答 XML；不回复时为空字符串）
      * @throws com.weacsoft.jaravel.vendor.wechat.crypto.WechatCryptoException 验签/解密失败，
      *                                                                         或消息类不支持被动回复
      */

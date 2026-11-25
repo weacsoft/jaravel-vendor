@@ -11,7 +11,7 @@ public final class Rules {
     private Rules() {
     }
 
-    /** 必填（非 null 且非空串） */
+    /** 必填（非 null 且非空字符串） */
     public static final Rule REQUIRED = new Required();
     /** 可为 null（仅占位，校验始终通过；空值时跳过其它规则由 Validator 处理） */
     public static final Rule NULLABLE = (f, v, p, d) -> true;

@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 请求协调器（CS 中心化架构核心）。
@@ -49,7 +50,8 @@ public class RequestCoordinator {
     private final SubServerRegistry registry;
     private volatile RemoteTransport transport;
     private final BeanResolver localBeanResolver;
-    private volatile int roundRobinIndex = 0;
+    /** 轮询下标（原子自增，供并发 dispatch 共享） */
+    private final AtomicInteger roundRobinIndex = new AtomicInteger(0);
 
     /** 是否启用树形路由 */
     private volatile boolean treeRoutingEnabled = false;
@@ -157,7 +159,7 @@ public class RequestCoordinator {
      * @param request 执行请求
      * @return 执行响应
      */
-    private synchronized ExecuteResponse forwardToSubServer(ExecuteRequest request) {
+    private ExecuteResponse forwardToSubServer(ExecuteRequest request) {
         List<SubServerInfo> candidates;
 
         if (treeRoutingEnabled) {
@@ -198,10 +200,15 @@ public class RequestCoordinator {
             return ExecuteResponse.error(request.getRequestId(), "无可用子服务器");
         }
 
-        // 轮询选择，最多尝试 3 个
-        int maxAttempts = Math.min(3, candidates.size());
+        // 轮询选择，最多尝试 3 个。
+        // 注意：此处不加锁 —— transport.send 会阻塞（最长数十秒），若持有方法锁会把所有
+        // 并发转发串行化；SubServerRegistry 自身线程安全（ConcurrentHashMap），
+        // 轮询下标用 AtomicInteger 原子推进即可保证并发下的轮转语义。
+        int size = candidates.size();
+        int maxAttempts = Math.min(3, size);
+        int start = Math.floorMod(roundRobinIndex.getAndIncrement(), size);
         for (int attempt = 0; attempt < maxAttempts; attempt++) {
-            int idx = (roundRobinIndex + attempt) % candidates.size();
+            int idx = Math.floorMod(start + attempt, size);
             SubServerInfo target = candidates.get(idx);
             log.debug("转发请求到子服务器: {} -> {}:{} (relay={}, depth={})",
                     target.getId(), target.getHost(), target.getPort(),
@@ -211,7 +218,7 @@ public class RequestCoordinator {
                     target.getHost(), target.getPort(), target.getAuthToken(), request);
             if (response.isSuccess()) {
                 registry.updateOnlineStatus(target.getId(), true);
-                roundRobinIndex = idx + 1;
+                roundRobinIndex.getAndAdd(maxAttempts);
                 return response;
             }
             // 连接错误才尝试下一个，业务错误直接返回
@@ -220,7 +227,7 @@ public class RequestCoordinator {
                 !response.getError().contains("timeout") &&
                 !response.getError().contains("Connection")) {
                 registry.updateOnlineStatus(target.getId(), true);
-                roundRobinIndex = idx + 1;
+                roundRobinIndex.getAndAdd(maxAttempts);
                 return response;
             }
             // 连接错误，标记离线，尝试下一个
@@ -228,7 +235,7 @@ public class RequestCoordinator {
             log.warn("子服务器不可用: {}，尝试下一个", target.getId());
         }
 
-        roundRobinIndex++;
+        roundRobinIndex.getAndAdd(maxAttempts);
         return ExecuteResponse.error(request.getRequestId(), "所有子服务器均不可用");
     }
 

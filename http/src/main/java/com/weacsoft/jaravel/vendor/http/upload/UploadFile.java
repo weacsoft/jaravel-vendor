@@ -22,7 +22,7 @@ import java.io.InputStream;
  * // 指定文件名
  * String path = UploadFile.storeAs(avatar, "reports", "a-2026.pdf", fs::put);
  *
- * // 大文件走流式写入，避免整份内容进入堆内存
+ * // 大文件采用流式写入，避免整份内容进入堆内存
  * String path = UploadFile.storeStream(avatar, "videos", storage.disk("public")::putStream);
  * </pre>
  */
@@ -76,7 +76,7 @@ public final class UploadFile {
      * 将上传文件存入目标（使用原始文件名）。
      *
      * @param file   上传文件，不能为 {@code null}
-     * @param dir    目标目录（相对根；{@code null}/空串表示根目录）
+     * @param dir    目标目录（相对根；{@code null}/空字符串表示根目录）
      * @param target 写入目标，不能为 {@code null}
      * @return 实际写入的相对路径（形如 {@code dir + "/" + 文件名}）
      * @throws IOException 读取上传流或写入失败
@@ -89,7 +89,7 @@ public final class UploadFile {
      * 将上传文件存入目标（使用指定文件名）。
      *
      * @param file   上传文件，不能为 {@code null}
-     * @param dir    目标目录（相对根；{@code null}/空串表示根目录）
+     * @param dir    目标目录（相对根；{@code null}/空字符串表示根目录）
      * @param name   目标文件名，空时回退为 {@code "file"}
      * @param target 写入目标，不能为 {@code null}
      * @return 实际写入的相对路径
@@ -115,7 +115,7 @@ public final class UploadFile {
      * 适用于大文件上传。
      *
      * @param file   上传文件，不能为 {@code null}
-     * @param dir    目标目录（相对根；{@code null}/空串表示根目录）
+     * @param dir    目标目录（相对根；{@code null}/空字符串表示根目录）
      * @param target 写入目标，不能为 {@code null}
      * @return 实际写入的相对路径
      * @throws IOException 读取上传流或写入失败
@@ -128,7 +128,7 @@ public final class UploadFile {
      * 将上传文件以流式方式存入目标（使用指定文件名）。
      *
      * @param file   上传文件，不能为 {@code null}
-     * @param dir    目标目录（相对根；{@code null}/空串表示根目录）
+     * @param dir    目标目录（相对根；{@code null}/空字符串表示根目录）
      * @param name   目标文件名，空时回退为 {@code "file"}
      * @param target 写入目标，不能为 {@code null}
      * @return 实际写入的相对路径
@@ -151,7 +151,7 @@ public final class UploadFile {
     /**
      * 拼接目标相对路径。
      *
-     * @param dir  目标目录（相对根；{@code null}/空串表示根目录）
+     * @param dir  目标目录（相对根；{@code null}/空字符串表示根目录）
      * @param name 目标文件名，空时回退为 {@code "file"}
      * @return 相对路径
      */

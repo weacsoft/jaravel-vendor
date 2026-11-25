@@ -28,7 +28,7 @@ import java.util.List;
  * {@link RedisManager#getPrefix()}（配置键为 {@code jaravel.redis.options.prefix}，
  * 注意不是 {@code jaravel.redis.prefix}），未配置时回退为 {@link #DEFAULT_KEY_PREFIX}。
  * <p>
- * <b>为什么必须有前缀</b>：{@link #allKeys()} 用 SCAN + MATCH 前缀遍历，{@link #removeAll()}
+ * <b>前缀不可省略</b>：{@link #allKeys()} 用 SCAN + MATCH 前缀遍历，{@link #removeAll()}
  * 只删除带前缀的键；SCAN 必须携带 MATCH，否则 {@code Cache::flush()} 会清空整个 Redis 库
  * （会话、队列、限流计数等不可恢复）。
  *

@@ -38,7 +38,7 @@ import java.util.stream.Stream;
  * <h3>可见性</h3>
  * 在支持 POSIX 的系统上，可见性映射为文件权限（public → {@code rw-r--r--}，
  * private → {@code rw-------}）；Windows 等非 POSIX 系统上，
- * {@link #setVisibility} 静默忽略，{@link #visibility} 返回磁盘配置的默认可见性。
+ * {@link #setVisibility} 忽略（不记录日志），{@link #visibility} 返回磁盘配置的默认可见性。
  *
  * <h3>线程安全</h3>
  * 本类无可变实例状态（{@code root}/{@code urlPrefix}/{@code defaultVisibility} 均为 final），
@@ -460,7 +460,7 @@ public class LocalFilesystem implements Filesystem {
     }
 
     /**
-     * 应用 POSIX 权限；非 POSIX 系统（Windows）静默忽略。
+     * 应用 POSIX 权限；非 POSIX 系统（Windows）忽略（不记录日志）。
      */
     private void applyVisibility(Path file, Visibility visibility) {
         if (visibility == null) {

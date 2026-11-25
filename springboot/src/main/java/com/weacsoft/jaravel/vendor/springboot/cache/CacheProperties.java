@@ -45,7 +45,7 @@ public class CacheProperties {
     /** 缓存键前缀 */
     private String prefix = "jaravel";
 
-    /** file 驱动目录，空串表示使用系统临时目录下的 jaravel-cache 子目录（顶层快捷配置） */
+    /** file 驱动目录，空字符串表示使用系统临时目录下的 jaravel-cache 子目录（顶层快捷配置） */
     private String fileDir = "";
 
     /** database 驱动表名，默认 jaravel_cache（顶层快捷配置） */

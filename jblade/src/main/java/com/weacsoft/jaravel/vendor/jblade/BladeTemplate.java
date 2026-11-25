@@ -223,7 +223,7 @@ public abstract class BladeTemplate {
      * <p>
      * token 来源：框架注册（SpringBoot 自动配置）的 "csrf_token" 函数，
      * 该函数仅在 {@code VerifyCsrfToken} 中间件已应用于当前路由时返回非空令牌；
-     * 未启用中间件时返回空串，此时本方法返回空字符串——等同该指令不存在，不输出任何 input。
+     * 未启用中间件时返回空字符串，此时本方法返回空字符串——等同该指令不存在，不输出任何 input。
      */
     protected String csrf_field() {
         String token = csrf_token();
@@ -865,11 +865,7 @@ public abstract class BladeTemplate {
     protected void yieldSection(Writer writer, String name, Object defaultValue) throws Exception {
         // 记录 yield 区域名，供编译期区域分析使用
         context.recordYield(name);
-        // wire:section 标记【始终】输出：Wire 透明导航（wire-navigate.js）依赖 DOM 中的
-        // <!--wire:section-start:NAME-->...<!--wire:section-end:NAME--> 注释标记作为局部替换锚点。
-        // 直接访问（非 Wire 请求）时整页 HTML 同样携带这些注释标记，但注释不影响渲染，
-        // 且浏览器 <title> 的 textContent 会自动忽略注释节点，标签页显示正常。
-        // 注意：__wire_mode 仅用于服务端 WireMiddleware 抽取 diff（见 wire 模块），不控制标记本身。
+        // 标记无条件输出（见 javadoc）；__wire_mode 仅用于服务端 WireMiddleware 抽取 diff，不控制标记本身。
         writer.write(WIRE_SECTION_START_PREFIX + name + "-->");
         String content = context.yieldSection(name);
         if (content != null) {

@@ -188,8 +188,8 @@ public class MigrationFileParser {
                 log.debug("[migration-parser] 解析迁移: {} ({} 张表)",
                     className, schema.getBlueprints().size());
             } catch (Exception e) {
-                // 文件确实存在却解析失败（编译/实例化/up() 抛异常）→ 必须可见：
-                // 旧实现只 log.warn 后继续，静默产出「缺表」结果且调用方仍返回成功。
+                // 文件确实存在却解析失败（编译/实例化/up() 抛异常）→ 必须可见，
+                // 以避免产出「缺表」结果而调用方仍返回成功。
                 failures.add(className + " (" + e.getClass().getSimpleName()
                         + ": " + e.getMessage() + ")");
                 log.error("[migration-parser] 无法解析迁移 {}（该表将从结果中缺失）: {}",

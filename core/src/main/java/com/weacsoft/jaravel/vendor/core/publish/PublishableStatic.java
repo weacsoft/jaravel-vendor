@@ -55,7 +55,7 @@ public interface PublishableStatic extends Publishable {
     /**
      * 资源用途描述，用于 {@code --list} 输出。
      *
-     * @return 描述文本，默认空串
+     * @return 描述文本，默认空字符串
      */
     default String description() {
         return "";

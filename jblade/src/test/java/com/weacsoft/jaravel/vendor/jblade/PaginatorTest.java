@@ -138,7 +138,7 @@ class PaginatorTest {
         assertEquals("", p.links("pagination-demo").toHtml());
     }
 
-    /** 模板不存在时静默降级为空串，不抛异常。 */
+    /** 模板不存在时降级为空字符串，不抛异常。 */
     @Test
     void linksIsEmptyWhenTemplateMissing() {
         Paginator<String> p = new Paginator<String>(rows(10), 50, 10, 2).setPath("/u");

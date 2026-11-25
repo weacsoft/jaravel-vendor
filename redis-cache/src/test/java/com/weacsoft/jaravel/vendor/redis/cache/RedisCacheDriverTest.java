@@ -24,7 +24,7 @@ import static org.mockito.Mockito.*;
  * 使用 Mockito mock RedisManager，不依赖真实 Redis。
  * <p>
  * <b>键前缀是安全要求</b>：驱动给所有键加 {@code <prefix>}，SCAN 用 MATCH 限定范围。
- * 历史缺陷是 SCAN 不带 MATCH，导致 {@code Cache::flush()} 清空整个 Redis 库。
+ * 回归防护：SCAN 必须携带 MATCH，否则 {@code Cache::flush()} 会清空整个 Redis 库。
  */
 class RedisCacheDriverTest {
 

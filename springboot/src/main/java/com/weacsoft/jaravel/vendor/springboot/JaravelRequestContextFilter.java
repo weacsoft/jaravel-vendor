@@ -15,7 +15,7 @@ import java.io.IOException;
  * 请求上下文清理过滤器：保证每个请求结束后清掉
  * {@link RequestFactory} 的 {@code ThreadLocal<Request>}。
  * <p>
- * <b>为什么必须有它</b>：Servlet 容器复用工作线程，而
+ * <b>存在理由</b>：Servlet 容器复用工作线程，而
  * {@code RequestFactory.setCurrentRequest(...)} 只在请求处理期间被调用；
  * 不在请求结束时清理时，该线程处理下一个请求（可能属于另一用户）会读到上一次的
  * {@code Request}——SessionStore / SessionGuard 均经

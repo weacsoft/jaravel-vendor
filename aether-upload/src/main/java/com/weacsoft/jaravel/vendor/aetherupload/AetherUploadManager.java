@@ -318,7 +318,7 @@ public class AetherUploadManager {
         long chunkSize = resolveChunkSize(g, size, clientChunkSize);
         long maxChunks = g.config.getMaxChunks() > 0 ? g.config.getMaxChunks() : DEFAULT_MAX_CHUNKS;
         long hardMaxChunk = g.config.getMaxChunkSize() > 0 ? g.config.getMaxChunkSize() : MAX_CHUNK_SIZE_LIMIT;
-        // 分片数上限反推最小分片：大文件自动放大分片，而不是拒绝（避免「静默限制文件大小」）。
+        // 分片数上限反推最小分片：大文件自动放大分片，而不是拒绝（避免「无提示地限制文件大小」）。
         // 但放大必须受「单分片上限」约束，否则超大 size 会把分片放大到荒谬值，
         // 再被用于 raf.setLength(size) 预分配 —— 那正是磁盘 DoS 的入口。
         long minChunkForCap = (size + maxChunks - 1) / maxChunks;
@@ -779,8 +779,8 @@ public class AetherUploadManager {
     /**
      * 将合并完成的临时文件转存到 storage 磁盘。
      * <p>
-     * 本地磁盘走 {@code Files.move}（同分区为原子 rename，零拷贝）；
-     * 远程磁盘（S3/OSS 等）走流式 {@code putStream}，内存占用恒定，支持任意大小文件。
+     * 本地磁盘采用 {@code Files.move}（同分区为原子 rename，零拷贝）；
+     * 远程磁盘（S3/OSS 等）采用流式 {@code putStream}，内存占用恒定，支持任意大小文件。
      *
      * @return 写入后的定位信息（本地磁盘为绝对路径，远程磁盘为 {@code disk://name/path}）
      */
@@ -888,7 +888,7 @@ public class AetherUploadManager {
         try {
             EventFacade.dispatch(event);
         } catch (Throwable t) {
-            // 事件分发器不可用（如未启动 Spring 容器的测试环境）时静默降级
+            // 事件分发器不可用（如未启动 Spring 容器的测试环境）时降级为 debug 级日志
             logger.debug("[aether-upload] 事件分发跳过: {}", event.getClass().getSimpleName());
         }
     }

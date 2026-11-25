@@ -39,7 +39,7 @@ import java.util.Map;
  *
  * <p>
  * 未配置任何 disks 时，模块会自动注册一个名为 {@code local}、
- * 根目录为 {@code storage/app} 的默认磁盘，保证开箱即用。
+ * 根目录为 {@code storage/app} 的默认磁盘，默认配置下即可使用。
  */
 @ConfigurationProperties(prefix = "jaravel.storage")
 public class StorageProperties {
@@ -82,7 +82,7 @@ public class StorageProperties {
      * <p>
      * 驱动特定参数（local：root/url/visibility；database：binary/content-column/chunk-size/
      * table-prefix/connection）作为显式字段绑定，对齐 {@code vendor.springboot.cache.CacheProperties.StoreConfig}
-     * 的模式，保证 {@code driver: database} 的磁盘参数不会被绑定静默丢弃；
+     * 的模式，保证 {@code driver: database} 的磁盘参数不会被绑定时无提示地丢弃；
      * 其余自定义参数放 {@link #options}。
      */
     public static class DiskConfig {

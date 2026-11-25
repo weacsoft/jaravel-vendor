@@ -579,7 +579,7 @@ public class ResponseBuilder {
      * 既可以 {@code return ResponseBuilder.error(400, "...")}，
      * 也可以 {@code return ResponseBuilder.stream(200, writer)}。
      * <p>
-     * 为什么需要它：普通 {@link Response} 只有 {@code getContent()}/{@code getBytes()}，
+     * 存在理由：普通 {@link Response} 只有 {@code getContent()}/{@code getBytes()}，
      * 适配层会把整个响应体先读进内存再交给容器。对 LLM 的逐 token 输出，这意味着
      * 生成结束前客户端收不到任何内容（表现为「卡住」），且长响应会占用大量堆内存。
      *
@@ -632,7 +632,7 @@ public class ResponseBuilder {
     /**
      * 流式响应实现：同时是 {@link Response} 与 {@link StreamingResponse}。
      * <p>
-     * 适配层只认 {@code Response}，检测到 {@link StreamingResponse} 之后才走流式分支，
+     * 适配层只认 {@code Response}，检测到 {@link StreamingResponse} 之后才采用流式分支，
      * 因此这个类对「不认识流式」的调用方仍然是一个合法的 {@code Response}
      * （{@code getContent()} 返回 {@code null}，{@code getBytes()} 返回 {@code null}）。
      */

@@ -44,7 +44,7 @@ public interface CaptchaStore {
     /**
      * 原子「仅当不存在（或已过期）时写入」——一次性占用（nonce 消费）的基础原语。
      * <p>
-     * <b>为什么需要它</b>：旧实现用「先查 {@code get} 再写 {@code put}」判断 nonce 是否已消费，
+     * <b>存在理由</b>：若用「先查 {@code get} 再写 {@code put}」判断 nonce 是否已消费，
      * 并发下两个请求可同时通过检查，使「验证码一次性」保证失效。
      * <p>
      * 默认实现返回 {@code false}，表示<b>该存储不支持原子语义</b>；调用方会据此退回

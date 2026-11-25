@@ -146,7 +146,7 @@ public class MigrationPrecompiler {
 
         // 必须复制一份：MigrationScanner#getCompiledClasses() 返回的是内部 Map 本体，
 // 紧接着的 finish() → removeAll() 会 clear() 掉同一引用，导致这里拿到的永远为空
-// （表现为：预编译 zip/目录里只有 manifest、编译计数为 0、迁移静默不执行）。
+// （表现为：预编译 zip/目录里只有 manifest、编译计数为 0、迁移不执行且无告警）。
         Map<String, byte[]> bytecodes = new java.util.LinkedHashMap<>(scanner.getCompiledClasses());
         if (bytecodes.isEmpty()) {
             System.out.println("[migration] 未找到迁移文件或编译无产物");

@@ -25,7 +25,7 @@ import org.springframework.context.annotation.Bean;
  *   <li>注册 {@link BladeDirectiveRegistrar}：扫描 {@code @RegisterDirective} 注解方法，
  *       把自定义指令注册到 {@code BladeDirectives}；</li>
  *   <li>向模板引擎注册内置辅助函数 {@code csrf_token()} / {@code route()} / {@code url()}，
- *       注册后立即自检（硬保证：任一注册未落地则启动失败，而非静默不可用）。</li>
+ *       注册后立即自检（硬保证：任一注册未落地则启动失败，而非无提示地不可用）。</li>
  * </ul>
  */
 @AutoConfiguration
@@ -74,7 +74,7 @@ public class BladeIntegrationConfiguration {
                 Request req = RequestFactory.getCurrentRequest();
                 return VerifyCsrfToken.currentToken(req);
             } catch (Exception e) {
-                // 失败可见：记录 ERROR 而非静默忽略，避免开发者拿到空 value 却无感知
+                // 失败可见：记录 ERROR 而非无提示地忽略，避免开发者拿到空 value 却无感知
                 log.error("[builtin] csrf_token() 生成令牌失败", e);
                 return "";
             }
@@ -92,7 +92,7 @@ public class BladeIntegrationConfiguration {
         //    委托 RouteHelper.url()，与 Java 侧 AppConfig.app().route().url(...) 共用同一实现
         BladeFunctions.register("url", args -> RouteHelper.url(String.valueOf(args[0])));
 
-        // 自检：模板辅助函数必须确实注册成功（硬保证，避免静默不可用）
+        // 自检：模板辅助函数必须确实注册成功（硬保证，避免无提示地不可用）
         if (!BladeFunctions.has("csrf_token")) {
             throw new IllegalStateException("[builtin] 模板辅助函数 csrf_token() 注册失败，csrf_field() 将不可用。");
         }

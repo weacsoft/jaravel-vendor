@@ -289,7 +289,7 @@ public class JdbcExecutor {
     /**
      * 在<b>单个事务</b>内执行一组语句：同一连接、关闭自动提交、成功提交、异常回滚。
      * <p>
-     * <b>为什么必须要有它</b>：{@link #update} / {@link #queryMapped} 等方法各自从
+     * <b>设计原因</b>：{@link #update} / {@link #queryMapped} 等方法各自从
      * {@link DataSource} 取一次连接（连接池下每次可能是<b>不同连接</b>），因此
      * 「先查后改」在多实例并发下不是原子的，`SELECT ... FOR UPDATE` 也无法生效
      * （行锁属于连接/事务）。需要跨语句原子性的场景 —— 队列抢占、缓存 add/pull、

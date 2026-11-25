@@ -14,9 +14,9 @@ import java.util.function.BiFunction;
  * <p>
  * 语义与旧实现严格一致：
  * <ul>
- *   <li>responder 返回 {@code null} → 放行到下一层（最终得到不回复的空串）</li>
+ *   <li>responder 返回 {@code null} → 放行到下一层（最终得到不回复的空字符串）</li>
  *   <li>responder 返回 {@link Message} → 短路为被动回复</li>
- *   <li>responder 抛 {@link RuntimeException} → 吞掉并短路为不回复（避免微信重试 3 次），记录 error 日志</li>
+ *   <li>responder 抛 {@link RuntimeException} → 捕获并短路为不回复（避免微信重试 3 次），记录 error 日志</li>
  * </ul>
  *
  * @author weacsoft

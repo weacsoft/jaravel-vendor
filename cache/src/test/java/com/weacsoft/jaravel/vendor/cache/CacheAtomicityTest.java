@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * 缓存原语的<b>并发原子性</b>回归测试（`AtomicCacheDriver` 能力）。
  * <p>
- * 这些语义此前都是「两步实现」，并发下会静默失效：
+ * 这些语义在两步实现下，并发时会失效而不可察觉：
  * <ul>
  *   <li>{@code add} 是 has→put：多线程可同时成功 → 「单次执行/互斥门闩」失效；</li>
  *   <li>{@code pull} 是 get→forget：一次性令牌可被两个线程同时取到（captcha 消费方依赖它）；</li>

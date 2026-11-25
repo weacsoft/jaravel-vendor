@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <ol>
  *   <li>{@code resolve("")} 等于磁盘根，而 {@code delete}/{@code copy}/{@code move} 没有根目录判定 ——
  *       {@code delete("")} 会把空根目录直接删掉（数据毁坏）；{@code ""}/{@code "."}/{@code "a/.."}
- *       都解析成根，所以只挡空串不够；</li>
+ *       都解析成根，所以只挡空字符串不够；</li>
  *   <li>{@code resolve} 只做词法 {@code normalize} + {@code startsWith}，根目录内的软链接/junction
  *       指向外部时可以越界读写。</li>
  * </ol>

@@ -46,7 +46,7 @@ public final class ConnectionManager {
     private static final Map<String, javax.sql.DataSource> RAW_DATA_SOURCES =
             java.util.Collections.synchronizedMap(new LinkedHashMap<>());
 
-    /** 由裸 DataSource 包装而来的连接缓存，避免重复包装产生多个 GaarasonDataSource。 */
+    /** 由未包装的 DataSource 包装而来的连接缓存，避免重复包装产生多个 GaarasonDataSource。 */
     private static final Map<String, GaarasonDataSource> WRAPPED_CACHE = new ConcurrentHashMap<>();
 
     /** 全局唯一的 gaarason 容器。 */
@@ -194,7 +194,7 @@ public final class ConnectionManager {
                 return masters.get(0);
             }
         } catch (RuntimeException ignored) {
-            // gaarason 版本差异导致取不到时静默降级，不影响连接注册
+            // gaarason 版本差异导致取不到时降级处理（不记录日志），不影响连接注册
         }
         return null;
     }
@@ -244,9 +244,9 @@ public final class ConnectionManager {
      * 与 {@link #connection(String)} 的解析规则一致：
      * <ul>
      *   <li>非默认别名只解析同名 Spring bean；找不到时返回 {@code null}（由调用方按
-     *       「该连接不存在」处理），<b>不会</b>静默回退到容器中的主数据源，避免拼错的
+     *       「该连接不存在」处理），<b>不会</b>无提示地回退到容器中的主数据源，避免拼错的
      *       {@code @DataSource} 别名把流量误导向主库；</li>
-     *   <li>默认别名（{@code null}/空串或 {@code DEFAULT_CONNECTION}）在找不到同名 bean 时
+     *   <li>默认别名（{@code null}/空字符串或 {@code DEFAULT_CONNECTION}）在找不到同名 bean 时
      *       回退到容器中的主 {@link javax.sql.DataSource}。</li>
      * </ul>
      *
@@ -365,7 +365,7 @@ public final class ConnectionManager {
     }
 
     /**
-     * 从 Spring 容器解析别名对应的数据源，并用全局 Container 包装裸 DataSource。
+     * 从 Spring 容器解析别名对应的数据源，并用全局 Container 包装未包装的 DataSource。
      *
      * @param alias 连接别名
      * @return 解析结果，找不到返回 {@code null}
@@ -408,7 +408,7 @@ public final class ConnectionManager {
     }
 
     /**
-     * 用<b>全局唯一</b>的 {@link ContainerBootstrap} 将裸 {@link javax.sql.DataSource}
+     * 用<b>全局唯一</b>的 {@link ContainerBootstrap} 将未包装的 {@link javax.sql.DataSource}
      * 包装为 {@link GaarasonDataSource}。
      *
      * @param dataSource 原始数据源

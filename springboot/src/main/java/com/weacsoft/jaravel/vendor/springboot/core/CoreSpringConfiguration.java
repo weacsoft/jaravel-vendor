@@ -56,7 +56,7 @@ public class CoreSpringConfiguration {
      * 使用 {@code @ConditionalOnMissingBean} 允许用户自行提供 {@link AppKey} 实现
      * （例如从 KMS / 环境变量读取）。
      *
-     * @param key application 配置 {@code jaravel.key}（缺失则为空串，触发随机生成）
+     * @param key application 配置 {@code jaravel.key}（缺失则为空字符串，触发随机生成）
      * @return 全局应用密钥
      */
     @Bean

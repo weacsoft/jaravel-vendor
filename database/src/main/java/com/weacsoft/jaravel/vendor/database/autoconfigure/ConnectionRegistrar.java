@@ -19,7 +19,7 @@ import java.lang.reflect.Method;
  * <ul>
  *   <li>产物不注册为 {@code @Bean}，因此连接别名（如 {@code mysql}）不会与同名 bean 冲突；</li>
  *   <li>方法参数从 Spring 容器按类型自动注入，可直接声明 {@code ContainerBootstrap} 参数；</li>
- *   <li>若方法返回裸 {@link javax.sql.DataSource}，自动用<b>全局唯一</b>的
+ *   <li>若方法返回未包装的 {@link javax.sql.DataSource}，自动用<b>全局唯一</b>的
  *       {@code ContainerBootstrap} 包装，保证所有数据源共用同一容器。</li>
  * </ul>
  *
@@ -70,7 +70,7 @@ public class ConnectionRegistrar extends AnnotationDrivenRegistrar<RegisterConne
     /**
      * 将方法返回值适配为 {@link GaarasonDataSource}。
      * <p>
-     * 已是 {@code GaarasonDataSource} 则直接返回；若是裸 {@link javax.sql.DataSource}，
+     * 已是 {@code GaarasonDataSource} 则直接返回；若是未包装的 {@link javax.sql.DataSource}，
      * 用全局唯一的 {@code ContainerBootstrap} 包装。
      *
      * @param result 方法返回值
@@ -82,7 +82,7 @@ public class ConnectionRegistrar extends AnnotationDrivenRegistrar<RegisterConne
             return (GaarasonDataSource) result;
         }
         if (result instanceof javax.sql.DataSource) {
-            log.debug("[database] {} 返回裸 DataSource，使用全局 ContainerBootstrap 包装", describe(method));
+            log.debug("[database] {} 返回未包装的 DataSource，使用全局 ContainerBootstrap 包装", describe(method));
             return ConnectionManager.wrap((javax.sql.DataSource) result);
         }
         return requireType(result, GaarasonDataSource.class, method);

@@ -68,7 +68,7 @@ public interface SessionStore {
     /**
      * 轮换 Session ID（登录成功后必须调用），对齐 Laravel 的 {@code migrate(true)}。
      * <p>
-     * <b>为什么需要</b>：若登录前后 Session ID 不变，攻击者只要预先让受害者使用一个他知道的
+     * <b>目的</b>：若登录前后 Session ID 不变，攻击者只要预先让受害者使用一个他知道的
      * Session ID（子域写 Cookie、链接注入等），受害者登录后该 ID 就成为<b>已认证会话</b> ——
      * 即会话固定攻击（CWE-384）。
      * <p>
@@ -78,7 +78,7 @@ public interface SessionStore {
      * <b>默认实现为空</b>：这是为了不破坏第三方 {@code SessionStore} 实现的源码兼容；
      * 内置实现（{@link CookieSessionStore}、{@code RedisSessionStore}）均已覆盖。
      * {@code SessionGuard} 会在登录时调用本方法，并对「未覆盖该方法的实现」打印一次性告警，
-     * 以免会话固定防护被静默跳过。
+     * 以免会话固定防护被跳过而不可察觉。
      */
     default void rotate() {
         // 默认不做任何事：需要会话固定防护的实现请覆盖

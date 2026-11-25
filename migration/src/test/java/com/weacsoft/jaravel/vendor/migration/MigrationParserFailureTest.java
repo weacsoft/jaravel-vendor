@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *   <li><b>「目录不存在 / 目录内无 .java」是合法回退路径</b>（新检出、纯 classpath 部署）——
  *       {@code parseAll} 不得抛异常，也不得把它记成「解析失败」（否则会把合法部署误判为故障）；</li>
  *   <li><b>「文件存在但 {@code up()} / 实例化抛异常」必须被记录</b>并在命令层导致非零退出，
- *       绝不能静默产出缺表结果；</li>
+ *       绝不能无告警地产出缺表结果；</li>
  *   <li>失败清单<b>每次解析重置</b>，避免同一 parser 实例把上一次的失败串到下一次调用。</li>
  * </ol>
  * 注：命令层退出码同样受「classpath 上是否有可用迁移」影响，因此「合法回退」在<b>parser 层</b>断言

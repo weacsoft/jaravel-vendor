@@ -17,7 +17,7 @@ import java.io.OutputStream;
  *     return ResponseBuilder.stream(200, sse -> copy(upstream, sse));  // 流式
  * }
  * </pre>
- * 适配层（springboot 的 {@code createResponse}）检测到实现本接口就走流式分支，
+ * 适配层（springboot 的 {@code createResponse}）检测到实现本接口就采用流式分支，
  * 否则沿用原来的 {@code getContent()} / {@code getBytes()}。
  * <p>
  * <b>向后兼容</b>：独立可选接口，不实现它的 {@code Response} 行为完全不变。

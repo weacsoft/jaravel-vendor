@@ -23,7 +23,7 @@ import java.util.TreeSet;
  * <p>
  * 本类位于 core，<b>不依赖具体模板引擎</b>：{@code links(viewName)} 通过
  * {@link ViewProvider} 注入的默认 {@link View} 渲染分页模板。模板引擎（jblade）在启动时
- * 注入 provider 即可；未注入或模板缺失时 {@code links()} 安全降级为空串，等价于「无分页视图时未执行」。
+ * 注入 provider 即可；未注入或模板缺失时 {@code links()} 安全降级为空字符串，等价于「无分页视图时未执行」。
  * </p>
  * <p>
  * 实现 {@link Iterable}，模板中可直接 {@code @foreach($list as $item)}；实现 {@link Htmlable}
@@ -36,7 +36,7 @@ public class Paginator<T> implements Iterable<T>, Htmlable {
 
     private static final Logger logger = LoggerFactory.getLogger(Paginator.class);
 
-    /** 默认视图提供者（由模板引擎注入）；为 null 时 links 降级空串。 */
+    /** 默认视图提供者（由模板引擎注入）；为 null 时 links 降级空字符串。 */
     private static volatile ViewProvider defaultViewProvider = null;
 
     /** 默认分页模板名（可被子类/上游覆盖）。 */
@@ -232,7 +232,7 @@ public class Paginator<T> implements Iterable<T>, Htmlable {
      * <ul>
      *   <li>{@code type}：{@code "page"} 或 {@code "separator"}</li>
      *   <li>{@code page}：页码（separator 时忽略）</li>
-     *   <li>{@code url}：该页 URL（separator 时为空串）</li>
+     *   <li>{@code url}：该页 URL（separator 时为空字符串）</li>
      *   <li>{@code active}：是否当前页</li>
      * </ul>
      * 形如 [{"type":"page","page":1,...}, {"type":"separator",...}, {"type":"page","page":5,...}]。
@@ -292,7 +292,7 @@ public class Paginator<T> implements Iterable<T>, Htmlable {
     /**
      * 默认模板名渲染分页 HTML（模板引擎已注入默认视图时可用）。
      *
-     * @return 渲染字符串；无视图/无模板/降级时返回空串
+     * @return 渲染字符串；无视图/无模板/降级时返回空字符串
      */
     public Htmlable links() {
         return links(defaultViewName);
@@ -301,7 +301,7 @@ public class Paginator<T> implements Iterable<T>, Htmlable {
     /**
      * 以指定模板名渲染分页 HTML。
      * <p>
-     * 三级降级：① 仅一页（或未配置分页）返回空串；② 视图未就绪或模板不存在返回空串；
+     * 三级降级：① 仅一页（或未配置分页）返回空字符串；② 视图未就绪或模板不存在返回空字符串；
      * ③ 正常渲染返回 HTML。保证「无分页视图时等同于未执行」。
      * </p>
      *

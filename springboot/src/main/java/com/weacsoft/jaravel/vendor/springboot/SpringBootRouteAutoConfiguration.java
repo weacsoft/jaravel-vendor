@@ -278,7 +278,7 @@ public class SpringBootRouteAutoConfiguration {
     }
 
     /**
-     * 框架级开箱即用注册（路由内核部分，<b>不依赖 jblade</b>）：
+     * 框架级默认配置下即可使用的注册（路由内核部分，<b>不依赖 jblade</b>）：
      * 将内置 CSRF 校验中间件以别名 {@code "VerifyCsrfToken"} 注册到
      * {@link MiddlewareAliasRegistry}。
      * <p>

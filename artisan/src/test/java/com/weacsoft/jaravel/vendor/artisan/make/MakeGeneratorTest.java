@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *   <li>工具方法：{@code ensureSuffix} / {@code toPascalCase} / {@code toSnakeCase}</li>
  *   <li>7 个生成方法：Controller / Middleware / Model / Migration / Command / Event / Listener</li>
  *   <li>{@code --force} 覆盖逻辑</li>
- *   <li>一键生成全部</li>
+ *   <li>一次性生成全部</li>
  * </ul>
  * <p>
  * 使用 JUnit 5 {@code @TempDir} 创建临时输出目录，测试类与 {@link MakeGenerator} 同包，
@@ -205,7 +205,7 @@ class MakeGeneratorTest {
                 "force=true 时应成功覆盖已存在文件");
     }
 
-    // ==================== 一键生成全部测试 ====================
+    // ==================== 一次性生成全部测试 ====================
 
     @Test
     void testGenerateAll() throws IOException {

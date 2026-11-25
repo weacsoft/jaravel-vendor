@@ -12,7 +12,7 @@ import org.springframework.context.annotation.Conditional;
 /**
  * Session 守卫装配：把「用 Session 保存登录态」这一种实现接到 auth 标准上。
  * <p>
- * <b>为什么单独成类且条件写在类上</b>：{@code auth-session} 与 {@code session} 都是<b>可选</b>模块
+ * <b>单独成类且条件写在类上的原因</b>：{@code auth-session} 与 {@code session} 都是<b>可选</b>模块
  * （只依赖 auth 的应用不应被迫带上 session 能力）。方法级条件保护不了「声明类自身的类加载」——
  * 方法签名引用缺模块类型时 Spring 内省即抛 {@code NoClassDefFoundError}，
  * 所以条件与类型引用都必须收在这个类里。

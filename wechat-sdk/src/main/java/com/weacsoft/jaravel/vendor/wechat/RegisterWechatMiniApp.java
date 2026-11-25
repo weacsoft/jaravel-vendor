@@ -34,7 +34,7 @@ public @interface RegisterWechatMiniApp {
     /**
      * 配置名（如 {@code default} / {@code kf_mini}）。
      *
-     * @return 配置名，空串表示 default
+     * @return 配置名，空字符串表示 default
      */
     String value() default "";
 

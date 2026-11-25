@@ -17,7 +17,7 @@ import java.util.List;
 /**
  * 把 jaravel 的 {@link StreamingResponse} 原样写进 servlet 输出流的 {@link ServerResponse}。
  * <p>
- * <b>为什么必须自己实现，而不是用 Spring 现成的入口</b>：根因是 {@code RouterFunction}
+ * <b>自行实现而非使用 Spring 现成入口的原因</b>：根因是 {@code RouterFunction}
  * 这条链路不具备 {@code @RequestMapping} 那种返回值处理器链，三条现成路径均不可用：
  * <ol>
  *   <li>{@code ServerResponse.BodyBuilder.body(自定义对象)}
@@ -120,7 +120,7 @@ final class StreamingServerResponse implements ServerResponse {
     }
 
     /**
-     * 便捷判断：响应是否需要走流式分支。
+     * 便捷判断：响应是否需要采用流式分支。
      *
      * @param response jaravel 响应
      * @return 是流式响应返回 true

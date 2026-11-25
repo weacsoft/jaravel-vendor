@@ -44,7 +44,7 @@ public interface Publishable {
     /**
      * 用途描述，供 {@code vendor:publish --list} 展示。
      *
-     * @return 描述文本，默认空串
+     * @return 描述文本，默认空字符串
      */
     default String description() {
         return "";

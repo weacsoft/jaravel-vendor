@@ -10,7 +10,7 @@ import java.util.logging.Logger;
 /**
  * 框架托管的默认 {@link DataSource}，是 {@link ConnectionManager} 默认连接的<b>惰性委托</b>。
  *
- * <h3>为什么需要它</h3>
+ * <h3>设计说明</h3>
  * 连接改用 {@link RegisterConnection @RegisterConnection} 声明后，业务工程不再需要
  * 手写 {@code @Bean DataSource}。但 Spring 生态中大量组件（{@code DataSourceTransactionManager}、
  * {@code JdbcTemplate}、以及第三方 starter 的 {@code @ConditionalOnBean(DataSource.class)}）

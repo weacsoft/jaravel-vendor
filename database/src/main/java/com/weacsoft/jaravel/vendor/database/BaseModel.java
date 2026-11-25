@@ -155,7 +155,7 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
      * 重写 getModelMember()，在返回前修补 EntityMember，确保 model_shadow 列
      * 不会出现在 SELECT 查询中。
      * <p>
-     * <b>为什么需要重写此方法</b>：gaarason 的 {@code SelectBuilder.select(Class)}
+     * <b>重写原因</b>：gaarason 的 {@code SelectBuilder.select(Class)}
      * 通过 {@code modelShadowProvider.parseAnyEntityWithCache(entityClass)} 获取
      * {@link EntityMember}，而非通过 {@code modelMember.getEntityMember()}。
      * 当实体类因 CGLIB 代理等原因未正确注册到 {@code persistence.entityIndexMap} 时，
@@ -246,7 +246,7 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
      *   <li>先在 {@link ConnectionManager} 注册表中查找 —— 即
      *       {@code @RegisterConnection} 在 {@code config/DatabaseConfig.java} 中声明的连接；</li>
      *   <li>注册表没有，再<b>回退</b>到 Spring 容器中同名的
-     *       {@code GaarasonDataSource} / {@code DataSource} bean（裸 DataSource 会用全局
+     *       {@code GaarasonDataSource} / {@code DataSource} bean（未包装的 DataSource 会用全局
      *       {@code ContainerBootstrap} 自动包装）；</li>
      *   <li>最后回退到 Spring 注入的默认数据源。</li>
      * </ol>
@@ -388,7 +388,7 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
      * &#64;foreach($list as $u) ... &#64;endforeach
      * {{ $list-&gt;links('layouts.mdui.pageinator') }}
      * </pre>
-     * 若总页数不足 2 页或分页模板不存在，{@code links()} 会返回空串，等同于「没执行」。
+     * 若总页数不足 2 页或分页模板不存在，{@code links()} 会返回空字符串，等同于「没执行」。
      *
      * @param currentPage 当前页码（从 1 开始，小于 1 时按 1 处理）
      * @param perPage     每页条数（小于 1 时按 15 处理）
@@ -758,7 +758,7 @@ public abstract class BaseModel<T, K> extends Model<QueryBuilder<T, K>, T, K> {
 
     // ==================== 软删除感知的写入操作（withTrash / withoutTrash / onlyTrash） ====================
     //
-    // 背景（为什么需要这一段）：
+    // 本节提供软删除感知写入方法的原因：
     // gaarason 的 updateOrCreate / findOrCreate / findOrNew 等方法定义在 Model（ModelOfQuery）上，
     // 其内部实现固定为 `newQuery().select(...).where(conditionEntity).first()`，而 newQuery()
     // 会自动附加默认软删除作用域（scopeSoftDelete，即 `WHERE deleted_at IS NULL`）。

@@ -193,7 +193,7 @@ class OfficialAccountServiceTest {
         assertEquals(List.of("o1", "o2", "o3", "o4", "o5"), openids, "分页应汇聚全部 openid（回归：曾错读 data.openid_list 导致恒为空）");
         Request page2 = firstRequestSent(2, 1);
         // 官方端点：GET /cgi-bin/user/get?access_token=…&next_openid=…
-        // （回归：曾误用 POST /cgi-bin/user/getall，微信返回 errcode=40066 invalid url）
+        // （回归：若误用 POST /cgi-bin/user/getall，微信返回 errcode=40066 invalid url）
         assertEquals("/cgi-bin/user/get", page2.url().encodedPath(), "用户列表端点必须是 user/get");
         assertEquals("GET", page2.method(), "user/get 必须用 GET");
         assertEquals("o4", page2.url().queryParameter("next_openid"), "第二页应通过 query 携带 next_openid");

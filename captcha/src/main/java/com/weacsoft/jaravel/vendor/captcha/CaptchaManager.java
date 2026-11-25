@@ -18,7 +18,7 @@ import java.util.Set;
  * 验证码管理器：统一管理多种验证码类型的注册与调用。
  * <p>
  * 内部维护 {@code type -> Captcha} 映射，提供按类型生成 / 验证的入口，
- * 并通过 {@link #createDefault()} 提供开箱即用的默认管理器（注册数字、算术、滑动、旋转、文字点选五种）。
+ * 并通过 {@link #createDefault()} 提供默认配置下即可使用的管理器（注册数字、算术、滑动、旋转、文字点选五种）。
  * 核心层不依赖 Spring，可独立使用；SpringBoot 兼容层可将其包装为 Bean。
  * <p>
  * <h3>基本用法</h3>
@@ -288,10 +288,10 @@ public class CaptchaManager {
             new java.util.concurrent.atomic.AtomicBoolean(false);
 
     /**
-     * 2 参公开路径收到「裸类型名」时告警一次。
+     * 2 参公开路径收到未带密文段的类型名时告警一次。
      * <p>
      * 该输入可能来自攻击者（伪造 captchaKey），因此<b>不能抛异常</b>（会变成 500）；
-     * 但也必须留痕，否则「参数顺序写反」会重新变成静默失败。
+     * 但也必须留痕，否则「参数顺序写反」会重新变成无告警的失败。
      *
      * @param key 收到的键
      */

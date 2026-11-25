@@ -27,7 +27,7 @@ class RequestTest {
 
         // 不存在的键返回默认值
         assertEquals("default", req.input("missing", "default"));
-        assertEquals(null, req.input("missing"), "单参数重载无默认值时返回 null(而非空串)");
+        assertEquals(null, req.input("missing"), "单参数重载无默认值时返回 null(而非空字符串)");
     }
 
     @Test
@@ -36,7 +36,7 @@ class RequestTest {
         req.replaceInput("key", null);
         // 之前这里会 NPE：input.containsKey(key)=true 但 get(key)=null → null.toString()
         assertEquals("fallback", req.input("key", "fallback"));
-        assertEquals(null, req.input("key"), "缺省默认值(单参数)应为 null,而非空串");
+        assertEquals(null, req.input("key"), "缺省默认值(单参数)应为 null,而非空字符串");
         // null 默认值不 NPE,返回 null
         assertEquals(null, req.input("missing", (String) null));
         assertEquals(null, req.query("missing", (Long) null), "泛型重载 null 默认值不 NPE");
@@ -51,7 +51,7 @@ class RequestTest {
         assertEquals("1", req.get("page", "fallback"));
         assertTrue(req.has("page"));
         assertEquals(1, req.queryNames().size());
-        // 单参数/泛型 null 默认值:缺省返回 null 而非空串
+        // 单参数/泛型 null 默认值:缺省返回 null 而非空字符串
         assertEquals(null, req.query("missing"));
         assertEquals("fallback", req.query("missing", "fallback"));
         assertEquals(null, req.query("missing", (Long) null), "泛型重载 null 默认值不 NPE");

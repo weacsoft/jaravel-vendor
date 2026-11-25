@@ -42,7 +42,7 @@ import java.lang.annotation.Target;
  *
  * <h3>回退默认</h3>
  * 若未注册任何 {@code @RegisterSessionStore}，也没有 {@link SessionStore} Bean，
- * http 模块回退到 {@code CookieSessionStore}（基于 Servlet HttpSession），保证开箱即用。
+ * http 模块回退到 {@code CookieSessionStore}（基于 Servlet HttpSession），默认配置下即可使用。
  *
  * @see SessionStore
  */

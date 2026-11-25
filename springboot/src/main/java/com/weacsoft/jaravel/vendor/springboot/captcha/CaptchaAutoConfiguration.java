@@ -135,7 +135,7 @@ public class CaptchaAutoConfiguration {
         com.weacsoft.jaravel.vendor.core.crypto.AppKey appKey =
                 (appKeyProvider != null) ? appKeyProvider.getIfAvailable() : null;
         if (appKey == null) {
-            // 装配缺失时不再静默沿用「源码里公开的出厂默认密钥」：那样任何人都能用
+            // 装配缺失时不再无提示地沿用「源码里公开的出厂默认密钥」：那样任何人都能用
             // 公开常量解开 token 拿到答案。这里给出 ERROR，让问题在启动时暴露。
             org.slf4j.LoggerFactory.getLogger(CaptchaAutoConfiguration.class).error(
                     "[captcha] 未找到全局应用密钥（jaravel.key / AppKey Bean），"

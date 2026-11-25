@@ -12,7 +12,7 @@ import java.util.regex.Pattern;
 /**
  * Wire section 锚点改写器：把「HTML 注释非法位置」的 section 锚点改写为标记属性。
  *
- * <h3>为什么需要它</h3>
+ * <h3>存在理由</h3>
  * <p>
  * {@link BladeTemplate#yieldSection} 会为每个 {@code @yield} 输出
  * {@code <!--wire:section-start:NAME-->…<!--wire:section-end:NAME-->} 注释锚点，
@@ -203,7 +203,7 @@ public final class WireAnchorRewriter {
             }
             // 回退：锚点注释被误写在属性区（如 <div @yield('attrs')>），整段跳过。
             // 注意必须在属性名解析之前处理 —— 注释以 "-->" 结尾，若按属性名扫描会在 '>' 处
-            // 提前截断标签，导致后续 HTML 结构被吞掉。
+            // 提前截断标签，导致后续 HTML 结构被丢弃。
             if (html.startsWith("<!--", p)) {
                 int commentEnd = html.indexOf("-->", p + 4);
                 if (commentEnd < 0) {

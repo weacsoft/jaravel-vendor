@@ -15,7 +15,7 @@ import java.lang.annotation.Target;
  * 会在所有 Bean 初始化完成后扫描此注解，调用方法并按 {@link #value()} 指定的别名注册到
  * {@link ConnectionManager}。
  *
- * <h3>为什么不用 {@code @Bean}？</h3>
+ * <h3>设计说明：不注册为 {@code @Bean}</h3>
  * {@code @Bean("mysql")} 的 bean name 在整个 Spring 容器内必须唯一。如果另一处也有
  * {@code @Bean("mysql")}（返回不同类型），Spring Boot 会抛出
  * {@code BeanDefinitionOverrideException}。使用本注解后，连接别名与 bean name 解耦，
@@ -53,7 +53,7 @@ import java.lang.annotation.Target;
  * <h3>ContainerBootstrap 唯一性</h3>
  * gaarason 在 SpringBoot 环境下要求所有 {@code GaarasonDataSource} 共用<b>同一个</b>
  * {@code ContainerBootstrap}。框架通过 {@link DB#container()} 持有全局实例，
- * 若本注解方法返回的是裸 {@link javax.sql.DataSource}，框架会自动用该全局实例包装，
+ * 若本注解方法返回的是未包装的 {@link javax.sql.DataSource}，框架会自动用该全局实例包装，
  * 从根本上杜绝「多个 Container 导致 Model 解析错乱」的问题。
  *
  * @see ConnectionManager#addConnection(String, gaarason.database.contract.connection.GaarasonDataSource)

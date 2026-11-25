@@ -27,7 +27,7 @@ public class Request {
     /**
      * 原始请求体字节缓存。
      * <p>
-     * <b>为什么需要</b>：{@code RequestFactory} 解析 JSON/form 时会把 servlet 的
+     * <b>作用</b>：{@code RequestFactory} 解析 JSON/form 时会把 servlet 的
      * 输入流读掉（{@code getReader()} 或 {@code getInputStream()}），之后任何再读
      * body 的地方都会拿到空内容。这对「原样透传请求」的代理场景是致命的——
      * 反向代理必须把客户端提交的 body 原封不动转发给上游，而不是自己重新序列化
@@ -338,11 +338,11 @@ public class Request {
 
     /**
      * 取 query 参数(单参数重载)。
-     * 缺省或空串(经 ConvertEmptyStringsToNull 中间件转 null)时返回 {@code null},
-     * 而不是空串——便于在控制器里直接 {@code if (query("key") != null)} 判断。
+     * 缺省或空字符串(经 ConvertEmptyStringsToNull 中间件转 null)时返回 {@code null},
+     * 而不是空字符串——便于在控制器里直接 {@code if (query("key") != null)} 判断。
      *
      * @param key 参数名
-     * @return 参数值;缺省/空串返回 null
+     * @return 参数值;缺省/空字符串返回 null
      */
     public String query(String key) {
         // 走 String 重载:非 String 原始值(如 addQuery 写入的 Integer)经 toString 回退
@@ -363,7 +363,7 @@ public class Request {
 
     public <T> T query(String key, T defaultValue) {
         if (defaultValue == null) {
-            // 默认值为 null:无法推断 Class<T>,直接返回原始值(缺省/空串 → null)
+            // 默认值为 null:无法推断 Class<T>,直接返回原始值(缺省/空字符串 → null)
             Object raw = query.get(key);
             if (raw instanceof List) {
                 raw = ((List<Object>) raw).get(0);
@@ -405,10 +405,10 @@ public class Request {
     }
 
     /**
-     * 取 input 参数(单参数重载)。缺省或空串返回 {@code null}。
+     * 取 input 参数(单参数重载)。缺省或空字符串返回 {@code null}。
      *
      * @param key 参数名
-     * @return 参数值;缺省/空串返回 null
+     * @return 参数值;缺省/空字符串返回 null
      */
     public String input(String key) {
         // 走 String 重载:非 String 原始值(如 addInput 写入的 Integer)经 toString 回退
@@ -655,7 +655,7 @@ public class Request {
      * 取 session 参数(单参数重载)。缺省返回 {@code null}。
      *
      * @param key 参数名
-     * @return 参数值;缺省/空串返回 null
+     * @return 参数值;缺省/空字符串返回 null
      */
     public String session(String key) {
         // 走 String 重载:非 String 原始值(如 addSession 写入的 Long)经 toString 回退
@@ -866,7 +866,7 @@ public class Request {
     /**
      * 获取 HTTP 请求方法，对齐 Laravel 的 $request->method()。
      *
-     * @return HTTP 方法（GET/POST/PUT/DELETE 等），request 不可用时返回空串
+     * @return HTTP 方法（GET/POST/PUT/DELETE 等），request 不可用时返回空字符串
      */
     public String method() {
         if (request == null) {
@@ -878,7 +878,7 @@ public class Request {
     /**
      * 获取请求 URI，对齐 Laravel 的 $request->uri()。
      *
-     * @return 请求 URI（如 /api/wire/demo），request 不可用时返回空串
+     * @return 请求 URI（如 /api/wire/demo），request 不可用时返回空字符串
      */
     public String uri() {
         if (request == null) {
@@ -901,7 +901,7 @@ public class Request {
      * 未配置基础地址且未声明受信任代理时，{@code Host} 头会被原样采信，
      * 因此该地址不宜直接用作跨站跳转目标；对外暴露的绝对地址应通过基础地址固定。
      *
-     * @return 完整 URL（如 {@code https://example.com/weapp?from=mp}），request 不可用时返回空串
+     * @return 完整 URL（如 {@code https://example.com/weapp?from=mp}），request 不可用时返回空字符串
      */
     public String fullUrl() {
         if (request == null) {
@@ -959,7 +959,7 @@ public class Request {
     /**
      * 获取请求路径（Servlet 路径），对齐 Laravel 的 $request->path()。
      *
-     * @return 请求路径，request 不可用时返回空串
+     * @return 请求路径，request 不可用时返回空字符串
      */
     public String path() {
         if (request == null) {

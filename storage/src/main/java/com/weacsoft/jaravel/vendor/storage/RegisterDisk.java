@@ -16,8 +16,7 @@ import java.lang.annotation.Target;
  * 会在所有 Bean 初始化完成后扫描此注解，调用方法并按 {@link #value()} 指定的名称注册到
  * {@link StorageManager}。
  *
- * <h3>为什么不用 {@code @Bean}？</h3>
- * {@code @Bean("public")} 的 bean name 在整个 Spring 容器内必须唯一。如果另一处也有
+ * 设计说明：{@code @Bean("public")} 的 bean name 在整个 Spring 容器内必须唯一。如果另一处也有
  * {@code @Bean("public")}（返回不同类型），Spring Boot 会抛出
  * {@code BeanDefinitionOverrideException}。使用本注解后，磁盘名称与 bean name 解耦，
  * 不会注册为 Spring Bean，因此不会与同名 bean 冲突。

@@ -31,7 +31,7 @@ class MiniModelsTest {
                 () -> MiniProgramSession.from(Map.of("openid", "o1")), "缺 session_key 必须失败");
         assertThrows(IllegalArgumentException.class,
                 () -> MiniProgramSession.from(Map.of("session_key", "sk")), "缺 openid 必须失败");
-        // 微信错误响应（含 errcode）：openid/session_key 缺失 → 必须抛错，禁止静默拿到 null
+        // 微信错误响应（含 errcode）：openid/session_key 缺失 → 必须抛错，禁止返回 null
         assertThrows(IllegalArgumentException.class,
                 () -> MiniProgramSession.from(Map.of("errcode", 40125, "errmsg", "invalid code")));
     }

@@ -135,7 +135,7 @@ public class QueueManager {
         try {
             executor.submit(task);
         } catch (RejectedExecutionException e) {
-            // 关闭期提交被拒：显式告警，避免延迟任务静默丢失
+            // 关闭期提交被拒：显式告警，避免延迟任务丢失且无告警
             logger.warn("[event] 队列 '{}' 已关闭，任务提交被拒绝", queueName, e);
         }
     }

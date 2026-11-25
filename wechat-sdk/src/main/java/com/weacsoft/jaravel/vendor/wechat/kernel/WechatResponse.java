@@ -18,7 +18,7 @@ import java.util.Map;
  * <ul>
  *   <li>{@link Kind#ECHO} —— 验签请求（GET）的回包：解密后的 echostr 原文</li>
  *   <li>{@link Kind#MESSAGE} —— 被动回复：一个类型化 {@link Message}（text/image/… 六种之内）</li>
- *   <li>{@link Kind#EMPTY} —— 不回复：微信 5 秒时限下的官方推荐退避（应答空串，微信不重试）</li>
+ *   <li>{@link Kind#EMPTY} —— 不回复：微信 5 秒时限下的官方推荐退避（应答空字符串，微信不重试）</li>
  *   <li>{@link Kind#RAW} —— 已组装好的最终 XML（如自定义应答）</li>
  * </ul>
  *
@@ -41,7 +41,7 @@ public final class WechatResponse {
         ECHO,
         /** 被动回复（类型化消息） */
         MESSAGE,
-        /** 不回复（空串退避） */
+        /** 不回复（空字符串退避） */
         EMPTY,
         /** 预组装的最终 XML */
         RAW,
@@ -139,7 +139,7 @@ public final class WechatResponse {
      * <p>
      * 微信协议规定一次推送只能有<b>一条</b>被动回复（5 秒内），业务想「一次问答回多条」时，
      * 由内核与 {@code AsyncReplyDispatcher} 自动拆分：
-     * 第 1 条走被动回复（XML），其余走客服消息异步补发，并受
+     * 第 1 条采用被动回复（XML），其余经客服消息异步补发，并受
      * {@code passive-reply-limit} / {@code customer-service-reply-limit} 软限制约束。
      *
      * @param messages 消息列表（按发送顺序；null/空等价于不回复）

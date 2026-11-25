@@ -116,9 +116,9 @@ public class ModelCacheService {
     /**
      * 读缓存命中并还原类型；<b>不可还原时驱逐该键并回源</b>。
      * <p>
-     * 为什么不「返回原值 + WARN」：那会把类型契约变成「有时实体、有时 LinkedHashMap」——
+     * 不采用「返回原值 + WARN」：那会把类型契约变成「有时实体、有时 LinkedHashMap」——
      * 调用点仍会 CCE（只是延后），且按类型分派的逻辑（instanceof、序列化、权限判断）可能走错分支。
-     * 正确做法是驱逐该键 + 回源一次（退化为一次 DB 命中），保证返回的始终是声明类型。
+     * 驱逐该键并回源一次（退化为一次 DB 命中），保证返回的始终是声明类型。
      * <p>
      * 注意：array（内存）store 命中的是 gaarason <b>托管实体</b>，{@code isInstance} 短路会原样返回
      * 同一实例，不会被 JSON 转换成游离 POJO；只有元素是 {@code Map} 时才转换（按元素嗅探，
@@ -233,7 +233,7 @@ public class ModelCacheService {
         return null;
     }
 
-    /** 已告警过的模型类（**按模型记忆**：进程级单例会让第二个坏模型永久静默） */
+    /** 已告警过的模型类（**按模型记忆**：进程级单例会让第二个坏模型不再产生告警） */
     private static final java.util.Set<Class<?>> COERCE_FAILURE_WARNED =
             java.util.concurrent.ConcurrentHashMap.newKeySet();
 

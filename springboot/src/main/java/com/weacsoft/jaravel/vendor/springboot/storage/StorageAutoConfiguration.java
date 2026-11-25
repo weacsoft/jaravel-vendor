@@ -42,7 +42,7 @@ import javax.sql.DataSource;
  * <h3>装配原则：用上了才注册</h3>
  * database 磁盘需要外部数据库，遵循「显式选用才装配」：只有
  * {@code jaravel.storage.disks.*.driver} 里出现了 {@code database}，对应的驱动 Bean 才会注册；
- * local 磁盘无外部资源，缺省装配保证开箱即用。
+ * local 磁盘无外部资源，缺省装配后默认配置下即可使用。
  *
  * <h3>关闭模块</h3>
  * <pre>

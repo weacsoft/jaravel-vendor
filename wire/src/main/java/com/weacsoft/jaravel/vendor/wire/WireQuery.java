@@ -12,7 +12,7 @@ import java.lang.annotation.Target;
  * 用于 pushUrl / backUrl 的自动生成:框架在生成「带参 URL」时,只收集被该注解标记的字段,
  * 并按以下规则过滤:
  * <ul>
- *   <li>当前值为 {@code null} → 不加入 URL(空字符串已被「空串转 null」中间件归一化,无需单独判断);</li>
+ *   <li>当前值为 {@code null} → 不加入 URL(空字符串已被「空字符串转 null」中间件归一化,无需单独判断);</li>
  *   <li>当前值等于 {@link #defaultValue()} 且 defaultValue 非空 → 不加入 URL;</li>
  *   <li>{@link #templates()} 非空时,以 {@code getTemplateName()} 为上下文匹配模板名,
  *       模板不在列表内 → 不加入 URL;空数组表示所有模板都生效。</li>
@@ -54,7 +54,7 @@ public @interface WireQuery {
     /**
      * 默认值;当前值等于该值或为 {@code null} 时不把参数加入 URL。
      * <p>
-     * 默认空串表示「未设置默认值」→ 仅当前值为 null 时不加入。
+     * 默认空字符串表示「未设置默认值」→ 仅当前值为 null 时不加入。
      * (运行时有「空字符串转 null」中间件,因此无需单独判断空字符串。)
      */
     String defaultValue() default "";

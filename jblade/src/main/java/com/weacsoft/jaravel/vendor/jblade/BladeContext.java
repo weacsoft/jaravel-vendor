@@ -176,8 +176,7 @@ public class BladeContext {
             inSection = !sectionStack.isEmpty();
             if (inSection) {
                 // 回到外层 section 时，继续往「外层 + 内层已写入内容」上追加；
-                // 外层若此前未产生内容则为空串（此前实现取 sections 中尚未写入的外层值，
-                // 嵌套 section 会触发空指针异常）
+                // 外层若此前未产生内容则为空字符串
                 String outer = sections.get(sectionStack.peek());
                 currentSectionContent = new StringBuilder(
                         outer != null ? outer : currentSectionContent);

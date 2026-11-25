@@ -12,7 +12,7 @@ import java.lang.annotation.Target;
  * {@link LockProviderRegistrar} 会在所有 Bean 初始化完成后扫描此注解，调用方法并按
  * {@link #value()} 指定的名称注册到 {@link LockProviderManager}。
  *
- * <h3>为什么不用 {@code @Bean}？</h3>
+ * <h3>与 {@code @Bean} 解耦</h3>
  * {@code @Bean} 的 bean name 在整个 Spring 容器内必须唯一。多个模块（如 schedule、redis）
  * 各自注册 LockProvider 时，容易与业务 Bean 产生同名冲突。使用本注解后，
  * provider 名称与 bean name 解耦，不会注册为 Spring Bean。

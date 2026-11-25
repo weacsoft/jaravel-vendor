@@ -51,7 +51,7 @@ class SharedDependencyScannerBeanNameTest {
         cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER,
                 CLASS_NAME, null, "java/lang/Object", null);
 
-        // --- @PluginComponent（无 value → 默认空串 → 使用首字母小写类名） ---
+        // --- @PluginComponent（无 value → 默认空字符串 → 使用首字母小写类名） ---
         AnnotationVisitor compAv = cw.visitAnnotation(
                 "Lcom/weacsoft/jaravel/vendor/plugin/jar/annotation/PluginComponent;", true);
         compAv.visit("value", "");

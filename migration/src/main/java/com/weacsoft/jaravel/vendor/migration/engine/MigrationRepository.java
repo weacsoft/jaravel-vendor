@@ -101,7 +101,7 @@ public class MigrationRepository {
             return jdbc.queryForObject("SELECT MAX(batch) FROM " + quote(table), Integer.class);
         } catch (Exception e) {
             // 只有「迁移表尚不存在」才是正常的首次运行；其他故障（权限/连接/语法）必须暴露，
-            // 否则会被当成「批次号 0」继续跑迁移并静默产出错误结果
+            // 否则会被当成「批次号 0」继续跑迁移并产出错误结果（无告警）
             if (isMissingTable(e)) {
                 return null;
             }

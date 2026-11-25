@@ -93,7 +93,7 @@ public class SessionGuard implements AuthGuard {
 
     /**
      * 一次性告警：若某个 {@code SessionStore} 实现没有覆盖 {@code rotate()}（接口默认空实现），
-     * 登录时的会话固定防护会被静默跳过，必须让运维看得见。
+     * 登录时的会话固定防护会被跳过且无任何提示，必须让运维看得见。
      */
     private void warnIfRotationUnsupported() {
         try {

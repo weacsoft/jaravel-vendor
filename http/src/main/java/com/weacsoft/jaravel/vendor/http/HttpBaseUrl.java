@@ -12,7 +12,7 @@ package com.weacsoft.jaravel.vendor.http;
  * 配置 {@code jaravel.http.base-url} 后，{@link com.weacsoft.jaravel.vendor.http.controller.request.Request#fullUrl()}
  * 以该地址为准，不再取自请求头。
  *
- * <h3>为什么不放进 {@link HttpProperties}</h3>
+ * <h3>未放入 {@code HttpProperties} 的原因</h3>
  * <p>
  * {@code Request} 由 {@code RequestFactory} 在请求线程中创建，并不持有配置 Bean；
  * 而 {@code fullUrl()} 是纯静态职责，不适合为此引入依赖注入。
@@ -27,12 +27,12 @@ public final class HttpBaseUrl {
     }
 
     /**
-     * 应用对外基础地址，空串表示未配置。
+     * 应用对外基础地址，空字符串表示未配置。
      */
     private static volatile String baseUrl = "";
 
     /**
-     * @return 当前基础地址；未配置时返回空串
+     * @return 当前基础地址；未配置时返回空字符串
      */
     public static String current() {
         return baseUrl;
